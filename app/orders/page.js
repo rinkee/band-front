@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useOrders } from "../hooks";
 
 export default function OrdersPage() {
   const router = useRouter();
@@ -11,13 +12,44 @@ export default function OrdersPage() {
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState("orderDate");
+  const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterStatus, setFilterStatus] = useState("all");
 
   // 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+
+  // 컴포넌트 마운트 시 로컬 스토리지에서 userId 가져오기
+  useEffect(() => {
+    const storedUserId = localStorage.getItem("userId");
+    if (storedUserId) {
+      setUserId(storedUserId);
+    }
+  }, []);
+
+  // SWR 옵션 (에러 발생 시 재시도 및 새로고침 간격 설정)
+  const swrOptions = {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    refreshInterval: 30000, // 30초마다 자동으로 데이터 새로고침
+    onError: (error) => {
+      console.error("데이터 로딩 오류:", error);
+    },
+  };
+
+  // 주문 데이터 가져오기
+  const { data: ordersData, error: ordersError } = useOrders(
+    userData?.userId,
+    currentPage,
+    {
+      sortBy,
+      sortOrder,
+      status: filterStatus !== "all" ? filterStatus : undefined,
+      search: searchTerm.trim() || undefined,
+    },
+    swrOptions
+  );
 
   // 사용자 인증 상태 확인
   useEffect(() => {
@@ -33,10 +65,6 @@ export default function OrdersPage() {
 
         const userDataObj = JSON.parse(sessionData);
         setUserData(userDataObj);
-
-        // 주문 데이터 가져오기
-        fetchOrders(userDataObj.userId);
-
         setLoading(false);
       } catch (error) {
         console.error("데이터 조회 오류:", error);
@@ -48,90 +76,20 @@ export default function OrdersPage() {
     checkAuth();
   }, [router]);
 
-  // 주문 데이터 가져오기
-  const fetchOrders = async (userId) => {
-    try {
-      // 실제로는 API를 호출하여 주문 데이터를 가져옵니다.
-      // 현재는 목업 데이터를 사용합니다.
-      const orderStatuses = ["주문완료", "수령완료", "주문취소"];
-      const productNames = [
-        "고기세트식당양념갈비",
-        "대패삼겹살 1kg",
-        "한돈 삼겹살 500g",
-        "목심 스테이크 600g",
-        "와규 등심 300g",
-      ];
-
-      // 고객 댓글 예시 - 더 간단한 수량 위주로 변경
-      const commentExamples = [
-        "2",
-        "3",
-        "1",
-        "4",
-        "2개",
-        "3개 주문합니다",
-        "1개 주세요",
-        "2개요",
-        "1개",
-        "600g 2개 주문이요",
-      ];
-
-      const mockOrders = Array.from({ length: 30 }, (_, index) => {
-        const orderDate = new Date(
-          Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000
-        );
-        const status =
-          orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
-        const productIndex = Math.floor(Math.random() * productNames.length);
-        const productName = productNames[productIndex];
-        const comment =
-          commentExamples[Math.floor(Math.random() * commentExamples.length)];
-
-        // 댓글에서 수량 자동 추출
-        const extractedQuantity = extractQuantityFromComment(comment);
-        const quantity = extractedQuantity > 0 ? extractedQuantity : 1;
-
-        const price = [15000, 12000, 18000, 25000, 35000][productIndex];
-        const total = price * quantity;
-
-        // 수령완료인 경우 수령 시간 생성
-        const pickupTime =
-          status === "수령완료"
-            ? new Date(
-                orderDate.getTime() +
-                  Math.floor(Math.random() * 48) * 60 * 60 * 1000
-              )
-            : null;
-
-        return {
-          id: `ORD${(index + 1).toString().padStart(5, "0")}`,
-          customerName: `고객${(index % 10) + 1}`,
-          customerPhone: `010-${Math.floor(
-            1000 + Math.random() * 9000
-          )}-${Math.floor(1000 + Math.random() * 9000)}`,
-          orderDate: orderDate.toISOString(),
-          status: status,
-          productName: productName,
-          quantity: quantity,
-          displayQuantity: quantity,
-          price: price,
-          total: total,
-          shippingAddress: `서울시 강남구 테헤란로 ${
-            Math.floor(Math.random() * 500) + 1
-          }`,
-          paymentMethod: Math.random() > 0.5 ? "카드" : "무통장입금",
-          comment: comment, // 고객 댓글
-          isEditing: false, // 수정 모드 여부
-          pickupTime: pickupTime ? pickupTime.toISOString() : null, // 수령 시간
-        };
-      });
-
-      setOrders(mockOrders);
-    } catch (error) {
-      console.error("주문 데이터 조회 오류:", error);
-      setError("주문 데이터를 불러오는데 실패했습니다.");
+  // API에서 받은 주문 데이터를 상태에 설정
+  useEffect(() => {
+    if (userData && ordersData) {
+      setOrders(ordersData.data || []);
     }
-  };
+  }, [ordersData, userData]);
+
+  // 주문 데이터 로딩 오류 처리
+  useEffect(() => {
+    if (ordersError) {
+      setError("주문 데이터를 불러오는데 실패했습니다.");
+      console.error("주문 데이터 로딩 오류:", ordersError);
+    }
+  }, [ordersError]);
 
   // 댓글에서 수량 추출 함수
   const extractQuantityFromComment = (comment) => {
@@ -177,7 +135,7 @@ export default function OrdersPage() {
   const handleCommentChange = (orderId, newComment) => {
     setOrders(
       orders.map((order) => {
-        if (order.id === orderId) {
+        if (order.order_id === orderId) {
           const newQuantity = extractQuantityFromComment(newComment);
           const newTotal = order.price * newQuantity;
 
@@ -186,7 +144,7 @@ export default function OrdersPage() {
             comment: newComment,
             quantity: newQuantity,
             displayQuantity: newQuantity,
-            total: newTotal,
+            total_amount: newTotal,
           };
         }
         return order;
@@ -198,7 +156,7 @@ export default function OrdersPage() {
   const handleQuantityChange = (orderId, newQuantity) => {
     setOrders(
       orders.map((order) =>
-        order.id === orderId
+        order.order_id === orderId
           ? {
               ...order,
               displayQuantity: newQuantity,
@@ -212,7 +170,7 @@ export default function OrdersPage() {
   const saveQuantity = (orderId) => {
     setOrders(
       orders.map((order) => {
-        if (order.id === orderId) {
+        if (order.order_id === orderId) {
           const updatedQuantity = parseInt(order.displayQuantity) || 1;
           const newTotal = order.price * updatedQuantity;
 
@@ -220,7 +178,7 @@ export default function OrdersPage() {
             ...order,
             quantity: updatedQuantity,
             displayQuantity: updatedQuantity,
-            total: newTotal,
+            total_amount: newTotal,
             isEditing: false,
           };
         }
@@ -247,7 +205,7 @@ export default function OrdersPage() {
   const handleStatusChange = (orderId, newStatus) => {
     setOrders(
       orders.map((order) => {
-        if (order.id === orderId) {
+        if (order.order_id === orderId) {
           // 수령완료로 상태 변경 시 현재 시간을 수령 시간으로 설정
           const pickupTime =
             newStatus === "수령완료"
@@ -338,7 +296,15 @@ export default function OrdersPage() {
 
   // 날짜 포맷팅 함수
   const formatDate = (dateString) => {
+    if (!dateString) return "-";
+
     const date = new Date(dateString);
+
+    // 유효하지 않은 날짜 확인
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
+
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     const hours = String(date.getHours()).padStart(2, "0");
@@ -348,51 +314,18 @@ export default function OrdersPage() {
   };
 
   // 주문 필터링 및 정렬
-  const filteredOrders = orders
-    .filter((order) => {
-      // 상태 필터
-      if (filterStatus !== "all" && order.status !== filterStatus) {
-        return false;
-      }
-
-      // 검색어 필터
-      if (searchTerm.trim() !== "") {
-        return (
-          order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.productName.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-
-      return true;
-    })
-    .sort((a, b) => {
-      // 정렬 로직
-      if (sortBy === "orderDate") {
-        return sortOrder === "asc"
-          ? new Date(a.orderDate) - new Date(b.orderDate)
-          : new Date(b.orderDate) - new Date(a.orderDate);
-      } else if (sortBy === "customerName") {
-        return sortOrder === "asc"
-          ? a.customerName.localeCompare(b.customerName)
-          : b.customerName.localeCompare(a.customerName);
-      } else if (sortBy === "total") {
-        return sortOrder === "asc" ? a.total - b.total : b.total - a.total;
-      } else {
-        return sortOrder === "asc"
-          ? a.id.localeCompare(b.id)
-          : b.id.localeCompare(a.id);
-      }
-    });
+  const filteredOrders = orders || [];
 
   // 페이지네이션
+  const totalItems = ordersData?.totalCount || filteredOrders.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredOrders.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
   // 페이지 변경 핸들러
-  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+  const paginate = (pageNumber) => {
+    setCurrentPage(pageNumber);
+  };
 
   // 이전/다음 페이지 핸들러
   const goToPreviousPage = () => {
@@ -422,7 +355,7 @@ export default function OrdersPage() {
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={2}
-          d="M5 15l7-7 7 7"
+          d="M5 15l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
         />
       </svg>
     ) : (
@@ -446,7 +379,9 @@ export default function OrdersPage() {
   const toggleEditMode = (orderId) => {
     setOrders(
       orders.map((order) =>
-        order.id === orderId ? { ...order, isEditing: !order.isEditing } : order
+        order.order_id === orderId
+          ? { ...order, isEditing: !order.isEditing }
+          : order
       )
     );
   };
@@ -455,11 +390,11 @@ export default function OrdersPage() {
   const increaseQuantity = (orderId) => {
     setOrders(
       orders.map((order) =>
-        order.id === orderId
+        order.order_id === orderId
           ? {
               ...order,
               quantity: order.quantity + 1,
-              total: order.price * (order.quantity + 1),
+              total_amount: order.price * (order.quantity + 1),
             }
           : order
       )
@@ -470,11 +405,11 @@ export default function OrdersPage() {
   const decreaseQuantity = (orderId) => {
     setOrders(
       orders.map((order) =>
-        order.id === orderId && order.quantity > 1
+        order.order_id === orderId && order.quantity > 1
           ? {
               ...order,
               quantity: order.quantity - 1,
-              total: order.price * (order.quantity - 1),
+              total_amount: order.price * (order.quantity - 1),
             }
           : order
       )
@@ -551,6 +486,27 @@ export default function OrdersPage() {
                   />
                 </svg>
                 Home
+              </a>
+            </li>
+            <li>
+              <a
+                href="/posts"
+                className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <svg
+                  className="w-5 h-5 mr-3 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                  />
+                </svg>
+                게시물 관리
               </a>
             </li>
             <li>
@@ -783,20 +739,20 @@ export default function OrdersPage() {
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <button
-                        onClick={() => handleSortChange("orderDate")}
+                        onClick={() => handleSortChange("ordered_at")}
                         className="flex items-center focus:outline-none"
                       >
                         주문일시
-                        {getSortIcon("orderDate")}
+                        {getSortIcon("ordered_at")}
                       </button>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <button
-                        onClick={() => handleSortChange("customerName")}
+                        onClick={() => handleSortChange("customer_name")}
                         className="flex items-center focus:outline-none"
                       >
                         고객명
-                        {getSortIcon("customerName")}
+                        {getSortIcon("customer_name")}
                       </button>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -810,11 +766,11 @@ export default function OrdersPage() {
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <button
-                        onClick={() => handleSortChange("total")}
+                        onClick={() => handleSortChange("total_amount")}
                         className="flex items-center focus:outline-none"
                       >
                         금액
-                        {getSortIcon("total")}
+                        {getSortIcon("total_amount")}
                       </button>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -823,37 +779,34 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {currentItems.map((order) => (
+                  {filteredOrders.map((order) => (
                     <tr
-                      key={order.id}
+                      key={order.order_id}
                       className="hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        {order.id}
+                        {order.order_id}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(order.orderDate)}
+                        {formatDate(order.ordered_at)}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900">
-                            {order.customerName}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {order.customerPhone}
+                            {order.customer_name}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {order.productName}
+                          {`제품 ID: ${order.product_id}`}
                         </div>
                       </td>
                       <td className="px-4 py-4 max-w-xs">
                         <div
                           className="text-sm text-gray-500 truncate md:whitespace-normal flex items-center"
                           onClick={() =>
-                            openCommentModal(order.id, order.comment)
+                            openCommentModal(order.order_id, order.comment)
                           }
                         >
                           <span className="mr-2">{order.comment}</span>
@@ -877,7 +830,7 @@ export default function OrdersPage() {
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <button
-                            onClick={() => decreaseQuantity(order.id)}
+                            onClick={() => decreaseQuantity(order.order_id)}
                             className="w-8 h-8 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
                             disabled={order.quantity <= 1}
                           >
@@ -899,7 +852,7 @@ export default function OrdersPage() {
                             {order.quantity}
                           </span>
                           <button
-                            onClick={() => increaseQuantity(order.id)}
+                            onClick={() => increaseQuantity(order.order_id)}
                             className="w-8 h-8 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
                           >
                             <svg
@@ -919,14 +872,14 @@ export default function OrdersPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap font-medium text-gray-900">
-                        {formatCurrency(order.total)}
+                        {formatCurrency(order.total_amount)}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span
                           className={`px-3 py-2 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
                             order.status
                           )} cursor-pointer hover:shadow-sm transition-shadow`}
-                          onClick={() => openStatusModal(order.id)}
+                          onClick={() => openStatusModal(order.order_id)}
                         >
                           {order.status}
                         </span>
@@ -938,7 +891,7 @@ export default function OrdersPage() {
                       </td>
                     </tr>
                   ))}
-                  {currentItems.length === 0 && (
+                  {filteredOrders.length === 0 && (
                     <tr>
                       <td
                         colSpan="9"
@@ -964,13 +917,13 @@ export default function OrdersPage() {
                       </span>
                       개 중{" "}
                       <span className="font-medium">
-                        {indexOfFirstItem + 1}
+                        {currentPage * itemsPerPage - itemsPerPage + 1}
                       </span>
                       -
                       <span className="font-medium">
-                        {indexOfLastItem > filteredOrders.length
-                          ? filteredOrders.length
-                          : indexOfLastItem}
+                        {currentPage * itemsPerPage > totalItems
+                          ? totalItems
+                          : currentPage * itemsPerPage}
                       </span>
                     </p>
                   </div>

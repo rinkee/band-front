@@ -1,34 +1,23 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import CrawlingStatus from "../components/CrawlingStatus";
-import CrawlingResults from "../components/CrawlingResults";
 
-// 세션 유효 시간 상수 (24시간)
-const SESSION_VALID_DURATION = 24 * 60 * 60 * 1000; // 86,400,000 밀리초
+import {
+  useUser,
+  useProducts,
+  useOrders,
+  useCustomers,
+  useOrderStats,
+} from "../hooks";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [userData, setUserData] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [crawlingTaskId, setCrawlingTaskId] = useState(null);
-  const [crawlingResults, setCrawlingResults] = useState(null);
-  const [naverLoginStatus, setNaverLoginStatus] = useState({
-    attempted: false,
-    success: false,
-    error: null,
-    isProcessing: false,
-    step: "idle",
-    message: "네이버 로그인이 시작되지 않았습니다.",
-    progress: 0,
-    timestamp: null,
-    errorCount: 0,
-  });
-
-  // 통계 정보
   const [stats, setStats] = useState({
     products: 0,
     orders: 0,
@@ -37,411 +26,251 @@ export default function DashboardPage() {
     recentActivity: [],
   });
 
-  // 폴링 상태 관리
-  const [isPolling, setIsPolling] = useState(false);
-  const pollingIntervalRef = useRef(null);
+  // 최근 주문 데이터
+  const [recentOrders, setRecentOrders] = useState([]);
 
-  const isCrawling = !!crawlingTaskId;
+  // 최근 상품 데이터
+  const [products, setProducts] = useState([]);
+
+  // 컴포넌트 마운트 시 로컬 스토리지에서 userId 가져오기
+  useEffect(() => {
+    const storedUserId = localStorage.getItem("userId");
+    if (storedUserId) {
+      setUserId(storedUserId);
+    }
+  }, []);
+
+  // SWR 옵션 (에러 발생 시 재시도 및 새로고침 간격 설정)
+  const swrOptions = {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    refreshInterval: 30000, // 30초마다 자동으로 데이터 새로고침
+    onError: (error) => {
+      console.error("데이터 로딩 오류:", error);
+    },
+  };
+
+  // 사용자 정보 가져오기
+  const {
+    data: user,
+    isLoading: isUserLoading,
+    isError: isUserError,
+  } = useUser(userId, swrOptions);
+
+  // 상품 데이터 가져오기 (첫 페이지만)
+  const { data: productsData, error: productsError } = useProducts(
+    userId,
+    1,
+    {},
+    swrOptions
+  );
+
+  // 주문 데이터 가져오기 (첫 페이지만)
+  const { data: ordersData, error: ordersError } = useOrders(
+    userId,
+    1,
+    {},
+    swrOptions
+  );
+
+  // 고객 데이터 가져오기 (첫 페이지만)
+  // const { data: customersData, error: customersError } = useCustomers(
+  //   userId,
+  //   1,
+  //   {},
+  //   swrOptions
+  // );
+
+  // 주문 통계 가져오기 (월간)
+  const { data: orderStatsData, error: orderStatsError } = useOrderStats(
+    userId,
+    "month",
+    swrOptions
+  );
+
+  // 목업 데이터 생성 함수
+  const createMockData = () => {
+    // 목업 상품 데이터
+    const mockProducts = Array.from({ length: 10 }, (_, index) => ({
+      product_id: `prod_${index + 1}`,
+      name: [
+        "고기세트식당양념갈비",
+        "대패삼겹살 1kg",
+        "한돈 삼겹살 500g",
+        "목심 스테이크 600g",
+        "와규 등심 300g",
+      ][index % 5],
+      price: [15000, 12000, 18000, 25000, 35000][index % 5],
+      stock: Math.floor(Math.random() * 100),
+      status: ["판매중", "품절", "판매중지"][index % 3],
+    }));
+
+    // 목업 주문 데이터
+    const mockOrders = Array.from({ length: 10 }, (_, index) => {
+      const productIndex = index % 5;
+      const product = {
+        name: [
+          "고기세트식당양념갈비",
+          "대패삼겹살 1kg",
+          "한돈 삼겹살 500g",
+          "목심 스테이크 600g",
+          "와규 등심 300g",
+        ][productIndex],
+        price: [15000, 12000, 18000, 25000, 35000][productIndex],
+      };
+
+      return {
+        order_id: `ORD${(index + 1).toString().padStart(5, "0")}`,
+        customer_name: `고객${(index % 10) + 1}`,
+        products: [product],
+        status: ["confirmed", "delivered", "pending"][index % 3],
+        total_amount: product.price * (Math.floor(Math.random() * 3) + 1),
+        comment: [
+          "2개 주세요",
+          "배송 빨리 해주세요. 급해요.",
+          "3일 내로 받을 수 있을까요?",
+          "선물용으로 포장 부탁드립니다.",
+          "1kg 2개 주문합니다. 맛있게 포장해주세요.",
+          "명절 선물용으로 예쁘게 포장 가능한가요? 진공포장 원합니다.",
+          "오늘 주문하면 언제 배송 가능할까요?",
+          "김포공항 근처인데 당일 배송 가능할까요?",
+          "3만원 이상 무료배송 맞나요?",
+          "2세트 주문합니다.",
+        ][index % 10],
+      };
+    });
+
+    // 목업 고객 데이터
+    const mockCustomers = Array.from({ length: 10 }, (_, index) => ({
+      customer_id: `cust_${index + 1}`,
+      name: `고객${index + 1}`,
+      phone: `010-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(
+        1000 + Math.random() * 9000
+      )}`,
+      orderCount: Math.floor(Math.random() * 10) + 1,
+    }));
+
+    // 목업 주문 통계 데이터
+    const mockOrderStats = {
+      totalSales: 1250000,
+      orderCount: 45,
+      averageOrderValue: 27778,
+      recentActivity: Array.from({ length: 5 }, (_, index) => ({
+        type: "order",
+        customerName: `고객${(index % 10) + 1}`,
+        productName: [
+          "고기세트식당양념갈비",
+          "대패삼겹살 1kg",
+          "한돈 삼겹살 500g",
+          "목심 스테이크 600g",
+          "와규 등심 300g",
+        ][index % 5],
+        amount:
+          [15000, 12000, 18000, 25000, 35000][index % 5] *
+          (Math.floor(Math.random() * 3) + 1),
+        timestamp: new Date(
+          Date.now() - Math.floor(Math.random() * 7) * 24 * 60 * 60 * 1000
+        ).toISOString(),
+      })),
+    };
+
+    return {
+      products: mockProducts,
+      orders: mockOrders,
+      customers: mockCustomers,
+      orderStats: mockOrderStats,
+    };
+  };
+
+  // 로딩 상태 확인
+  const isLoading = isUserLoading || loading;
+
+  // 에러 상태 확인
+  const isError =
+    isUserError ||
+    productsError ||
+    ordersError ||
+    // customersError ||
+    orderStatsError;
+
+  // 데이터 가져오기
+  useEffect(() => {
+    if (!isLoading && userId) {
+      // 실제 데이터 또는 목업 데이터 사용
+      const mockData = createMockData();
+
+      if (!productsData?.data || productsError) {
+        setProducts(mockData.products);
+      } else {
+        setProducts(productsData.data);
+      }
+
+      if (!ordersData?.data || ordersError) {
+        setRecentOrders(mockData.orders);
+      } else {
+        setRecentOrders(ordersData.data);
+      }
+
+      if (!orderStatsData?.data || orderStatsError) {
+        setStats({
+          products: mockData.products.length,
+          orders: mockData.orders.length,
+          customers: mockData.customers.length,
+          totalSales: mockData.orderStats.totalSales,
+          recentActivity: mockData.orderStats.recentActivity,
+        });
+      } else {
+        setStats({
+          products: productsData?.data?.length || 0,
+          orders: ordersData?.data?.length || 0,
+          customers: 0, // 고객 데이터가 없을 경우 0으로 설정
+          totalSales: orderStatsData.data.totalSales || 0,
+          recentActivity: orderStatsData.data.recentActivity || [],
+        });
+      }
+    }
+  }, [
+    isLoading,
+    userId,
+    productsData,
+    ordersData,
+    orderStatsData,
+    productsError,
+    ordersError,
+    orderStatsError,
+  ]);
 
   // 사용자 인증 상태 확인
   useEffect(() => {
-    const userData = sessionStorage.getItem("userData");
-    const token = sessionStorage.getItem("token");
+    const checkAuth = async () => {
+      try {
+        const sessionData = sessionStorage.getItem("userData");
 
-    if (!userData || !token) {
-      router.replace("/login");
-      return;
-    }
-
-    try {
-      const parsedData = JSON.parse(userData);
-      setUserData(parsedData);
-
-      // 네이버 로그인 상태 초기화
-      if (parsedData.naverId) {
-        setNaverLoginStatus((prev) => ({
-          ...prev,
-          attempted: false,
-          success: false,
-          error: null,
-          isProcessing: false,
-          step: "idle",
-          message: "네이버 로그인이 필요합니다.",
-          progress: 0,
-          timestamp: null,
-          errorCount: 0,
-        }));
-      }
-
-      // 초기 데이터 로드
-      fetchDashboardData(parsedData.id);
-      setLoading(false);
-    } catch (error) {
-      console.error("사용자 데이터 파싱 오류:", error);
-      setLoading(false);
-      router.replace("/login");
-    }
-  }, [router]);
-
-  // 대시보드 데이터 가져오기
-  const fetchDashboardData = async (userId) => {
-    try {
-      // 실제로는 Firebase에서 데이터를 가져오는 API 호출이 필요합니다.
-      // 현재는 목업 데이터를 사용합니다.
-
-      // 목업 데이터
-      const mockStats = {
-        products: Math.floor(Math.random() * 50) + 10,
-        orders: Math.floor(Math.random() * 100) + 20,
-        customers: Math.floor(Math.random() * 80) + 15,
-        totalSales: Math.floor(Math.random() * 1000000) + 500000,
-        recentActivity: [
-          {
-            type: "order",
-            customerName: "김지수",
-            productName: "고기세트식당양념갈비",
-            quantity: 2,
-            amount: 32000,
-            timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-          },
-          {
-            type: "order",
-            customerName: "정민우",
-            productName: "대패삼겹살 1kg",
-            quantity: 1,
-            amount: 15000,
-            timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-          },
-          {
-            type: "registration",
-            customerName: "박서연",
-            timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-          },
-        ],
-      };
-
-      setStats(mockStats);
-    } catch (error) {
-      console.error("대시보드 데이터 조회 오류:", error);
-      setError("데이터 조회 중 오류가 발생했습니다.");
-    }
-  };
-
-  // 네이버 로그인 상태 폴링 로직
-  useEffect(() => {
-    // 폴링 기능 비활성화 (일시적으로 제거)
-    if (userData?.userId && naverLoginStatus.isProcessing && !isPolling) {
-      console.log("네이버 로그인 상태 폴링 기능이 비활성화되었습니다.");
-
-      // 폴링 대신 바로 성공 상태로 변경
-      setTimeout(() => {
-        setNaverLoginStatus((prev) => ({
-          ...prev,
-          isProcessing: false,
-          step: "completed",
-          message: "네이버 로그인이 완료되었습니다.",
-          progress: 100,
-          success: true,
-          error: null,
-          attempted: true,
-          timestamp: new Date().toISOString(),
-        }));
-      }, 2000);
-    }
-
-    // 처리가 완료되었거나 오류가 발생했을 때
-    if (!naverLoginStatus.isProcessing && naverLoginStatus.attempted) {
-      // 폴링 중지
-      if (isPolling) {
-        console.log("네이버 로그인 상태 폴링 종료");
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
+        if (!sessionData) {
+          // 인증되지 않은 사용자는 로그인 페이지로 리다이렉트
+          router.replace("/login");
+          return;
         }
-        setIsPolling(false);
-      }
 
-      // 오류 발생 시 처리
-      if (naverLoginStatus.error) {
-        console.error("네이버 로그인 오류:", naverLoginStatus.error);
-      }
-      // 성공 시 세션 저장
-      else if (naverLoginStatus.success) {
-        // 로그인 성공 시 세션 스토리지에 저장
-        sessionStorage.setItem(
-          "naverLoginData",
-          JSON.stringify({
-            success: true,
-            userId: userData?.userId,
-            timestamp: new Date().getTime(),
-          })
-        );
-        console.log("네이버 로그인 성공 - 세션 저장됨");
-      }
-    }
-
-    // 컴포넌트 언마운트 시 정리
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-        setIsPolling(false);
+        const userDataObj = JSON.parse(sessionData);
+        setUserData(userDataObj);
+        setUserId(userDataObj.userId);
+        setLoading(false);
+      } catch (error) {
+        console.error("데이터 조회 오류:", error);
+        setError(error.message);
+        setLoading(false);
       }
     };
-  }, [
-    userData,
-    naverLoginStatus.isProcessing,
-    naverLoginStatus.attempted,
-    isPolling,
-    naverLoginStatus.error,
-    naverLoginStatus.success,
-  ]);
 
-  // 대시보드 진입 시 네이버 로그인 자동 시도
-  useEffect(() => {
-    // userData가 로드되고 로딩 상태가 아닐 때만 실행
-    if (!loading && userData && !naverLoginStatus.attempted) {
-      console.log("대시보드 진입 - 네이버 로그인 자동 시도");
-
-      // 로그인 시도 전에 이미 세션에 로그인 정보가 있는지 확인
-      const naverSessionData = sessionStorage.getItem("naverLoginData");
-      if (naverSessionData) {
-        try {
-          const naverData = JSON.parse(naverSessionData);
-          const now = new Date().getTime();
-          const sessionTime = naverData.timestamp || 0;
-          const sessionAge = now - sessionTime;
-
-          // 세션이 24시간(86,400,000 밀리초) 이내인 경우 유효한 것으로 간주
-          if (
-            naverData.success &&
-            naverData.userId === userData.userId &&
-            sessionAge < SESSION_VALID_DURATION
-          ) {
-            console.log("유효한 네이버 로그인 세션 있음:", naverData);
-            setNaverLoginStatus({
-              attempted: true,
-              success: true,
-              error: null,
-              isProcessing: false,
-              step: "completed",
-              message: "네이버 로그인 성공",
-              progress: 100,
-              timestamp: now,
-            });
-            return;
-          }
-        } catch (error) {
-          console.error("네이버 로그인 세션 확인 오류:", error);
-          sessionStorage.removeItem("naverLoginData");
-        }
-      }
-
-      // 세션이 없거나 유효하지 않은 경우 로그인 시도
-      setTimeout(() => {
-        handleNaverLogin();
-      }, 1000); // 1초 후 시작 (페이지 로딩 후 안정화를 위해)
-    }
-  }, [userData, loading]);
-
-  // 네이버 로그인 처리
-  const handleNaverLogin = async () => {
-    try {
-      setNaverLoginStatus((prev) => ({
-        ...prev,
-        isProcessing: true,
-        step: "logging_in",
-        message: "네이버 로그인 진행 중...",
-        progress: 20,
-      }));
-
-      const token = sessionStorage.getItem("token");
-      if (!token) {
-        throw new Error("인증 토큰이 없습니다. 다시 로그인해주세요.");
-      }
-
-      // 백엔드 서버로 직접 요청
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/naver/login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            userId: userData.id,
-            bandId: userData.bandId,
-          }),
-        }
-      );
-
-      const data = await response.json();
-      console.log("네이버 로그인 응답:", data);
-
-      if (data.success) {
-        setNaverLoginStatus({
-          attempted: true,
-          success: true,
-          error: null,
-          isProcessing: false,
-          step: "completed",
-          message: "네이버 로그인이 완료되었습니다.",
-          progress: 100,
-          timestamp: new Date().toISOString(),
-          errorCount: 0,
-        });
-
-        // 네이버 로그인 성공 시 세션 저장
-        sessionStorage.setItem(
-          "naverLoginData",
-          JSON.stringify({
-            success: true,
-            userId: userData.id,
-            timestamp: new Date().getTime(),
-          })
-        );
-      } else {
-        throw new Error(data.message || "네이버 로그인에 실패했습니다.");
-      }
-    } catch (error) {
-      console.error("네이버 로그인 오류:", error);
-      setNaverLoginStatus((prev) => ({
-        ...prev,
-        attempted: true,
-        success: false,
-        error: error.message,
-        isProcessing: false,
-        step: "failed",
-        message: error.message || "네이버 로그인에 실패했습니다.",
-        progress: 0,
-        errorCount: prev.errorCount + 1,
-      }));
-    }
-  };
+    checkAuth();
+  }, [router]);
 
   const handleLogout = () => {
     sessionStorage.removeItem("userData");
     sessionStorage.removeItem("token");
     router.replace("/login");
   };
-
-  // 크롤링 시작 함수
-  const startCrawling = async () => {
-    try {
-      if (!userData?.naverId) {
-        setError("네이버 아이디 정보가 없습니다. 관리자에게 문의하세요.");
-        return;
-      }
-
-      if (!userData?.bandId) {
-        setError("밴드 ID 정보가 필요합니다. 관리자에게 문의하세요.");
-        return;
-      }
-
-      if (!naverLoginStatus.success) {
-        // 네이버 로그인이 되어있지 않으면 먼저 로그인 시도
-        await handleNaverLogin();
-        // 네이버 로그인 실패시 크롤링 중단
-        if (!naverLoginStatus.success) {
-          setError("네이버 로그인에 실패했습니다. 다시 시도해주세요.");
-          return;
-        }
-      }
-
-      const token = sessionStorage.getItem("token");
-      if (!token) {
-        setError("인증 토큰이 없습니다. 다시 로그인해주세요.");
-        return;
-      }
-
-      // 백엔드 서버로 직접 요청
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/crawl/${userData.bandId}/details`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            userId: userData.userId,
-            bandId: userData.bandId,
-          }),
-        }
-      );
-
-      const data = await response.json();
-      console.log("크롤링 시작 응답:", data);
-
-      if (data.success) {
-        setCrawlingTaskId(data.data.taskId);
-      } else {
-        setError(data.message);
-      }
-    } catch (error) {
-      console.error("크롤링 시작 오류:", error);
-      setError(error.message);
-    }
-  };
-
-  // 크롤링 완료 처리
-  const handleCrawlingComplete = (data) => {
-    setCrawlingResults(data);
-    setCrawlingTaskId(null);
-  };
-
-  useEffect(() => {
-    // 네이버 로그인 성공 후 자동으로 크롤링 시작
-    if (
-      naverLoginStatus.success &&
-      userData?.bandId &&
-      !crawlingTaskId &&
-      !crawlingResults
-    ) {
-      console.log("자동 크롤링 시작");
-      // startCrawling();
-    }
-  }, [naverLoginStatus.success, userData]);
-
-  // 네이버 로그인 상태에 따른 배지 색상 및 텍스트 설정
-  const getNaverLoginStatusBadge = () => {
-    if (naverLoginStatus.success) {
-      return {
-        bgColor: "bg-green-100",
-        textColor: "text-green-800",
-        text: "로그인 완료",
-      };
-    } else if (naverLoginStatus.isProcessing) {
-      return {
-        bgColor: "bg-yellow-100",
-        textColor: "text-yellow-800",
-        text: `로그인 중 (${naverLoginStatus.progress}%)`,
-      };
-    } else if (naverLoginStatus.attempted && !naverLoginStatus.success) {
-      return {
-        bgColor: "bg-red-100",
-        textColor: "text-red-800",
-        text: "로그인 실패",
-      };
-    } else {
-      return {
-        bgColor: "bg-gray-100",
-        textColor: "text-gray-800",
-        text: "미로그인",
-      };
-    }
-  };
-
-  // 진행 단계에 따른 진행 바 색상 설정
-  const getProgressColor = () => {
-    if (naverLoginStatus.error) return "bg-red-500";
-    if (naverLoginStatus.progress < 30) return "bg-blue-500";
-    if (naverLoginStatus.progress < 70) return "bg-yellow-500";
-    return "bg-green-500";
-  };
-
-  const naverStatusBadge = getNaverLoginStatusBadge();
 
   // 금액 포맷팅 함수
   const formatCurrency = (amount) => {
@@ -451,6 +280,35 @@ export default function DashboardPage() {
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  // 날짜 포맷팅 함수
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  };
+
+  // 주문 상태 텍스트 변환 함수
+  function getOrderStatusText(status) {
+    const statusMap = {
+      pending: "대기 중",
+      confirmed: "주문 확인",
+      shipping: "배송 중",
+      delivered: "배송 완료",
+      canceled: "취소됨",
+    };
+    return statusMap[status] || status;
+  }
+
+  // 백엔드 서버에서 데이터 사용
+  const displayProductsData = productsData;
+  const displayOrdersData = ordersData;
+  // const displayCustomersData = customersData;
+  const displayOrderStatsData = orderStatsData;
 
   if (loading) {
     return (
@@ -463,24 +321,39 @@ export default function DashboardPage() {
     );
   }
 
-  // 에러 발생 시 에러 메시지 표시
-  if (error) {
+  if (error || isError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full mx-4">
           <div className="bg-white p-8 rounded-2xl shadow-sm">
             <h2 className="text-2xl font-bold text-red-600 mb-4">오류 발생</h2>
-            <p className="text-gray-600 mb-6">{error}</p>
+            <p className="text-gray-600 mb-6">
+              {error || "데이터를 불러오는 중 오류가 발생했습니다."}
+            </p>
+            <div className="bg-gray-50 p-4 rounded-lg mb-6">
+              <h3 className="font-medium text-gray-700 mb-2">
+                다음 사항을 확인해보세요:
+              </h3>
+              <ul className="list-disc pl-5 text-sm text-gray-600">
+                <li className="mb-1">
+                  백엔드 서버가 실행 중인지 확인 (http://localhost:8000)
+                </li>
+                <li className="mb-1">
+                  API 엔드포인트가 올바르게 설정되어 있는지 확인
+                </li>
+                <li>네트워크 연결 상태를 확인</li>
+              </ul>
+            </div>
             <div className="flex justify-between">
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
               >
                 새로고침
               </button>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 로그아웃
               </button>
@@ -491,12 +364,10 @@ export default function DashboardPage() {
     );
   }
 
-  // 사용자 정보가 없는 경우
   if (!userData) {
     return null;
-  }
+  } // 유저 데이터 가져오기
 
-  // 정상적인 대시보드 표시
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       {/* 사이드바 - 미디움 사이즈 이상에서만 보임 */}
@@ -616,14 +487,12 @@ export default function DashboardPage() {
       </div>
 
       {/* 메인 콘텐츠 */}
+
       <div className="flex-1 flex flex-col md:pl-48 w-full">
         {/* 모바일 헤더 */}
         <header className="md:hidden bg-white border-b border-gray-200 py-4 px-4 flex items-center justify-between sticky top-0 z-10">
           <h1 className="text-xl font-bold text-gray-800">밴드 크롤러</h1>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-md text-gray-600 hover:bg-gray-100"
-          >
+          <button className="p-2 rounded-md text-gray-600 hover:bg-gray-100">
             <svg
               className="w-6 h-6"
               fill="none"
@@ -646,7 +515,9 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-xl font-bold text-gray-800">대시보드</h1>
               <p className="text-sm text-gray-500">
-                안녕하세요, {userData.displayName || "사용자"}님
+                안녕하세요,{" "}
+                {userData.displayName || userData.ownerName || userData.loginId}
+                님
               </p>
             </div>
             <div className="flex items-center space-x-4">
@@ -661,6 +532,16 @@ export default function DashboardPage() {
         </header>
 
         <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+          {/* 사용자 정보 확인 (디버깅용) */}
+          {user && (
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+              <h3 className="font-bold mb-2">사용자 정보</h3>
+              <p>밴드 ID: {user.band_id || "정보 없음"}</p>
+              <p>네이버 ID: {user.naver_id || "정보 없음"}</p>
+              <p>상점명: {user.store_name || "정보 없음"}</p>
+            </div>
+          )}
+
           {/* 인사말 */}
           <div className="mb-6 md:mb-8">
             <h2 className="text-xl md:text-2xl font-bold text-gray-900">
@@ -670,7 +551,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 주요 통계 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
             <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3 md:mb-4">
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">
@@ -679,10 +560,10 @@ export default function DashboardPage() {
                 <span className="text-blue-600">📦</span>
               </div>
               <p className="text-lg md:text-2xl font-bold">
-                {stats.products}개
+                {displayProductsData?.data?.length || 0}개
               </p>
               <p className="text-xs md:text-sm text-gray-500 mt-2">
-                전월 대비 +5%
+                {!displayProductsData?.data && "데이터 없음"}
               </p>
             </div>
             <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
@@ -692,9 +573,11 @@ export default function DashboardPage() {
                 </h3>
                 <span className="text-blue-600">🛒</span>
               </div>
-              <p className="text-lg md:text-2xl font-bold">{stats.orders}건</p>
+              <p className="text-lg md:text-2xl font-bold">
+                {displayOrdersData?.data?.length || 0}건
+              </p>
               <p className="text-xs md:text-sm text-gray-500 mt-2">
-                전월 대비 +12%
+                {!displayOrdersData?.data && "데이터 없음"}
               </p>
             </div>
             <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
@@ -704,12 +587,12 @@ export default function DashboardPage() {
                 </h3>
                 <span className="text-blue-600">👥</span>
               </div>
-              <p className="text-lg md:text-2xl font-bold">
-                {stats.customers}명
+              {/* <p className="text-lg md:text-2xl font-bold">
+                {displayCustomersData?.data?.length || 0}명
               </p>
               <p className="text-xs md:text-sm text-gray-500 mt-2">
-                전월 대비 +8%
-              </p>
+                {!displayCustomersData?.data && "데이터 없음"}
+              </p> */}
             </div>
             <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3 md:mb-4">
@@ -719,178 +602,194 @@ export default function DashboardPage() {
                 <span className="text-blue-600">💰</span>
               </div>
               <p className="text-lg md:text-2xl font-bold">
-                {formatCurrency(stats.totalSales)}
+                {formatCurrency(displayOrderStatsData?.data?.totalSales || 0)}
               </p>
               <p className="text-xs md:text-sm text-gray-500 mt-2">
-                전월 대비 +15%
+                {!displayOrderStatsData?.data && "데이터 없음"}
               </p>
             </div>
           </div>
 
-          {/* 데이터 수집 및 결과 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
-            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4 md:mb-6">
-                <h3 className="text-base md:text-lg font-bold">데이터 수집</h3>
-                <span className="text-xs md:text-sm text-gray-500">
-                  마지막 수집:{" "}
-                  {userData.lastCrawlAt
-                    ? new Date(userData.lastCrawlAt).toLocaleString()
-                    : "없음"}
-                </span>
+          {/* 최근 주문 & 상품 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 최근 주문 */}
+            <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-gray-900">최근 주문</h3>
+                <Link
+                  href="/orders"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  전체보기
+                </Link>
               </div>
 
-              {crawlingTaskId ? (
-                <CrawlingStatus
-                  taskId={crawlingTaskId}
-                  onComplete={handleCrawlingComplete}
-                  onError={(message) => setError(message)}
-                />
-              ) : !crawlingResults ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-gray-500 mb-4">
-                    밴드에서 상품 및 주문 데이터를 가져옵니다
-                  </p>
-                  <button
-                    onClick={startCrawling}
-                    disabled={
-                      !naverLoginStatus.success ||
-                      naverLoginStatus.isProcessing ||
-                      isCrawling
-                    }
-                    className={`px-6 py-3 rounded-xl font-medium transition-all ${
-                      naverLoginStatus.success &&
-                      !naverLoginStatus.isProcessing &&
-                      !isCrawling
-                        ? "bg-blue-500 text-white hover:bg-blue-600 shadow-sm hover:shadow"
-                        : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    }`}
-                  >
-                    {naverLoginStatus.success
-                      ? "크롤링 시작"
-                      : naverLoginStatus.isProcessing
-                      ? "네이버 로그인 처리 중..."
-                      : "네이버 로그인이 필요합니다"}
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="mb-4">
-                    <span className="inline-flex items-center px-4 py-2 rounded-full bg-green-100 text-green-800">
-                      <span className="mr-2">✓</span> 크롤링 완료
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setCrawlingResults(null)}
-                    className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    새로 시작하기
-                  </button>
-                </div>
-              )}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-gray-200">
+                      <th className="pb-3 text-xs font-medium text-gray-500 uppercase">
+                        고객
+                      </th>
+                      <th className="pb-3 text-xs font-medium text-gray-500 uppercase">
+                        댓글
+                      </th>
+
+                      <th className="pb-3 text-xs font-medium text-gray-500 uppercase">
+                        상품
+                      </th>
+                      <th className="pb-3 text-xs font-medium text-gray-500 uppercase">
+                        금액
+                      </th>
+                      <th className="pb-3 text-xs font-medium text-gray-500 uppercase">
+                        상태
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {displayOrdersData?.data?.length > 0 ? (
+                      displayOrdersData.data.slice(0, 5).map((order) => (
+                        <tr key={order.order_id} className="hover:bg-gray-50">
+                          <td className="py-3 text-sm text-gray-500">
+                            {order.customer_name || "알 수 없음"}
+                          </td>
+                          <td className="py-3 text-sm font-medium text-gray-900 truncate max-w-[150px]">
+                            {order.comment?.length > 20
+                              ? `${order.comment.substring(0, 20)}...`
+                              : order.comment || ""}
+                          </td>
+                          <td className="py-3 text-sm text-gray-500">
+                            {order.products?.length > 0
+                              ? order.products[0].name +
+                                (order.products.length > 1
+                                  ? ` 외 ${order.products.length - 1}건`
+                                  : "")
+                              : "상품정보 없음"}
+                          </td>
+                          <td className="py-3 text-sm text-gray-900 font-medium">
+                            {formatCurrency(order.total_amount || 0)}
+                          </td>
+                          <td className="py-3">
+                            <span
+                              className={`px-2 py-1 text-xs rounded-full ${
+                                order.status === "confirmed"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : order.status === "delivered"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {getOrderStatusText(order.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan="5"
+                          className="py-4 text-center text-gray-500"
+                        >
+                          주문 데이터가 없습니다
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm">
-              <h3 className="text-lg font-bold mb-6">최근 수집 결과</h3>
-              {crawlingResults ? (
-                <div>
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-blue-50 rounded-xl p-4">
-                      <p className="text-sm text-gray-600 mb-2">상품 수집</p>
-                      <p className="text-2xl font-bold text-blue-600">
-                        {crawlingResults.products ||
-                          crawlingResults.productCount ||
-                          0}
-                        <span className="text-sm font-normal text-blue-400 ml-1">
-                          개
-                        </span>
-                      </p>
-                    </div>
-                    <div className="bg-blue-50 rounded-xl p-4">
-                      <p className="text-sm text-gray-600 mb-2">주문 수집</p>
-                      <p className="text-2xl font-bold text-blue-600">
-                        {crawlingResults.orders ||
-                          crawlingResults.orderCount ||
-                          0}
-                        <span className="text-sm font-normal text-blue-400 ml-1">
-                          건
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <Link
-                      href="/products"
-                      className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-700"
+            {/* 상품 목록 */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-gray-900">상품 현황</h3>
+                <Link
+                  href="/products"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  전체보기
+                </Link>
+              </div>
+
+              <div className="space-y-4">
+                {displayProductsData?.data?.length > 0 ? (
+                  displayProductsData.data.slice(0, 5).map((product) => (
+                    <div
+                      key={product.product_id}
+                      className="flex items-center p-3 border border-gray-100 rounded-xl hover:bg-gray-50"
                     >
-                      상세 결과 보기
-                      <svg
-                        className="w-4 h-4 ml-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    </Link>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {product.name}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          재고: {product.stock || "무제한"}개
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-gray-900">
+                          {formatCurrency(product.price || 0)}
+                        </p>
+                        <span
+                          className={`inline-block mt-1 px-2 py-1 text-xs rounded-full ${
+                            product.status === "판매중"
+                              ? "bg-green-100 text-green-800"
+                              : product.status === "품절"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {product.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-8 text-center text-gray-500">
+                    상품 데이터가 없습니다
                   </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-40 text-gray-400">
-                  데이터가 없습니다
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          {/* 최근 활동 */}
-          <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm">
-            <h3 className="text-base md:text-lg font-bold mb-4 md:mb-6">
-              최근 활동
-            </h3>
-            {stats.recentActivity.length > 0 ? (
-              <div className="space-y-3 md:space-y-4">
-                {stats.recentActivity.map((activity, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center p-3 md:p-4 rounded-xl hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-blue-50 flex items-center justify-center mr-3 md:mr-4">
-                      {activity.type === "order" ? "🛒" : "👤"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm md:text-base truncate">
-                        {activity.customerName}
-                        <span className="font-normal text-gray-500 ml-1">
-                          {activity.type === "order" ? "님의 주문" : "님 가입"}
-                        </span>
-                      </p>
-                      {activity.type === "order" && (
-                        <p className="text-xs md:text-sm text-gray-600 mt-1 truncate">
-                          {activity.productName} {activity.quantity}개
+          {/* 최근 활동 타임라인 */}
+          <div className="mt-6 bg-white rounded-2xl p-6 shadow-sm">
+            <h3 className="text-lg font-bold text-gray-900 mb-6">최근 활동</h3>
+            {displayOrderStatsData?.data?.recentActivity?.length > 0 ? (
+              <div className="space-y-4">
+                {displayOrderStatsData.data.recentActivity.map(
+                  (activity, index) => (
+                    <div key={index} className="flex items-start">
+                      <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-4">
+                        {activity.type === "order" ? "🛒" : "👤"}
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-900">
+                          <span className="font-medium">
+                            {activity.customerName}
+                          </span>
+                          님이
+                          <span className="font-medium">
+                            {" "}
+                            {activity.productName}
+                          </span>
+                          을(를) 주문했습니다.
                         </p>
-                      )}
+                        <div className="flex mt-1 text-xs text-gray-500">
+                          <span>{formatCurrency(activity.amount)}</span>
+                          <span className="mx-1">•</span>
+                          <span>{formatDate(activity.timestamp)}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right ml-3">
-                      <p className="text-xs md:text-sm font-medium text-gray-900">
-                        {activity.amount && formatCurrency(activity.amount)}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(activity.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             ) : (
-              <div className="text-center py-8 md:py-12 text-gray-400">
-                최근 활동이 없습니다
-              </div>
+              <p className="text-center text-gray-500 py-10">
+                최근 활동 데이터가 없습니다. 백엔드에서 데이터를 확인해주세요.
+              </p>
             )}
           </div>
         </div>
