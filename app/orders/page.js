@@ -566,247 +566,29 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <div ref={topRef} style={{ position: "absolute", top: 0, left: 0 }}></div>
-      {/* 사이드바 */}
-      <div className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-48 bg-white border-r border-gray-200 z-10">
-        <div className="p-4">
-          <h1 className="text-xl font-bold text-gray-800">밴드 크롤러</h1>
-        </div>
-        <nav className="flex-1 overflow-y-auto">
-          <ul className="px-2 space-y-1">
-            <li>
-              <a
-                href="/dashboard"
-                className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                <svg
-                  className="w-5 h-5 mr-3 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                  />
-                </svg>
-                Home
-              </a>
-            </li>
-            <li>
-              <a
-                href="/posts"
-                className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                <svg
-                  className="w-5 h-5 mr-3 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
-                  />
-                </svg>
-                게시물 관리
-              </a>
-            </li>
-            <li>
-              <a
-                href="/products"
-                className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                <svg
-                  className="w-5 h-5 mr-3 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                  />
-                </svg>
-                상품 관리
-              </a>
-            </li>
-            <li>
-              <a
-                href="/orders"
-                className="flex items-center px-4 py-2 text-gray-900 bg-blue-100 rounded-lg"
-              >
-                <svg
-                  className="w-5 h-5 mr-3 text-blue-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                  />
-                </svg>
-                주문 관리
-              </a>
-            </li>
-            <li>
-              <a
-                href="/customers"
-                className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                <svg
-                  className="w-5 h-5 mr-3 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                  />
-                </svg>
-                고객 관리
-              </a>
-            </li>
-          </ul>
-        </nav>
-        <div className="p-4 mt-auto">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-          >
-            <svg
-              className="w-5 h-5 mr-3 text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-            로그아웃
-          </button>
-        </div>
+    <div className="p-4 md:p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">주문 관리</h1>
+        <p className="text-sm text-gray-500">
+          주문 목록을 확인하고 상태를 업데이트할 수 있습니다.
+        </p>
       </div>
 
-      {/* 메인 콘텐츠 */}
-      <div className="flex-1 flex flex-col md:pl-48 w-full">
-        {/* 모바일 헤더 */}
-        <header className="md:hidden bg-white border-b border-gray-200 py-4 px-4 flex items-center justify-between sticky top-0 z-10">
-          <h1 className="text-xl font-bold text-gray-800">밴드 크롤러</h1>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-md text-gray-600 hover:bg-gray-100"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 6h16M4 12h16M4 18h16"
+      {/* 필터 & 검색 */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="flex flex-col md:flex-row gap-4 mb-4">
+          <div className="flex-1">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="주문 검색 (고객명, 상품명, 댓글)"
+                value={searchTerm}
+                onChange={handleSearchChange}
+                className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            </svg>
-          </button>
-        </header>
-
-        {/* 상단 헤더 */}
-        <header className="hidden md:block bg-white border-b border-gray-200 py-4 px-8 sticky top-0 z-10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">주문 관리</h1>
-              <p className="text-sm text-gray-500">
-                주문 목록을 관리할 수 있습니다
-              </p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
-              >
-                로그아웃
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 p-4 md:p-8 overflow-y-auto">
-          {/* 상단 필터 및 검색 */}
-          <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm mb-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 space-y-4 md:space-y-0">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => handleFilterChange("all")}
-                  className={`px-3 py-2 text-xs md:text-sm rounded-lg ${
-                    filterStatus === "all"
-                      ? "bg-blue-100 text-blue-600"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  전체
-                </button>
-                <button
-                  onClick={() => handleFilterChange("주문완료")}
-                  className={`px-3 py-2 text-xs md:text-sm rounded-lg ${
-                    filterStatus === "주문완료"
-                      ? "bg-blue-100 text-blue-600"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  주문완료
-                </button>
-                <button
-                  onClick={() => handleFilterChange("수령완료")}
-                  className={`px-3 py-2 text-xs md:text-sm rounded-lg ${
-                    filterStatus === "수령완료"
-                      ? "bg-teal-100 text-teal-600"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  수령완료
-                </button>
-                <button
-                  onClick={() => handleFilterChange("주문취소")}
-                  className={`px-3 py-2 text-xs md:text-sm rounded-lg ${
-                    filterStatus === "주문취소"
-                      ? "bg-red-100 text-red-600"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  주문취소
-                </button>
-              </div>
-
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="주문번호, 고객명, 상품명 검색"
-                  value={searchTerm}
-                  onChange={handleSearchChange}
-                  className="w-full md:w-80 px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 <svg
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                  className="w-5 h-5 text-gray-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -814,345 +596,357 @@ export default function OrdersPage() {
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
+                    strokeWidth="2"
                     d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                   />
                 </svg>
               </div>
             </div>
-
-            <div className="text-sm text-gray-500 mt-2">
-              총 <span className="font-bold text-gray-900">{totalItems}</span>
-              개의 주문
-            </div>
           </div>
+        </div>
 
-          {/* 주문 목록 테이블 */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("id")}
-                        className="flex items-center focus:outline-none"
-                      >
-                        {getSortIcon("id")}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("ordered_at")}
-                        className="flex items-center focus:outline-none"
-                      >
-                        주문일시
-                        {getSortIcon("ordered_at")}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("customer_name")}
-                        className="flex items-center focus:outline-none"
-                      >
-                        고객명
-                        {getSortIcon("customer_name")}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      상품정보
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      고객 댓글
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      수량
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("total_amount")}
-                        className="flex items-center focus:outline-none"
-                      >
-                        금액
-                        {getSortIcon("total_amount")}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      바코드
-                    </th>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => handleFilterChange("all")}
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              filterStatus === "all"
+                ? "bg-blue-100 text-blue-800"
+                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+            }`}
+          >
+            전체
+          </button>
+          <button
+            onClick={() => handleFilterChange("주문완료")}
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              filterStatus === "주문완료"
+                ? "bg-blue-100 text-blue-800"
+                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+            }`}
+          >
+            주문완료
+          </button>
+          <button
+            onClick={() => handleFilterChange("수령완료")}
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              filterStatus === "수령완료"
+                ? "bg-purple-100 text-purple-800"
+                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+            }`}
+          >
+            수령완료
+          </button>
+          <button
+            onClick={() => handleFilterChange("주문취소")}
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              filterStatus === "주문취소"
+                ? "bg-red-100 text-red-800"
+                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+            }`}
+          >
+            주문취소
+          </button>
+        </div>
 
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      상태
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {displayOrders.map((order, index) => {
-                    // 현재 페이지가 1이면 최대 인덱스(37)부터 시작
-                    // 현재 페이지가 2이면 (37-30=7)부터 시작
-                    const startNumberForCurrentPage =
-                      totalItems - (currentPage - 1) * itemsPerPage;
-                    const orderNumber = startNumberForCurrentPage - index;
+        <div className="text-sm text-gray-600">
+          총 {filteredOrders.length}개 주문 중 {displayOrders.length}개 표시
+          (페이지 {currentPage}/{totalPages})
+        </div>
+      </div>
 
-                    return (
-                      <tr
-                        key={order.order_id}
-                        className="hover:bg-gray-50 transition-colors"
-                      >
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 font-medium">
-                          {orderNumber}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(order.ordered_at)}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm  text-gray-800 font-semibold">
-                              {order.customer_name}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <div className="text-sm text-gray-800 font-semibold">
-                            <div>{getProductNameById(order.product_id)}</div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 max-w-xs">
-                          <div className="text-sm text-gray-500 truncate md:whitespace-normal">
-                            {order.comment}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <button
-                              onClick={() => decreaseQuantity(order.order_id)}
-                              className="w-8 h-8 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
-                              disabled={order.quantity <= 1}
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M20 12H4"
-                                />
-                              </svg>
-                            </button>
-                            <span className="w-10 h-8 flex items-center justify-center text-sm font-medium bg-gray-50 border-t border-b border-gray-200 text-black">
-                              {order.quantity}
-                            </span>
-                            <button
-                              onClick={() => increaseQuantity(order.order_id)}
-                              className="w-8 h-8 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M12 4v16m8-8H4"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
-                          {formatCurrency(order.total_amount)}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
-                          {getProductBarcode(order.product_id) && (
-                            <div className="mt-1" style={{ width: "130px" }}>
-                              <Barcode
-                                value={getProductBarcode(order.product_id)}
-                                height={30}
-                              />
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <span
-                            className={`px-3 py-2 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
-                              order.status
-                            )} cursor-pointer hover:shadow-sm transition-shadow`}
-                            onClick={() => openStatusModal(order.order_id)}
+      {/* 주문 테이블 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <button
+                    onClick={() => handleSortChange("id")}
+                    className="flex items-center focus:outline-none"
+                  >
+                    {getSortIcon("id")}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <button
+                    onClick={() => handleSortChange("ordered_at")}
+                    className="flex items-center focus:outline-none"
+                  >
+                    주문일시
+                    {getSortIcon("ordered_at")}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <button
+                    onClick={() => handleSortChange("customer_name")}
+                    className="flex items-center focus:outline-none"
+                  >
+                    고객명
+                    {getSortIcon("customer_name")}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  상품정보
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  고객 댓글
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  수량
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <button
+                    onClick={() => handleSortChange("total_amount")}
+                    className="flex items-center focus:outline-none"
+                  >
+                    금액
+                    {getSortIcon("total_amount")}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  바코드
+                </th>
+
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  상태
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {displayOrders.map((order, index) => {
+                // 현재 페이지가 1이면 최대 인덱스(37)부터 시작
+                // 현재 페이지가 2이면 (37-30=7)부터 시작
+                const startNumberForCurrentPage =
+                  totalItems - (currentPage - 1) * itemsPerPage;
+                const orderNumber = startNumberForCurrentPage - index;
+
+                return (
+                  <tr
+                    key={order.order_id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 font-medium">
+                      {orderNumber}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(order.ordered_at)}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div>
+                        <div className="text-sm  text-gray-800 font-semibold">
+                          {order.customer_name}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="text-sm text-gray-800 font-semibold">
+                        <div>{getProductNameById(order.product_id)}</div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 max-w-xs">
+                      <div className="text-sm text-gray-500 truncate md:whitespace-normal">
+                        {order.comment}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <button
+                          onClick={() => decreaseQuantity(order.order_id)}
+                          className="w-8 h-8 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
+                          disabled={order.quantity <= 1}
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
                           >
-                            {order.status}
-                          </span>
-                          {order.status === "수령완료" && order.pickupTime && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              수령시간: {formatDate(order.pickupTime)}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {displayOrders.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan="9"
-                        className="px-4 py-8 text-center text-gray-500"
-                      >
-                        표시할 주문이 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 페이지네이션 */}
-            {filteredOrders.length > 0 && (
-              <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200">
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      전체 <span className="font-medium">{totalItems}</span>개
-                      중{" "}
-                      <span className="font-medium">
-                        {currentPage * itemsPerPage - itemsPerPage + 1}
-                      </span>
-                      -
-                      <span className="font-medium">
-                        {currentPage * itemsPerPage > totalItems
-                          ? totalItems
-                          : currentPage * itemsPerPage}
-                      </span>
-                    </p>
-                  </div>
-                  <div>
-                    <nav
-                      className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                      aria-label="Pagination"
-                    >
-                      <button
-                        onClick={goToPreviousPage}
-                        disabled={currentPage === 1}
-                        className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
-                          currentPage === 1
-                            ? "text-gray-300 cursor-not-allowed"
-                            : "text-gray-500 hover:bg-gray-50"
-                        }`}
-                      >
-                        <span className="sr-only">이전</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M20 12H4"
+                            />
+                          </svg>
+                        </button>
+                        <span className="w-10 h-8 flex items-center justify-center text-sm font-medium bg-gray-50 border-t border-b border-gray-200 text-black">
+                          {order.quantity}
+                        </span>
+                        <button
+                          onClick={() => increaseQuantity(order.order_id)}
+                          className="w-8 h-8 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
                         >
-                          <path
-                            fillRule="evenodd"
-                            d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                            clipRule="evenodd"
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M12 4v16m8-8H4"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
+                      {formatCurrency(order.total_amount)}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
+                      {getProductBarcode(order.product_id) && (
+                        <div className="mt-1" style={{ width: "130px" }}>
+                          <Barcode
+                            value={getProductBarcode(order.product_id)}
+                            height={30}
                           />
-                        </svg>
-                      </button>
-
-                      {/* 페이지 번호 */}
-                      {Array.from({ length: Math.min(5, totalPages) }).map(
-                        (_, index) => {
-                          let pageNumber;
-
-                          // 현재 페이지를 기준으로 앞뒤로 2페이지씩 표시
-                          if (totalPages <= 5) {
-                            pageNumber = index + 1;
-                          } else if (currentPage <= 3) {
-                            pageNumber = index + 1;
-                          } else if (currentPage >= totalPages - 2) {
-                            pageNumber = totalPages - 4 + index;
-                          } else {
-                            pageNumber = currentPage - 2 + index;
-                          }
-
-                          return (
-                            <button
-                              key={pageNumber}
-                              onClick={() => paginate(pageNumber)}
-                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                                currentPage === pageNumber
-                                  ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
-                                  : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-                              }`}
-                            >
-                              {pageNumber}
-                            </button>
-                          );
-                        }
+                        </div>
                       )}
-
-                      <button
-                        onClick={goToNextPage}
-                        disabled={currentPage === totalPages}
-                        className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
-                          currentPage === totalPages
-                            ? "text-gray-300 cursor-not-allowed"
-                            : "text-gray-500 hover:bg-gray-50"
-                        }`}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <span
+                        className={`px-3 py-2 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
+                          order.status
+                        )} cursor-pointer hover:shadow-sm transition-shadow`}
+                        onClick={() => openStatusModal(order.order_id)}
                       >
-                        <span className="sr-only">다음</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </button>
-                    </nav>
-                  </div>
-                </div>
+                        {order.status}
+                      </span>
+                      {order.status === "수령완료" && order.pickupTime && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          수령시간: {formatDate(order.pickupTime)}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {displayOrders.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="9"
+                    className="px-4 py-8 text-center text-gray-500"
+                  >
+                    표시할 주문이 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                {/* 모바일 페이지네이션 */}
-                <div className="flex items-center justify-between w-full sm:hidden">
+        {/* 페이지네이션 */}
+        {filteredOrders.length > 0 && (
+          <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200">
+            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  전체 <span className="font-medium">{totalItems}</span>개 중{" "}
+                  <span className="font-medium">
+                    {currentPage * itemsPerPage - itemsPerPage + 1}
+                  </span>
+                  -
+                  <span className="font-medium">
+                    {currentPage * itemsPerPage > totalItems
+                      ? totalItems
+                      : currentPage * itemsPerPage}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <nav
+                  className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                  aria-label="Pagination"
+                >
                   <button
                     onClick={goToPreviousPage}
                     disabled={currentPage === 1}
-                    className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md ${
+                    className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
                       currentPage === 1
-                        ? "text-gray-300 bg-gray-100 cursor-not-allowed"
-                        : "text-gray-700 bg-white hover:bg-gray-50"
+                        ? "text-gray-300 cursor-not-allowed"
+                        : "text-gray-500 hover:bg-gray-50"
                     }`}
                   >
-                    이전
+                    <span className="sr-only">이전</span>
+                    <svg
+                      className="h-5 w-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                   </button>
-                  <span className="text-sm text-gray-700">
-                    <span className="font-medium">{currentPage}</span> /{" "}
-                    {totalPages}
-                  </span>
+
+                  {/* 페이지 번호 */}
+                  {Array.from({ length: Math.min(5, totalPages) }).map(
+                    (_, index) => {
+                      let pageNumber;
+
+                      // 현재 페이지를 기준으로 앞뒤로 2페이지씩 표시
+                      if (totalPages <= 5) {
+                        pageNumber = index + 1;
+                      } else if (currentPage <= 3) {
+                        pageNumber = index + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNumber = totalPages - 4 + index;
+                      } else {
+                        pageNumber = currentPage - 2 + index;
+                      }
+
+                      return (
+                        <button
+                          key={pageNumber}
+                          onClick={() => paginate(pageNumber)}
+                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                            currentPage === pageNumber
+                              ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
+                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                          }`}
+                        >
+                          {pageNumber}
+                        </button>
+                      );
+                    }
+                  )}
+
                   <button
                     onClick={goToNextPage}
                     disabled={currentPage === totalPages}
-                    className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md ${
+                    className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
                       currentPage === totalPages
-                        ? "text-gray-300 bg-gray-100 cursor-not-allowed"
-                        : "text-gray-700 bg-white hover:bg-gray-50"
+                        ? "text-gray-300 cursor-not-allowed"
+                        : "text-gray-500 hover:bg-gray-50"
                     }`}
                   >
-                    다음
+                    <span className="sr-only">다음</span>
+                    <svg
+                      className="h-5 w-5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                   </button>
-                </div>
+                </nav>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 상태 변경 모달 */}

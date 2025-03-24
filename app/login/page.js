@@ -110,8 +110,11 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            밴드 크롤러 로그인
+            PODER
           </h2>
+          <h3 className="mt-2 text-center text-xl  text-gray-900">
+            공동구매 관리 프로그램
+          </h3>
           <p className="mt-2 text-center text-sm text-gray-600">
             또는{" "}
             <Link
