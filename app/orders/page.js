@@ -1,12 +1,42 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useOrders } from "../hooks";
+import { api } from "../lib/fetcher";
+import JsBarcode from "jsbarcode";
+
+// 바코드 컴포넌트
+const Barcode = ({ value, width = 1.5, height = 40 }) => {
+  const barcodeRef = useRef(null);
+
+  useEffect(() => {
+    if (barcodeRef.current && value) {
+      try {
+        JsBarcode(barcodeRef.current, value, {
+          format: "CODE128",
+          lineColor: "#000",
+          width: width,
+          height: height,
+          displayValue: true,
+          fontSize: 12,
+          margin: 5,
+        });
+      } catch (error) {
+        console.error("바코드 생성 오류:", error);
+      }
+    }
+  }, [value, width, height]);
+
+  if (!value) return null;
+
+  return <svg ref={barcodeRef} className="w-full"></svg>;
+};
 
 export default function OrdersPage() {
   const router = useRouter();
+  const topRef = useRef(null); // 페이지 상단 참조를 위한 ref 추가
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,7 +48,9 @@ export default function OrdersPage() {
 
   // 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage] = useState(30); // 서버에서 설정한 페이지당 항목 수 (고정값)
+
+  const [products, setProducts] = useState([]);
 
   // 컴포넌트 마운트 시 로컬 스토리지에서 userId 가져오기
   useEffect(() => {
@@ -65,6 +97,10 @@ export default function OrdersPage() {
 
         const userDataObj = JSON.parse(sessionData);
         setUserData(userDataObj);
+
+        // 상품 목록 가져오기
+        fetchProducts(userDataObj.userId);
+
         setLoading(false);
       } catch (error) {
         console.error("데이터 조회 오류:", error);
@@ -75,6 +111,30 @@ export default function OrdersPage() {
 
     checkAuth();
   }, [router]);
+
+  // 상품 목록 가져오기
+  const fetchProducts = async (userId) => {
+    try {
+      const response = await api.get(`/products?userId=${userId}`);
+      if (response.data && response.data.data) {
+        setProducts(response.data.data);
+      }
+    } catch (error) {
+      console.error("상품 데이터 로딩 오류:", error);
+    }
+  };
+
+  // 상품 ID로 상품명 찾기
+  const getProductNameById = (productId) => {
+    const product = products.find((p) => p.product_id === productId);
+    return product ? product.title : "상품명 없음";
+  };
+
+  // 상품 ID로 바코드 찾기
+  const getProductBarcode = (productId) => {
+    const product = products.find((p) => p.product_id === productId);
+    return product?.barcode || "";
+  };
 
   // API에서 받은 주문 데이터를 상태에 설정
   useEffect(() => {
@@ -201,28 +261,72 @@ export default function OrdersPage() {
     }
   };
 
-  // 주문 상태 변경 핸들러
-  const handleStatusChange = (orderId, newStatus) => {
-    setOrders(
-      orders.map((order) => {
-        if (order.order_id === orderId) {
-          // 수령완료로 상태 변경 시 현재 시간을 수령 시간으로 설정
-          const pickupTime =
-            newStatus === "수령완료"
-              ? new Date().toISOString()
-              : order.pickupTime;
+  // 주문 상태 변경 핸들러 (DB 저장 함수)
+  const handleStatusChange = async (orderId, newStatus) => {
+    try {
+      // 허용된 상태 값 체크
+      const allowedStatuses = ["주문완료", "주문취소", "수령완료"];
+      if (!allowedStatuses.includes(newStatus)) {
+        alert("허용되지 않은 주문 상태입니다.");
+        return;
+      }
 
-          return {
-            ...order,
-            status: newStatus,
-            pickupTime: pickupTime,
-          };
-        }
-        return order;
-      })
-    );
+      // API 요청 데이터 준비
+      const updateData = {
+        status: newStatus,
+      };
 
-    // 모달 닫기
+      // 상태에 따른 시간 처리
+      if (newStatus === "수령완료") {
+        updateData.pickupTime = new Date().toISOString(); // 프론트엔드 표시용
+        updateData.completed_at = new Date().toISOString(); // 백엔드 호환용
+      } else if (newStatus === "주문취소") {
+        updateData.canceled_at = new Date().toISOString();
+      }
+
+      // API 호출하여 상태 변경
+      const response = await api.put(
+        `/orders/${orderId}/status?userId=${userData.userId}`,
+        updateData
+      );
+
+      if (response.data && response.data.success) {
+        // 성공 시 로컬 상태 업데이트
+        setOrders(
+          orders.map((order) => {
+            if (order.order_id === orderId) {
+              const updatedOrder = {
+                ...order,
+                status: newStatus,
+              };
+
+              // 상태에 따른 시간 필드 설정
+              if (newStatus === "수령완료") {
+                updatedOrder.pickupTime = new Date().toISOString();
+                updatedOrder.completed_at = new Date().toISOString();
+              } else if (newStatus === "주문취소") {
+                updatedOrder.canceled_at = new Date().toISOString();
+              }
+
+              return updatedOrder;
+            }
+            return order;
+          })
+        );
+
+        // 상태 변경 알림
+        alert(`주문이 ${newStatus} 상태로 변경되었습니다.`);
+      } else {
+        throw new Error(response.data?.message || "상태 변경에 실패했습니다.");
+      }
+    } catch (error) {
+      console.error("주문 상태 변경 오류:", error);
+      alert(
+        "주문 상태 변경에 실패했습니다: " + (error.message || "알 수 없는 오류")
+      );
+    }
+
+    // 상태와 관계없이 모달 닫기
     setStatusModal({ show: false, orderId: null });
   };
 
@@ -231,30 +335,13 @@ export default function OrdersPage() {
     show: false,
     orderId: null,
   });
-  const [commentModal, setCommentModal] = useState({
-    show: false,
-    orderId: null,
-    comment: "",
-  });
 
   // 상태 변경 모달 열기
   const openStatusModal = (orderId) => {
     setStatusModal({ show: true, orderId });
   };
 
-  // 댓글 수정 모달 열기
-  const openCommentModal = (orderId, comment) => {
-    setCommentModal({ show: true, orderId, comment });
-  };
-
-  // 댓글 저장 처리
-  const saveComment = () => {
-    if (!commentModal.orderId) return;
-
-    handleCommentChange(commentModal.orderId, commentModal.comment);
-    setCommentModal({ show: false, orderId: null, comment: "" });
-  };
-
+  // 로그아웃 처리 함수
   const handleLogout = () => {
     sessionStorage.removeItem("userData");
     sessionStorage.removeItem("naverLoginData");
@@ -265,6 +352,7 @@ export default function OrdersPage() {
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
+    scrollToTop();
   };
 
   // 정렬 변경 핸들러
@@ -277,12 +365,14 @@ export default function OrdersPage() {
       setSortBy(field);
       setSortOrder("desc");
     }
+    scrollToTop();
   };
 
   // 필터 변경 핸들러
   const handleFilterChange = (status) => {
     setFilterStatus(status);
     setCurrentPage(1); // 필터 변경 시 첫 페이지로 이동
+    scrollToTop();
   };
 
   // 금액 포맷팅 함수
@@ -316,27 +406,44 @@ export default function OrdersPage() {
   // 주문 필터링 및 정렬
   const filteredOrders = orders || [];
 
-  // 페이지네이션
-  const totalItems = ordersData?.totalCount || filteredOrders.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  // 페이지네이션 - 서버에서 받은 전체 개수 사용
+  const totalItems = ordersData?.pagination?.total || 0;
+  const totalPages = ordersData?.pagination?.totalPages || 1;
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
 
+  // 현재 페이지에 표시될 주문목록 (서버에서 페이징처리된 데이터를 그대로 사용)
+  const displayOrders = filteredOrders;
+
+  // 페이지 상단으로 스크롤하는 함수
+  const scrollToTop = () => {
+    if (topRef.current) {
+      topRef.current.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.scrollTo(0, 0);
+    }
+  };
+
   // 페이지 변경 핸들러
   const paginate = (pageNumber) => {
+    // 페이지 변경
     setCurrentPage(pageNumber);
+    // 페이지 상단으로 스크롤
+    scrollToTop();
   };
 
   // 이전/다음 페이지 핸들러
   const goToPreviousPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
+      scrollToTop();
     }
   };
 
   const goToNextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
+      scrollToTop();
     }
   };
 
@@ -460,6 +567,7 @@ export default function OrdersPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
+      <div ref={topRef} style={{ position: "absolute", top: 0, left: 0 }}></div>
       {/* 사이드바 */}
       <div className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-48 bg-white border-r border-gray-200 z-10">
         <div className="p-4">
@@ -714,10 +822,7 @@ export default function OrdersPage() {
             </div>
 
             <div className="text-sm text-gray-500 mt-2">
-              총{" "}
-              <span className="font-bold text-gray-900">
-                {filteredOrders.length}
-              </span>
+              총 <span className="font-bold text-gray-900">{totalItems}</span>
               개의 주문
             </div>
           </div>
@@ -733,7 +838,6 @@ export default function OrdersPage() {
                         onClick={() => handleSortChange("id")}
                         className="flex items-center focus:outline-none"
                       >
-                        주문번호
                         {getSortIcon("id")}
                       </button>
                     </th>
@@ -774,124 +878,126 @@ export default function OrdersPage() {
                       </button>
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      바코드
+                    </th>
+
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       상태
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredOrders.map((order) => (
-                    <tr
-                      key={order.order_id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        {order.order_id}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(order.ordered_at)}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {order.customer_name}
+                  {displayOrders.map((order, index) => {
+                    // 현재 페이지가 1이면 최대 인덱스(37)부터 시작
+                    // 현재 페이지가 2이면 (37-30=7)부터 시작
+                    const startNumberForCurrentPage =
+                      totalItems - (currentPage - 1) * itemsPerPage;
+                    const orderNumber = startNumberForCurrentPage - index;
+
+                    return (
+                      <tr
+                        key={order.order_id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 font-medium">
+                          {orderNumber}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(order.ordered_at)}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm  text-gray-800 font-semibold">
+                              {order.customer_name}
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {`제품 ID: ${order.product_id}`}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 max-w-xs">
-                        <div
-                          className="text-sm text-gray-500 truncate md:whitespace-normal flex items-center"
-                          onClick={() =>
-                            openCommentModal(order.order_id, order.comment)
-                          }
-                        >
-                          <span className="mr-2">{order.comment}</span>
-                          <button className="text-blue-600 p-1 rounded-full hover:bg-blue-50">
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-800 font-semibold">
+                            <div>{getProductNameById(order.product_id)}</div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 max-w-xs">
+                          <div className="text-sm text-gray-500 truncate md:whitespace-normal">
+                            {order.comment}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <button
+                              onClick={() => decreaseQuantity(order.order_id)}
+                              className="w-8 h-8 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
+                              disabled={order.quantity <= 1}
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M20 12H4"
+                                />
+                              </svg>
+                            </button>
+                            <span className="w-10 h-8 flex items-center justify-center text-sm font-medium bg-gray-50 border-t border-b border-gray-200 text-black">
+                              {order.quantity}
+                            </span>
+                            <button
+                              onClick={() => increaseQuantity(order.order_id)}
+                              className="w-8 h-8 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M12 4v16m8-8H4"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
+                          {formatCurrency(order.total_amount)}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
+                          {getProductBarcode(order.product_id) && (
+                            <div className="mt-1" style={{ width: "130px" }}>
+                              <Barcode
+                                value={getProductBarcode(order.product_id)}
+                                height={30}
                               />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <button
-                            onClick={() => decreaseQuantity(order.order_id)}
-                            className="w-8 h-8 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
-                            disabled={order.quantity <= 1}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <span
+                            className={`px-3 py-2 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
+                              order.status
+                            )} cursor-pointer hover:shadow-sm transition-shadow`}
+                            onClick={() => openStatusModal(order.order_id)}
                           >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M20 12H4"
-                              />
-                            </svg>
-                          </button>
-                          <span className="w-10 h-8 flex items-center justify-center text-sm font-medium bg-gray-50 border-t border-b border-gray-200 text-black">
-                            {order.quantity}
+                            {order.status}
                           </span>
-                          <button
-                            onClick={() => increaseQuantity(order.order_id)}
-                            className="w-8 h-8 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M12 4v16m8-8H4"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap font-medium text-gray-900">
-                        {formatCurrency(order.total_amount)}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-3 py-2 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
-                            order.status
-                          )} cursor-pointer hover:shadow-sm transition-shadow`}
-                          onClick={() => openStatusModal(order.order_id)}
-                        >
-                          {order.status}
-                        </span>
-                        {order.status === "수령완료" && order.pickupTime && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            수령시간: {formatDate(order.pickupTime)}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredOrders.length === 0 && (
+                          {order.status === "수령완료" && order.pickupTime && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              수령시간: {formatDate(order.pickupTime)}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {displayOrders.length === 0 && (
                     <tr>
                       <td
                         colSpan="9"
@@ -911,11 +1017,8 @@ export default function OrdersPage() {
                 <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm text-gray-700">
-                      전체{" "}
-                      <span className="font-medium">
-                        {filteredOrders.length}
-                      </span>
-                      개 중{" "}
+                      전체 <span className="font-medium">{totalItems}</span>개
+                      중{" "}
                       <span className="font-medium">
                         {currentPage * itemsPerPage - itemsPerPage + 1}
                       </span>
@@ -1094,50 +1197,6 @@ export default function OrdersPage() {
                 className="px-4 py-2 text-gray-500 hover:text-gray-700 font-medium"
               >
                 닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 댓글 수정 모달 */}
-      {commentModal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h3 className="text-xl font-bold mb-6 text-gray-900">
-              고객 댓글 수정
-            </h3>
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                댓글 내용
-              </label>
-              <textarea
-                value={commentModal.comment}
-                onChange={(e) =>
-                  setCommentModal({ ...commentModal, comment: e.target.value })
-                }
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                rows="4"
-              ></textarea>
-              <p className="text-sm text-gray-500 mt-2">
-                * 댓글에서 수량이 자동으로 추출됩니다. (예: "2개", "3", "1개
-                주문")
-              </p>
-            </div>
-            <div className="flex justify-end space-x-4">
-              <button
-                onClick={() =>
-                  setCommentModal({ show: false, orderId: null, comment: "" })
-                }
-                className="px-4 py-2 text-gray-500 hover:text-gray-700 font-medium"
-              >
-                취소
-              </button>
-              <button
-                onClick={saveComment}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-              >
-                저장
               </button>
             </div>
           </div>

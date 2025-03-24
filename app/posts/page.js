@@ -101,6 +101,7 @@ export default function PostsPage() {
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 정렬 변경 핸들러

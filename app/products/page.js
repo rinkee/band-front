@@ -1,9 +1,38 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useProducts } from "../hooks";
+import { useProducts, useProduct } from "../hooks";
+import { api } from "../lib/fetcher";
+import JsBarcode from "jsbarcode";
+
+// 바코드 컴포넌트
+const Barcode = ({ value, width = 1.5, height = 40 }) => {
+  const barcodeRef = useRef(null);
+
+  useEffect(() => {
+    if (barcodeRef.current && value) {
+      try {
+        JsBarcode(barcodeRef.current, value, {
+          format: "CODE128",
+          lineColor: "#000",
+          width: width,
+          height: height,
+          displayValue: true,
+          fontSize: 12,
+          margin: 5,
+        });
+      } catch (error) {
+        console.error("바코드 생성 오류:", error);
+      }
+    }
+  }, [value, width, height]);
+
+  if (!value) return <div className="text-gray-500">-</div>;
+
+  return <svg ref={barcodeRef} className="w-full"></svg>;
+};
 
 export default function ProductsPage() {
   const router = useRouter();
@@ -18,7 +47,20 @@ export default function ProductsPage() {
 
   // 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage] = useState(100); // 한 페이지에 표시할 최대 항목 수를 크게 설정
+
+  // 팝업 모달 상태
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [editedProduct, setEditedProduct] = useState({
+    title: "",
+    price: 0,
+    quantity: 0,
+    status: "",
+    barcode: "",
+    description: "",
+  });
 
   // 컴포넌트 마운트 시 로컬 스토리지에서 userId 가져오기
   useEffect(() => {
@@ -41,14 +83,46 @@ export default function ProductsPage() {
   // 상품 데이터 가져오기
   const { data: productsData, error: productsError } = useProducts(
     userData?.userId,
-    currentPage,
+    1, // 항상 첫 페이지
     {
       sortBy,
       sortOrder,
       status: filterStatus !== "all" ? filterStatus : undefined,
       search: searchTerm.trim() || undefined,
+      limit: 100, // 최대 100개의 상품 가져오기
     },
     swrOptions
+  );
+
+  // useProduct 훅을 사용하여 선택된 상품 정보 가져오기
+  const {
+    data: productDetailData,
+    error: productDetailError,
+    isValidating: isLoadingProductDetail,
+  } = useProduct(
+    selectedProductId && userData?.userId
+      ? `${selectedProductId}?userId=${userData.userId}`
+      : null,
+    {
+      onSuccess: (data) => {
+        if (data && data.data) {
+          setSelectedProduct(data.data);
+          setEditedProduct({
+            title: data.data.title || "",
+            price: data.data.price || 0,
+            quantity: data.data.quantity || 0,
+            status: data.data.status || "판매중",
+            barcode: data.data.barcode || "",
+            description: data.data.description || "",
+          });
+          setIsModalOpen(true);
+        }
+      },
+      onError: (error) => {
+        console.error("상품 상세 조회 오류:", error);
+        alert("상품 정보를 불러오는데 실패했습니다.");
+      },
+    }
   );
 
   // 사용자 인증 상태 확인
@@ -79,9 +153,21 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (userData && productsData) {
-      setProducts(productsData.data || []);
+      // 데이터에 바코드 필드가 없으면 빈 문자열로 초기화
+      const productsWithBarcode = (productsData.data || []).map((product) => ({
+        ...product,
+        barcode: product.barcode || "",
+      }));
+      setProducts(productsWithBarcode);
+
+      // 디버깅용 로그
+      console.log(
+        `현재 페이지: ${currentPage}, 총 상품 수: ${
+          productsData.totalCount || 0
+        }, 페이지 상품 수: ${productsData.data?.length || 0}`
+      );
     }
-  }, [productsData, userData]);
+  }, [productsData, userData, currentPage]);
 
   useEffect(() => {
     if (productsError) {
@@ -100,6 +186,8 @@ export default function ProductsPage() {
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
+    // 페이지 상단으로 스크롤
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 정렬 변경 핸들러
@@ -112,12 +200,16 @@ export default function ProductsPage() {
       setSortBy(field);
       setSortOrder("desc");
     }
+    // 페이지 상단으로 스크롤
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 필터 변경 핸들러
   const handleFilterChange = (status) => {
     setFilterStatus(status);
     setCurrentPage(1); // 필터 변경 시 첫 페이지로 이동
+    // 페이지 상단으로 스크롤
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 금액 포맷팅 함수
@@ -152,25 +244,66 @@ export default function ProductsPage() {
 
   // 페이지네이션
   const totalItems = productsData?.totalCount || filteredProducts.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
 
-  // 페이지 변경 핸들러
-  const paginate = (pageNumber) => {
-    setCurrentPage(pageNumber);
-  };
-
-  // 이전/다음 페이지 핸들러
-  const goToPreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+  // 상품 클릭 핸들러
+  const handleProductClick = (productId) => {
+    if (userData) {
+      setSelectedProductId(productId);
     }
   };
 
-  const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
+  // 모달 닫기 핸들러
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedProductId(null);
+    setSelectedProduct(null);
+  };
+
+  // 상품 정보 업데이트
+  const updateProduct = async () => {
+    if (!selectedProduct || !userData) return;
+
+    try {
+      setLoading(true);
+      await api.patch(
+        `/products/${selectedProduct.product_id}?userId=${userData.userId}`,
+        editedProduct
+      );
+
+      // 상품 목록 갱신
+      const updatedProducts = products.map((product) => {
+        if (product.product_id === selectedProduct.product_id) {
+          return { ...product, ...editedProduct };
+        }
+        return product;
+      });
+
+      setProducts(updatedProducts);
+      handleCloseModal(); // 변경된 모달 닫기 함수 사용
+      setLoading(false);
+      alert("상품 정보가 업데이트되었습니다.");
+    } catch (error) {
+      console.error("상품 정보 업데이트 오류:", error);
+      alert("상품 정보 업데이트에 실패했습니다.");
+      setLoading(false);
+    }
+  };
+
+  // 입력 필드 변경 핸들러
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+
+    // 숫자 필드는 숫자로 변환
+    if (name === "price" || name === "quantity") {
+      setEditedProduct({
+        ...editedProduct,
+        [name]: parseInt(value) || 0,
+      });
+    } else {
+      setEditedProduct({
+        ...editedProduct,
+        [name]: value,
+      });
     }
   };
 
@@ -521,10 +654,7 @@ export default function ProductsPage() {
             </div>
 
             <div className="text-sm text-gray-500 mt-2">
-              총{" "}
-              <span className="font-bold text-gray-900">
-                {filteredProducts.length}
-              </span>
+              총 <span className="font-bold text-gray-900">{totalItems}</span>
               개의 상품
             </div>
           </div>
@@ -555,22 +685,14 @@ export default function ProductsPage() {
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <button
-                        onClick={() => handleSortChange("quantity")}
+                        onClick={() => handleSortChange("barcode")}
                         className="flex items-center focus:outline-none"
                       >
-                        재고
-                        {getSortIcon("quantity")}
+                        바코드
+                        {getSortIcon("barcode")}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("total_order_quantity")}
-                        className="flex items-center focus:outline-none"
-                      >
-                        판매량
-                        {getSortIcon("total_order_quantity")}
-                      </button>
-                    </th>
+
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       상태
                     </th>
@@ -589,73 +711,70 @@ export default function ProductsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredProducts.map((product) => (
-                    <tr
-                      key={product.product_id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 flex-shrink-0 rounded-md bg-gray-100 overflow-hidden">
-                            {/* 썸네일 이미지가 없을 경우 기본 UI 표시 */}
-                            <div className="h-full w-full flex items-center justify-center text-gray-400">
-                              <svg
-                                className="w-6 h-6"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
+                  {productsData?.data && productsData.data.length > 0 ? (
+                    productsData.data.map((product) => (
+                      <tr
+                        key={product.product_id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div>
+                              <div
+                                onClick={() =>
+                                  handleProductClick(product.product_id)
+                                }
+                                className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                />
-                              </svg>
+                                {product.title}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {product.product_id}
+                              </div>
                             </div>
                           </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {product.title}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatCurrency(product.price)}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {product.barcode ? (
+                            <div style={{ width: "120px" }}>
+                              <Barcode value={product.barcode} height={30} />
                             </div>
-                            <div className="text-xs text-gray-500">
-                              {product.product_id}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(product.price)}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.quantity}개
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {product.total_order_quantity || 0}개
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${getStatusBadgeStyles(
-                            product.status
-                          )}`}
-                        >
-                          {product.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(product.updated_at)}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button className="text-blue-600 hover:text-blue-800 mr-2">
-                          수정
-                        </button>
-                        <button className="text-red-600 hover:text-red-800">
-                          삭제
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredProducts.length === 0 && (
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${getStatusBadgeStyles(
+                              product.status
+                            )}`}
+                          >
+                            {product.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(product.updated_at)}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            onClick={() =>
+                              handleProductClick(product.product_id)
+                            }
+                            className="text-blue-600 hover:text-blue-800 mr-2"
+                          >
+                            상세보기
+                          </button>
+                          <button className="text-red-600 hover:text-red-800">
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
                     <tr>
                       <td
                         colSpan="7"
@@ -668,153 +787,146 @@ export default function ProductsPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
 
-            {/* 페이지네이션 */}
-            {filteredProducts.length > 0 && (
-              <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200">
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+      {/* 상품 수정 모달 */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">
+                상품 정보 수정
+              </h3>
+              <button
+                onClick={handleCloseModal}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {isLoadingProductDetail ? (
+              <div className="flex justify-center items-center h-40">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
-                    <p className="text-sm text-gray-700">
-                      전체{" "}
-                      <span className="font-medium">
-                        {filteredProducts.length}
-                      </span>
-                      개 중{" "}
-                      <span className="font-medium">
-                        {indexOfFirstItem + 1}
-                      </span>
-                      -
-                      <span className="font-medium">
-                        {indexOfLastItem > filteredProducts.length
-                          ? filteredProducts.length
-                          : indexOfLastItem}
-                      </span>
-                    </p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      상품명
+                    </label>
+                    <input
+                      type="text"
+                      name="title"
+                      value={editedProduct.title}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <nav
-                      className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                      aria-label="Pagination"
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      가격
+                    </label>
+                    <input
+                      type="number"
+                      name="price"
+                      value={editedProduct.price}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      수량
+                    </label>
+                    <input
+                      type="number"
+                      name="quantity"
+                      value={editedProduct.quantity}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      상태
+                    </label>
+                    <select
+                      name="status"
+                      value={editedProduct.status}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <button
-                        onClick={goToPreviousPage}
-                        disabled={currentPage === 1}
-                        className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
-                          currentPage === 1
-                            ? "text-gray-300 cursor-not-allowed"
-                            : "text-gray-500 hover:bg-gray-50"
-                        }`}
-                      >
-                        <span className="sr-only">이전</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </button>
-
-                      {/* 페이지 번호 */}
-                      {Array.from({ length: Math.min(5, totalPages) }).map(
-                        (_, index) => {
-                          let pageNumber;
-
-                          // 현재 페이지를 기준으로 앞뒤로 2페이지씩 표시
-                          if (totalPages <= 5) {
-                            pageNumber = index + 1;
-                          } else if (currentPage <= 3) {
-                            pageNumber = index + 1;
-                          } else if (currentPage >= totalPages - 2) {
-                            pageNumber = totalPages - 4 + index;
-                          } else {
-                            pageNumber = currentPage - 2 + index;
-                          }
-
-                          return (
-                            <button
-                              key={pageNumber}
-                              onClick={() => paginate(pageNumber)}
-                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                                currentPage === pageNumber
-                                  ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
-                                  : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-                              }`}
-                            >
-                              {pageNumber}
-                            </button>
-                          );
-                        }
-                      )}
-
-                      <button
-                        onClick={goToNextPage}
-                        disabled={currentPage === totalPages}
-                        className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
-                          currentPage === totalPages
-                            ? "text-gray-300 cursor-not-allowed"
-                            : "text-gray-500 hover:bg-gray-50"
-                        }`}
-                      >
-                        <span className="sr-only">다음</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </button>
-                    </nav>
+                      <option value="판매중">판매중</option>
+                      <option value="품절">품절</option>
+                      <option value="판매중지">판매중지</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      바코드
+                    </label>
+                    <input
+                      type="text"
+                      name="barcode"
+                      value={editedProduct.barcode}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {editedProduct.barcode && (
+                      <div className="mt-2">
+                        <Barcode value={editedProduct.barcode} height={40} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      상품 설명
+                    </label>
+                    <textarea
+                      name="description"
+                      value={editedProduct.description}
+                      onChange={handleInputChange}
+                      rows="4"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    ></textarea>
                   </div>
                 </div>
 
-                {/* 모바일 페이지네이션 */}
-                <div className="flex items-center justify-between w-full sm:hidden">
+                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
                   <button
-                    onClick={goToPreviousPage}
-                    disabled={currentPage === 1}
-                    className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md ${
-                      currentPage === 1
-                        ? "text-gray-300 bg-gray-100 cursor-not-allowed"
-                        : "text-gray-700 bg-white hover:bg-gray-50"
-                    }`}
+                    onClick={handleCloseModal}
+                    className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                   >
-                    이전
+                    취소
                   </button>
-                  <span className="text-sm text-gray-700">
-                    <span className="font-medium">{currentPage}</span> /{" "}
-                    {totalPages}
-                  </span>
                   <button
-                    onClick={goToNextPage}
-                    disabled={currentPage === totalPages}
-                    className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md ${
-                      currentPage === totalPages
-                        ? "text-gray-300 bg-gray-100 cursor-not-allowed"
-                        : "text-gray-700 bg-white hover:bg-gray-50"
-                    }`}
+                    onClick={updateProduct}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
                   >
-                    다음
+                    저장
                   </button>
                 </div>
               </div>
             )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
