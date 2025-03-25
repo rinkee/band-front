@@ -11,7 +11,21 @@ import { axiosFetcher, api } from "../lib/fetcher";
  */
 export function useProducts(userId, page = 1, filters = {}, options = {}) {
   const params = new URLSearchParams({ userId, page, ...filters });
-  return useSWR(userId ? `/products?${params}` : null, axiosFetcher, options);
+
+  // 기본 옵션 설정 (캐시 사용 및 중복 요청 방지)
+  const defaultOptions = {
+    revalidateIfStale: false, // 캐시가 오래되었더라도 자동으로 재검증하지 않음
+    revalidateOnFocus: false, // 포커스를 받았을 때 재검증하지 않음
+    revalidateOnReconnect: true, // 네트워크 연결 재개시에만 재검증
+    dedupingInterval: 5000, // 5초 내에 같은 요청은 중복 실행하지 않음
+    ...options, // 사용자 정의 옵션으로 기본 옵션 덮어쓰기 가능
+  };
+
+  return useSWR(
+    userId ? `/products?${params}` : null,
+    axiosFetcher,
+    defaultOptions
+  );
 }
 
 /**

@@ -3,7 +3,15 @@ import axios from "axios";
 // API 기본 URL 설정
 const API_BASE_URL = "http://localhost:8000/api";
 
-console.log("API 기본 URL 설정:", API_BASE_URL);
+// 개발 모드에서만 로깅하는 함수
+const devLog = (...args) => {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.NEXT_PUBLIC_DEBUG_API === "true"
+  ) {
+    console.log(...args);
+  }
+};
 
 /**
  * SWR에서 사용할 기본 fetcher 함수 (axios 사용)
@@ -13,7 +21,7 @@ console.log("API 기본 URL 설정:", API_BASE_URL);
 export const fetcher = async (url) => {
   try {
     const fullUrl = url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
-    console.log("Fetcher 요청 URL:", fullUrl);
+    devLog("Fetcher 요청 URL:", fullUrl);
 
     const response = await axios.get(fullUrl);
     return response.data;
@@ -125,12 +133,12 @@ export const axiosFetcher = async (url) => {
 
     // URL이 슬래시로 시작하지 않으면 추가
     const fullUrl = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
-    console.log("axios Fetcher 요청:", API_BASE_URL + fullUrl);
+    devLog("API 요청:", API_BASE_URL + fullUrl);
 
     const response = await api.get(fullUrl);
     return response.data;
   } catch (error) {
-    console.error("API 요청 오류:", error.message, error.response?.status, url);
+    console.error("API 요청 오류:", error.message, error.response?.status);
     const customError = new Error("API 요청 실패");
     customError.info = error.response?.data;
     customError.status = error.response?.status;

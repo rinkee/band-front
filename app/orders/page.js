@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useOrders } from "../hooks";
+import { useOrders, useProducts } from "../hooks";
 import { api } from "../lib/fetcher";
 import JsBarcode from "jsbarcode";
 
@@ -52,14 +52,6 @@ export default function OrdersPage() {
 
   const [products, setProducts] = useState([]);
 
-  // 컴포넌트 마운트 시 로컬 스토리지에서 userId 가져오기
-  useEffect(() => {
-    const storedUserId = localStorage.getItem("userId");
-    if (storedUserId) {
-      setUserId(storedUserId);
-    }
-  }, []);
-
   // SWR 옵션 (에러 발생 시 재시도 및 새로고침 간격 설정)
   const swrOptions = {
     revalidateOnFocus: true,
@@ -83,6 +75,14 @@ export default function OrdersPage() {
     swrOptions
   );
 
+  // 상품 데이터 가져오기 (useProducts 훅 사용)
+  const { data: productsData, error: productsError } = useProducts(
+    userData?.userId,
+    1, // 모든 상품 목록을 가져오기 위해 페이지는 1로 고정
+    {}, // 필터 없음
+    swrOptions
+  );
+
   // 사용자 인증 상태 확인
   useEffect(() => {
     const checkAuth = async () => {
@@ -98,8 +98,8 @@ export default function OrdersPage() {
         const userDataObj = JSON.parse(sessionData);
         setUserData(userDataObj);
 
-        // 상품 목록 가져오기
-        fetchProducts(userDataObj.userId);
+        // 상품 목록 가져오기 - 제거 (useProducts 훅으로 대체)
+        // fetchProducts(userDataObj.userId);
 
         setLoading(false);
       } catch (error) {
@@ -112,17 +112,19 @@ export default function OrdersPage() {
     checkAuth();
   }, [router]);
 
-  // 상품 목록 가져오기
-  const fetchProducts = async (userId) => {
-    try {
-      const response = await api.get(`/products?userId=${userId}`);
-      if (response.data && response.data.data) {
-        setProducts(response.data.data);
-      }
-    } catch (error) {
-      console.error("상품 데이터 로딩 오류:", error);
+  // 상품 데이터 상태 업데이트
+  useEffect(() => {
+    if (productsData?.data) {
+      setProducts(productsData.data);
     }
-  };
+  }, [productsData]);
+
+  // 상품 데이터 로딩 오류 처리
+  useEffect(() => {
+    if (productsError) {
+      console.error("상품 데이터 로딩 오류:", productsError);
+    }
+  }, [productsError]);
 
   // 상품 ID로 상품명 찾기
   const getProductNameById = (productId) => {
@@ -523,6 +525,12 @@ export default function OrdersPage() {
     );
   };
 
+  // 상품 ID로 게시물 URL 찾기
+  const getPostUrlByProductId = (productId) => {
+    const product = products.find((p) => p.product_id === productId);
+    return product?.band_post_url || "";
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -745,8 +753,34 @@ export default function OrdersPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2 max-w-xs">
-                      <div className="text-sm text-gray-500 truncate md:whitespace-normal">
-                        {order.comment}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm text-gray-500 truncate md:whitespace-normal">
+                          {order.comment}
+                        </div>
+                        {getPostUrlByProductId(order.product_id) && (
+                          <a
+                            href={getPostUrlByProductId(order.product_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center px-2 py-1 text-xs font-medium rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                            title="밴드 게시물에서 원본 댓글 보기"
+                          >
+                            <svg
+                              className="w-3 h-3 mr-1"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                              />
+                            </svg>
+                            댓글보기
+                          </a>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">

@@ -76,7 +76,7 @@ export default function ProductsPage() {
   const swrOptions = {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
-    refreshInterval: 30000, // 30초마다 자동으로 데이터 새로고침
+    refreshInterval: 300000, // 30초마다 자동으로 데이터 새로고침
     onError: (error) => {
       console.error("데이터 로딩 오류:", error);
     },

@@ -268,13 +268,14 @@ export default function DashboardPage() {
     checkAuth();
   }, [router]);
 
-  // 크롤링 관련 상태
+  // 자동 크롤링 관련 상태 변수와 함수 선언 추가
   const [isCrawling, setIsCrawling] = useState(false);
   const [crawlingStatus, setCrawlingStatus] = useState("");
   const [crawlingError, setCrawlingError] = useState(null);
   const [lastUpdateTime, setLastUpdateTime] = useState(null);
   const [isAutoCrawlingEnabled, setIsAutoCrawlingEnabled] = useState(false);
-  const [autoCrawlingInterval, setAutoCrawlingInterval] = useState(null);
+  const [crawlInterval, setCrawlInterval] = useState(10); // 기본값 10분
+  const [crawlingJobId, setCrawlingJobId] = useState(null); // 스케줄링된 작업 ID 저장 변수 추가
 
   const { mutate } = useSWRConfig();
 
@@ -285,111 +286,168 @@ export default function DashboardPage() {
       setLastUpdateTime(new Date(savedUpdateTime));
     }
 
-    // 자동 크롤링 설정 불러오기
-    const autoCrawlingEnabled =
-      localStorage.getItem("autoCrawlingEnabled") === "true";
-    setIsAutoCrawlingEnabled(autoCrawlingEnabled);
+    // 사용자 데이터가 있을 경우 백엔드에서 자동 크롤링 설정 조회
+    if (userData?.userId) {
+      fetchAutoCrawlSettings(userData.userId);
+      fetchCrawlingSchedule(userData.userId); // 현재 등록된 스케줄 작업 조회
+    }
+  }, [userData]);
 
-    // 마지막 크롤링 시간 확인하여 30분 이상 지났으면 즉시 실행
-    if (autoCrawlingEnabled && savedUpdateTime) {
-      const lastUpdate = new Date(savedUpdateTime);
-      const now = new Date();
-      const diffMinutes = Math.floor((now - lastUpdate) / (1000 * 60));
-
-      console.log(`마지막 크롤링 후 ${diffMinutes}분 경과`);
-
-      // 마지막 크롤링으로부터 30분 이상 지났으면 즉시 실행
-      if (diffMinutes >= 30 && userData && user?.band_id) {
-        console.log("30분 이상 경과하여 크롤링 즉시 실행");
-        sendCrawlingRequest(user.band_id, userData.userId);
+  // 자동 크롤링 설정 조회 함수
+  const fetchAutoCrawlSettings = async (userId) => {
+    try {
+      // 변경 전: /users/${userId}/auto-crawl
+      // 변경 후: /scheduler/users/${userId}/auto-crawl
+      const response = await api.get(`/scheduler/users/${userId}/auto-crawl`);
+      if (response.data && response.data.data) {
+        const { autoCrawl, crawlInterval, jobId } = response.data.data;
+        setIsAutoCrawlingEnabled(autoCrawl);
+        setCrawlInterval(crawlInterval || 10);
+        setCrawlingJobId(jobId); // 작업 ID도 저장
+        console.log(
+          `자동 크롤링 설정 조회: 활성화=${autoCrawl}, 간격=${crawlInterval}분, 작업 ID=${jobId}`
+        );
       }
+    } catch (error) {
+      console.error("자동 크롤링 설정 조회 오류:", error);
     }
+  };
 
-    // 자동 크롤링이 설정되어 있으면 인터벌 시작
-    if (autoCrawlingEnabled) {
-      startAutoCrawlingInterval();
-    }
-
-    // 컴포넌트 언마운트 시 인터벌 정리
-    return () => {
-      if (autoCrawlingInterval) {
-        clearInterval(autoCrawlingInterval);
+  // 자동 크롤링 설정 업데이트 함수
+  const updateAutoCrawlSettings = async (userId, autoCrawl, crawlInterval) => {
+    try {
+      // 변경 전: /users/${userId}/auto-crawl
+      // 변경 후: /scheduler/users/${userId}/auto-crawl
+      const response = await api.put(`/scheduler/users/${userId}/auto-crawl`, {
+        autoCrawl,
+        crawlInterval,
+      });
+      if (response.data && response.data.success) {
+        console.log(
+          `자동 크롤링 설정 업데이트 성공: 활성화=${autoCrawl}, 간격=${crawlInterval}분`
+        );
+        // 응답에 jobId가 포함되어 있으면 저장
+        if (response.data.data && response.data.data.jobId) {
+          setCrawlingJobId(response.data.data.jobId);
+        }
+        return true;
       }
-    };
-  }, [userData, user]);
-
-  // 자동 크롤링 인터벌 설정
-  const startAutoCrawlingInterval = () => {
-    // 기존 인터벌이 있으면 제거
-    if (autoCrawlingInterval) {
-      clearInterval(autoCrawlingInterval);
+      return false;
+    } catch (error) {
+      console.error("자동 크롤링 설정 업데이트 오류:", error);
+      return false;
     }
+  };
 
-    console.log("자동 크롤링 인터벌 설정 - 30분마다 실행");
+  // 스케줄링된 크롤링 작업 삭제 함수
+  const deleteScheduledCrawling = async (userId) => {
+    try {
+      // 세션 스토리지에서 토큰 가져오기
+      const token = sessionStorage.getItem("token");
+      console.log(token);
 
-    // 30분(1800000ms) 마다 크롤링 실행
-    const interval = setInterval(() => {
-      if (userData && user?.band_id) {
-        console.log("자동 크롤링 실행 중...");
-        sendCrawlingRequest(user.band_id, userData.userId);
+      // 변경 전: /scheduler/jobs/${jobId}
+      // 변경 후: /scheduler/users/${userId}/job
+      const response = await api.delete(`/scheduler/users/${userId}/job`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.data && response.data.success) {
+        console.log(
+          `사용자 ${userId}의 크롤링 작업이 성공적으로 삭제되었습니다.`
+        );
+        setCrawlingJobId(null); // 작업 ID 초기화
+        return true;
       } else {
-        console.log("자동 크롤링 실행 실패: 사용자 정보 없음");
+        console.error("크롤링 작업 삭제 실패:", response.data?.message);
+        return false;
       }
-    }, 600000); // 30분
-
-    setAutoCrawlingInterval(interval);
-
-    // 로컬 스토리지에 인터벌 설정 시간 저장
-    localStorage.setItem("autoCrawlingSetTime", new Date().toISOString());
+    } catch (error) {
+      console.error("크롤링 작업 삭제 오류:", error);
+      return false;
+    }
   };
 
-  // 크롤링 상태 확인 함수
-  const checkCrawlingStatus = () => {
-    const lastUpdateTime = localStorage.getItem("lastCrawlingUpdate");
-    const now = new Date();
-
-    if (lastUpdateTime) {
-      const lastUpdate = new Date(lastUpdateTime);
-      const diffMinutes = Math.floor((now - lastUpdate) / (1000 * 60));
-      return {
-        lastUpdate,
-        diffMinutes,
-        isRecent: diffMinutes < 35, // 30분 + 여유 5분
-      };
+  // 자동 크롤링 설정 토글 함수 수정
+  const toggleAutoCrawling = async () => {
+    if (!userData?.userId) {
+      alert("사용자 정보가 없습니다. 로그인 후 다시 시도해주세요.");
+      return;
     }
 
-    return {
-      lastUpdate: null,
-      diffMinutes: null,
-      isRecent: false,
-    };
+    const newState = !isAutoCrawlingEnabled;
+
+    // 백엔드에 자동 크롤링 설정 업데이트 요청
+    const success = await updateAutoCrawlSettings(
+      userData.userId,
+      newState,
+      crawlInterval
+    );
+
+    if (success) {
+      setIsAutoCrawlingEnabled(newState);
+
+      if (newState) {
+        // 자동 크롤링 활성화됨
+        console.log(`자동 크롤링 활성화됨 (${crawlInterval}분 간격)`);
+        // 즉시 크롤링 실행
+        if (userData && user?.band_id) {
+          sendCrawlingRequest(user.band_id, userData.userId);
+        }
+      } else {
+        // 자동 크롤링 비활성화됨
+        console.log("자동 크롤링 비활성화됨");
+
+        // 작업 ID 초기화
+        setCrawlingJobId(null);
+
+        // 삭제 API 대신 설정 업데이트만으로 해결
+        // (백엔드에서 autoCrawl이 false로 설정되면 작업을 알아서 정리함)
+        console.log("자동 크롤링 스케줄이 비활성화되었습니다.");
+      }
+    } else {
+      alert("자동 크롤링 설정 변경에 실패했습니다.");
+    }
   };
 
-  // 자동 크롤링 설정 토글
-  const toggleAutoCrawling = () => {
-    const newState = !isAutoCrawlingEnabled;
-    setIsAutoCrawlingEnabled(newState);
-    localStorage.setItem("autoCrawlingEnabled", newState.toString());
+  // 스케줄링된 크롤링 작업 조회 함수
+  const fetchCrawlingSchedule = async (userId) => {
+    try {
+      const response = await api.get("/scheduler/jobs");
+      if (response.data && response.data.success) {
+        // 사용자 ID로 필터링하여 크롤링 작업 찾기
+        const userJobs = response.data.data.filter(
+          (job) =>
+            job.data &&
+            job.data.userId === userId &&
+            job.data.type === "bandCrawling"
+        );
 
-    if (newState) {
-      // 자동 크롤링 활성화
-      console.log("자동 크롤링 활성화됨");
-
-      // 즉시 크롤링 실행
-      if (userData && user?.band_id) {
-        sendCrawlingRequest(user.band_id, userData.userId);
+        if (userJobs.length > 0) {
+          // 작업이 있으면 작업 ID 저장
+          const jobId = userJobs[0].id;
+          setCrawlingJobId(jobId);
+          console.log(`사용자의 크롤링 작업 ID: ${jobId}`);
+        }
       }
+    } catch (error) {
+      console.error("크롤링 스케줄 조회 오류:", error);
+    }
+  };
 
-      // 인터벌 시작
-      startAutoCrawlingInterval();
-    } else {
-      // 자동 크롤링 비활성화 - 인터벌 정리
-      console.log("자동 크롤링 비활성화됨");
-      if (autoCrawlingInterval) {
-        clearInterval(autoCrawlingInterval);
-        setAutoCrawlingInterval(null);
-      }
-      localStorage.removeItem("autoCrawlingSetTime");
+  // 크롤링 간격 변경 핸들러
+  const handleIntervalChange = async (e) => {
+    const newInterval = parseInt(e.target.value, 10);
+    if (isNaN(newInterval) || newInterval < 1) {
+      return;
+    }
+
+    setCrawlInterval(newInterval);
+
+    if (isAutoCrawlingEnabled && userData?.userId) {
+      await updateAutoCrawlSettings(userData.userId, true, newInterval);
     }
   };
 
@@ -398,13 +456,14 @@ export default function DashboardPage() {
     try {
       setCrawlingStatus("크롤링 중...");
       setCrawlingError(null);
+      setIsCrawling(true);
 
       console.log(`크롤링 요청 시작: bandId=${bandId}, userId=${userId}`);
 
       // 백엔드 API 호출
       const response = await api.post(`/crawl/${bandId}/details`, {
         userId: userId,
-        maxPosts: 10, // 최대 게시물 수
+        maxPosts: 20, // 최대 게시물 수
         processProducts: true, // 상품 정보도 함께 처리
       });
 
@@ -421,6 +480,7 @@ export default function DashboardPage() {
         mutate(`/orders/summary?userId=${userId}`);
 
         setCrawlingStatus("크롤링 완료");
+        setIsCrawling(false);
 
         // 5초 후 상태 메시지 제거
         setTimeout(() => {
@@ -432,6 +492,7 @@ export default function DashboardPage() {
           response.data?.message || "알 수 없는 오류가 발생했습니다."
         );
         setCrawlingStatus("");
+        setIsCrawling(false);
       }
     } catch (error) {
       console.error("크롤링 요청 오류:", error);
@@ -441,6 +502,7 @@ export default function DashboardPage() {
           "서버 연결 오류가 발생했습니다."
       );
       setCrawlingStatus("");
+      setIsCrawling(false);
     }
   };
 
@@ -902,124 +964,83 @@ export default function DashboardPage() {
       <div className="mt-6 bg-white rounded-2xl p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">데이터 업데이트</h2>
 
-        {/* 밴드 크롤링 섹션 */}
-        <div className="bg-blue-50 p-6 rounded-xl">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-blue-900">
-              밴드 게시물 크롤링
-            </h3>
-            <div className="flex space-x-2">
-              {crawlingStatus && (
-                <div className="flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                  <span className="animate-pulse mr-1">⏳</span>{" "}
-                  {crawlingStatus}
-                </div>
-              )}
-              <button
-                onClick={() =>
-                  sendCrawlingRequest(user.band_id, userData.userId)
-                }
-                disabled={crawlingStatus === "크롤링 중..."}
-                className={`px-4 py-2 rounded-lg text-white font-medium ${
-                  crawlingStatus === "크롤링 중..."
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700"
-                }`}
-              >
-                {crawlingStatus === "크롤링 중..." ? (
-                  <span className="flex items-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    진행 중...
-                  </span>
-                ) : (
-                  "크롤링 실행"
-                )}
-              </button>
-            </div>
+        {/* 자동 크롤링 설정 */}
+        <div className="mt-6 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-md font-medium">자동 크롤링 설정</h3>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isAutoCrawlingEnabled}
+                onChange={toggleAutoCrawling}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
           </div>
-
-          <p className="text-sm text-blue-800 mb-4">
-            밴드에서 새로운 게시물과 주문 정보를 수집합니다.
-          </p>
-
-          {/* 자동 크롤링 설정 */}
-          <div className="mt-6 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-md font-medium">자동 크롤링 설정</h3>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isAutoCrawlingEnabled}
-                  onChange={toggleAutoCrawling}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-            <p className="text-sm text-gray-500">
-              활성화하면 30분마다 자동으로 크롤링을 실행합니다.
-              {isAutoCrawlingEnabled && (
-                <span className="block mt-1 text-xs text-blue-600">
-                  ※ 브라우저를 열어두어야 자동 크롤링이 작동합니다.
-                </span>
-              )}
+          <div className="flex items-center space-x-4 mb-2">
+            <p className="text-sm text-gray-500 flex-grow">
+              활성화하면 백엔드에서 설정한 간격으로 자동으로 크롤링을
+              실행합니다.
             </p>
-          </div>
-
-          {lastUpdateTime && (
-            <div className="flex items-center text-sm text-gray-600 mt-2">
-              <span className="mr-2">
-                마지막 업데이트: {formatDate(lastUpdateTime)}
-              </span>
-              {isAutoCrawlingEnabled && (
-                <span className="text-xs px-2 py-1 bg-blue-100 rounded-full">
-                  다음 예정:{" "}
-                  {formatDate(
-                    new Date(lastUpdateTime.getTime() + 30 * 60 * 1000)
-                  )}
-                </span>
-              )}
-            </div>
-          )}
-
-          {crawlingError && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center text-sm text-red-700">
-                <svg
-                  className="w-4 h-4 mr-2 text-red-500"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                {crawlingError}
+            {isAutoCrawlingEnabled && (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">크롤링 간격:</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={crawlInterval}
+                  onChange={handleIntervalChange}
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
+                />
+                <span className="text-sm text-gray-500">분</span>
               </div>
+            )}
+          </div>
+          {isAutoCrawlingEnabled && (
+            <div className="bg-blue-50 p-3 rounded text-xs text-blue-700">
+              <p>
+                ※ 백엔드에서 자동으로 크롤링이 실행됩니다. 브라우저를 닫아도
+                동작합니다.
+              </p>
             </div>
           )}
         </div>
+
+        {lastUpdateTime && (
+          <div className="flex items-center text-sm text-gray-600 mt-2">
+            <span className="mr-2">
+              마지막 업데이트: {formatDate(lastUpdateTime)}
+            </span>
+            {isAutoCrawlingEnabled && (
+              <span className="text-xs px-2 py-1 bg-blue-100 rounded-full">
+                예상 다음 업데이트:{" "}
+                {formatDate(
+                  new Date(lastUpdateTime.getTime() + crawlInterval * 60 * 1000)
+                )}
+              </span>
+            )}
+          </div>
+        )}
+
+        {crawlingError && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center text-sm text-red-700">
+              <svg
+                className="w-4 h-4 mr-2 text-red-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              {crawlingError}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
