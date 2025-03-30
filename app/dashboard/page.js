@@ -63,7 +63,7 @@ export default function DashboardPage() {
   const { data: productsData, error: productsError } = useProducts(
     userId,
     1,
-    {},
+    { status: "판매중", limit: 50 }, // status 필터 추가, 페이지 크기 증가
     swrOptions
   );
 
@@ -90,100 +90,6 @@ export default function DashboardPage() {
     swrOptions
   );
 
-  // 목업 데이터 생성 함수
-  const createMockData = () => {
-    // 목업 상품 데이터
-    const mockProducts = Array.from({ length: 10 }, (_, index) => ({
-      product_id: `prod_${index + 1}`,
-      name: [
-        "고기세트식당양념갈비",
-        "대패삼겹살 1kg",
-        "한돈 삼겹살 500g",
-        "목심 스테이크 600g",
-        "와규 등심 300g",
-      ][index % 5],
-      price: [15000, 12000, 18000, 25000, 35000][index % 5],
-      stock: Math.floor(Math.random() * 100),
-      status: ["판매중", "품절", "판매중지"][index % 3],
-    }));
-
-    // 목업 주문 데이터
-    const mockOrders = Array.from({ length: 10 }, (_, index) => {
-      const productIndex = index % 5;
-      const product = {
-        name: [
-          "고기세트식당양념갈비",
-          "대패삼겹살 1kg",
-          "한돈 삼겹살 500g",
-          "목심 스테이크 600g",
-          "와규 등심 300g",
-        ][productIndex],
-        price: [15000, 12000, 18000, 25000, 35000][productIndex],
-      };
-
-      return {
-        order_id: `ORD${(index + 1).toString().padStart(5, "0")}`,
-        customer_name: `고객${(index % 10) + 1}`,
-        products: [product],
-        status: ["confirmed", "delivered", "pending"][index % 3],
-        total_amount: product.price * (Math.floor(Math.random() * 3) + 1),
-        comment: [
-          "2개 주세요",
-          "배송 빨리 해주세요. 급해요.",
-          "3일 내로 받을 수 있을까요?",
-          "선물용으로 포장 부탁드립니다.",
-          "1kg 2개 주문합니다. 맛있게 포장해주세요.",
-          "명절 선물용으로 예쁘게 포장 가능한가요? 진공포장 원합니다.",
-          "오늘 주문하면 언제 배송 가능할까요?",
-          "김포공항 근처인데 당일 배송 가능할까요?",
-          "3만원 이상 무료배송 맞나요?",
-          "2세트 주문합니다.",
-        ][index % 10],
-      };
-    });
-
-    // 목업 고객 데이터
-    const mockCustomers = Array.from({ length: 10 }, (_, index) => ({
-      customer_id: `cust_${index + 1}`,
-      name: `고객${index + 1}`,
-      phone: `010-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(
-        1000 + Math.random() * 9000
-      )}`,
-      orderCount: Math.floor(Math.random() * 10) + 1,
-    }));
-
-    // 목업 주문 통계 데이터
-    const mockOrderStats = {
-      totalSales: 1250000,
-      orderCount: 45,
-      averageOrderValue: 27778,
-      recentActivity: Array.from({ length: 5 }, (_, index) => ({
-        type: "order",
-        customerName: `고객${(index % 10) + 1}`,
-        productName: [
-          "고기세트식당양념갈비",
-          "대패삼겹살 1kg",
-          "한돈 삼겹살 500g",
-          "목심 스테이크 600g",
-          "와규 등심 300g",
-        ][index % 5],
-        amount:
-          [15000, 12000, 18000, 25000, 35000][index % 5] *
-          (Math.floor(Math.random() * 3) + 1),
-        timestamp: new Date(
-          Date.now() - Math.floor(Math.random() * 7) * 24 * 60 * 60 * 1000
-        ).toISOString(),
-      })),
-    };
-
-    return {
-      products: mockProducts,
-      orders: mockOrders,
-      customers: mockCustomers,
-      orderStats: mockOrderStats,
-    };
-  };
-
   // 로딩 상태 확인
   const isLoading = isUserLoading || loading;
 
@@ -198,36 +104,34 @@ export default function DashboardPage() {
   // 데이터 가져오기
   useEffect(() => {
     if (!isLoading && userId) {
-      // 실제 데이터 또는 목업 데이터 사용
-      const mockData = createMockData();
-
-      if (!productsData?.data || productsError) {
-        setProducts(mockData.products);
-      } else {
+      // 실제 데이터가 있다면 바로 사용
+      if (productsData?.data && !productsError) {
         setProducts(productsData.data);
+      } else {
+        setProducts([]); // fallback으로 빈 배열 사용
       }
 
-      if (!ordersData?.data || ordersError) {
-        setRecentOrders(mockData.orders);
-      } else {
+      if (ordersData?.data && !ordersError) {
         setRecentOrders(ordersData.data);
+      } else {
+        setRecentOrders([]);
       }
 
-      if (!orderStatsData?.data || orderStatsError) {
-        setStats({
-          products: mockData.products.length,
-          orders: mockData.orders.length,
-          customers: mockData.customers.length,
-          totalSales: mockData.orderStats.totalSales,
-          recentActivity: mockData.orderStats.recentActivity,
-        });
-      } else {
+      if (orderStatsData?.data && !orderStatsError) {
         setStats({
           products: productsData?.data?.length || 0,
           orders: ordersData?.data?.length || 0,
-          customers: 0, // 고객 데이터가 없을 경우 0으로 설정
+          customers: 0, // 고객 데이터가 없는 경우 0으로 처리
           totalSales: orderStatsData.data.totalSales || 0,
           recentActivity: orderStatsData.data.recentActivity || [],
+        });
+      } else {
+        setStats({
+          products: 0,
+          orders: 0,
+          customers: 0,
+          totalSales: 0,
+          recentActivity: [],
         });
       }
     }
@@ -463,7 +367,7 @@ export default function DashboardPage() {
       // 백엔드 API 호출
       const response = await api.post(`/crawl/${bandId}/details`, {
         userId: userId,
-        maxPosts: 20, // 최대 게시물 수
+        maxPosts: 10, // 최대 게시물 수
         processProducts: true, // 상품 정보도 함께 처리
       });
 
@@ -730,7 +634,7 @@ export default function DashboardPage() {
             <span className="text-blue-600">📦</span>
           </div>
           <p className="text-lg md:text-2xl font-bold">
-            {displayProductsData?.data?.length || 0}개
+            {displayProductsData?.data.length || 0}개
           </p>
           <p className="text-xs md:text-sm text-gray-500 mt-2">
             {!displayProductsData?.data && "데이터 없음"}
@@ -830,11 +734,14 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-3 text-sm text-gray-500">
                         {order.products?.length > 0
-                          ? order.products[0].name +
+                          ? order.products[0].title +
                             (order.products.length > 1
                               ? ` 외 ${order.products.length - 1}건`
                               : "")
-                          : "상품정보 없음"}
+                          : displayProductsData?.data.find(
+                              (product) =>
+                                product.product_id === order.product_id
+                            )?.title || "상품정보 없음"}
                       </td>
                       <td className="py-3 text-sm text-gray-900 font-medium">
                         {formatCurrency(order.total_amount || 0)}
@@ -879,23 +786,20 @@ export default function DashboardPage() {
           </div>
 
           <div className="space-y-4">
-            {displayProductsData?.data?.length > 0 ? (
-              displayProductsData.data.slice(0, 5).map((product) => (
+            {products && products.length > 0 ? (
+              products.slice(0, 5).map((product) => (
                 <div
                   key={product.product_id}
                   className="flex items-center p-3 border border-gray-100 rounded-xl hover:bg-gray-50"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {product.name}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      재고: {product.stock || "무제한"}개
+                      {product.title}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold text-gray-900">
-                      {formatCurrency(product.price || 0)}
+                      {formatCurrency(product.base_price || 0)}
                     </p>
                     <span
                       className={`inline-block mt-1 px-2 py-1 text-xs rounded-full ${
