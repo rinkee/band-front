@@ -12,6 +12,7 @@ import {
   useOrders,
   useCustomers,
   useOrderStats,
+  useUserMutations,
 } from "../hooks";
 
 export default function DashboardPage() {
@@ -21,12 +22,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({
-    products: 0,
-    orders: 0,
-    customers: 0,
-    totalSales: 0,
+    totalOrders: 0,
+    completedOrders: 0,
+    pendingOrders: 0,
+    expectedSales: 0,
+    completedSales: 0,
     recentActivity: [],
   });
+  const [dateRange, setDateRange] = useState("7days"); // 기본값은 7일
 
   // 최근 주문 데이터
   const [recentOrders, setRecentOrders] = useState([]);
@@ -71,7 +74,7 @@ export default function DashboardPage() {
   const { data: ordersData, error: ordersError } = useOrders(
     userId,
     1,
-    {},
+    { limit: 500 },
     swrOptions
   );
 
@@ -83,10 +86,12 @@ export default function DashboardPage() {
   //   swrOptions
   // );
 
-  // 주문 통계 가져오기 (월간)
+  // 주문 통계 가져오기 (기간별)
   const { data: orderStatsData, error: orderStatsError } = useOrderStats(
     userId,
-    "month",
+    dateRange,
+    null,
+    null,
     swrOptions
   );
 
@@ -101,50 +106,45 @@ export default function DashboardPage() {
     // customersError ||
     orderStatsError;
 
+  // 일주일 전 날짜 계산 함수
+  const getLastWeekDate = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 7);
+    return date.toISOString().split("T")[0];
+  };
+
   // 데이터 가져오기
   useEffect(() => {
     if (!isLoading && userId) {
-      // 실제 데이터가 있다면 바로 사용
-      if (productsData?.data && !productsError) {
-        setProducts(productsData.data);
-      } else {
-        setProducts([]); // fallback으로 빈 배열 사용
-      }
-
-      if (ordersData?.data && !ordersError) {
-        setRecentOrders(ordersData.data);
-      } else {
-        setRecentOrders([]);
-      }
-
+      console.log("Fetching data for userId:", userId);
       if (orderStatsData?.data && !orderStatsError) {
+        console.log("Order Stats Data:", orderStatsData.data);
+
+        // API 응답 구조에 맞게 수정
         setStats({
-          products: productsData?.data?.length || 0,
-          orders: ordersData?.data?.length || 0,
-          customers: 0, // 고객 데이터가 없는 경우 0으로 처리
-          totalSales: orderStatsData.data.totalSales || 0,
+          totalOrders: orderStatsData.data.totalOrders || 0,
+          completedOrders: orderStatsData.data.completedOrders || 0,
+          pendingOrders: orderStatsData.data.pendingOrders || 0,
+          expectedSales: orderStatsData.data.totalSales || 0,
+          completedSales: orderStatsData.data.completedSales || 0,
           recentActivity: orderStatsData.data.recentActivity || [],
         });
       } else {
+        console.log("No order stats data available:", {
+          orderStatsData,
+          orderStatsError,
+        });
         setStats({
-          products: 0,
-          orders: 0,
-          customers: 0,
-          totalSales: 0,
+          totalOrders: 0,
+          completedOrders: 0,
+          pendingOrders: 0,
+          expectedSales: 0,
+          completedSales: 0,
           recentActivity: [],
         });
       }
     }
-  }, [
-    isLoading,
-    userId,
-    productsData,
-    ordersData,
-    orderStatsData,
-    productsError,
-    ordersError,
-    orderStatsError,
-  ]);
+  }, [isLoading, userId, orderStatsData, orderStatsError]);
 
   // 사용자 인증 상태 확인
   useEffect(() => {
@@ -162,6 +162,10 @@ export default function DashboardPage() {
         setUserData(userDataObj);
         setUserId(userDataObj.userId);
         setLoading(false);
+
+        // 데이터 로딩 상태 확인을 위한 로그
+        console.log("User Data:", userDataObj);
+        console.log("User ID:", userDataObj.userId);
       } catch (error) {
         console.error("데이터 조회 오류:", error);
         setError(error.message);
@@ -177,186 +181,20 @@ export default function DashboardPage() {
   const [crawlingStatus, setCrawlingStatus] = useState("");
   const [crawlingError, setCrawlingError] = useState(null);
   const [lastUpdateTime, setLastUpdateTime] = useState(null);
-  const [isAutoCrawlingEnabled, setIsAutoCrawlingEnabled] = useState(false);
-  const [crawlInterval, setCrawlInterval] = useState(10); // 기본값 10분
-  const [crawlingJobId, setCrawlingJobId] = useState(null); // 스케줄링된 작업 ID 저장 변수 추가
 
   const { mutate } = useSWRConfig();
 
-  // 페이지 로드 시 자동 크롤링 설정 불러오기
-  useEffect(() => {
-    const savedUpdateTime = localStorage.getItem("lastCrawlingUpdate");
-    if (savedUpdateTime) {
-      setLastUpdateTime(new Date(savedUpdateTime));
-    }
-
-    // 사용자 데이터가 있을 경우 백엔드에서 자동 크롤링 설정 조회
-    if (userData?.userId) {
-      fetchAutoCrawlSettings(userData.userId);
-      fetchCrawlingSchedule(userData.userId); // 현재 등록된 스케줄 작업 조회
-    }
-  }, [userData]);
-
-  // 자동 크롤링 설정 조회 함수
-  const fetchAutoCrawlSettings = async (userId) => {
-    try {
-      // 변경 전: /users/${userId}/auto-crawl
-      // 변경 후: /scheduler/users/${userId}/auto-crawl
-      const response = await api.get(`/scheduler/users/${userId}/auto-crawl`);
-      if (response.data && response.data.data) {
-        const { autoCrawl, crawlInterval, jobId } = response.data.data;
-        setIsAutoCrawlingEnabled(autoCrawl);
-        setCrawlInterval(crawlInterval || 10);
-        setCrawlingJobId(jobId); // 작업 ID도 저장
-        console.log(
-          `자동 크롤링 설정 조회: 활성화=${autoCrawl}, 간격=${crawlInterval}분, 작업 ID=${jobId}`
-        );
-      }
-    } catch (error) {
-      console.error("자동 크롤링 설정 조회 오류:", error);
-    }
-  };
-
-  // 자동 크롤링 설정 업데이트 함수
-  const updateAutoCrawlSettings = async (userId, autoCrawl, crawlInterval) => {
-    try {
-      // 변경 전: /users/${userId}/auto-crawl
-      // 변경 후: /scheduler/users/${userId}/auto-crawl
-      const response = await api.put(`/scheduler/users/${userId}/auto-crawl`, {
-        autoCrawl,
-        crawlInterval,
-      });
-      if (response.data && response.data.success) {
-        console.log(
-          `자동 크롤링 설정 업데이트 성공: 활성화=${autoCrawl}, 간격=${crawlInterval}분`
-        );
-        // 응답에 jobId가 포함되어 있으면 저장
-        if (response.data.data && response.data.data.jobId) {
-          setCrawlingJobId(response.data.data.jobId);
-        }
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("자동 크롤링 설정 업데이트 오류:", error);
-      return false;
-    }
-  };
-
-  // 스케줄링된 크롤링 작업 삭제 함수
-  const deleteScheduledCrawling = async (userId) => {
-    try {
-      // 세션 스토리지에서 토큰 가져오기
-      const token = sessionStorage.getItem("token");
-      console.log(token);
-
-      // 변경 전: /scheduler/jobs/${jobId}
-      // 변경 후: /scheduler/users/${userId}/job
-      const response = await api.delete(`/scheduler/users/${userId}/job`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.data && response.data.success) {
-        console.log(
-          `사용자 ${userId}의 크롤링 작업이 성공적으로 삭제되었습니다.`
-        );
-        setCrawlingJobId(null); // 작업 ID 초기화
-        return true;
-      } else {
-        console.error("크롤링 작업 삭제 실패:", response.data?.message);
-        return false;
-      }
-    } catch (error) {
-      console.error("크롤링 작업 삭제 오류:", error);
-      return false;
-    }
-  };
-
-  // 자동 크롤링 설정 토글 함수 수정
-  const toggleAutoCrawling = async () => {
-    if (!userData?.userId) {
-      alert("사용자 정보가 없습니다. 로그인 후 다시 시도해주세요.");
-      return;
-    }
-
-    const newState = !isAutoCrawlingEnabled;
-
-    // 백엔드에 자동 크롤링 설정 업데이트 요청
-    const success = await updateAutoCrawlSettings(
-      userData.userId,
-      newState,
-      crawlInterval
-    );
-
-    if (success) {
-      setIsAutoCrawlingEnabled(newState);
-
-      if (newState) {
-        // 자동 크롤링 활성화됨
-        console.log(`자동 크롤링 활성화됨 (${crawlInterval}분 간격)`);
-        // 즉시 크롤링 실행
-        if (userData && user?.band_id) {
-          sendCrawlingRequest(user.band_id, userData.userId);
-        }
-      } else {
-        // 자동 크롤링 비활성화됨
-        console.log("자동 크롤링 비활성화됨");
-
-        // 작업 ID 초기화
-        setCrawlingJobId(null);
-
-        // 삭제 API 대신 설정 업데이트만으로 해결
-        // (백엔드에서 autoCrawl이 false로 설정되면 작업을 알아서 정리함)
-        console.log("자동 크롤링 스케줄이 비활성화되었습니다.");
-      }
+  // 수동 크롤링 시작 함수
+  const handleStartCrawling = async () => {
+    if (user?.band_id && userData?.userId) {
+      sendCrawlingRequest(user.band_id, userData.userId, 12);
     } else {
-      alert("자동 크롤링 설정 변경에 실패했습니다.");
-    }
-  };
-
-  // 스케줄링된 크롤링 작업 조회 함수
-  const fetchCrawlingSchedule = async (userId) => {
-    try {
-      const response = await api.get("/scheduler/jobs");
-      if (response.data && response.data.success) {
-        // 사용자 ID로 필터링하여 크롤링 작업 찾기
-        const userJobs = response.data.data.filter(
-          (job) =>
-            job.data &&
-            job.data.userId === userId &&
-            job.data.type === "bandCrawling"
-        );
-
-        if (userJobs.length > 0) {
-          // 작업이 있으면 작업 ID 저장
-          const jobId = userJobs[0].id;
-          setCrawlingJobId(jobId);
-          console.log(`사용자의 크롤링 작업 ID: ${jobId}`);
-        }
-      }
-    } catch (error) {
-      console.error("크롤링 스케줄 조회 오류:", error);
-    }
-  };
-
-  // 크롤링 간격 변경 핸들러
-  const handleIntervalChange = async (e) => {
-    const newInterval = parseInt(e.target.value, 10);
-    if (isNaN(newInterval) || newInterval < 1) {
-      return;
-    }
-
-    setCrawlInterval(newInterval);
-
-    if (isAutoCrawlingEnabled && userData?.userId) {
-      await updateAutoCrawlSettings(userData.userId, true, newInterval);
+      alert("밴드 ID 또는 사용자 정보가 없습니다.");
     }
   };
 
   // 크롤링 요청 보내기
-  const sendCrawlingRequest = async (bandId, userId) => {
+  const sendCrawlingRequest = async (bandId, userId, maxPosts) => {
     try {
       setCrawlingStatus("크롤링 중...");
       setCrawlingError(null);
@@ -367,8 +205,9 @@ export default function DashboardPage() {
       // 백엔드 API 호출
       const response = await api.post(`/crawl/${bandId}/details`, {
         userId: userId,
-        maxPosts: 10, // 최대 게시물 수
+        maxPosts: maxPosts, // 최대 게시물 수
         processProducts: true, // 상품 정보도 함께 처리
+        isTestMode: true,
       });
 
       if (response.status === 200) {
@@ -410,15 +249,6 @@ export default function DashboardPage() {
     }
   };
 
-  // 크롤링 시작 함수
-  const startCrawling = async () => {
-    if (user?.band_id && userData?.userId) {
-      sendCrawlingRequest(user.band_id, userData.userId);
-    } else {
-      alert("밴드 ID 또는 사용자 정보가 없습니다.");
-    }
-  };
-
   const handleLogout = () => {
     sessionStorage.removeItem("userData");
     sessionStorage.removeItem("token");
@@ -436,13 +266,26 @@ export default function DashboardPage() {
 
   // 날짜 포맷팅 함수
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("ko-KR", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
+    if (!dateString) return "-";
+
+    try {
+      const date = new Date(dateString);
+
+      // 유효하지 않은 날짜 체크
+      if (isNaN(date.getTime())) {
+        return "-";
+      }
+
+      return new Intl.DateTimeFormat("ko-KR", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+    } catch (error) {
+      console.error("날짜 포맷팅 오류:", error, dateString);
+      return "-";
+    }
   };
 
   // 주문 상태 텍스트 변환 함수
@@ -462,6 +305,8 @@ export default function DashboardPage() {
   const displayOrdersData = ordersData;
   // const displayCustomersData = customersData;
   const displayOrderStatsData = orderStatsData;
+
+  const { updateUserProfile } = useUserMutations();
 
   if (loading) {
     return (
@@ -541,8 +386,8 @@ export default function DashboardPage() {
         <p className="text-gray-500 mt-1">오늘도 좋은 하루 되세요.</p>
       </div>
 
-      {/* 크롤링 컨트롤 섹션 */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 md:mb-8">
+      {/* 수동 크롤링 실행 및 상태 표시 */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">
@@ -569,7 +414,7 @@ export default function DashboardPage() {
             )}
           </div>
           <button
-            onClick={startCrawling}
+            onClick={handleStartCrawling}
             disabled={isCrawling}
             className={`px-6 py-3 rounded-lg font-medium flex items-center justify-center
               ${
@@ -625,62 +470,152 @@ export default function DashboardPage() {
       </div>
 
       {/* 주요 통계 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3 md:mb-4">
-            <h3 className="text-xs md:text-sm font-medium text-gray-500">
-              총 상품
-            </h3>
-            <span className="text-blue-600">📦</span>
+      <div className="mb-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold">주요 통계</h2>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setDateRange("today")}
+              className={`px-3 py-1 text-sm rounded-full ${
+                dateRange === "today"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+              }`}
+            >
+              오늘
+            </button>
+            <button
+              onClick={() => setDateRange("7days")}
+              className={`px-3 py-1 text-sm rounded-full ${
+                dateRange === "7days"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+              }`}
+            >
+              최근 7일
+            </button>
+            <button
+              onClick={() => setDateRange("30days")}
+              className={`px-3 py-1 text-sm rounded-full ${
+                dateRange === "30days"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+              }`}
+            >
+              최근 30일
+            </button>
+            <button
+              onClick={() => setDateRange("90days")}
+              className={`px-3 py-1 text-sm rounded-full ${
+                dateRange === "90days"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+              }`}
+            >
+              최근 90일
+            </button>
           </div>
-          <p className="text-lg md:text-2xl font-bold">
-            {displayProductsData?.data.length || 0}개
-          </p>
-          <p className="text-xs md:text-sm text-gray-500 mt-2">
-            {!displayProductsData?.data && "데이터 없음"}
-          </p>
         </div>
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3 md:mb-4">
-            <h3 className="text-xs md:text-sm font-medium text-gray-500">
-              총 주문
-            </h3>
-            <span className="text-blue-600">🛒</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-500">총 주문완료</h3>
+            <span className="text-sm text-gray-400">
+              {dateRange === "today"
+                ? "오늘"
+                : dateRange === "7days"
+                ? "최근 7일"
+                : dateRange === "30days"
+                ? "최근 30일"
+                : "최근 90일"}
+            </span>
           </div>
-          <p className="text-lg md:text-2xl font-bold">
-            {displayOrdersData?.data?.length || 0}건
-          </p>
-          <p className="text-xs md:text-sm text-gray-500 mt-2">
-            {!displayOrdersData?.data && "데이터 없음"}
-          </p>
+          <div className="flex items-baseline">
+            <p className="text-2xl font-semibold text-gray-900">
+              {stats.totalOrders}건
+            </p>
+          </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3 md:mb-4">
-            <h3 className="text-xs md:text-sm font-medium text-gray-500">
-              총 고객
-            </h3>
-            <span className="text-blue-600">👥</span>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-500">총 수령완료</h3>
+            <span className="text-sm text-gray-400">
+              {dateRange === "today"
+                ? "오늘"
+                : dateRange === "7days"
+                ? "최근 7일"
+                : dateRange === "30days"
+                ? "최근 30일"
+                : "최근 90일"}
+            </span>
           </div>
-          {/* <p className="text-lg md:text-2xl font-bold">
-                {displayCustomersData?.data?.length || 0}명
-              </p>
-              <p className="text-xs md:text-sm text-gray-500 mt-2">
-                {!displayCustomersData?.data && "데이터 없음"}
-              </p> */}
+          <div className="flex items-baseline">
+            <p className="text-2xl font-semibold text-gray-900">
+              {stats.completedOrders}건
+            </p>
+          </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3 md:mb-4">
-            <h3 className="text-xs md:text-sm font-medium text-gray-500">
-              총 매출
-            </h3>
-            <span className="text-blue-600">💰</span>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-500">미수령</h3>
+            <span className="text-sm text-gray-400">
+              {dateRange === "today"
+                ? "오늘"
+                : dateRange === "7days"
+                ? "최근 7일"
+                : dateRange === "30days"
+                ? "최근 30일"
+                : "최근 90일"}
+            </span>
           </div>
-          <p className="text-lg md:text-2xl font-bold">
-            {formatCurrency(displayOrderStatsData?.data?.totalSales || 0)}
-          </p>
-          <p className="text-xs md:text-sm text-gray-500 mt-2">
-            {!displayOrderStatsData?.data && "데이터 없음"}
-          </p>
+          <div className="flex items-baseline">
+            <p className="text-2xl font-semibold text-gray-900">
+              {stats.pendingOrders}건
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-500">예상 매출</h3>
+            <span className="text-sm text-gray-400">
+              {dateRange === "today"
+                ? "오늘"
+                : dateRange === "7days"
+                ? "최근 7일"
+                : dateRange === "30days"
+                ? "최근 30일"
+                : "최근 90일"}
+            </span>
+          </div>
+          <div className="flex items-baseline">
+            <p className="text-2xl font-semibold text-gray-900">
+              {formatCurrency(stats.expectedSales)}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-500">판매 수량</h3>
+            <span className="text-sm text-gray-400">
+              {dateRange === "today"
+                ? "오늘"
+                : dateRange === "7days"
+                ? "최근 7일"
+                : dateRange === "30days"
+                ? "최근 30일"
+                : "최근 90일"}
+            </span>
+          </div>
+          <div className="flex items-baseline">
+            <p className="text-2xl font-semibold text-gray-900">
+              {formatCurrency(stats.completedSales)}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -861,89 +796,6 @@ export default function DashboardPage() {
           <p className="text-center text-gray-500 py-10">
             최근 활동 데이터가 없습니다. 백엔드에서 데이터를 확인해주세요.
           </p>
-        )}
-      </div>
-
-      {/* 데이터 업데이트 섹션 */}
-      <div className="mt-6 bg-white rounded-2xl p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">데이터 업데이트</h2>
-
-        {/* 자동 크롤링 설정 */}
-        <div className="mt-6 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-md font-medium">자동 크롤링 설정</h3>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isAutoCrawlingEnabled}
-                onChange={toggleAutoCrawling}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-          <div className="flex items-center space-x-4 mb-2">
-            <p className="text-sm text-gray-500 flex-grow">
-              활성화하면 백엔드에서 설정한 간격으로 자동으로 크롤링을
-              실행합니다.
-            </p>
-            {isAutoCrawlingEnabled && (
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-500">크롤링 간격:</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={crawlInterval}
-                  onChange={handleIntervalChange}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-500">분</span>
-              </div>
-            )}
-          </div>
-          {isAutoCrawlingEnabled && (
-            <div className="bg-blue-50 p-3 rounded text-xs text-blue-700">
-              <p>
-                ※ 백엔드에서 자동으로 크롤링이 실행됩니다. 브라우저를 닫아도
-                동작합니다.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {lastUpdateTime && (
-          <div className="flex items-center text-sm text-gray-600 mt-2">
-            <span className="mr-2">
-              마지막 업데이트: {formatDate(lastUpdateTime)}
-            </span>
-            {isAutoCrawlingEnabled && (
-              <span className="text-xs px-2 py-1 bg-blue-100 rounded-full">
-                예상 다음 업데이트:{" "}
-                {formatDate(
-                  new Date(lastUpdateTime.getTime() + crawlInterval * 60 * 1000)
-                )}
-              </span>
-            )}
-          </div>
-        )}
-
-        {crawlingError && (
-          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center text-sm text-red-700">
-              <svg
-                className="w-4 h-4 mr-2 text-red-500"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              {crawlingError}
-            </div>
-          </div>
         )}
       </div>
     </div>

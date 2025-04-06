@@ -79,7 +79,7 @@ export default function OrdersPage() {
   const { data: productsData, error: productsError } = useProducts(
     userData?.userId,
     1, // 모든 상품 목록을 가져오기 위해 페이지는 1로 고정
-    {}, // 필터 없음
+    { limit: 50 }, // status 필터 추가, 페이지 크기 증가
     swrOptions
   );
 
@@ -255,7 +255,7 @@ export default function OrdersPage() {
       case "주문완료":
         return "bg-blue-100 text-blue-800";
       case "수령완료":
-        return "bg-teal-100 text-teal-800";
+        return "bg-green-100 text-green-800";
       case "주문취소":
         return "bg-red-100 text-red-800";
       default:
@@ -574,29 +574,102 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">주문 관리</h1>
-        <p className="text-sm text-gray-500">
-          주문 목록을 확인하고 상태를 업데이트할 수 있습니다.
-        </p>
+    <div className="p-3 md:p-6">
+      <div className="flex">
+        <div className="mb-4 md:mb-6">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-1 md:mb-2">
+            주문 관리
+          </h1>
+          <p className="text-xs md:text-sm text-gray-500">
+            주문 목록을 확인하고 상태를 업데이트할 수 있습니다.
+          </p>
+        </div>
+        <div className="w-full flex justify-end">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg p-2 flex flex-col items-start">
+              <div className="text-md text-gray-500">총 주문</div>
+              <div className="text-2xl font-semibold ">{totalItems}</div>
+            </div>
+            <div className="rounded-lg p-2">
+              <div className="text-md text-gray-500">미수령</div>
+              <div className="text-2xl font-semibold ">
+                {orders.filter((o) => o.status === "주문완료").length}
+              </div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-2">
+              <div className="text-md text-gray-500">완료율</div>
+              <div className="text-2xl font-semibold ">
+                {totalItems
+                  ? Math.round(
+                      (orders.filter((o) => o.status === "수령완료").length /
+                        totalItems) *
+                        100
+                    )
+                  : 0}
+                %
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 필터 & 검색 */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
-        <div className="flex flex-col md:flex-row gap-4 mb-4">
-          <div className="flex-1">
-            <div className="relative">
+      <div className="pb-5">
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          <div className="w-full md:w-1/2 flex gap-2">
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => handleFilterChange("all")}
+                className={`px-4 py-1 rounded-xl text-sm font-medium ${
+                  filterStatus === "all"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                전체
+              </button>
+              <button
+                onClick={() => handleFilterChange("주문완료")}
+                className={`px-2 py-1 rounded-xl text-sm font-medium ${
+                  filterStatus === "주문완료"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                주문완료
+              </button>
+              <button
+                onClick={() => handleFilterChange("수령완료")}
+                className={`px-2 py-1 rounded-xl text-sm font-medium ${
+                  filterStatus === "수령완료"
+                    ? "bg-purple-100 text-purple-800"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                수령완료
+              </button>
+              <button
+                onClick={() => handleFilterChange("주문취소")}
+                className={`px-2 py-1 rounded-xl text-sm font-medium ${
+                  filterStatus === "주문취소"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                주문취소
+              </button>
+            </div>
+            <div className="relative flex-1">
               <input
                 type="text"
-                placeholder="주문 검색 (고객명, 상품명, 댓글)"
+                placeholder="주문 검색"
                 value={searchTerm}
                 onChange={handleSearchChange}
-                className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-1.5 pr-8 text-sm border border-gray-300 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
                 <svg
-                  className="w-5 h-5 text-gray-400"
+                  className="w-4 h-4 text-gray-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -612,71 +685,24 @@ export default function OrdersPage() {
             </div>
           </div>
         </div>
-
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button
-            onClick={() => handleFilterChange("all")}
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              filterStatus === "all"
-                ? "bg-blue-100 text-blue-800"
-                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-            }`}
-          >
-            전체
-          </button>
-          <button
-            onClick={() => handleFilterChange("주문완료")}
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              filterStatus === "주문완료"
-                ? "bg-blue-100 text-blue-800"
-                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-            }`}
-          >
-            주문완료
-          </button>
-          <button
-            onClick={() => handleFilterChange("수령완료")}
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              filterStatus === "수령완료"
-                ? "bg-purple-100 text-purple-800"
-                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-            }`}
-          >
-            수령완료
-          </button>
-          <button
-            onClick={() => handleFilterChange("주문취소")}
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              filterStatus === "주문취소"
-                ? "bg-red-100 text-red-800"
-                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-            }`}
-          >
-            주문취소
-          </button>
-        </div>
-
-        <div className="text-sm text-gray-600">
-          총 {filteredOrders.length}개 주문 중 {displayOrders.length}개 표시
-          (페이지 {currentPage}/{totalPages})
-        </div>
       </div>
 
       {/* 주문 테이블 */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6">
+      <div className="bg-white rounded-xl overflow-hidden mb-4 md:mb-6">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full table-fixed p-4">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-10 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <button
                     onClick={() => handleSortChange("id")}
                     className="flex items-center focus:outline-none"
                   >
+                    <span className="hidden md:inline">#</span>
                     {getSortIcon("id")}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-1/6 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <button
                     onClick={() => handleSortChange("ordered_at")}
                     className="flex items-center focus:outline-none"
@@ -685,43 +711,51 @@ export default function OrdersPage() {
                     {getSortIcon("ordered_at")}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <button
-                    onClick={() => handleSortChange("customer_name")}
-                    className="flex items-center focus:outline-none"
-                  >
-                    고객명
-                    {getSortIcon("customer_name")}
-                  </button>
+                <th className="w-1/5 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleSortChange("product_id")}
+                      className="flex items-center focus:outline-none"
+                    >
+                      상품명
+                    </button>
+                  </div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  상품정보
+                <th className="w-1/5 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleSortChange("customer_name")}
+                      className="flex items-center focus:outline-none"
+                    >
+                      고객명
+                      {getSortIcon("customer_name")}
+                    </button>
+                  </div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-1/5 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                   고객 댓글
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-16 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   수량
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <button
                     onClick={() => handleSortChange("total_amount")}
-                    className="flex items-center focus:outline-none"
+                    className="flex items-center justify-end focus:outline-none ml-auto"
                   >
                     금액
                     {getSortIcon("total_amount")}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-24 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                   바코드
                 </th>
-
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-24 px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                   상태
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-200 ">
               {displayOrders.map((order, index) => {
                 // 현재 페이지가 1이면 최대 인덱스(37)부터 시작
                 // 현재 페이지가 2이면 (37-30=7)부터 시작
@@ -734,27 +768,25 @@ export default function OrdersPage() {
                     key={order.order_id}
                     className="hover:bg-gray-50 transition-colors"
                   >
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 font-medium">
+                    <td className="px-2 py-4 whitespace-nowrap text-sm text-gray-500 font-medium text-center">
                       {orderNumber}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-2 py-2 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(order.ordered_at)}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm  text-gray-800 font-semibold">
-                          {order.customer_name}
-                        </div>
+                    <td className="px-2 py-2">
+                      <div className="text-sm text-gray-700 truncate">
+                        {getProductNameById(order.product_id)}
                       </div>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      <div className="text-sm text-gray-800 font-semibold">
-                        <div>{getProductNameById(order.product_id)}</div>
+                    <td className="px-2 py-2">
+                      <div className="text-sm text-gray-800 font-semibold truncate">
+                        {order.customer_name}
                       </div>
                     </td>
-                    <td className="px-4 py-2 max-w-xs">
+                    <td className="px-2 py-2 max-w-xs hidden md:table-cell">
                       <div className="flex items-center gap-2">
-                        <div className="text-sm text-gray-500 truncate md:whitespace-normal">
+                        <div className="text-sm text-gray-500 line-clamp-1">
                           {order.comment}
                         </div>
                         {getPostUrlByProductId(order.product_id) && (
@@ -778,20 +810,20 @@ export default function OrdersPage() {
                                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
                               />
                             </svg>
-                            댓글보기
+                            댓글
                           </a>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      <div className="flex items-center">
+                    <td className="px-2 py-2 whitespace-nowrap text-center">
+                      <div className="flex items-center justify-center">
                         <button
                           onClick={() => decreaseQuantity(order.order_id)}
-                          className="w-8 h-8 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
+                          className="w-7 h-7 flex items-center justify-center rounded-l-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
                           disabled={order.quantity <= 1}
                         >
                           <svg
-                            className="w-4 h-4"
+                            className="w-3 h-3"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -804,15 +836,15 @@ export default function OrdersPage() {
                             />
                           </svg>
                         </button>
-                        <span className="w-10 h-8 flex items-center justify-center text-sm font-medium bg-gray-50 border-t border-b border-gray-200 text-black">
+                        <span className="w-8 h-7 flex items-center justify-center text-sm font-medium bg-gray-50 border-t border-b border-gray-200 text-black">
                           {order.quantity}
                         </span>
                         <button
                           onClick={() => increaseQuantity(order.order_id)}
-                          className="w-8 h-8 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
+                          className="w-7 h-7 flex items-center justify-center rounded-r-lg bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
                         >
                           <svg
-                            className="w-4 h-4"
+                            className="w-3 h-3"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -827,22 +859,27 @@ export default function OrdersPage() {
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
+                    <td className="px-2 py-2 whitespace-nowrap font-medium text-gray-900 text-right">
                       {formatCurrency(order.total_amount)}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-900">
-                      {getProductBarcode(order.product_id) && (
-                        <div className="mt-1" style={{ width: "130px" }}>
+                    <td className="px-2 py-2 whitespace-nowrap text-center hidden md:table-cell">
+                      {getProductBarcode(order.product_id) ? (
+                        <div style={{ maxWidth: "120px" }} className="mx-auto">
                           <Barcode
                             value={getProductBarcode(order.product_id)}
                             height={30}
+                            width={1.2}
                           />
                         </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">
+                          바코드 없음
+                        </span>
                       )}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td className="px-2 py-2 whitespace-nowrap text-center">
                       <span
-                        className={`px-3 py-2 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
+                        className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-lg ${getStatusBadgeStyles(
                           order.status
                         )} cursor-pointer hover:shadow-sm transition-shadow`}
                         onClick={() => openStatusModal(order.order_id)}
@@ -850,8 +887,8 @@ export default function OrdersPage() {
                         {order.status}
                       </span>
                       {order.status === "수령완료" && order.pickupTime && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          수령시간: {formatDate(order.pickupTime)}
+                        <div className="text-xs text-gray-500 mt-1 hidden md:block">
+                          {formatDate(order.pickupTime)}
                         </div>
                       )}
                     </td>
@@ -861,8 +898,8 @@ export default function OrdersPage() {
               {displayOrders.length === 0 && (
                 <tr>
                   <td
-                    colSpan="9"
-                    className="px-4 py-8 text-center text-gray-500"
+                    colSpan="8"
+                    className="px-2 py-8 text-center text-gray-500"
                   >
                     표시할 주문이 없습니다.
                   </td>
@@ -874,20 +911,11 @@ export default function OrdersPage() {
 
         {/* 페이지네이션 */}
         {filteredOrders.length > 0 && (
-          <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200">
-            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+          <div className="px-2 py-3 flex items-center justify-between border-t border-gray-200">
+            <div className="flex-1 flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-700">
-                  전체 <span className="font-medium">{totalItems}</span>개 중{" "}
-                  <span className="font-medium">
-                    {currentPage * itemsPerPage - itemsPerPage + 1}
-                  </span>
-                  -
-                  <span className="font-medium">
-                    {currentPage * itemsPerPage > totalItems
-                      ? totalItems
-                      : currentPage * itemsPerPage}
-                  </span>
+                <p className="text-xs text-gray-500">
+                  전체 <span className="font-medium">{totalItems}</span>개
                 </p>
               </div>
               <div>
@@ -898,7 +926,7 @@ export default function OrdersPage() {
                   <button
                     onClick={goToPreviousPage}
                     disabled={currentPage === 1}
-                    className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
+                    className={`relative inline-flex items-center px-2 py-1 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${
                       currentPage === 1
                         ? "text-gray-300 cursor-not-allowed"
                         : "text-gray-500 hover:bg-gray-50"
@@ -906,7 +934,7 @@ export default function OrdersPage() {
                   >
                     <span className="sr-only">이전</span>
                     <svg
-                      className="h-5 w-5"
+                      className="h-4 w-4"
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"
@@ -921,26 +949,26 @@ export default function OrdersPage() {
                   </button>
 
                   {/* 페이지 번호 */}
-                  {Array.from({ length: Math.min(5, totalPages) }).map(
+                  {Array.from({ length: Math.min(3, totalPages) }).map(
                     (_, index) => {
                       let pageNumber;
 
-                      // 현재 페이지를 기준으로 앞뒤로 2페이지씩 표시
-                      if (totalPages <= 5) {
+                      // 현재 페이지를 기준으로 앞뒤로 1페이지씩 표시
+                      if (totalPages <= 3) {
                         pageNumber = index + 1;
-                      } else if (currentPage <= 3) {
+                      } else if (currentPage <= 2) {
                         pageNumber = index + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNumber = totalPages - 4 + index;
+                      } else if (currentPage >= totalPages - 1) {
+                        pageNumber = totalPages - 2 + index;
                       } else {
-                        pageNumber = currentPage - 2 + index;
+                        pageNumber = currentPage - 1 + index;
                       }
 
                       return (
                         <button
                           key={pageNumber}
                           onClick={() => paginate(pageNumber)}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                          className={`relative inline-flex items-center px-3 py-1 border text-xs font-medium ${
                             currentPage === pageNumber
                               ? "z-10 bg-blue-50 border-blue-500 text-blue-600"
                               : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
@@ -955,7 +983,7 @@ export default function OrdersPage() {
                   <button
                     onClick={goToNextPage}
                     disabled={currentPage === totalPages}
-                    className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
+                    className={`relative inline-flex items-center px-2 py-1 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${
                       currentPage === totalPages
                         ? "text-gray-300 cursor-not-allowed"
                         : "text-gray-500 hover:bg-gray-50"
@@ -963,7 +991,7 @@ export default function OrdersPage() {
                   >
                     <span className="sr-only">다음</span>
                     <svg
-                      className="h-5 w-5"
+                      className="h-4 w-4"
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"
@@ -986,43 +1014,49 @@ export default function OrdersPage() {
       {/* 상태 변경 모달 */}
       {statusModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h3 className="text-xl font-bold mb-6 text-gray-900">
+          <div className="bg-white rounded-xl max-w-xs w-full p-4 shadow-xl">
+            <h3 className="text-lg font-bold mb-4 text-gray-900">
               주문 상태 변경
             </h3>
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-3 gap-2 mb-4">
               <button
                 onClick={() =>
                   handleStatusChange(statusModal.orderId, "주문완료")
                 }
-                className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-200 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-gray-200 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <span className="text-xl mb-2">💳</span>
-                <span className="font-medium text-gray-900">주문완료</span>
+                <span className="text-lg mb-1">💳</span>
+                <span className="font-medium text-sm text-gray-900">
+                  주문완료
+                </span>
               </button>
               <button
                 onClick={() =>
                   handleStatusChange(statusModal.orderId, "수령완료")
                 }
-                className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-200 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-gray-200 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
               >
-                <span className="text-xl mb-2">✨</span>
-                <span className="font-medium text-gray-900">수령완료</span>
+                <span className="text-lg mb-1">✨</span>
+                <span className="font-medium text-sm text-gray-900">
+                  수령완료
+                </span>
               </button>
               <button
                 onClick={() =>
                   handleStatusChange(statusModal.orderId, "주문취소")
                 }
-                className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="flex flex-col items-center justify-center p-3 rounded-lg border border-gray-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
               >
-                <span className="text-xl mb-2">❌</span>
-                <span className="font-medium text-gray-900">주문취소</span>
+                <span className="text-lg mb-1">❌</span>
+                <span className="font-medium text-sm text-gray-900">
+                  주문취소
+                </span>
               </button>
             </div>
             <div className="flex justify-end">
               <button
                 onClick={() => setStatusModal({ show: false, orderId: null })}
-                className="px-4 py-2 text-gray-500 hover:text-gray-700 font-medium"
+                className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
               >
                 닫기
               </button>

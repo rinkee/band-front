@@ -75,7 +75,7 @@ export default function LoginPage() {
           id: userData.userId,
           loginId: userData.loginId,
           storeName: userData.storeName,
-          bandId: userData.bandId,
+          bandNumber: userData.bandNumber,
           naverId: userData.naverId,
         });
 

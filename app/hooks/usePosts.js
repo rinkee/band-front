@@ -3,15 +3,15 @@ import { axiosFetcher, api } from "../lib/fetcher";
 
 /**
  * 게시물 목록을 가져오는 훅
- * @param {string} bandId - 밴드 ID
+ * @param {string} bandNumber - 밴드 ID
  * @param {number} page - 페이지 번호
  * @param {Object} filters - 필터링 옵션
  * @param {Object} options - SWR 옵션
  * @returns {Object} SWR 응답
  */
-export function usePosts(bandId, page = 1, filters = {}, options = {}) {
-  const params = new URLSearchParams({ bandId, page, ...filters });
-  return useSWR(bandId ? `/posts?${params}` : null, axiosFetcher, options);
+export function usePosts(bandNumber, page = 1, filters = {}, options = {}) {
+  const params = new URLSearchParams({ bandNumber, page, ...filters });
+  return useSWR(bandNumber ? `/posts?${params}` : null, axiosFetcher, options);
 }
 
 /**

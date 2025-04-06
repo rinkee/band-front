@@ -79,7 +79,7 @@ export const authFetcher = async (url, options = {}) => {
  */
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -88,14 +88,29 @@ export const api = axios.create({
 // 요청 인터셉터 설정
 api.interceptors.request.use(
   (config) => {
-    // 요청 전 처리 (토큰 설정 등)
-    const token = localStorage.getItem("token");
+    console.log("Axios 요청 인터셉터 실행됨"); // 실행 여부 확인
+    const sessionData = sessionStorage.getItem("userData");
+    let token = null;
+    if (sessionData) {
+      try {
+        const userDataObj = JSON.parse(sessionData);
+        token = userDataObj.token; // 'token' 키가 맞는지 확인 필요
+        console.log("인터셉터에서 읽은 토큰:", token); // 토큰 값 확인
+      } catch (e) {
+        console.error("세션 데이터 파싱 오류 (인터셉터):", e);
+      }
+    }
+
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers["Authorization"] = `Bearer ${token}`;
+      console.log("Authorization 헤더 설정됨"); // 헤더 설정 확인
+    } else {
+      console.log("토큰 없음, Authorization 헤더 설정 안 함");
     }
     return config;
   },
   (error) => {
+    console.error("Axios 요청 인터셉터 오류:", error); // 인터셉터 자체 오류 확인
     return Promise.reject(error);
   }
 );
@@ -109,7 +124,8 @@ api.interceptors.response.use(
   (error) => {
     // 오류 응답 처리
     if (error.response?.status === 401) {
-      localStorage.removeItem("token");
+      console.error("응답 인터셉터: 401 Unauthorized 감지. 로그아웃 처리.");
+      sessionStorage.removeItem("userData");
       window.location.href = "/login";
     }
     return Promise.reject(error);
@@ -118,28 +134,22 @@ api.interceptors.response.use(
 
 /**
  * SWR에서 사용할 axios 기반 fetcher
- * @param {string} url - 요청 URL
+ * @param {string} url - 요청 URL (예: /auth/users/123/profile)
  * @returns {Promise} 응답 데이터
  */
 export const axiosFetcher = async (url) => {
   try {
-    // URL 경로 처리 개선
-    // 1. '/api/' 접두사 제거 (이미 API_BASE_URL에 포함되어 있음)
-    const apiPattern = /^\/api\//;
-    let cleanUrl = url.replace(apiPattern, "/");
-
-    // 2. 단수형 대신 복수형 유지 - 백엔드가 복수형 API 경로를 사용함
-    // 이전 단수형 변환 코드 제거하고 복수형 유지
-
-    // URL이 슬래시로 시작하지 않으면 추가
-    const fullUrl = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
-    devLog("API 요청:", API_BASE_URL + fullUrl);
-
-    const response = await api.get(fullUrl);
+    devLog("axiosFetcher 요청 URL (api 인스턴스 사용):", url);
+    const response = await api.get(url);
     return response.data;
   } catch (error) {
-    console.error("API 요청 오류:", error.message, error.response?.status);
-    const customError = new Error("API 요청 실패");
+    console.error(
+      `API 요청 오류 (${url}):`,
+      error.message,
+      error.response?.status,
+      error.response?.data
+    );
+    const customError = new Error(`API 요청 실패: ${url}`);
     customError.info = error.response?.data;
     customError.status = error.response?.status;
     throw customError;

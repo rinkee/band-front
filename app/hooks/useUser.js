@@ -8,7 +8,7 @@ import { axiosFetcher, api } from "../lib/fetcher";
  * @returns {Object} SWR 응답 객체
  */
 export function useUser(userId, options = {}) {
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     userId ? `/auth/${userId}` : null,
     axiosFetcher,
     options
@@ -18,6 +18,7 @@ export function useUser(userId, options = {}) {
     data: data,
     isLoading,
     isError: error,
+    mutate,
   };
 }
 
@@ -26,19 +27,20 @@ export function useUser(userId, options = {}) {
  * @returns {Object} 사용자 정보 변경 함수들
  */
 export function useUserMutations() {
-  const { mutate } = useSWRConfig();
+  const { mutate: globalMutate } = useSWRConfig();
 
   /**
    * 사용자 프로필 업데이트 함수
    * @param {string} userId - 사용자 ID
-   * @param {Object} userData - 변경할 사용자 데이터
+   * @param {Object} userData - 변경할 사용자 데이터 (이제 excluded_customers 포함 가능)
    * @returns {Promise} API 응답
    */
   const updateUserProfile = async (userId, userData) => {
-    const response = await api.put(`/auth/${userId}`, userData);
+    // API 엔드포인트는 /auth/:userId 사용
+    const response = await api.put(`/auth/users/${userId}/profile`, userData);
 
     // 캐시 갱신
-    mutate(`/auth/${userId}`);
+    globalMutate(`/auth/users/${userId}/profile`);
 
     return response.data;
   };
@@ -55,7 +57,6 @@ export function useUserMutations() {
       currentPassword,
       newPassword,
     });
-
     return response.data;
   };
 
@@ -71,14 +72,15 @@ export function useUserMutations() {
       naverId,
       naverPassword,
     });
-
-    // 캐시 갱신
-    mutate(`/auth/${userId}`);
-
+    globalMutate(`/auth/${userId}`);
     return response.data;
   };
 
-  return { updateUserProfile, changePassword, setNaverAccount };
+  return {
+    updateUserProfile,
+    changePassword,
+    setNaverAccount,
+  };
 }
 
 export default useUser;

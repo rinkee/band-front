@@ -53,6 +53,7 @@ export default function ProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [activeTab, setActiveTab] = useState("barcode"); // "info"에서 "barcode"로 변경
   const [editedProduct, setEditedProduct] = useState({
     title: "",
     base_price: 0,
@@ -119,6 +120,7 @@ export default function ProductsPage() {
             pickup_info: data.data.pickup_info || "",
             pickup_date: data.data.pickup_date || "",
           });
+          setActiveTab("barcode"); // 모달이 열릴 때마다 바코드 탭을 기본으로 설정
           setIsModalOpen(true);
         }
       },
@@ -309,6 +311,11 @@ export default function ProductsPage() {
         [name]: value,
       });
     }
+  };
+
+  // 모달 내 탭 변경 핸들러
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
   };
 
   if (loading) {
@@ -575,6 +582,9 @@ export default function ProductsPage() {
                       {getSortIcon("pickup_date")}
                     </button>
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    동작
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -591,9 +601,6 @@ export default function ProductsPage() {
                             <div className="text-sm font-medium text-blue-600">
                               {product.title}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              {product.product_id}
-                            </div>
                           </div>
                         </div>
                       </td>
@@ -602,11 +609,20 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                         {product.barcode ? (
-                          <div style={{ width: "120px" }}>
-                            <Barcode value={product.barcode} height={30} />
+                          <div
+                            style={{ width: "150px" }}
+                            className="p-2  border-gray-200 rounded-md "
+                          >
+                            <Barcode
+                              value={product.barcode}
+                              height={40}
+                              width={1.8}
+                            />
                           </div>
                         ) : (
-                          "-"
+                          <span className="text-gray-400 italic">
+                            바코드 없음
+                          </span>
                         )}
                       </td>
 
@@ -632,6 +648,33 @@ export default function ProductsPage() {
                         ) : (
                           "-"
                         )}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(
+                                `/products/${product.product_id}`,
+                                "_blank"
+                              );
+                            }}
+                            className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                          >
+                            상품보기
+                          </button>
+                          {product.band_post_url && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(product.band_post_url, "_blank");
+                              }}
+                              className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                            >
+                              밴드보기
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -685,119 +728,314 @@ export default function ProductsPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      상품명
-                    </label>
-                    <input
-                      type="text"
-                      name="title"
-                      value={editedProduct.title}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      가격
-                    </label>
-                    <input
-                      type="number"
-                      name="price"
-                      value={editedProduct.price}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      수량
-                    </label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={editedProduct.quantity}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      상태
-                    </label>
-                    <select
-                      name="status"
-                      value={editedProduct.status}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                {/* 탭 네비게이션 */}
+                <div className="border-b border-gray-200 mb-6">
+                  <div className="flex space-x-8">
+                    <button
+                      onClick={() => handleTabChange("barcode")}
+                      className={`pb-4 px-1 font-medium text-sm focus:outline-none transition-colors ${
+                        activeTab === "barcode"
+                          ? "text-blue-600 border-b-2 border-blue-500"
+                          : "text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                      aria-current={
+                        activeTab === "barcode" ? "page" : undefined
+                      }
                     >
-                      <option value="판매중">판매중</option>
-                      <option value="품절">품절</option>
-                      <option value="판매중지">판매중지</option>
-                    </select>
+                      <div className="flex items-center">
+                        <svg
+                          className="w-5 h-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+                          />
+                        </svg>
+                        바코드 관리
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleTabChange("info")}
+                      className={`pb-4 px-1 font-medium text-sm focus:outline-none transition-colors ${
+                        activeTab === "info"
+                          ? "text-blue-600 border-b-2 border-blue-500"
+                          : "text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                      aria-current={activeTab === "info" ? "page" : undefined}
+                    >
+                      <div className="flex items-center">
+                        <svg
+                          className="w-5 h-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        상품 정보
+                      </div>
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      바코드
-                    </label>
-                    <input
-                      type="text"
-                      name="barcode"
-                      value={editedProduct.barcode}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {editedProduct.barcode && (
-                      <div className="mt-2">
-                        <Barcode value={editedProduct.barcode} height={40} />
+                </div>
+
+                {/* 상품 정보 탭 */}
+                {activeTab === "info" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        상품명 <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="title"
+                        value={editedProduct.title}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        상품 ID
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedProduct?.product_id || ""}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-md text-gray-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        가격 <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="price"
+                        value={editedProduct.price}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/^0+/, "");
+                          setEditedProduct({
+                            ...editedProduct,
+                            price: value === "" ? 0 : parseInt(value) || 0,
+                          });
+                        }}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        수량
+                      </label>
+                      <input
+                        type="number"
+                        name="quantity"
+                        value={editedProduct.quantity}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        상태 <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="status"
+                        value={editedProduct.status}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="판매중">판매중</option>
+                        <option value="품절">품절</option>
+                        <option value="판매중지">판매중지</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        수령일
+                      </label>
+                      <input
+                        type="date"
+                        name="pickup_date"
+                        value={
+                          editedProduct.pickup_date
+                            ? new Date(editedProduct.pickup_date)
+                                .toISOString()
+                                .split("T")[0]
+                            : ""
+                        }
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        상품 설명
+                      </label>
+                      <textarea
+                        name="description"
+                        value={editedProduct.description || ""}
+                        onChange={handleInputChange}
+                        rows="4"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      ></textarea>
+                    </div>
+                  </div>
+                )}
+
+                {/* 바코드 관리 탭 */}
+                {activeTab === "barcode" && (
+                  <div className="py-2">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center">
+                        <svg
+                          className="w-5 h-5 mr-2 text-gray-700"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+                          />
+                        </svg>
+                        <h4 className="text-lg font-medium text-gray-800">
+                          {editedProduct.title || "상품"} 바코드
+                        </h4>
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        바코드 번호
+                      </label>
+                      <input
+                        type="text"
+                        name="barcode"
+                        value={editedProduct.barcode}
+                        onChange={handleInputChange}
+                        placeholder="바코드 번호를 입력하세요"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        상품에 바코드가 있는 경우 입력해주세요. 바코드 스캐너로
+                        읽을 수 있습니다.
+                      </p>
+                    </div>
+
+                    {editedProduct.barcode ? (
+                      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
+                          <div className="text-sm font-medium text-gray-700">
+                            바코드 미리보기
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                              className="px-3 py-1 text-xs text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                              onClick={() => {
+                                // 인쇄 기능은 실제 구현 필요
+                                alert("바코드 인쇄 기능은 준비 중입니다.");
+                              }}
+                            >
+                              <svg
+                                className="w-4 h-4 mr-1 inline-block"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                                />
+                              </svg>
+                              인쇄
+                            </button>
+                            <button
+                              className="px-3 py-1 text-xs text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                              onClick={() => {
+                                // 복사 기능은 실제 구현 필요
+                                navigator.clipboard
+                                  .writeText(editedProduct.barcode)
+                                  .then(() =>
+                                    alert(
+                                      "바코드 번호가 클립보드에 복사되었습니다."
+                                    )
+                                  )
+                                  .catch(() =>
+                                    alert(
+                                      "복사 실패. 직접 선택하여 복사해주세요."
+                                    )
+                                  );
+                              }}
+                            >
+                              <svg
+                                className="w-4 h-4 mr-1 inline-block"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                                />
+                              </svg>
+                              복사
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-8 flex justify-center">
+                          <div className="w-full max-w-md">
+                            <Barcode
+                              value={editedProduct.barcode}
+                              height={100}
+                              width={2}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-10 text-center text-gray-500">
+                        <svg
+                          className="w-12 h-12 mx-auto mb-3 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="1.5"
+                            d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+                          />
+                        </svg>
+                        <p className="mb-1">
+                          바코드 번호를 입력하면 미리보기가 표시됩니다
+                        </p>
+                        <p className="text-xs">
+                          최소 4자리 이상의 숫자를 입력하세요
+                        </p>
                       </div>
                     )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      수령 정보
-                    </label>
-                    <input
-                      type="text"
-                      name="pickup_info"
-                      value={editedProduct.pickup_info || ""}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="예: 내일수요일도착"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      수령일
-                    </label>
-                    <input
-                      type="date"
-                      name="pickup_date"
-                      value={
-                        editedProduct.pickup_date
-                          ? new Date(editedProduct.pickup_date)
-                              .toISOString()
-                              .split("T")[0]
-                          : ""
-                      }
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      상품 설명
-                    </label>
-                    <textarea
-                      name="description"
-                      value={editedProduct.description || ""}
-                      onChange={handleInputChange}
-                      rows="4"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    ></textarea>
-                  </div>
-                </div>
+                )}
 
                 <div className="flex justify-between pt-4 border-t border-gray-200">
                   <button

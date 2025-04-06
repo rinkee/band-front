@@ -27,12 +27,26 @@ export function useOrder(orderId, options = {}) {
 /**
  * 주문 통계를 가져오는 훅
  * @param {string} userId - 사용자 ID
- * @param {string} period - 기간 (day, week, month, year)
+ * @param {string} dateRange - 기간 (7days, 30days, 90days, custom)
+ * @param {string} startDate - 커스텀 기간 시작일 (dateRange가 custom일 때만 사용)
+ * @param {string} endDate - 커스텀 기간 종료일 (dateRange가 custom일 때만 사용)
  * @param {Object} options - SWR 옵션
  * @returns {Object} SWR 응답
  */
-export function useOrderStats(userId, period = "month", options = {}) {
-  const params = new URLSearchParams({ userId, period });
+export function useOrderStats(
+  userId,
+  dateRange = "7days",
+  startDate = null,
+  endDate = null,
+  options = {}
+) {
+  const params = new URLSearchParams({ userId, dateRange });
+
+  if (dateRange === "custom" && startDate && endDate) {
+    params.append("startDate", startDate);
+    params.append("endDate", endDate);
+  }
+
   return useSWR(
     userId ? `/orders/stats?${params}` : null,
     axiosFetcher,
