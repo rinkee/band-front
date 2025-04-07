@@ -3,7 +3,7 @@
  */
 
 // API 기본 URL
-const API_URL = process.env.API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 /**
  * 크롤링 시작 API 호출

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // API 기본 URL 설정
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // 개발 모드에서만 로깅하는 함수
 const devLog = (...args) => {
@@ -21,6 +21,7 @@ const devLog = (...args) => {
 export const fetcher = async (url) => {
   try {
     const fullUrl = url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+    console.log("API 기본 URL 설정:", process.env.NEXT_PUBLIC_API_URL);
     devLog("Fetcher 요청 URL:", fullUrl);
 
     const response = await axios.get(fullUrl);
