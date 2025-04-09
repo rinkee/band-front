@@ -195,26 +195,6 @@ export default function RootLayout({ children }) {
                 </div>
                 {/* 헤더 우측 영역 */}
                 <div className="flex items-center">
-                  {/* 로그아웃 버튼 */}
-                  <button
-                    onClick={handleLogout}
-                    className="ml-2 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-md flex items-center"
-                  >
-                    <svg
-                      className="w-4 h-4 mr-1.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                      />
-                    </svg>
-                    로그아웃
-                  </button>
                   {/* 모바일 메뉴 토글 버튼 */}
                   <button
                     onClick={toggleMobileMenu}
@@ -337,7 +317,7 @@ export default function RootLayout({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  <Link
+                  {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/customers"
@@ -345,7 +325,7 @@ export default function RootLayout({ children }) {
                         : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
-                    {/* 고객 관리 아이콘 SVG 원본 사용 */}
+                    
                     <svg
                       className="w-5 h-5 mr-2 text-gray-500"
                       fill="none"
@@ -360,7 +340,7 @@ export default function RootLayout({ children }) {
                       />
                     </svg>
                     고객 관리
-                  </Link>
+                  </Link> */}
                   <Link
                     href="/settings"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
@@ -395,6 +375,26 @@ export default function RootLayout({ children }) {
                     </svg>
                     설정
                   </Link>
+                  {/* 로그아웃 버튼 */}
+                  <button
+                    onClick={handleLogout}
+                    className="ml-2 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-md flex items-center"
+                  >
+                    <svg
+                      className="w-4 h-4 mr-1.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    로그아웃
+                  </button>
                 </nav>
               </div>
             </header>

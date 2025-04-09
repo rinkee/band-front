@@ -1135,7 +1135,7 @@ export default function OrdersPage() {
               </div>
 
               {/* 상품 정보 입력 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     상품 번호
@@ -1254,7 +1254,7 @@ export default function OrdersPage() {
             </div>
 
             {/* 푸터 */}
-            <div className="flex justify-end px-6 py-4 border-t border-gray-200">
+            {/* <div className="flex justify-end px-6 py-4 border-t border-gray-200">
               <button
                 onClick={saveOrderDetails}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
@@ -1267,7 +1267,7 @@ export default function OrdersPage() {
               >
                 닫기
               </button>
-            </div>
+            </div> */}
           </div>
         </div>
       )}
