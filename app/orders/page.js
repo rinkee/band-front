@@ -64,7 +64,7 @@ export default function OrdersPage() {
   const [tempItemNumber, setTempItemNumber] = useState(1);
   const [tempQuantity, setTempQuantity] = useState(1);
   const [tempPrice, setTempPrice] = useState(0);
-  const [activeTab, setActiveTab] = useState("edit");
+  const [activeTab, setActiveTab] = useState("status");
 
   const [filterDateRange, setFilterDateRange] = useState("all");
   const [statsLoading, setStatsLoading] = useState(true);
@@ -268,7 +268,7 @@ export default function OrdersPage() {
           });
         }
 
-        alert(`주문이 ${newStatus} 상태로 성공적으로 변경되었습니다.`);
+        // alert(`주문이 ${newStatus} 상태로 성공적으로 변경되었습니다.`);
       } else {
         throw new Error(
           response.data?.message || "주문 상태 변경에 실패했습니다."
