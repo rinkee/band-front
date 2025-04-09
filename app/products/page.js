@@ -688,18 +688,15 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex space-x-2">
-                          <button
+                          {/* <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              window.open(
-                                `/products/${product.product_id}`,
-                                "_blank"
-                              );
+                              window.open(product.band_post_url, "_blank");
                             }}
                             className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                           >
                             상품보기
-                          </button>
+                          </button> */}
                           {product.band_post_url && (
                             <button
                               onClick={(e) => {
