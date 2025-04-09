@@ -282,6 +282,11 @@ export default function OrdersPage() {
     }
   };
 
+  // 모달 내 탭 변경 핸들러 추가
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+  };
+
   const openDetailModal = (order) => {
     setSelectedOrder({ ...order });
     setTempItemNumber(order.item_number || 1);
@@ -1054,13 +1059,21 @@ export default function OrdersPage() {
         )}
       </div>
 
-      {/* 상세 정보 모달 (기존 코드 유지) */}
       {isDetailModalOpen && selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 overflow-y-auto flex justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl p-0 my-12">
-            {/* 헤더 */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800">주문 상세</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+          {" "}
+          {/* 배경 투명도 약간 조절 */}
+          {/* ProductsPage 모달 구조 적용: max-w, max-h, overflow */}
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto flex flex-col">
+            {" "}
+            {/* flex flex-col 추가 */}
+            {/* 1. 모달 헤더 */}
+            <div className="flex justify-between items-center mb-6 flex-shrink-0">
+              {" "}
+              {/* 헤더 고정 */}
+              <h3 className="text-xl font-bold text-gray-900">
+                주문 상세 관리
+              </h3>
               <button
                 onClick={closeDetailModal}
                 className="text-gray-400 hover:text-gray-600"
@@ -1074,143 +1087,343 @@ export default function OrdersPage() {
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
+                    strokeWidth="2"
                     d="M6 18L18 6M6 6l12 12"
                   />
                 </svg>
               </button>
             </div>
-
-            {/* 본문 */}
-            <div className="px-6 py-6 space-y-6">
-              {/* 바코드 */}
-              <div className="text-center">
-                <Barcode
-                  value={getProductBarcode(selectedOrder.product_id)}
-                  width={2.5}
-                  height={70}
-                  fontSize={18}
-                />
-                {!getProductBarcode(selectedOrder.product_id) && (
-                  <p className="text-sm text-gray-500 mt-2">바코드 정보 없음</p>
-                )}
-              </div>
-
-              {/* 상품 정보 입력 */}
-              <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    상품 번호
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={tempItemNumber}
-                    onChange={(e) =>
-                      handleTempInputChange("itemNumber", e.target.value)
-                    }
-                    className="w-full border rounded-lg px-4 py-2 shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    수량
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={tempQuantity}
-                    onChange={(e) =>
-                      handleTempInputChange("quantity", e.target.value)
-                    }
-                    className="w-full border rounded-lg px-4 py-2 shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    단가
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="100"
-                    value={tempPrice}
-                    onChange={(e) =>
-                      handleTempInputChange("price", e.target.value)
-                    }
-                    className="w-full border rounded-lg px-4 py-2 shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="text-right font-semibold text-lg text-gray-800">
-                총 금액:{" "}
-                {formatCurrency(
-                  (parseFloat(tempPrice) || 0) *
-                    (parseInt(tempQuantity, 10) || 0)
-                )}
-              </div>
-
-              {/* 댓글 및 작성자 */}
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <p className="text-sm text-gray-500 mb-2">
-                  작성자:{" "}
-                  <span className="text-base font-medium text-gray-800">
-                    {selectedOrder.customer_name}
-                  </span>
-                </p>
-                <div className="text-base text-gray-700 whitespace-pre-line">
-                  {selectedOrder.comment || "댓글 없음"}
-                </div>
-              </div>
-
-              {/* 상태 변경 */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-t pt-4">
-                <div className="text-sm font-medium text-gray-700">
-                  현재 상태:{" "}
-                  <span
-                    className={`px-3 py-1 inline-flex text-sm font-semibold rounded-full ${getStatusBadgeStyles(
-                      selectedOrder.status
-                    )}`}
+            {/* 2. 모달 본문 (탭 + 내용) - 스크롤 가능 영역 */}
+            <div className="flex-grow overflow-y-auto pr-2 -mr-2">
+              {" "}
+              {/* 내부 스크롤 패딩 조절 */}
+              {/* 탭 네비게이션 */}
+              <div className="border-b border-gray-200 mb-6">
+                <div className="flex space-x-8">
+                  {/* 상태 관리 탭 */}
+                  <button
+                    onClick={() => handleTabChange("status")}
+                    className={`pb-4 px-1 font-medium text-sm focus:outline-none transition-colors ${
+                      activeTab === "status"
+                        ? "text-blue-600 border-b-2 border-blue-500"
+                        : "text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                    aria-current={activeTab === "status" ? "page" : undefined}
                   >
-                    {selectedOrder.status}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {["주문완료", "수령완료", "주문취소"].map((status) => {
-                    const isCurrent = selectedOrder.status === status;
-                    const baseClass =
-                      "px-4 py-2 rounded-lg font-medium text-sm transition";
-                    let statusClass = "";
-                    if (status === "주문완료")
-                      statusClass = isCurrent
-                        ? "bg-blue-200 text-blue-600 cursor-not-allowed"
-                        : "bg-blue-600 text-white hover:bg-blue-700";
-                    else if (status === "수령완료")
-                      statusClass = isCurrent
-                        ? "bg-green-200 text-green-600 cursor-not-allowed"
-                        : "bg-green-600 text-white hover:bg-green-700";
-                    else
-                      statusClass = isCurrent
-                        ? "bg-red-200 text-red-600 cursor-not-allowed"
-                        : "bg-red-600 text-white hover:bg-red-700";
-
-                    return (
-                      <button
-                        key={status}
-                        onClick={() =>
-                          handleStatusChange(selectedOrder.order_id, status)
-                        }
-                        disabled={isCurrent}
-                        className={`${baseClass} ${statusClass}`}
+                    <div className="flex items-center">
+                      {/* 아이콘 예시 (CheckSquare or Barcode) */}
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        {status}
-                      </button>
-                    );
-                  })}
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+                        ></path>
+                      </svg>
+                      상태 관리
+                    </div>
+                  </button>
+                  {/* 주문 정보 탭 */}
+                  <button
+                    onClick={() => handleTabChange("info")}
+                    className={`pb-4 px-1 font-medium text-sm focus:outline-none transition-colors ${
+                      activeTab === "info"
+                        ? "text-blue-600 border-b-2 border-blue-500"
+                        : "text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                    aria-current={activeTab === "info" ? "page" : undefined}
+                  >
+                    <div className="flex items-center">
+                      {/* 아이콘 예시 (DocumentText) */}
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                      주문 정보
+                    </div>
+                  </button>
                 </div>
               </div>
+              {/* --- 탭 내용 --- */}
+              <div className="space-y-6">
+                {" "}
+                {/* 탭 내용 간 간격 */}
+                {/* 상태 관리 탭 내용 */}
+                {activeTab === "status" && (
+                  <div className="space-y-6">
+                    {/* 바코드 표시 영역 */}
+                    <div className="text-center border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-lg font-medium text-gray-800 mb-4">
+                        상품 바코드
+                      </h4>
+                      <div className="max-w-sm mx-auto">
+                        {" "}
+                        {/* 바코드 최대 너비 제어 */}
+                        <Barcode
+                          value={getProductBarcode(selectedOrder.product_id)}
+                          width={2} // 필요시 크기 조절
+                          height={60} // 필요시 크기 조절
+                          fontSize={16} // 필요시 크기 조절
+                        />
+                      </div>
+                      {!getProductBarcode(selectedOrder.product_id) && (
+                        <p className="text-sm text-gray-500 mt-3">
+                          이 상품에는 바코드 정보가 없습니다.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 상태 변경 영역 */}
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        {/* 현재 상태 표시 */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            현재 상태
+                          </label>
+                          <span
+                            className={`px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full ${getStatusBadgeStyles(
+                              selectedOrder.status
+                            )}`}
+                          >
+                            {selectedOrder.status}
+                          </span>
+                        </div>
+
+                        {/* 상태 변경 버튼 그룹 */}
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {["주문완료", "수령완료", "주문취소"].map(
+                            (status) => {
+                              const isCurrent = selectedOrder.status === status;
+                              const baseClass =
+                                "px-4 py-2 rounded-lg font-medium text-sm transition disabled:opacity-50 disabled:cursor-not-allowed";
+                              let statusClass = "";
+                              // 버튼 스타일링 (ProductsPage와 유사하게 또는 기존 스타일 유지)
+                              if (status === "주문완료")
+                                statusClass = isCurrent
+                                  ? "bg-blue-200 text-blue-600"
+                                  : "bg-blue-600 text-white hover:bg-blue-700";
+                              else if (status === "수령완료")
+                                statusClass = isCurrent
+                                  ? "bg-green-200 text-green-600"
+                                  : "bg-green-600 text-white hover:bg-green-700";
+                              else
+                                statusClass = isCurrent
+                                  ? "bg-red-200 text-red-600"
+                                  : "bg-red-600 text-white hover:bg-red-700";
+
+                              return (
+                                <button
+                                  key={status}
+                                  onClick={() =>
+                                    handleStatusChange(
+                                      selectedOrder.order_id,
+                                      status
+                                    )
+                                  }
+                                  disabled={isCurrent}
+                                  className={`${baseClass} ${statusClass}`}
+                                >
+                                  {status} 처리
+                                </button>
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* 주문 정보 탭 내용 */}
+                {activeTab === "info" && (
+                  // ProductsPage의 grid 레이아웃 적용
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                    {/* 상품명 (읽기전용) */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        상품명
+                      </label>
+                      <p className="text-base font-semibold text-gray-900 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                        {getProductNameById(selectedOrder.product_id)}
+                      </p>
+                    </div>
+
+                    {/* 고객명 (읽기전용) */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        고객명
+                      </label>
+                      <p className="text-base text-gray-800 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                        {selectedOrder.customer_name}
+                      </p>
+                    </div>
+
+                    {/* 주문일시 (읽기전용) */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        주문 일시
+                      </label>
+                      <p className="text-base text-gray-800 bg-gray-50 px-3 py-2 rounded-md border border-gray-200">
+                        {formatDate(selectedOrder.ordered_at)}
+                      </p>
+                    </div>
+
+                    {/* 상품 번호 (편집 가능) */}
+                    <div>
+                      <label
+                        htmlFor="tempItemNumber"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        상품 번호
+                      </label>
+                      <input
+                        id="tempItemNumber"
+                        type="number"
+                        min="1"
+                        value={tempItemNumber}
+                        onChange={(e) =>
+                          handleTempInputChange("itemNumber", e.target.value)
+                        }
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+
+                    {/* 수량 (편집 가능) */}
+                    <div>
+                      <label
+                        htmlFor="tempQuantity"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        수량
+                      </label>
+                      <input
+                        id="tempQuantity"
+                        type="number"
+                        min="1"
+                        value={tempQuantity}
+                        onChange={(e) =>
+                          handleTempInputChange("quantity", e.target.value)
+                        }
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+
+                    {/* 단가 (편집 가능) */}
+                    <div>
+                      <label
+                        htmlFor="tempPrice"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        단가 (원)
+                      </label>
+                      <input
+                        id="tempPrice"
+                        type="number"
+                        min="0"
+                        step="100" // 필요시 조절
+                        value={tempPrice}
+                        onChange={(e) =>
+                          handleTempInputChange("price", e.target.value)
+                        }
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+
+                    {/* 총 금액 (계산됨, 읽기전용 스타일) */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        총 금액
+                      </label>
+                      <p className="text-lg font-semibold text-blue-700 bg-blue-50 px-3 py-2 rounded-md border border-blue-200 text-right">
+                        {formatCurrency(
+                          (parseFloat(tempPrice) || 0) *
+                            (parseInt(tempQuantity, 10) || 0)
+                        )}
+                      </p>
+                    </div>
+
+                    {/* 주문 ID (읽기전용) */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        주문 ID
+                      </label>
+                      <p className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-md border border-gray-200 break-all">
+                        {selectedOrder.order_id}
+                      </p>
+                    </div>
+
+                    {/* 밴드 게시물 링크 (조건부 표시) */}
+                    {getPostUrlByProductId(selectedOrder.product_id) && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          원본 댓글 (밴드)
+                        </label>
+                        <a
+                          href={getPostUrlByProductId(selectedOrder.product_id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        >
+                          밴드 게시물 보기
+                          <svg
+                            className="ml-1.5 -mr-0.5 h-4 w-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                            <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                          </svg>
+                        </a>
+                      </div>
+                    )}
+
+                    {/* 고객 댓글 (원래 테이블에 있던 정보) */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        고객 댓글
+                      </label>
+                      <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md border border-gray-200 whitespace-pre-wrap">
+                        {selectedOrder.comment || "댓글 없음"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* 3. 모달 푸터 */}
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 flex-shrink-0">
+              {" "}
+              {/* 푸터 고정 */}
+              <button
+                onClick={closeDetailModal}
+                className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              >
+                닫기
+              </button>
+              {/* 정보 탭에서만 저장 버튼 활성화 (상태 변경은 각 버튼에서 즉시 처리) */}
+              {activeTab === "info" && (
+                <button
+                  onClick={saveOrderDetails} // 상세 정보 저장 함수 호출
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
+                >
+                  변경사항 저장
+                </button>
+              )}
             </div>
           </div>
         </div>
