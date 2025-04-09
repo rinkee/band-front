@@ -1,25 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import SearchParamsHandler from "./SearchParamsHandler"; // 분리된 컴포넌트 임포트
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+
   const [loginId, setLoginId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    // 회원가입 성공 후 리다이렉트된 경우 메시지 표시
-    const registered = searchParams.get("registered");
-    if (registered === "true") {
-      setSuccess("회원가입이 완료되었습니다. 초기 비밀번호는 0000입니다.");
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     // 이미 로그인된 경우 대시보드로 이동
@@ -137,6 +130,12 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
+
+        {/* Suspense로 SearchParamsHandler 감싸기 */}
+        <Suspense fallback={null}>
+          <SearchParamsHandler setSuccess={setSuccess} setError={setError} />
+        </Suspense>
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {success && (
             <div className="rounded-md bg-green-50 p-4 mb-4">
