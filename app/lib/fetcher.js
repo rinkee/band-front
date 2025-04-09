@@ -1,10 +1,7 @@
 import axios from "axios";
 
 // API 기본 URL 설정
-const API_BASE_URL =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8080/api"
-    : process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api/proxy";
 
 // 개발 모드에서만 로깅하는 함수
 const devLog = (...args) => {
