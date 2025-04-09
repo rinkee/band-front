@@ -112,7 +112,12 @@ export default function RootLayout({ children }) {
     <html lang="ko">
       <head>
         <title>PODER</title>
+
         <meta name="description" content="PODER" />
+        <meta
+          http-equiv="Content-Security-Policy"
+          content="upgrade-insecure-requests"
+        ></meta>
       </head>
       <body className="text-black">
         <div className="flex flex-col h-screen overflow-hidden bg-gray-50 ">
