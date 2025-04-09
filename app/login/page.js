@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SearchParamsHandler from "./SearchParamsHandler"; // 분리된 컴포넌트 임포트
+import { api } from "../lib/fetcher"; // api 인스턴스 임포트
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,21 +46,18 @@ export default function LoginPage() {
 
     try {
       console.log("로그인 시도:", loginId);
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ loginId, loginPassword }),
+      const response = await api.post("/auth/login", {
+        loginId,
+        loginPassword,
       });
 
-      const data = await response.json();
+      const data = response.data;
       console.log("로그인 응답:", data);
 
-      if (!response.ok) {
-        setError(data.message || "로그인에 실패했습니다.");
-        return;
-      }
+      // if (!response.ok) {
+      //   setError(data.message || "로그인에 실패했습니다.");
+      //   return;
+      // }
 
       // 로그인 성공 시 사용자 정보 저장
       if (data.success && data.token && data.user) {
