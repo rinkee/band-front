@@ -332,7 +332,7 @@ export default function CustomersPage() {
         <nav className="flex-1 overflow-y-auto">
           <ul className="px-2 space-y-1">
             <li>
-              <a
+              <Link
                 href="/dashboard"
                 className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
               >
@@ -350,10 +350,10 @@ export default function CustomersPage() {
                   />
                 </svg>
                 Home
-              </a>
+              </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/products"
                 className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
               >
@@ -371,10 +371,10 @@ export default function CustomersPage() {
                   />
                 </svg>
                 상품 관리
-              </a>
+              </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/orders"
                 className="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
               >
@@ -392,10 +392,10 @@ export default function CustomersPage() {
                   />
                 </svg>
                 주문 관리
-              </a>
+              </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/customers"
                 className="flex items-center px-4 py-2 text-gray-900 bg-blue-100 rounded-lg"
               >
@@ -413,7 +413,7 @@ export default function CustomersPage() {
                   />
                 </svg>
                 고객 관리
-              </a>
+              </Link>
             </li>
           </ul>
         </nav>

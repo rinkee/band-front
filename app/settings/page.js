@@ -580,7 +580,7 @@ export default function SettingsPage() {
             자동 크롤링 활성화
             <p className="text-sm text-gray-500 mt-1">
               활성화하면 설정된 간격으로 백그라운드에서 자동으로 밴드 게시물을
-              수집합니다. (변경 후 하단의 '변경사항 저장' 필요)
+              수집합니다. (변경 후 하단의 변경사항 저장 필요)
             </p>
           </label>
           <label className="relative inline-flex items-center cursor-pointer">
@@ -602,7 +602,7 @@ export default function SettingsPage() {
             htmlFor="crawlInterval"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            크롤링 간격 (분) (변경 후 하단의 '변경사항 저장' 필요)
+            크롤링 간격 (분) (변경 후 하단의 변경사항 저장 필요)
           </label>
           <input
             type="number"
@@ -695,7 +695,7 @@ export default function SettingsPage() {
       {/* --- Excluded Customers Settings --- */}
       <div className="mb-8">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">
-          제외 고객 설정 (변경 후 하단의 '변경사항 저장' 필요)
+          제외 고객 설정 (변경 후 하단의 변경사항 저장 필요)
         </h2>
         <p className="text-sm text-gray-500 mb-5 pt-2">
           여기에 추가된 고객 이름(밴드 프로필 이름과 일치해야 함)의 댓글은
