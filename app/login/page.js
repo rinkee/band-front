@@ -69,23 +69,35 @@ export default function LoginPage() {
       }
 
       // 로그인 성공 시 사용자 정보 저장
-      if (data.success && data.user) {
-        const userData = data.user;
-        console.log("로그인 성공 - 사용자 정보:", {
-          id: userData.userId,
-          loginId: userData.loginId,
-          storeName: userData.storeName,
-          bandNumber: userData.bandNumber,
-          naverId: userData.naverId,
-        });
+      if (data.success && data.token && data.user) {
+        const userDetails = data.user; // user 객체
+        const token = data.token; // 최상위 token
+        // --- !!! 여기가 핵심 수정 !!! ---
+        // 인터셉터가 읽을 수 있도록 하나의 객체에 필요한 정보와 토큰을 모두 포함
+        const userDataToStore = {
+          // 필요한 사용자 정보 추가
+          userId: userDetails.userId,
+          loginId: userDetails.loginId,
+          storeName: userDetails.storeName,
+          ownerName: userDetails.ownerName, // ownerName 추가 (표시 등 활용)
+          bandNumber: userDetails.bandNumber,
+          naverId: userDetails.naverId,
+          // excluded_customers 등 설정 관련 정보가 있다면 userDetails.settings 등에서 가져와 추가
+          excluded_customers: userDetails.settings?.excluded_customers || [], // 예시
 
-        // 세션 스토리지에 사용자 데이터와 토큰 저장
-        sessionStorage.setItem("userData", JSON.stringify(userData));
-        sessionStorage.setItem("token", data.token);
+          // !!! 토큰을 이 객체 안에 포함 !!!
+          token: token,
+        };
+        console.log("SessionStorage에 저장할 데이터:", userDataToStore);
 
+        // --- !!! 여기가 핵심 수정 !!! ---
+        // 통합된 객체를 "userData" 키로 저장
+        sessionStorage.setItem("userData", JSON.stringify(userDataToStore));
+        // sessionStorage.setItem("token", data.token); // <-- 이 줄은 이제 삭제 (중복 저장 불필요)
+        // --- 핵심 수정 끝 ---
         // 성공 메시지 표시
         setSuccess(
-          `${userData.storeName} ${userData.ownerName}님, 환영합니다!`
+          `${userDetails.storeName} ${userDetails.ownerName}님, 환영합니다!`
         );
 
         // 0.5초 후 대시보드로 이동

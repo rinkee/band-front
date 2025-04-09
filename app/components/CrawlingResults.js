@@ -97,7 +97,7 @@ export default function CrawlingResults({ results }) {
                             sessionStorage.getItem("userData")
                           );
                           const postId = post.postId || post.id;
-                          const bandId = userData.bandId;
+                          const bandNumber = userData.bandNumber;
                           const userId = userData.userId;
 
                           // 네이버 로그인 세션 확인
@@ -110,7 +110,7 @@ export default function CrawlingResults({ results }) {
                           }
 
                           const response = await fetch(
-                            `${process.env.NEXT_PUBLIC_API_URL}/crawl/comments/${bandId}/${postId}`,
+                            `${process.env.NEXT_PUBLIC_API_URL}/crawl/comments/${bandNumber}/${postId}`,
                             {
                               method: "POST",
                               headers: {

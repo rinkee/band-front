@@ -239,9 +239,43 @@ export default function ProductsPage() {
     }
 
     return new Intl.DateTimeFormat("ko-KR", {
-      year: "numeric",
+      year: "2-digit",
       month: "2-digit",
       day: "2-digit",
+    }).format(date);
+  };
+
+  // 날짜 포맷팅 함수
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "-";
+
+    const date = new Date(dateString);
+
+    // 유효하지 않은 날짜 확인
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
+
+    return new Intl.DateTimeFormat("ko-KR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  };
+
+  const formatDatePickup = (dateString) => {
+    if (!dateString) return "-";
+
+    const date = new Date(dateString);
+
+    // 유효하지 않은 날짜 확인
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
+
+    return new Intl.DateTimeFormat("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
     }).format(date);
   };
 
@@ -410,7 +444,7 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">상품 관리</h1>
         <p className="text-sm text-gray-500">
@@ -566,11 +600,11 @@ export default function ProductsPage() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     <button
-                      onClick={() => handleSortChange("updated_at")}
+                      onClick={() => handleSortChange("created_at")}
                       className="flex items-center focus:outline-none"
                     >
-                      최근 수정일
-                      {getSortIcon("updated_at")}
+                      등록일
+                      {getSortIcon("created_at")}
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -636,13 +670,16 @@ export default function ProductsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(product.updated_at)}
+                        <div className="flex flex-col">
+                          <div>{formatDate(product.created_at)}</div>
+                          <div>{formatDateTime(product.created_at)}</div>
+                        </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {product.pickup_info ? (
                           <div>
                             <div className="font-medium">
-                              {formatDate(product.pickup_date)}
+                              {formatDatePickup(product.pickup_date)}
                             </div>
                           </div>
                         ) : (

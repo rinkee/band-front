@@ -1,7 +1,10 @@
 import axios from "axios";
 
 // API 기본 URL 설정
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:8080/api"
+    : process.env.NEXT_PUBLIC_API_URL;
 
 // 개발 모드에서만 로깅하는 함수
 const devLog = (...args) => {
@@ -42,8 +45,23 @@ export const fetcher = async (url) => {
  * @returns {Promise} 응답 데이터
  */
 export const authFetcher = async (url, options = {}) => {
-  // 로컬 스토리지에서 토큰 가져오기
-  const token = localStorage.getItem("token");
+  // --- 수정된 부분 ---
+  let token = null;
+  const sessionData = sessionStorage.getItem("userData"); // sessionStorage에서 userData 읽기
+
+  if (sessionData) {
+    try {
+      const userDataObj = JSON.parse(sessionData);
+      token = userDataObj.token; // userData 객체 안의 token 사용
+      console.log("authFetcher에서 읽은 토큰:", token); // 디버깅 로그 추가
+    } catch (e) {
+      console.error("authFetcher: sessionStorage에서 userData 파싱 오류:", e);
+      token = null; // 파싱 실패 시 토큰 없음 처리
+    }
+  } else {
+    console.log("authFetcher: sessionStorage에 userData 없음"); // 디버깅 로그 추가
+  }
+  // --- 수정 끝 ---
 
   try {
     const response = await axios({
@@ -51,7 +69,7 @@ export const authFetcher = async (url, options = {}) => {
       method: options.method || "GET",
       headers: {
         "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(token && { Authorization: `Bearer ${token}` }), // 읽어온 토큰 사용
         ...(options.headers || {}),
       },
       data: options.data,
@@ -63,7 +81,7 @@ export const authFetcher = async (url, options = {}) => {
     // 인증 관련 에러 처리
     if (error.response?.status === 401) {
       // 토큰 만료 등의 이유로 인증이 실패한 경우
-      localStorage.removeItem("token");
+
       // 로그인 페이지로 리다이렉트
       window.location.href = "/login";
     }
@@ -90,16 +108,12 @@ export const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     console.log("Axios 요청 인터셉터 실행됨"); // 실행 여부 확인
-    const sessionData = sessionStorage.getItem("userData");
     let token = null;
+    const sessionData = sessionStorage.getItem("userData");
     if (sessionData) {
-      try {
-        const userDataObj = JSON.parse(sessionData);
-        token = userDataObj.token; // 'token' 키가 맞는지 확인 필요
-        console.log("인터셉터에서 읽은 토큰:", token); // 토큰 값 확인
-      } catch (e) {
-        console.error("세션 데이터 파싱 오류 (인터셉터):", e);
-      }
+      const userDataObj = JSON.parse(sessionData);
+      token = userDataObj.token; // <--- 읽어온 객체 안에서 token을 찾음!
+      console.log("인터셉터에서 읽은 토큰:", token); // 토큰 값 확인
     }
 
     if (token) {
@@ -116,17 +130,16 @@ api.interceptors.request.use(
   }
 );
 
-// 응답 인터셉터 설정
+// 응답 인터셉터 수정
 api.interceptors.response.use(
   (response) => {
-    // 응답 데이터 가공
     return response;
   },
   (error) => {
-    // 오류 응답 처리
     if (error.response?.status === 401) {
       console.error("응답 인터셉터: 401 Unauthorized 감지. 로그아웃 처리.");
-      sessionStorage.removeItem("userData");
+      sessionStorage.removeItem("userData"); // userData 제거
+      // sessionStorage.removeItem("token"); // 이 줄 제거 (불필요)
       window.location.href = "/login";
     }
     return Promise.reject(error);

@@ -1,4 +1,12 @@
+// api/auth/login/route.js
+
 import { NextResponse } from "next/server";
+
+// API 기본 URL 설정
+const API_BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:8080/api"
+    : process.env.NEXT_PUBLIC_API_URL;
 
 /**
  * 로그인 처리 API
@@ -19,20 +27,17 @@ export async function POST(request) {
     console.log("로그인 요청:", { loginId, loginPassword });
 
     // 서버 API 호출
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          loginId,
-          loginPassword,
-        }),
-        credentials: "include",
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        loginId,
+        loginPassword,
+      }),
+      credentials: "include",
+    });
 
     const data = await response.json();
     console.log("로그인 응답 상태:", response.status);
@@ -60,6 +65,7 @@ export async function POST(request) {
         storeName: userData.storeName,
         role: userData.role,
         isActive: userData.isActive,
+        token: userData.token,
       });
 
       // 클라이언트에 모든 데이터 반환

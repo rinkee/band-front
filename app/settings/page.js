@@ -257,7 +257,7 @@ export default function SettingsPage() {
     setManualCrawling(true);
     setError(null);
     console.log(
-      `Starting manual crawl for userId: ${userId}, bandId: ${bandNumber}, maxPosts: ${manualCrawlPostCount}` // 로그에 게시물 수 추가
+      `Starting manual crawl for userId: ${userId}, bandNumber: ${bandNumber}, maxPosts: ${manualCrawlPostCount}` // 로그에 게시물 수 추가
     );
 
     try {
@@ -313,9 +313,6 @@ export default function SettingsPage() {
     //   setIsAutoCrawlingEnabled(!newState); // Revert UI on failure if saving immediately
     // }
     setSaving(false); // Stop saving indicator (as change is staged for main save)
-    alert(
-      `자동 크롤링 상태가 변경되었습니다. '변경사항 저장' 버튼을 눌러 확정하세요.`
-    );
   };
 
   const handleIntervalChange = (e) => {
@@ -800,9 +797,9 @@ export default function SettingsPage() {
       </div>
 
       {/* --- Naver Manual Login Section --- */}
-      <section className="mb-8 p-6 bg-white rounded-lg shadow">
+      {/* <section className="mb-8 p-6 bg-white rounded-lg shadow">
         <h2 className="text-xl font-semibold mb-4">네이버 연동</h2>
-        {/* Naver Manual Login Button */}
+      
         <button
           onClick={handleNaverManualLogin}
           className={`px-4 py-2 rounded ${
@@ -823,10 +820,10 @@ export default function SettingsPage() {
           자동 로그인이 실패했거나 연결이 끊어진 경우 이 버튼을 사용하여
           수동으로 네이버 로그인을 다시 시도할 수 있습니다.
         </p>
-      </section>
+      </section> */}
 
       {/* Manual Crawl Section */}
-      <section className="mb-8 p-6 bg-white rounded-lg shadow">
+      {/* <section className="mb-8 p-6 bg-white rounded-lg shadow">
         <h2 className="text-xl font-semibold mb-4">수동 데이터 가져오기</h2>
         <div className="mb-4">
           <label
@@ -862,7 +859,7 @@ export default function SettingsPage() {
           최신 데이터를 즉시 반영하고 싶을 때 사용하세요. 설정한 개수만큼 최신
           게시물을 가져옵니다.
         </p>
-      </section>
+      </section> */}
     </div>
   );
 }

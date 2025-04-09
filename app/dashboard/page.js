@@ -87,13 +87,11 @@ export default function DashboardPage() {
   // );
 
   // 주문 통계 가져오기 (기간별)
-  const { data: orderStatsData, error: orderStatsError } = useOrderStats(
-    userId,
-    dateRange,
-    null,
-    null,
-    swrOptions
-  );
+  const {
+    data: orderStatsData,
+    error: orderStatsError,
+    mutate: orderStatsMutate,
+  } = useOrderStats(userId, dateRange, null, null, swrOptions);
 
   // 로딩 상태 확인
   const isLoading = isUserLoading || loading;
@@ -113,6 +111,12 @@ export default function DashboardPage() {
     return date.toISOString().split("T")[0];
   };
 
+  // dateRange가 변경될 때마다 강제로 재검증
+  useEffect(() => {
+    if (userId) {
+      orderStatsMutate();
+    }
+  }, [dateRange, userId, orderStatsMutate]);
   // 데이터 가져오기
   useEffect(() => {
     if (!isLoading && userId) {
@@ -121,12 +125,15 @@ export default function DashboardPage() {
         console.log("Order Stats Data:", orderStatsData.data);
 
         // API 응답 구조에 맞게 수정
+        // 👇 API 응답 필드 이름에 맞게 수정
         setStats({
           totalOrders: orderStatsData.data.totalOrders || 0,
           completedOrders: orderStatsData.data.completedOrders || 0,
           pendingOrders: orderStatsData.data.pendingOrders || 0,
-          expectedSales: orderStatsData.data.totalSales || 0,
-          completedSales: orderStatsData.data.completedSales || 0,
+          // expectedSales -> estimatedRevenue 로 변경
+          expectedSales: orderStatsData.data.estimatedRevenue || 0,
+          // completedSales -> confirmedRevenue 로 변경
+          completedSales: orderStatsData.data.confirmedRevenue || 0,
           recentActivity: orderStatsData.data.recentActivity || [],
         });
       } else {
@@ -184,6 +191,29 @@ export default function DashboardPage() {
 
   const { mutate } = useSWRConfig();
 
+  function timeAgo(dateString) {
+    if (!dateString) return "정보 없음";
+
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "유효하지 않은 시간";
+
+    const now = new Date();
+    const seconds = Math.round(Math.abs(now - date) / 1000);
+    const minutes = Math.round(seconds / 60);
+    const hours = Math.round(minutes / 60);
+    const days = Math.round(hours / 24);
+
+    if (seconds < 60) {
+      return `${seconds}초 전`;
+    } else if (minutes < 60) {
+      return `${minutes}분 전`;
+    } else if (hours < 24) {
+      return `${hours}시간 전`;
+    } else {
+      return `${days}일 전`;
+    }
+  }
+
   // 수동 크롤링 시작 함수
   const handleStartCrawling = async () => {
     if (user?.band_id && userData?.userId) {
@@ -194,16 +224,18 @@ export default function DashboardPage() {
   };
 
   // 크롤링 요청 보내기
-  const sendCrawlingRequest = async (bandId, userId, maxPosts) => {
+  const sendCrawlingRequest = async (bandNumber, userId, maxPosts) => {
     try {
       setCrawlingStatus("크롤링 중...");
       setCrawlingError(null);
       setIsCrawling(true);
 
-      console.log(`크롤링 요청 시작: bandId=${bandId}, userId=${userId}`);
+      console.log(
+        `크롤링 요청 시작: bandNumber=${bandNumber}, userId=${userId}`
+      );
 
       // 백엔드 API 호출
-      const response = await api.post(`/crawl/${bandId}/details`, {
+      const response = await api.post(`/crawl/${bandNumber}/details`, {
         userId: userId,
         maxPosts: maxPosts, // 최대 게시물 수
         processProducts: true, // 상품 정보도 함께 처리
@@ -289,16 +321,21 @@ export default function DashboardPage() {
   };
 
   // 주문 상태 텍스트 변환 함수
-  function getOrderStatusText(status) {
-    const statusMap = {
-      pending: "대기 중",
-      confirmed: "주문 확인",
-      shipping: "배송 중",
-      delivered: "배송 완료",
-      canceled: "취소됨",
-    };
-    return statusMap[status] || status;
-  }
+  const getStatusBadgeStyles = (status) => {
+    switch (status) {
+      case "주문완료":
+        return "bg-blue-100 text-blue-800"; // 예: 파란색 계열
+      case "수령완료":
+        return "bg-green-100 text-green-800"; // 예: 녹색 계열
+      case "주문취소":
+        return "bg-red-100 text-red-800"; // 예: 빨간색 계열
+      // 👇 '확인필요' 상태 추가
+      case "확인필요":
+        return "bg-yellow-100 text-yellow-800"; // 예: 노란색 계열
+      default:
+        return "bg-gray-100 text-gray-800"; // 기본 회색
+    }
+  };
 
   // 백엔드 서버에서 데이터 사용
   const displayProductsData = productsData;
@@ -310,7 +347,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-xl font-medium text-gray-700">로딩 중...</p>
@@ -321,7 +358,7 @@ export default function DashboardPage() {
 
   if (error || isError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="max-w-md w-full mx-4">
           <div className="bg-white p-8 rounded-2xl shadow-sm">
             <h2 className="text-2xl font-bold text-red-600 mb-4">오류 발생</h2>
@@ -362,32 +399,217 @@ export default function DashboardPage() {
     );
   }
 
-  if (!userData) {
+  if (!userData && !user) {
     return null;
   } // 유저 데이터 가져오기
 
   return (
-    <div className="flex-1 p-4 md:p-8 overflow-y-auto">
-      {/* 사용자 정보 확인 (디버깅용) */}
-      {user && (
-        <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-bold mb-2">사용자 정보</h3>
-          <p>밴드 ID: {user.band_id || "정보 없음"}</p>
-          <p>네이버 ID: {user.naver_id || "정보 없음"}</p>
-          <p>상점명: {user.store_name || "정보 없음"}</p>
-        </div>
-      )}
-
+    <div className="flex-1 p-4 md:p-0 overflow-y-auto bg-gray-100">
       {/* 인사말 */}
-      <div className="mb-6 md:mb-8">
+      {/* <div className="mb-6 md:mb-8">
+        <p className="text-gray-700">{userData.storeName || "정보 없음"}</p>
         <h2 className="text-xl md:text-2xl font-bold text-gray-900">
           안녕하세요, {userData.ownerName || userData.loginId}님
         </h2>
-        <p className="text-gray-500 mt-1">오늘도 좋은 하루 되세요.</p>
+      </div> */}
+
+      {/* 👇 페이지 상단 정보 영역 추가 */}
+      <div className="mb-6 md:mb-8 p-4 bg-white rounded-xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        {/* 왼쪽: 인사말 및 밴드 정보 */}
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1">
+            안녕하세요, {user?.owner_name || userData?.loginId || "사용자"}님!
+          </h2>
+          {user?.band_name && (
+            <p className="text-sm text-gray-600">
+              밴드: <span className="font-medium">{user.band_name}</span>
+            </p>
+          )}
+          {user?.band_url && (
+            <a
+              href={user.band_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center px-3 py-1 bg-green-500 text-white text-xs font-medium rounded-md hover:bg-green-600 transition-colors"
+            >
+              내 밴드 가기
+              <svg
+                className="ml-1.5 w-3 h-3"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path>
+                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"></path>
+              </svg>
+            </a>
+          )}
+        </div>
+
+        {/* 오른쪽: 상태 정보 */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 md:gap-6 text-sm">
+          {/* 마지막 크롤링 시간 */}
+          <div className="flex items-center text-gray-600">
+            <svg
+              className="w-4 h-4 mr-1.5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+            마지막 크롤링: {timeAgo(user?.last_crawl_at)}
+          </div>
+          {/* 네이버 로그인 상태 */}
+          {/* 👇 user 객체와 naver_login_status 필드가 모두 존재할 때만 렌더링되도록 강화 */}
+          {user?.naver_login_status && (
+            <div className="flex items-center">
+              {/* 👇 조건 비교를 'success'로 수정했는지 재확인 */}
+              <span
+                className={`mr-1.5 w-2.5 h-2.5 rounded-full ${
+                  user.naver_login_status === "success"
+                    ? "bg-green-500"
+                    : "bg-red-500"
+                }`}
+              ></span>
+              <span
+                className={`font-medium ${
+                  user.naver_login_status === "success"
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {/* 👇 조건 비교를 'success'로 수정했는지 재확인 */}
+                네이버{" "}
+                {user.naver_login_status === "success"
+                  ? "로그인됨"
+                  : "로그아웃됨"}
+              </span>
+            </div>
+          )}
+          {/* 👇 만약 user 객체는 있지만 status 필드가 없는 경우를 위한 처리 (선택적) */}
+          {user && !user.naver_login_status && (
+            <div className="flex items-center text-gray-500">
+              <span className="mr-1.5 w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+              네이버 상태 알수없음
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 주요 통계 */}
+      <div className="bg-white rounded-2xl px-4 py-6 shadow-sm">
+        <div className=" ">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold">주요 통계</h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setDateRange("today")}
+                className={`px-3 py-1 text-sm rounded-full ${
+                  dateRange === "today"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                오늘
+              </button>
+              <button
+                onClick={() => setDateRange("7days")}
+                className={`px-3 py-1 text-sm rounded-full ${
+                  dateRange === "7days"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                최근 7일
+              </button>
+              <button
+                onClick={() => setDateRange("30days")}
+                className={`px-3 py-1 text-sm rounded-full ${
+                  dateRange === "30days"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                최근 30일
+              </button>
+              <button
+                onClick={() => setDateRange("90days")}
+                className={`px-3 py-1 text-sm rounded-full ${
+                  dateRange === "90days"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                }`}
+              >
+                최근 90일
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-5 gap-4 mt-8">
+          <div className=" ">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">총 주문완료</h3>
+            </div>
+            <div className="flex items-baseline">
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.totalOrders}건
+              </p>
+            </div>
+          </div>
+
+          <div className="  ">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">총 수령완료</h3>
+            </div>
+            <div className="flex items-baseline">
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.completedOrders}건
+              </p>
+            </div>
+          </div>
+
+          <div className=" ">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">미수령</h3>
+            </div>
+            <div className="flex items-baseline">
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.pendingOrders}건
+              </p>
+            </div>
+          </div>
+
+          <div className=" ">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">예상 매출</h3>
+            </div>
+            <div className="flex items-baseline">
+              <p className="text-2xl font-semibold text-gray-900">
+                {formatCurrency(stats.expectedSales)}
+              </p>
+            </div>
+          </div>
+
+          <div className="  ">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">총 매출</h3>
+            </div>
+            <div className="flex items-baseline">
+              <p className="text-2xl font-semibold text-gray-900">
+                {formatCurrency(stats.completedSales)}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 수동 크롤링 실행 및 상태 표시 */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm">
+      {/* <div className="bg-white rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">
@@ -467,160 +689,10 @@ export default function DashboardPage() {
             )}
           </button>
         </div>
-      </div>
-
-      {/* 주요 통계 */}
-      <div className="mb-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold">주요 통계</h2>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setDateRange("today")}
-              className={`px-3 py-1 text-sm rounded-full ${
-                dateRange === "today"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-              }`}
-            >
-              오늘
-            </button>
-            <button
-              onClick={() => setDateRange("7days")}
-              className={`px-3 py-1 text-sm rounded-full ${
-                dateRange === "7days"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-              }`}
-            >
-              최근 7일
-            </button>
-            <button
-              onClick={() => setDateRange("30days")}
-              className={`px-3 py-1 text-sm rounded-full ${
-                dateRange === "30days"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-              }`}
-            >
-              최근 30일
-            </button>
-            <button
-              onClick={() => setDateRange("90days")}
-              className={`px-3 py-1 text-sm rounded-full ${
-                dateRange === "90days"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-              }`}
-            >
-              최근 90일
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-500">총 주문완료</h3>
-            <span className="text-sm text-gray-400">
-              {dateRange === "today"
-                ? "오늘"
-                : dateRange === "7days"
-                ? "최근 7일"
-                : dateRange === "30days"
-                ? "최근 30일"
-                : "최근 90일"}
-            </span>
-          </div>
-          <div className="flex items-baseline">
-            <p className="text-2xl font-semibold text-gray-900">
-              {stats.totalOrders}건
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-500">총 수령완료</h3>
-            <span className="text-sm text-gray-400">
-              {dateRange === "today"
-                ? "오늘"
-                : dateRange === "7days"
-                ? "최근 7일"
-                : dateRange === "30days"
-                ? "최근 30일"
-                : "최근 90일"}
-            </span>
-          </div>
-          <div className="flex items-baseline">
-            <p className="text-2xl font-semibold text-gray-900">
-              {stats.completedOrders}건
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-500">미수령</h3>
-            <span className="text-sm text-gray-400">
-              {dateRange === "today"
-                ? "오늘"
-                : dateRange === "7days"
-                ? "최근 7일"
-                : dateRange === "30days"
-                ? "최근 30일"
-                : "최근 90일"}
-            </span>
-          </div>
-          <div className="flex items-baseline">
-            <p className="text-2xl font-semibold text-gray-900">
-              {stats.pendingOrders}건
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-500">예상 매출</h3>
-            <span className="text-sm text-gray-400">
-              {dateRange === "today"
-                ? "오늘"
-                : dateRange === "7days"
-                ? "최근 7일"
-                : dateRange === "30days"
-                ? "최근 30일"
-                : "최근 90일"}
-            </span>
-          </div>
-          <div className="flex items-baseline">
-            <p className="text-2xl font-semibold text-gray-900">
-              {formatCurrency(stats.expectedSales)}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-500">판매 수량</h3>
-            <span className="text-sm text-gray-400">
-              {dateRange === "today"
-                ? "오늘"
-                : dateRange === "7days"
-                ? "최근 7일"
-                : dateRange === "30days"
-                ? "최근 30일"
-                : "최근 90일"}
-            </span>
-          </div>
-          <div className="flex items-baseline">
-            <p className="text-2xl font-semibold text-gray-900">
-              {formatCurrency(stats.completedSales)}
-            </p>
-          </div>
-        </div>
-      </div>
+      </div> */}
 
       {/* 최근 주문 & 상품 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-5">
         {/* 최근 주문 */}
         <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm">
           <div className="flex justify-between items-center mb-6">
@@ -684,14 +756,16 @@ export default function DashboardPage() {
                       <td className="py-3">
                         <span
                           className={`px-2 py-1 text-xs rounded-full ${
-                            order.status === "confirmed"
+                            order.status === "주문완료"
                               ? "bg-blue-100 text-blue-800"
-                              : order.status === "delivered"
+                              : order.status === "수령완료"
                               ? "bg-green-100 text-green-800"
+                              : order.status === "확인필요"
+                              ? "bg-black-100 text-black-800"
                               : "bg-red-100 text-red-800"
                           }`}
                         >
-                          {getOrderStatusText(order.status)}
+                          {order.status}
                         </span>
                       </td>
                     </tr>
@@ -757,46 +831,6 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* 최근 활동 타임라인 */}
-      <div className="mt-6 bg-white rounded-2xl p-6 shadow-sm">
-        <h3 className="text-lg font-bold text-gray-900 mb-6">최근 활동</h3>
-        {displayOrderStatsData?.data?.recentActivity?.length > 0 ? (
-          <div className="space-y-4">
-            {displayOrderStatsData.data.recentActivity.map(
-              (activity, index) => (
-                <div key={index} className="flex items-start">
-                  <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-4">
-                    {activity.type === "order" ? "🛒" : "👤"}
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-900">
-                      <span className="font-medium">
-                        {activity.customerName}
-                      </span>
-                      님이
-                      <span className="font-medium">
-                        {" "}
-                        {activity.productName}
-                      </span>
-                      을(를) 주문했습니다.
-                    </p>
-                    <div className="flex mt-1 text-xs text-gray-500">
-                      <span>{formatCurrency(activity.amount)}</span>
-                      <span className="mx-1">•</span>
-                      <span>{formatDate(activity.timestamp)}</span>
-                    </div>
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-        ) : (
-          <p className="text-center text-gray-500 py-10">
-            최근 활동 데이터가 없습니다. 백엔드에서 데이터를 확인해주세요.
-          </p>
-        )}
       </div>
     </div>
   );

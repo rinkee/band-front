@@ -33,10 +33,9 @@ export default function RootLayout({ children }) {
       try {
         // 세션 스토리지에서 사용자 데이터와 토큰을 가져옵니다.
         const sessionData = sessionStorage.getItem("userData");
-        const token = sessionStorage.getItem("token"); // 토큰 존재 여부도 확인하여 안정성 높임
 
         // 사용자 데이터와 토큰이 모두 존재하면 로그인 상태로 간주합니다.
-        if (sessionData && token) {
+        if (sessionData) {
           const userDataObj = JSON.parse(sessionData); // JSON 문자열을 객체로 변환
           setUserData(userDataObj); // 사용자 데이터 상태 업데이트
           setIsLoggedIn(true); // 로그인 상태를 true로 설정
@@ -46,8 +45,7 @@ export default function RootLayout({ children }) {
           setIsLoggedIn(false); // 로그인 상태를 false로 설정
           setUserData(null); // 사용자 데이터 초기화
           // 선택 사항: 상태가 일치하지 않는 경우 정리 (예: userData는 없는데 token만 있는 경우)
-          if (!sessionData) sessionStorage.removeItem("token");
-          if (!token) sessionStorage.removeItem("userData");
+
           console.log("사용자 로그아웃됨"); // 실패 로그
         }
       } catch (error) {
@@ -66,7 +64,7 @@ export default function RootLayout({ children }) {
 
     // ---- 선택 사항이지만 권장: 스토리지 이벤트 리스너 ----
     const handleStorageChange = (event) => {
-      if (event.key === "userData" || event.key === "token") {
+      if (event.key === "userData") {
         console.log("스토리지 이벤트 감지, 인증 상태 재확인...");
         checkAuth();
       }
@@ -117,11 +115,11 @@ export default function RootLayout({ children }) {
         <meta name="description" content="PODER" />
       </head>
       <body className="text-black">
-        <div className="flex flex-col h-screen overflow-hidden bg-gray-50">
+        <div className="flex flex-col h-screen overflow-hidden bg-gray-50 ">
           {/* 로그인 상태일 때만 헤더 표시 */}
           {isLoggedIn && (
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full">
-              <div className="flex items-center justify-between px-4 py-2">
+            <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full  ">
+              <div className="flex items-center justify-between px-4 py-2   max-w-[1200px] mx-auto">
                 <div className="flex items-center">
                   <h1 className="text-xl font-bold text-gray-800 mr-6">
                     PODER
@@ -400,7 +398,9 @@ export default function RootLayout({ children }) {
           {/* 메인 컨텐츠 영역 */}
           <div className="flex-1 overflow-y-auto w-full">
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
-            <main className="bg-gray-50 p-4 md:p-6 lg:p-8">{children}</main>
+            <main className="bg-gray-100 p-4 md:p-6 lg:p-8  max-w-[1200px] mx-auto">
+              {children}
+            </main>
           </div>
         </div>
       </body>

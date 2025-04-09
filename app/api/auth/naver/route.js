@@ -2,6 +2,12 @@
 
 import { NextResponse } from "next/server";
 
+// API 기본 URL 설정
+const API_BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:8080/api"
+    : process.env.NEXT_PUBLIC_API_URL;
+
 /**
  * 네이버 로그인 처리 API
  * @param {Request} request - 요청 객체
@@ -24,19 +30,16 @@ export async function POST(request) {
     console.log("네이버 로그인 요청:", { userId, bandId });
 
     // 서버 API 호출 - 백엔드에서 userId를 통해 네이버 계정 정보를 조회함
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/auth/naver/login`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId,
-          bandId,
-        }),
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/auth/naver/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId,
+        bandId,
+      }),
+    });
 
     const data = await response.json();
     console.log("네이버 로그인 응답 상태:", response.status);
