@@ -24,18 +24,15 @@ const Barcode = ({ value, width = 2, height = 60, fontSize = 16 }) => {
         });
       } catch (error) {
         console.error("바코드 생성 오류:", error);
-        // 오류 발생 시 바코드 영역 비우기 (선택적)
         if (barcodeRef.current) {
           barcodeRef.current.innerHTML = "";
         }
       }
     } else if (barcodeRef.current) {
-      // value가 없을 때도 영역 비우기
       barcodeRef.current.innerHTML = "";
     }
   }, [value, width, height, fontSize]);
 
-  // value가 없으면 아무것도 렌더링하지 않음 (또는 placeholder)
   if (!value)
     return (
       <div className="text-center text-xs text-gray-400 my-4">
@@ -43,197 +40,167 @@ const Barcode = ({ value, width = 2, height = 60, fontSize = 16 }) => {
       </div>
     );
 
-  // SVG 요소에 ref를 연결하고 스타일 적용
   return <svg ref={barcodeRef} className="w-full max-w-xs mx-auto block"></svg>;
 };
 
 export default function OrdersPage() {
   const router = useRouter();
-  const topRef = useRef(null); // 페이지 상단 스크롤용
+  const topRef = useRef(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [orders, setOrders] = useState([]); // 주문 목록
-  const [searchTerm, setSearchTerm] = useState(""); // 검색어
-  const [sortBy, setSortBy] = useState("ordered_at"); // 정렬 필드
-  const [sortOrder, setSortOrder] = useState("desc"); // 정렬 순서 (asc, desc)
-  const [filterStatus, setFilterStatus] = useState("all"); // 상태 필터
-  const [currentPage, setCurrentPage] = useState(1); // 현재 페이지 번호
-  const [itemsPerPage] = useState(30); // 페이지당 항목 수 (백엔드와 일치 필요)
-  const [products, setProducts] = useState([]); // 상품 목록 (상품명 조회용)
+  const [orders, setOrders] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("ordered_at");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(30);
+  const [products, setProducts] = useState([]);
 
-  // --- 상세 정보 모달 상태 ---
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false); // 모달 표시 여부
-  const [selectedOrder, setSelectedOrder] = useState(null); // 현재 선택된 주문 데이터
-  const [isEditingDetails, setIsEditingDetails] = useState(false); // 모달 내 편집 모드 여부
-  const [tempItemNumber, setTempItemNumber] = useState(1); // 편집 중인 상품 번호 임시 저장
-  const [tempQuantity, setTempQuantity] = useState(1); // 편집 중인 수량 임시 저장
-  const [tempPrice, setTempPrice] = useState(0); // 편집 중인 단가 임시 저장
-  // 모달 내 활성 탭 상태 ('edit' 또는 'info')
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [tempItemNumber, setTempItemNumber] = useState(1);
+  const [tempQuantity, setTempQuantity] = useState(1);
+  const [tempPrice, setTempPrice] = useState(0);
   const [activeTab, setActiveTab] = useState("edit");
 
-  const [filterDateRange, setFilterDateRange] = useState("all"); // 통계용 날짜 범위 상태 추가 (기본값 'all')
-  const [statsLoading, setStatsLoading] = useState(true); // 통계 로딩 상태 추가
-  // -------------------------
+  const [filterDateRange, setFilterDateRange] = useState("all");
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  // SWR 옵션 (데이터 자동 갱신 및 에러 처리 설정)
   const swrOptions = {
-    revalidateOnFocus: true, // 창 포커스 시 자동 갱신
-    revalidateOnReconnect: true, // 네트워크 재연결 시 자동 갱신
-    refreshInterval: 30000, // 30초마다 자동 갱신
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    refreshInterval: 30000,
     onError: (error) => {
-      // 에러 발생 시 콜백
       console.error("SWR 데이터 로딩 오류:", error);
-      // 필요 시 전역 에러 상태 설정 또는 사용자 알림
-      // setError("데이터 로딩 중 문제가 발생했습니다.");
     },
   };
 
-  // useOrders 훅을 사용하여 주문 데이터 가져오기
   const { data: ordersData, error: ordersError } = useOrders(
-    userData?.userId, // userData가 있을 때만 호출
-    currentPage, // 현재 페이지 번호 전달
+    userData?.userId,
+    currentPage,
     {
-      // 필터 및 정렬 옵션 전달
       sortBy,
       sortOrder,
-      status: filterStatus !== "all" ? filterStatus : undefined, // 'all'이 아니면 상태 필터 적용
-      search: searchTerm.trim() || undefined, // 검색어가 있으면 적용
+      status: filterStatus !== "all" ? filterStatus : undefined,
+      search: searchTerm.trim() || undefined,
     },
-    swrOptions // SWR 옵션 적용
-  );
-
-  // useProducts 훅을 사용하여 상품 데이터 가져오기
-  const { data: productsData, error: productsError } = useProducts(
-    userData?.userId, // userData가 있을 때만 호출
-    1, // 모든 상품 목록을 가져오기 위해 페이지는 1로 고정
-    { limit: 200 }, // 충분한 수의 상품을 가져오도록 limit 증가 (필요시 조정)
-    swrOptions // SWR 옵션 적용
-  );
-
-  // 👇 주문 통계 데이터 가져오기 (OrdersPage 용)
-  const { data: orderStatsData, error: orderStatsError } = useOrderStats(
-    userData?.userId,
-    filterDateRange, // 상태 필터와 별개로 통계용 날짜 범위 사용
-    null,
-    null, // 사용자 지정 날짜는 필요 시 추가
     swrOptions
   );
 
-  // 사용자 인증 상태 확인 Effect
+  const { data: productsData, error: productsError } = useProducts(
+    userData?.userId,
+    1,
+    { limit: 200 },
+    swrOptions
+  );
+
+  const { data: orderStatsData, error: orderStatsError } = useOrderStats(
+    userData?.userId,
+    filterDateRange,
+    null,
+    null,
+    swrOptions
+  );
+
   useEffect(() => {
     const checkAuth = async () => {
-      setLoading(true); // 로딩 시작
+      setLoading(true);
       try {
         const sessionData = sessionStorage.getItem("userData");
         if (!sessionData) {
-          router.replace("/login"); // 세션 없으면 로그인 페이지로
-          return; // 함수 종료
+          router.replace("/login");
+          return;
         }
         const userDataObj = JSON.parse(sessionData);
-        setUserData(userDataObj); // 사용자 데이터 설정
+        setUserData(userDataObj);
       } catch (error) {
         console.error("인증 확인 또는 데이터 조회 오류:", error);
         setError("사용자 정보를 불러오는 중 오류가 발생했습니다.");
-        // 필요 시 로그아웃 처리
         sessionStorage.removeItem("userData");
         router.replace("/login");
       } finally {
-        setLoading(false); // 로딩 종료
+        setLoading(false);
       }
     };
     checkAuth();
-  }, [router]); // router 의존성
+  }, [router]);
 
-  // 상품 데이터 상태 업데이트 Effect
   useEffect(() => {
     if (productsData?.data) {
-      setProducts(productsData.data); // 가져온 상품 데이터를 상태에 저장
+      setProducts(productsData.data);
     }
-  }, [productsData]); // productsData 변경 시 실행
+  }, [productsData]);
 
-  // 상품 데이터 로딩 오류 처리 Effect
   useEffect(() => {
     if (productsError) {
       console.error("상품 데이터 로딩 오류:", productsError);
-      // 상품 로딩 실패 시 사용자에게 알림 (선택적)
-      // setError("상품 정보를 불러오는 데 실패했습니다.");
     }
-  }, [productsError]); // productsError 변경 시 실행
+  }, [productsError]);
 
-  // 주문 데이터 상태 업데이트 Effect
   useEffect(() => {
     if (userData && ordersData?.data) {
-      setOrders(ordersData.data || []); // 가져온 주문 데이터를 상태에 저장
+      setOrders(ordersData.data || []);
     }
-  }, [ordersData, userData]); // ordersData 또는 userData 변경 시 실행
+  }, [ordersData, userData]);
 
-  // 주문 데이터 로딩 오류 처리 Effect
   useEffect(() => {
     if (ordersError) {
       console.error("주문 데이터 로딩 오류:", ordersError);
       setError("주문 데이터를 불러오는 데 실패했습니다.");
-    } else {
-      // 데이터 로딩 성공 시 에러 상태 초기화 (선택적)
-      // setError(null);
     }
-  }, [ordersError]); // ordersError 변경 시 실행
+  }, [ordersError]);
 
-  // 통계 데이터 로딩 상태 업데이트 Effect
   useEffect(() => {
-    // userData 로드 완료 후, orderStatsData 로딩 상태 반영
     if (!loading && userData?.userId) {
-      setStatsLoading(!orderStatsData && !orderStatsError); // 데이터도 없고 에러도 없으면 로딩 중
+      setStatsLoading(!orderStatsData && !orderStatsError);
     } else if (orderStatsError) {
-      setStatsLoading(false); // 에러 발생 시 로딩 종료
+      setStatsLoading(false);
     }
   }, [loading, userData, orderStatsData, orderStatsError]);
 
-  // 상품 ID로 상품명 찾기 헬퍼 함수
   const getProductNameById = (productId) => {
     const product = products.find((p) => p.product_id === productId);
-    return product ? product.title : "상품 정보 없음"; // 상품 못 찾을 경우 메시지 개선
+    return product ? product.title : "상품 정보 없음";
   };
 
-  // 상품 ID로 바코드 찾기 헬퍼 함수
   const getProductBarcode = (productId) => {
     const product = products.find((p) => p.product_id === productId);
-    return product?.barcode || ""; // 상품 또는 바코드 없으면 빈 문자열 반환
+    return product?.barcode || "";
   };
 
-  // 금액 포맷팅 헬퍼 함수
   const formatCurrency = (amount) => {
-    const validAmount = amount ?? 0; // null, undefined일 경우 0으로 처리
+    const validAmount = amount ?? 0;
     try {
       return new Intl.NumberFormat("ko-KR", {
         style: "currency",
         currency: "KRW",
-        maximumFractionDigits: 0, // 소수점 제거
+        maximumFractionDigits: 0,
       }).format(validAmount);
     } catch (e) {
       console.error("Currency formatting error:", e);
-      return `${validAmount} 원`; // 포맷팅 실패 시 기본 형식 반환
+      return `${validAmount} 원`;
     }
   };
 
-  // 날짜 포맷팅 헬퍼 함수
   const formatDate = (dateString) => {
-    if (!dateString) return "-"; // 날짜 없으면 하이픈 반환
+    if (!dateString) return "-";
     try {
       const date = new Date(dateString);
-      if (isNaN(date.getTime())) return "유효하지 않은 날짜"; // 유효하지 않은 날짜 처리
+      if (isNaN(date.getTime())) return "유효하지 않은 날짜";
       const month = String(date.getMonth() + 1).padStart(2, "0");
       const day = String(date.getDate()).padStart(2, "0");
       const hours = String(date.getHours()).padStart(2, "0");
       const minutes = String(date.getMinutes()).padStart(2, "0");
-      return `${month}.${day} ${hours}:${minutes}`; // MM.DD HH:MM 형식
+      return `${month}.${day} ${hours}:${minutes}`;
     } catch (e) {
       console.error("Date formatting error:", e);
       return "날짜 형식 오류";
     }
   };
 
-  // 주문 상태에 따른 배지 스타일 반환 헬퍼 함수
   const getStatusBadgeStyles = (status) => {
     switch (status) {
       case "주문완료":
@@ -243,15 +210,14 @@ export default function OrdersPage() {
       case "주문취소":
         return "bg-red-100 text-red-800";
       default:
-        return "bg-gray-100 text-gray-800"; // 기본 스타일
+        return "bg-gray-100 text-gray-800";
     }
   };
 
-  // 주문 상태 변경 핸들러 (API 호출 및 상태 업데이트)
   const handleStatusChange = async (orderId, newStatus) => {
     if (!orderId || !userData?.userId) {
       console.error("Cannot change status: orderId or userId missing.");
-      return; // 필수 정보 없으면 중단
+      return;
     }
     try {
       const allowedStatuses = ["주문완료", "주문취소", "수령완료"];
@@ -260,35 +226,28 @@ export default function OrdersPage() {
         return;
       }
 
-      // API 요청 본문 준비
       const updateData = { status: newStatus };
-      const nowISO = new Date().toISOString(); // 현재 시간 ISO 형식
+      const nowISO = new Date().toISOString();
 
-      // 상태에 따라 시간 필드 추가
       if (newStatus === "수령완료") {
-        updateData.pickupTime = nowISO; // 프론트엔드 표시용 (필요 시)
-        updateData.completed_at = nowISO; // 백엔드 저장용
+        updateData.pickupTime = nowISO;
+        updateData.completed_at = nowISO;
       } else if (newStatus === "주문취소") {
-        updateData.canceled_at = nowISO; // 백엔드 저장용
+        updateData.canceled_at = nowISO;
       }
 
-      // API 호출하여 상태 변경 (PUT 요청)
       const response = await api.put(
-        `/orders/${orderId}/status?userId=${userData.userId}`, // userId 쿼리 파라미터로 권한 확인
+        `/orders/${orderId}/status?userId=${userData.userId}`,
         updateData
       );
 
-      // 응답 성공 여부 확인
       if (response.data?.success) {
-        // 로컬 상태 업데이트 (메인 목록)
         setOrders((currentOrders) =>
           currentOrders.map((order) => {
             if (order.order_id === orderId) {
               const updatedOrder = { ...order, status: newStatus };
-              // 시간 필드 업데이트
               if (newStatus === "수령완료") updatedOrder.completed_at = nowISO;
               if (newStatus === "주문취소") updatedOrder.canceled_at = nowISO;
-              // pickupTime은 completed_at과 동일하게 설정하거나, 백엔드 응답에 따라 설정
               if (newStatus === "수령완료") updatedOrder.pickupTime = nowISO;
               return updatedOrder;
             }
@@ -296,7 +255,6 @@ export default function OrdersPage() {
           })
         );
 
-        // 모달에 표시된 데이터도 업데이트 (selectedOrder가 있을 경우)
         if (selectedOrder && selectedOrder.order_id === orderId) {
           setSelectedOrder((prev) => {
             if (!prev) return null;
@@ -311,10 +269,7 @@ export default function OrdersPage() {
         }
 
         alert(`주문이 ${newStatus} 상태로 성공적으로 변경되었습니다.`);
-        // 상태 변경 성공 시 상세 모달 닫기 (선택적)
-        // closeDetailModal();
       } else {
-        // API 응답 실패 시 에러 발생
         throw new Error(
           response.data?.message || "주문 상태 변경에 실패했습니다."
         );
@@ -325,43 +280,34 @@ export default function OrdersPage() {
         `주문 상태 변경 중 오류 발생: ${error.message || "알 수 없는 오류"}`
       );
     }
-    // 상태 변경 액션 후에는 상태 선택 모달(statusModal - 현재 미사용)은 닫음
-    // setStatusModal({ show: false, orderId: null });
   };
 
-  // --- 상세 정보 모달 핸들러 ---
   const openDetailModal = (order) => {
-    setSelectedOrder({ ...order }); // 객체 복사하여 상태 설정 (원본 불변성 유지)
-    // 편집용 임시 상태 초기화 (현재 주문 데이터 기준)
+    setSelectedOrder({ ...order });
     setTempItemNumber(order.item_number || 1);
     setTempQuantity(order.quantity || 1);
-    setTempPrice(order.price ?? 0); // 단가 (null일 경우 0)
-    setIsEditingDetails(false); // 초기에는 보기 모드
-    setIsDetailModalOpen(true); // 모달 열기
+    setTempPrice(order.price ?? 0);
+    setIsEditingDetails(false);
+    setIsDetailModalOpen(true);
   };
 
   const closeDetailModal = () => {
     setIsDetailModalOpen(false);
-    setSelectedOrder(null); // 선택된 주문 정보 초기화
-    setIsEditingDetails(false); // 편집 모드 해제
+    setSelectedOrder(null);
+    setIsEditingDetails(false);
   };
 
-  // 모달 내 편집 모드 토글 핸들러
   const toggleDetailsEditMode = () => {
     if (isEditingDetails) {
-      // 편집 모드 -> 보기 모드로 전환 (취소)
-      // 임시 상태를 모달에 표시된 현재 값(selectedOrder)으로 복원
       if (selectedOrder) {
         setTempItemNumber(selectedOrder.item_number || 1);
         setTempQuantity(selectedOrder.quantity || 1);
         setTempPrice(selectedOrder.price ?? 0);
       }
     }
-    // 편집 모드 상태 반전
     setIsEditingDetails((prev) => !prev);
   };
 
-  // 모달 내 임시 값 변경 핸들러
   const handleTempInputChange = (field, value) => {
     if (field === "itemNumber") {
       setTempItemNumber(value);
@@ -372,7 +318,6 @@ export default function OrdersPage() {
     }
   };
 
-  // 모달 내 상세 정보 저장 핸들러 (API 호출)
   const saveOrderDetails = async () => {
     if (!selectedOrder || !userData?.userId) {
       console.error("Cannot save details: selectedOrder or userId missing.");
@@ -380,12 +325,10 @@ export default function OrdersPage() {
     }
 
     const orderId = selectedOrder.order_id;
-    // 입력값 파싱 및 기본값 설정
     const parsedItemNumber = parseInt(tempItemNumber, 10) || 1;
     const parsedQuantity = parseInt(tempQuantity, 10) || 1;
-    const parsedPrice = parseFloat(tempPrice) || 0; // 소수점 가능, 기본값 0
+    const parsedPrice = parseFloat(tempPrice) || 0;
 
-    // 유효성 검사
     if (parsedItemNumber < 1) {
       alert("상품 번호는 1 이상이어야 합니다.");
       return;
@@ -399,26 +342,20 @@ export default function OrdersPage() {
       return;
     }
 
-    const newTotalAmount = parsedPrice * parsedQuantity; // 총액 재계산
+    const newTotalAmount = parsedPrice * parsedQuantity;
 
-    // DB에 업데이트할 데이터 객체
     const updateData = {
       item_number: parsedItemNumber,
       quantity: parsedQuantity,
-      price: parsedPrice, // 단가
-      total_amount: newTotalAmount, // 총액
-      // product_id는 여기서 변경하지 않는다고 가정
-      // status는 별도 버튼으로 변경
+      price: parsedPrice,
+      total_amount: newTotalAmount,
     };
 
-    // === API 호출하여 DB 업데이트 ===
     try {
       console.log(
         `API 호출: 주문(${orderId}) 상세 정보 업데이트 ->`,
         updateData
       );
-      // --- 실제 API 엔드포인트 및 요청 본문 확인 필요 ---
-      // 예시: PUT /api/orders/:orderId
       const response = await api.put(
         `/orders/${orderId}?userId=${userData.userId}`,
         updateData
@@ -431,93 +368,74 @@ export default function OrdersPage() {
       }
       console.log(`주문(${orderId}) 상세 정보 DB 업데이트 성공`);
 
-      // 성공 시 로컬 상태 업데이트
       const updatedOrder = {
-        ...selectedOrder, // 기존 주문 정보에
-        ...updateData, // 업데이트된 내용 반영
+        ...selectedOrder,
+        ...updateData,
       };
-      // 메인 주문 목록 업데이트
       setOrders((currentOrders) =>
         currentOrders.map((o) => (o.order_id === orderId ? updatedOrder : o))
       );
-      // 모달에 표시된 데이터도 업데이트
       setSelectedOrder(updatedOrder);
-      // 편집 모드 종료
       setIsEditingDetails(false);
 
       alert("주문 정보가 성공적으로 업데이트되었습니다.");
     } catch (error) {
       console.error("주문 상세 정보 업데이트 오류:", error);
       alert(`주문 정보 업데이트 중 오류 발생: ${error.message}`);
-      // API 실패 시, 편집 모드를 유지하여 사용자가 다시 시도하거나 취소할 수 있도록 함
     }
   };
-  // --- 상세 정보 모달 핸들러 끝 ---
 
-  // 로그아웃 핸들러
   const handleLogout = () => {
     sessionStorage.removeItem("userData");
-    sessionStorage.removeItem("naverLoginData"); // 관련 데이터 모두 제거
-    router.replace("/login"); // 로그인 페이지로 이동
+    sessionStorage.removeItem("naverLoginData");
+    router.replace("/login");
   };
 
-  // 검색어 변경 핸들러
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
-    setCurrentPage(1); // 검색 시 첫 페이지로 리셋
-    // scrollToTop(); // 페이지 상단 이동 (선택적)
+    setCurrentPage(1);
   };
 
-  // 정렬 변경 핸들러
   const handleSortChange = (field) => {
     if (sortBy === field) {
-      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc")); // 정렬 방향 토글
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      setSortBy(field); // 정렬 필드 변경
-      setSortOrder("desc"); // 기본 내림차순
+      setSortBy(field);
+      setSortOrder("desc");
     }
-    setCurrentPage(1); // 정렬 변경 시 첫 페이지로 리셋
-    // scrollToTop(); // 페이지 상단 이동 (선택적)
+    setCurrentPage(1);
   };
 
-  // 상태 필터 변경 핸들러
   const handleFilterChange = (status) => {
     setFilterStatus(status);
-    setCurrentPage(1); // 필터 변경 시 첫 페이지로 리셋
-    // scrollToTop(); // 페이지 상단 이동 (선택적)
+    setCurrentPage(1);
   };
 
-  // 페이지 상단 이동 함수
   const scrollToTop = () => {
     if (topRef.current) {
-      topRef.current.scrollIntoView({ behavior: "smooth" }); // 부드럽게 이동
+      topRef.current.scrollIntoView({ behavior: "smooth" });
     } else {
-      window.scrollTo({ top: 0, behavior: "smooth" }); // 최상단으로 부드럽게 이동
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
-  // 페이지 번호 변경 핸들러
   const paginate = (pageNumber) => {
     if (pageNumber >= 1 && pageNumber <= totalPages) {
-      // 유효한 페이지 번호인지 확인
       setCurrentPage(pageNumber);
-      scrollToTop(); // 페이지 변경 시 상단으로 이동
+      scrollToTop();
     }
   };
 
-  // 이전 페이지 이동 핸들러
   const goToPreviousPage = () => {
     paginate(currentPage - 1);
   };
 
-  // 다음 페이지 이동 핸들러
   const goToNextPage = () => {
     paginate(currentPage + 1);
   };
 
-  // 정렬 아이콘 반환 헬퍼 함수
   const getSortIcon = (field) => {
-    if (sortBy !== field) return null; // 현재 정렬 필드가 아니면 아이콘 없음
+    if (sortBy !== field) return null;
     return sortOrder === "asc" ? (
       <svg
         className="w-4 h-4 ml-1 inline-block"
@@ -531,7 +449,7 @@ export default function OrdersPage() {
           strokeWidth={2}
           d="M5 15l7-7 7 7"
         />
-      </svg> // 오름차순 아이콘
+      </svg>
     ) : (
       <svg
         className="w-4 h-4 ml-1 inline-block"
@@ -545,11 +463,10 @@ export default function OrdersPage() {
           strokeWidth={2}
           d="M19 9l-7 7-7-7"
         />
-      </svg> // 내림차순 아이콘
+      </svg>
     );
   };
 
-  // 테이블 내 수량 증가 핸들러 (stopPropagation 추가)
   const increaseQuantity = (orderId) => {
     setOrders((currentOrders) =>
       currentOrders.map((order) =>
@@ -564,7 +481,6 @@ export default function OrdersPage() {
     );
   };
 
-  // 테이블 내 수량 감소 핸들러 (stopPropagation 추가)
   const decreaseQuantity = (orderId) => {
     setOrders((currentOrders) =>
       currentOrders.map((order) =>
@@ -579,13 +495,11 @@ export default function OrdersPage() {
     );
   };
 
-  // 상품 ID로 밴드 게시물 URL 찾기 헬퍼 함수
   const getPostUrlByProductId = (productId) => {
     const product = products.find((p) => p.product_id === productId);
-    return product?.band_post_url || ""; // 없으면 빈 문자열 반환
+    return product?.band_post_url || "";
   };
 
-  // --- 로딩 상태 UI ---
   if (loading || statsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -597,7 +511,6 @@ export default function OrdersPage() {
     );
   }
 
-  // --- 에러 상태 UI ---
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
@@ -608,13 +521,13 @@ export default function OrdersPage() {
           <p className="text-gray-700 mb-6 text-center">{error}</p>
           <div className="flex justify-center space-x-4">
             <button
-              onClick={() => window.location.reload()} // 페이지 새로고침
+              onClick={() => window.location.reload()}
               className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors font-medium"
             >
               새로고침
             </button>
             <button
-              onClick={handleLogout} // 로그아웃
+              onClick={handleLogout}
               className="px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors font-medium"
             >
               로그아웃
@@ -625,9 +538,7 @@ export default function OrdersPage() {
     );
   }
 
-  // --- 사용자 데이터 없을 시 (인증 실패 또는 로딩 전) ---
   if (!userData) {
-    // 일반적으로 checkAuth에서 리다이렉트되므로 이 상태는 거의 보이지 않음
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <p className="text-gray-500">
@@ -637,12 +548,10 @@ export default function OrdersPage() {
     );
   }
 
-  // --- 메인 페이지 렌더링 ---
-  const totalItems = ordersData?.pagination?.total || 0; // 총 주문 개수
-  const totalPages = ordersData?.pagination?.totalPages || 1; // 총 페이지 수
-  const displayOrders = orders || []; // 현재 페이지에 표시할 주문 목록
+  const totalItems = ordersData?.pagination?.total || 0;
+  const totalPages = ordersData?.pagination?.totalPages || 1;
+  const displayOrders = orders || [];
 
-  // 👇 통계 데이터 추출 (기본값 처리 포함)
   const stats = orderStatsData?.data || {
     totalOrders: 0,
     completedOrders: 0,
@@ -650,9 +559,9 @@ export default function OrdersPage() {
     estimatedRevenue: 0,
     confirmedRevenue: 0,
   };
-  const totalStatsOrders = stats.totalOrders || 0; // 통계 기반 총 주문 수
-  const totalCompletedOrders = stats.completedOrders || 0; // 통계 기반 완료 주문 수
-  const totalPendingOrders = stats.pendingOrders || 0; // 통계 기반 미수령 주문 수
+  const totalStatsOrders = stats.totalOrders || 0;
+  const totalCompletedOrders = stats.completedOrders || 0;
+  const totalPendingOrders = stats.pendingOrders || 0;
 
   return (
     <div ref={topRef} className=" min-h-screen">
@@ -663,47 +572,37 @@ export default function OrdersPage() {
             주문 관리
           </h1>
           <p className="text-sm md:text-base text-gray-600">
-            {/* 👇 통계 데이터 기반으로 문구 수정 */}총 {totalStatsOrders}건의
-            주문 목록입니다.
+            총 {totalStatsOrders}건의 주문 목록입니다.
           </p>
 
           <p className="text-sm md:text-base text-gray-600">
             주문 목록을 확인하고 상태를 업데이트하세요.
           </p>
         </div>
-        {/* 요약 정보 */}
         <div className="grid grid-cols-4 gap-3 md:gap-4 text-center w-full md:w-auto">
           <div className="bg-white rounded-lg p-3 md:p-4 shadow-sm border border-gray-200">
             <div className="text-xs md:text-sm text-gray-500 mb-1">총 주문</div>
             <div className="text-xl md:text-2xl font-semibold text-gray-900">
-              {/* 👇 통계 데이터 사용 */}
               {totalStatsOrders}
             </div>
           </div>
-          {/* 👇 총 수령완료 (건수) */}
           <div className="bg-white rounded-lg p-3 md:p-4 shadow-sm border border-gray-200">
             <div className="text-xs md:text-sm text-gray-500 mb-1">
               수령완료
-            </div>{" "}
-            {/* 라벨 수정 */}
+            </div>
             <div className="text-xl md:text-2xl font-semibold text-green-600">
-              {" "}
-              {/* 색상 유지 또는 변경 */}
-              {totalCompletedOrders} 건{" "}
-              {/* totalCompletedOrders 변수 사용하고 '건' 추가 */}
+              {totalCompletedOrders} 건
             </div>
           </div>
           <div className="bg-white rounded-lg p-3 md:p-4 shadow-sm border border-gray-200">
             <div className="text-xs md:text-sm text-gray-500 mb-1">미수령</div>
             <div className="text-xl md:text-2xl font-semibold text-blue-600">
-              {/* 👇 통계 데이터 사용 */}
               {totalPendingOrders}
             </div>
           </div>
           <div className="bg-white rounded-lg p-3 md:p-4 shadow-sm border border-gray-200">
             <div className="text-xs md:text-sm text-gray-500 mb-1">완료율</div>
             <div className="text-xl md:text-2xl font-semibold text-green-600">
-              {/* 👇 통계 데이터 사용 */}
               {totalStatsOrders > 0
                 ? Math.round((totalCompletedOrders / totalStatsOrders) * 100)
                 : 0}
@@ -798,183 +697,202 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* 주문 테이블 */}
+      {/* === 주문 테이블 (스타일 수정) === */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-6 md:mb-8">
+        {/* 1. overflow-x-auto 추가: 테이블이 넘칠 경우 가로 스크롤 생성 */}
         <div className="overflow-x-auto">
-          <table className="w-full table-auto">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
-                <th className="px-4 py-4 text-center font-semibold">#</th>
-                <th className="px-4 py-4 text-left font-semibold">
-                  <button
-                    onClick={() => handleSortChange("ordered_at")}
-                    className="flex items-center hover:text-gray-900"
-                  >
-                    주문일시 {getSortIcon("ordered_at")}
-                  </button>
-                </th>
-                <th className="px-4 py-4 text-left font-semibold">상품명</th>
-                <th className="px-4 py-4 text-left font-semibold">
-                  <button
-                    onClick={() => handleSortChange("customer_name")}
-                    className="flex items-center hover:text-gray-900"
-                  >
-                    고객명 {getSortIcon("customer_name")}
-                  </button>
-                </th>
-                <th className="px-4 py-4 text-left font-semibold hidden md:table-cell">
-                  고객 댓글
-                </th>
-                <th className="px-4 py-4 text-center font-semibold w-[80px]">
-                  상품번호
-                </th>
-                <th className="px-4 py-4 text-center font-semibold w-[110px]">
-                  수량
-                </th>
-                <th className="px-4 py-4 text-right font-semibold w-[110px]">
-                  <button
-                    onClick={() => handleSortChange("total_amount")}
-                    className="flex items-center justify-end w-full hover:text-gray-900"
-                  >
-                    금액 {getSortIcon("total_amount")}
-                  </button>
-                </th>
-                <th className="px-4 py-4 text-center font-semibold w-[140px] hidden md:table-cell">
-                  바코드
-                </th>
-                <th className="px-4 py-4 text-center font-semibold w-[100px]">
-                  상태
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {displayOrders.map((order, index) => {
-                const startNumberForCurrentPage =
-                  totalItems - (currentPage - 1) * itemsPerPage;
-                const orderNumber = startNumberForCurrentPage - index;
-                const postUrl = getPostUrlByProductId(order.product_id);
+          {/* 2. min-w-full 추가: 테이블 내용이 항상 가로로 펼쳐지도록 함 */}
+          <div className="min-w-full">
+            {/* 3. table 클래스 변경: min-w-full 및 divide 사용 (ProductsPage와 유사하게) */}
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-100">
+                <tr className="border-b border-gray-200 text-gray-600 uppercase text-xs tracking-wider">
+                  {/* --- 테이블 헤더 (th) --- */}
+                  {/* 각 th에 px-4 py-3 text-left/center 추가 (ProductsPage 스타일과 유사하게) */}
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button
+                      onClick={() => handleSortChange("ordered_at")}
+                      className="flex items-center hover:text-gray-900 focus:outline-none"
+                    >
+                      주문일시 {getSortIcon("ordered_at")}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    상품명
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button
+                      onClick={() => handleSortChange("customer_name")}
+                      className="flex items-center hover:text-gray-900 focus:outline-none"
+                    >
+                      고객명 {getSortIcon("customer_name")}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    고객 댓글
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    상품번호
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    수량
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <button
+                      onClick={() => handleSortChange("total_amount")}
+                      className="flex items-center justify-end w-full hover:text-gray-900 focus:outline-none"
+                    >
+                      금액 {getSortIcon("total_amount")}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    바코드
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    상태
+                  </th>
+                </tr>
+              </thead>
+              {/* 4. tbody에 divide 추가 (테이블과 일관성) */}
+              <tbody className="divide-y divide-gray-200">
+                {displayOrders.map((order, index) => {
+                  const startNumberForCurrentPage =
+                    totalItems - (currentPage - 1) * itemsPerPage;
+                  const orderNumber = startNumberForCurrentPage - index;
+                  const postUrl = getPostUrlByProductId(order.product_id);
 
-                return (
-                  <tr
-                    key={order.order_id}
-                    className="hover:bg-blue-50 transition-colors group cursor-pointer"
-                    onClick={() => openDetailModal(order)} // 행 클릭 시 모달 열기
-                  >
-                    {/* 주문 번호 */}
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 font-medium text-center">
-                      {orderNumber}
-                    </td>
-                    {/* 주문 일시 */}
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {formatDate(order.ordered_at)}
-                    </td>
-                    {/* 상품명 */}
-                    <td className="px-4 py-4">
-                      <div className="text-sm text-gray-800 font-medium truncate">
-                        {getProductNameById(order.product_id)}
-                      </div>
-                    </td>
-                    {/* 고객명 */}
-                    <td className="px-4 py-4">
-                      <div className="text-sm text-gray-900 font-semibold truncate">
-                        {order.customer_name}
-                      </div>
-                    </td>
-                    {/* 고객 댓글 */}
-                    <td className="px-4 py-4 max-w-xs hidden md:table-cell">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-gray-600 line-clamp-1">
-                          {order.comment || "-"}
-                        </span>
-                        {postUrl && (
-                          <a
-                            href={postUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()} // 행 클릭 이벤트 막기
-                            className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap"
-                            title="원본 댓글 보기"
-                          >
-                            <svg
-                              className="w-3 h-3 mr-1"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
-                              <path
-                                fillRule="evenodd"
-                                d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-                                clipRule="evenodd"
-                              ></path>
-                            </svg>
-                            보기
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                    {/* 상품 번호 (보기 전용) */}
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm text-gray-800 font-semibold">
-                        {order.item_number || "-"}
-                      </span>
-                    </td>
-                    {/* 수량 (+/- 버튼 포함) */}
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm font-medium text-gray-800">
-                        {order.quantity || 0}
-                      </span>
-                    </td>
-                    {/* 금액 */}
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-right">
-                      {formatCurrency(order.total_amount)}
-                    </td>
-                    {/* 바코드 */}
-                    <td className="px-4 py-4 whitespace-nowrap text-center hidden md:table-cell">
-                      {getProductBarcode(order.product_id) ? (
-                        <div className="mx-auto max-w-[120px]">
+                  return (
+                    <tr
+                      key={order.order_id}
+                      className="hover:bg-blue-50 transition-colors group cursor-pointer"
+                      onClick={() => openDetailModal(order)}
+                    >
+                      {/* --- 테이블 데이터 (td) --- */}
+                      {/* 5. 각 td에 px-4 py-4 및 whitespace-nowrap 추가 (필요한 곳에) */}
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 font-medium text-center">
+                        {orderNumber}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {formatDate(order.ordered_at)}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {" "}
+                        {/* 상품명: 줄바꿈 방지 */}
+                        <div className="text-sm text-gray-800 font-medium truncate max-w-xs">
                           {" "}
-                          {/* 최대 너비 유지 */}
-                          <Barcode
-                            value={getProductBarcode(order.product_id)}
-                            height={30}
-                            width={1.2}
-                            fontSize={10}
-                          />{" "}
-                          {/* 테이블 내 바코드 크기 조정 */}
+                          {/* 필요 시 truncate 추가 */}
+                          {getProductNameById(order.product_id)}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">없음</span>
-                      )}
-                    </td>
-                    {/* 상태 */}
-                    <td className="px-4 py-4 text-center">
-                      <span
-                        className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeStyles(
-                          order.status
-                        )}`}
-                      >
-                        {order.status}
-                      </span>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {" "}
+                        {/* 고객명: 줄바꿈 방지 */}
+                        <div className="text-sm text-gray-900 font-semibold truncate max-w-[120px]">
+                          {" "}
+                          {/* 필요 시 truncate 추가 */}
+                          {order.customer_name}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 max-w-xs hidden md:table-cell whitespace-nowrap">
+                        {" "}
+                        {/* 고객 댓글 TD: 줄바꿈 방지 */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm text-gray-600 line-clamp-1">
+                            {" "}
+                            {/* 댓글 내용은 line-clamp 유지 */}
+                            {order.comment || "-"}
+                          </span>
+                          {postUrl && (
+                            <a
+                              href={postUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap"
+                              title="원본 댓글 보기"
+                            >
+                              <svg
+                                className="w-3 h-3 mr-1"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
+                                <path
+                                  fillRule="evenodd"
+                                  d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                                  clipRule="evenodd"
+                                ></path>
+                              </svg>
+                              보기
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-center whitespace-nowrap">
+                        {" "}
+                        {/* 상품 번호: 줄바꿈 방지 */}
+                        <span className="text-sm text-gray-800 font-semibold">
+                          {order.item_number || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center whitespace-nowrap">
+                        {" "}
+                        {/* 수량: 줄바꿈 방지 */}
+                        <span className="text-sm font-medium text-gray-800">
+                          {order.quantity || 0}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-right">
+                        {formatCurrency(order.total_amount)}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-center hidden md:table-cell">
+                        {getProductBarcode(order.product_id) ? (
+                          <div className="mx-auto max-w-[120px]">
+                            <Barcode
+                              value={getProductBarcode(order.product_id)}
+                              height={30}
+                              width={1.2}
+                              fontSize={10}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">없음</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-center whitespace-nowrap">
+                        {" "}
+                        {/* 상태: 줄바꿈 방지 */}
+                        <span
+                          className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeStyles(
+                            order.status
+                          )}`}
+                        >
+                          {order.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {displayOrders.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan="10" // colSpan은 기존 헤더 개수와 일치하게 유지
+                      className="px-6 py-12 text-center text-gray-500"
+                    >
+                      표시할 주문 데이터가 없습니다.
                     </td>
                   </tr>
-                );
-              })}
-              {/* 주문 데이터 없을 때 */}
-              {displayOrders.length === 0 && (
-                <tr>
-                  <td
-                    colSpan="10"
-                    className="px-6 py-12 text-center text-gray-500"
-                  >
-                    표시할 주문 데이터가 없습니다.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+        {/* === 테이블 끝 === */}
 
-        {/* 페이지네이션 */}
+        {/* 페이지네이션 (기존 코드 유지) */}
         {totalItems > itemsPerPage && (
           <div className="px-4 py-4 flex items-center justify-between border-t border-gray-200 bg-white rounded-b-xl">
             <div>
@@ -986,7 +904,6 @@ export default function OrdersPage() {
                 </span>
               </p>
             </div>
-            {/* 페이지네이션 버튼 */}
             <nav
               className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
               aria-label="Pagination"
@@ -1012,10 +929,9 @@ export default function OrdersPage() {
                   />
                 </svg>
               </button>
-              {/* 페이지 번호 생성 로직 */}
               {(() => {
                 const pageNumbers = [];
-                const maxPagesToShow = 3; // 중앙에 표시할 최대 페이지 수 (현재 페이지 포함)
+                const maxPagesToShow = 3;
                 let startPage = Math.max(
                   1,
                   currentPage - Math.floor(maxPagesToShow / 2)
@@ -1024,22 +940,18 @@ export default function OrdersPage() {
                   totalPages,
                   startPage + maxPagesToShow - 1
                 );
-                // 시작 페이지 조정 (끝 페이지가 최대 페이지 수보다 작을 경우)
                 if (endPage - startPage + 1 < maxPagesToShow) {
                   startPage = Math.max(1, endPage - maxPagesToShow + 1);
                 }
 
                 if (startPage > 1) {
-                  // 첫 페이지 및 ... 표시
                   pageNumbers.push(1);
                   if (startPage > 2) pageNumbers.push("...");
                 }
                 for (let i = startPage; i <= endPage; i++) {
-                  // 중간 페이지 번호
                   pageNumbers.push(i);
                 }
                 if (endPage < totalPages) {
-                  // 마지막 페이지 및 ... 표시
                   if (endPage < totalPages - 1) pageNumbers.push("...");
                   pageNumbers.push(totalPages);
                 }
@@ -1093,6 +1005,7 @@ export default function OrdersPage() {
         )}
       </div>
 
+      {/* 상세 정보 모달 (기존 코드 유지) */}
       {isDetailModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-70 z-50 overflow-y-auto flex justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl p-0 my-12">
@@ -1204,7 +1117,6 @@ export default function OrdersPage() {
 
               {/* 상태 변경 */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-t pt-4">
-                {/* 현재 상태 */}
                 <div className="text-sm font-medium text-gray-700">
                   현재 상태:{" "}
                   <span
@@ -1216,7 +1128,6 @@ export default function OrdersPage() {
                   </span>
                 </div>
 
-                {/* 상태 변경 버튼 */}
                 <div className="flex flex-wrap gap-2">
                   {["주문완료", "수령완료", "주문취소"].map((status) => {
                     const isCurrent = selectedOrder.status === status;
@@ -1252,25 +1163,9 @@ export default function OrdersPage() {
                 </div>
               </div>
             </div>
-
-            {/* 푸터 */}
-            {/* <div className="flex justify-end px-6 py-4 border-t border-gray-200">
-              <button
-                onClick={saveOrderDetails}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-              >
-                저장
-              </button>
-              <button
-                onClick={closeDetailModal}
-                className="ml-3 px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium"
-              >
-                닫기
-              </button>
-            </div> */}
           </div>
         </div>
       )}
-    </div> // Main container div end
-  ); // Component return end
-} // Component end
+    </div>
+  );
+}

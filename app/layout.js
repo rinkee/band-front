@@ -126,9 +126,12 @@ export default function RootLayout({ children }) {
             <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full  ">
               <div className="flex items-center justify-between px-4 py-2   max-w-[1200px] mx-auto">
                 <div className="flex items-center">
-                  <h1 className="text-xl font-bold text-gray-800 mr-6">
+                  <Link
+                    className="text-xl font-bold text-gray-800 mr-6"
+                    href="/"
+                  >
                     PODER
-                  </h1>
+                  </Link>
                   {/* 데스크탑 네비게이션 */}
                   <nav className="hidden md:flex space-x-1">
                     <Link

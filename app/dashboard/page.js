@@ -504,7 +504,7 @@ export default function DashboardPage() {
       {/* 주요 통계 */}
       <div className="bg-white rounded-2xl px-4 py-6 shadow-sm">
         <div className=" ">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col md:flex-row justify-between items-center">
             <h2 className="text-xl font-bold">주요 통계</h2>
             <div className="flex space-x-2">
               <button
@@ -550,7 +550,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-5 gap-4 mt-8">
+        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-4 mt-8">
           <div className=" ">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-gray-500">총 주문완료</h3>

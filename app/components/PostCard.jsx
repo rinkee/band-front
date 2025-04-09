@@ -150,7 +150,7 @@ export default function PostCard({ post }) {
           원본 보기
         </a>
 
-        {post.is_product && (
+        {/* {post.is_product && (
           <a
             href={`/products?productId=${post.product_id}`}
             className="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors text-center flex items-center justify-center"
@@ -170,7 +170,7 @@ export default function PostCard({ post }) {
             </svg>
             상품 보기
           </a>
-        )}
+        )} */}
       </div>
     </div>
   );
