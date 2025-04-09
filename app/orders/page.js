@@ -702,17 +702,26 @@ export default function OrdersPage() {
         {/* 1. overflow-x-auto 추가: 테이블이 넘칠 경우 가로 스크롤 생성 */}
         <div className="overflow-x-auto">
           {/* 2. min-w-full 추가: 테이블 내용이 항상 가로로 펼쳐지도록 함 */}
-          <div className="min-w-full">
+          <div className="min-w-full align-middle inline-block">
             {/* 3. table 클래스 변경: min-w-full 및 divide 사용 (ProductsPage와 유사하게) */}
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
-                <tr className="border-b border-gray-200 text-gray-600 uppercase text-xs tracking-wider">
-                  {/* --- 테이블 헤더 (th) --- */}
-                  {/* 각 th에 px-4 py-3 text-left/center 추가 (ProductsPage 스타일과 유사하게) */}
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {/* thead의 tr에는 특별한 스타일이 필요 없을 수 있습니다. */}
+                <tr>
+                  {/* --- 각 th에 min-w-[value] 추가 --- */}
+                  {/* 예시 값이며, 실제 콘텐츠에 맞게 조정하세요 */}
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[60px]"
+                  >
                     #
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[130px]"
+                  >
+                    {" "}
+                    {/* 주문일시 */}
                     <button
                       onClick={() => handleSortChange("ordered_at")}
                       className="flex items-center hover:text-gray-900 focus:outline-none"
@@ -720,10 +729,20 @@ export default function OrdersPage() {
                       주문일시 {getSortIcon("ordered_at")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]"
+                  >
+                    {" "}
+                    {/* 상품명 */}
                     상품명
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]"
+                  >
+                    {" "}
+                    {/* 고객명 */}
                     <button
                       onClick={() => handleSortChange("customer_name")}
                       className="flex items-center hover:text-gray-900 focus:outline-none"
@@ -731,16 +750,36 @@ export default function OrdersPage() {
                       고객명 {getSortIcon("customer_name")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px] hidden md:table-cell"
+                  >
+                    {" "}
+                    {/* 고객 댓글 */}
                     고객 댓글
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]"
+                  >
+                    {" "}
+                    {/* 상품번호 */}
                     상품번호
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]"
+                  >
+                    {" "}
+                    {/* 수량 */}
                     수량
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[110px]"
+                  >
+                    {" "}
+                    {/* 금액 */}
                     <button
                       onClick={() => handleSortChange("total_amount")}
                       className="flex items-center justify-end w-full hover:text-gray-900 focus:outline-none"
@@ -748,10 +787,20 @@ export default function OrdersPage() {
                       금액 {getSortIcon("total_amount")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px] hidden md:table-cell"
+                  >
+                    {" "}
+                    {/* 바코드 */}
                     바코드
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]"
+                  >
+                    {" "}
+                    {/* 상태 */}
                     상태
                   </th>
                 </tr>

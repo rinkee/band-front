@@ -128,7 +128,7 @@ export default function RootLayout({ children }) {
                 <div className="flex items-center">
                   <Link
                     className="text-xl font-bold text-gray-800 mr-6"
-                    href="/"
+                    href="/dashboard"
                   >
                     PODER
                   </Link>

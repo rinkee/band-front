@@ -504,8 +504,8 @@ export default function DashboardPage() {
       {/* 주요 통계 */}
       <div className="bg-white rounded-2xl px-4 py-6 shadow-sm">
         <div className=" ">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <h2 className="text-xl font-bold">주요 통계</h2>
+          <div className="flex flex-col md:flex-row justify-between ">
+            <h2 className="text-xl font-bold mb-2 md:mb-0">주요 통계</h2>
             <div className="flex space-x-2">
               <button
                 onClick={() => setDateRange("today")}
@@ -552,7 +552,7 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-4 mt-8">
           <div className=" ">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-500">총 주문완료</h3>
             </div>
             <div className="flex items-baseline">
@@ -563,7 +563,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="  ">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-500">총 수령완료</h3>
             </div>
             <div className="flex items-baseline">
@@ -574,7 +574,7 @@ export default function DashboardPage() {
           </div>
 
           <div className=" ">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-500">미수령</h3>
             </div>
             <div className="flex items-baseline">
@@ -585,7 +585,7 @@ export default function DashboardPage() {
           </div>
 
           <div className=" ">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-500">예상 매출</h3>
             </div>
             <div className="flex items-baseline">
@@ -596,7 +596,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="  ">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-500">총 매출</h3>
             </div>
             <div className="flex items-baseline">
