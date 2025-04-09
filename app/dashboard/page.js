@@ -550,7 +550,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-4 mt-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-5 gap-4 mt-8">
           <div className=" ">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-500">총 주문완료</h3>

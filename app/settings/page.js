@@ -433,6 +433,15 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLogout = () => {
+    console.log("Logging out from Settings page...");
+    sessionStorage.removeItem("userData");
+    // sessionStorage.removeItem("token"); // 토큰도 사용했다면 제거
+    // 다른 세션/로컬 스토리지 정리 (필요시)
+
+    router.replace("/login"); // 로그인 페이지로 리디렉션 (router는 이미 import 되어 있어야 함)
+  };
+
   // Render loading state
   if (loading || userLoading) {
     return (
@@ -481,6 +490,32 @@ export default function SettingsPage() {
           </button>
         </div>
       )}
+      <div className="mt-10 pt-6 border-t border-gray-200">
+        <h3 className="text-lg font-medium text-gray-700 mb-2">계정</h3>
+        <button
+          onClick={handleLogout}
+          className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 flex items-center"
+        >
+          <svg
+            className="w-4 h-4 mr-2" // 아이콘 스타일
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+            ></path>
+          </svg>
+          로그아웃
+        </button>
+        <p className="text-xs text-gray-500 mt-1">
+          현재 계정에서 로그아웃하고 로그인 페이지로 이동합니다.
+        </p>
+      </div>
 
       {/* --- Profile Information Section --- */}
       <div className="mb-8">
