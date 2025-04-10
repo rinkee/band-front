@@ -2,12 +2,15 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    return [
-      {
-        source: "/api/proxy/:path*",
-        destination: `${process.env.BACKEND_API_URL}/:path*`,
-      },
-    ];
+    if (process.env.NODE_ENV === "production") {
+      return [
+        {
+          source: "/api/proxy/:path*",
+          destination: `${process.env.NEXT_PUBLIC_API_URL}/:path*`,
+        },
+      ];
+    }
+    return [];
   },
   env: {
     API_URL: process.env.API_URL || "http://localhost:8000/api",
