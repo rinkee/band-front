@@ -115,12 +115,12 @@ export default function RootLayout({ children }) {
 
         <meta name="description" content="PODER" />
         <meta
-          http-equiv="Content-Security-Policy"
+          httpEquiv="Content-Security-Policy"
           content="upgrade-insecure-requests"
         ></meta>
       </head>
       <body className="text-black">
-        <div className="flex flex-col h-screen overflow-hidden bg-gray-50 ">
+        <div className="flex flex-col h-screen overflow-hidden bg-gray-100 ">
           {/* 로그인 상태일 때만 헤더 표시 */}
           {isLoggedIn && (
             <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full  ">
@@ -406,7 +406,7 @@ export default function RootLayout({ children }) {
           {/* 메인 컨텐츠 영역 */}
           <div className="flex-1 overflow-y-auto w-full">
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
-            <main className="bg-gray-100 p-4 md:p-6 lg:p-8  max-w-[1200px] mx-auto">
+            <main className=" p-4 md:p-6 lg:p-8  max-w-[1200px] mx-auto">
               {children}
             </main>
           </div>
