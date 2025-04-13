@@ -903,6 +903,7 @@ export default function OrdersPage() {
                 { value: "주문완료", label: "주문완료" },
                 { value: "수령완료", label: "수령완료" },
                 { value: "주문취소", label: "주문취소" },
+                { value: "결제완료", label: "결제완료" },
                 { value: "확인필요", label: "확인필요" },
               ].map((s) => (
                 <button
@@ -1058,7 +1059,7 @@ export default function OrdersPage() {
                             {formatDate(order.completed_at)}
                           </td>
                           <td
-                            className="px-4 py-4 text-sm text-gray-900 font-medium max-w-[200px] truncate"
+                            className="px-4 py-4 text-sm text-blue-600 font-medium max-w-[150px] truncate"
                             title={getProductNameById(order.product_id)}
                             onClick={() => openDetailModal(order)}
                           >
@@ -1072,8 +1073,9 @@ export default function OrdersPage() {
                           </td>
                           {/* 고객 댓글 셀 너비 수정: max-w-xs 사용 */}
                           <td
-                            className="px-4 py-4 text-sm text-gray-900 font-semibold max-w-xs truncate hidden md:table-cell "
+                            className="px-4 py-4 text-sm text-gray-900 font-semibold max-w-[150px] truncate hidden md:table-cell "
                             title={order.comment || ""}
+                            onClick={() => openDetailModal(order)}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="flex-1 truncate">
