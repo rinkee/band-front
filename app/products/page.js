@@ -159,7 +159,7 @@ export default function ProductsPage() {
     quantity: 0,
     status: "판매중",
     barcode: "",
-    description: "",
+    meno: "",
     pickup_info: "",
     pickup_date: "",
   });
@@ -190,7 +190,7 @@ export default function ProductsPage() {
       sortOrder,
       status: filterStatus !== "all" ? filterStatus : undefined,
       search: searchTerm.trim() || undefined,
-      limit: 100,
+      limit: 1000,
     },
     swrOptions
   );
@@ -215,7 +215,7 @@ export default function ProductsPage() {
             quantity: data.data.quantity || 0,
             status: data.data.status || "판매중",
             barcode: data.data.barcode || "",
-            description: data.data.description || "",
+            memo: data.data.memo || "",
             pickup_info: data.data.pickup_info || "",
             pickup_date: data.data.pickup_date || "",
           });
@@ -835,11 +835,11 @@ export default function ProductsPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        상품 설명
+                        메모
                       </label>
                       <textarea
-                        name="description"
-                        value={editedProduct.description || ""}
+                        name="memo"
+                        value={editedProduct.memo || ""}
                         onChange={handleInputChange}
                         rows="3"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
