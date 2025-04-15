@@ -6,7 +6,6 @@ const nextConfig = {
       process.env.NODE_ENV === "production" ||
       process.env.NODE_ENV === "preview"
     ) {
-      VERCEL_ENV;
       return [
         {
           source: "/api/proxy/:path*",
