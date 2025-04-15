@@ -3,9 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
     if (
-      process.env.VERCEL_ENV === "production" ||
-      process.env.VERCEL_ENV === "preview"
+      process.env.NODE_ENV === "production" ||
+      process.env.NODE_ENV === "preview"
     ) {
+      VERCEL_ENV;
       return [
         {
           source: "/api/proxy/:path*",
