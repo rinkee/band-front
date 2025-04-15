@@ -2,15 +2,13 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    if (process.env.NODE_ENV === "production") {
-      return [
-        {
-          source: "/api/proxy/:path*",
-          destination: `${process.env.NEXT_PUBLIC_API_URL}/:path*`,
-        },
-      ];
-    }
-    return [];
+    return [
+      {
+        source: "/api/proxy/:path*",
+        // 👇 실제 백엔드 주소를 가진 BACKEND_API_URL 사용
+        destination: `${process.env.BACKEND_API_URL}/:path*`,
+      },
+    ];
   },
   env: {
     API_URL: process.env.API_URL || "http://localhost:8000/api",
