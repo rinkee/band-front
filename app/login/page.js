@@ -73,7 +73,6 @@ export default function LoginPage() {
           ownerName: userDetails.ownerName, // ownerName 추가 (표시 등 활용)
           bandNumber: userDetails.bandNumber,
           naverId: userDetails.naverId,
-          // excluded_customers 등 설정 관련 정보가 있다면 userDetails.settings 등에서 가져와 추가
           excludedCustomers: userDetails.excludedCustomers || [], // 예시
 
           // !!! 토큰을 이 객체 안에 포함 !!!

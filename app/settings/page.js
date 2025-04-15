@@ -521,7 +521,7 @@ export default function SettingsPage() {
       ownerName,
       storeName,
       bandNumber,
-      excluded_customers: excludedCustomers,
+      excludedCustomers: excludedCustomers,
     };
 
     // Check if crawl settings actually changed
