@@ -1,9 +1,20 @@
 "use client"; // 이 컴포넌트가 클라이언트 컴포넌트임을 명시합니다.
+// app/layout.js (또는 해당 레이아웃 파일)
 
+import localFont from "next/font/local";
 import "./globals.css"; // 전역 CSS 파일을 임포트합니다.
 import { useState, useEffect } from "react"; // React 훅을 임포트합니다.
 import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 Next.js 훅을 임포트합니다.
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
+import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
+
+// Pretendard 폰트 설정 (가변 폰트 사용 예시)
+const pretendard = localFont({
+  src: "../fonts/PretendardVariable.woff2", // layout.js 파일 기준 상대 경로
+  display: "swap", // 폰트 로딩 전략 (swap 권장)
+  weight: "45 920", // 가변 폰트의 지원 범위 (옵션)
+  variable: "--font-pretendard", // 사용할 CSS 변수 이름 지정
+});
 
 export default function RootLayout({ children }) {
   // 사용자 데이터 상태 (로그인 시 사용자 정보 저장)
@@ -14,6 +25,63 @@ export default function RootLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // 현재 페이지의 경로명 (클라이언트 측에서만 실행되므로 window 체크 불필요)
   const pathname = usePathname();
+
+  const { mutate } = useSWRConfig(); // <-- 전역 mutate 함수 가져오기
+
+  // --- 주문 관리 메뉴 클릭 핸들러 추가 ---
+  const handleOrdersMenuClick = () => {
+    console.log("주문 관리 메뉴 클릭됨, 데이터 갱신 시도...");
+
+    // !!! userData 상태가 제대로 설정되었는지 확인 !!!
+    console.log("클릭 시점 userData:", userData);
+    if (userData?.userId) {
+      // --- 여기가 수정되어야 할 부분 ---
+      // 실제 API 엔드포인트 패턴과 일치하도록 수정
+      // useOrders 훅에서 사용하는 키가 `/api/orders?userId=...` 로 시작하는 문자열이라고 가정
+      const orderKeyPattern = (key) => {
+        // 1. 키가 문자열인지 확인
+        // 2. 키가 `/api/orders?userId=사용자ID` 로 시작하는지 확인
+        const pattern = `/api/orders?userId=${userData.userId}`; // <-- 실제 API 경로 시작 부분
+        const isMatch = typeof key === "string" && key.startsWith(pattern);
+
+        // 디버깅을 위해 매칭되는 키 출력
+        if (isMatch) {
+          console.log(`[mutate] SWR 키 매칭됨: ${key}`);
+        }
+        return isMatch;
+      };
+
+      // 만약 useOrders 훅이 배열 키 ['/api/orders', userId, ...] 를 사용한다면:
+      // const orderKeyPattern = (key) => {
+      //   const isMatch = Array.isArray(key) && key[0] === '/api/orders' && key[1] === userData.userId;
+      //   if (isMatch) {
+      //     console.log(`[mutate] SWR 배열 키 매칭됨:`, key);
+      //   }
+      //   return isMatch;
+      // };
+      // --- 수정 끝 ---
+
+      try {
+        console.log(
+          `[mutate] User ID (${userData.userId})에 대한 주문 데이터 재검증 시도...`
+        );
+        // undefined: 데이터를 직접 제공하지 않고 재검증만 요청
+        // { revalidate: true }: SWR에게 캐시가 최신이더라도 강제로 재검증하도록 지시 (기본값)
+        mutate(orderKeyPattern, undefined, { revalidate: true });
+        console.log("[mutate] 재검증 요청 완료.");
+      } catch (error) {
+        console.error("[mutate] SWR mutate 중 오류 발생:", error);
+      }
+    } else {
+      console.warn(
+        "[mutate] userId가 없어 SWR mutate를 실행할 수 없습니다. userData:",
+        userData
+      );
+    }
+    // 모바일 메뉴의 경우 클릭 후 메뉴를 닫아줍니다.
+    setMobileMenuOpen(false);
+  };
+  // --- 핸들러 추가 끝 ---
 
   // 경로(pathname)가 변경될 때마다 모바일 메뉴를 닫습니다.
   useEffect(() => {
@@ -110,7 +178,7 @@ export default function RootLayout({ children }) {
   // 인증 페이지가 아닌 경우, 전체 레이아웃 렌더링
   return (
     <html lang="ko">
-      <head>
+      <head className={pretendard.variable}>
         <title>PODER</title>
 
         <meta name="description" content="PODER" />
@@ -119,7 +187,7 @@ export default function RootLayout({ children }) {
           content="upgrade-insecure-requests"
         ></meta>
       </head>
-      <body className="text-black">
+      <body className={pretendard.variable}>
         <div className="flex flex-col h-screen overflow-hidden bg-gray-100 ">
           {/* 로그인 상태일 때만 헤더 표시 */}
           {isLoggedIn && (

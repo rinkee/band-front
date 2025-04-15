@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useProducts, useProduct } from "../hooks"; // 훅 경로 확인 필요
 import { api } from "../lib/fetcher"; // API 호출 경로 확인 필요
 import JsBarcode from "jsbarcode";
+import { useSWRConfig } from "swr"; // <<< SWRConfig 임포트 추가
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -166,6 +167,7 @@ export default function ProductsPage() {
 
   // --- 디바운스 관련 상태 추가 ---
   const [debouncedBarcodeValue, setDebouncedBarcodeValue] = useState(""); // <<< 디바운스된
+  const { mutate } = useSWRConfig(); // <<< 전역 mutate 함수 가져오기
 
   // SWR 옵션
   const swrOptions = {
@@ -382,14 +384,58 @@ export default function ProductsPage() {
       alert("상품명과 가격을 올바르게 입력해주세요.");
       return;
     }
+
+    const productIdToUpdate = selectedProduct.product_id;
     try {
       // setSubmitting(true); // 제출 상태 관리 (옵션)
-      await api.patch(
-        `/products/${selectedProduct.product_id}?userId=${userData.userId}`,
-        editedProduct // 수정된 전체 데이터 전송
+      // --- 1. API 호출 ---
+      // 백엔드가 업데이트된 상품 데이터를 반환하는지 확인 (그렇다면 response 활용)
+      const response = await api.patch(
+        `/products/${productIdToUpdate}?userId=${userData.userId}`,
+        editedProduct
       );
-      mutateProducts(); // 목록 갱신 요청
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Update Failed");
+      }
+
+      // --- 2. 로컬 상태(products) 즉시 업데이트 ---
+      // API 응답에 업데이트된 데이터가 있다면 그것 사용 (response.data.product 등),
+      // 없다면 모달에서 수정한 editedProduct 사용
+      const updatedProductData = response.data?.product || {
+        ...selectedProduct,
+        ...editedProduct,
+      }; // 예시: 백엔드 응답 우선 사용
+
+      setProducts((currentProducts) =>
+        currentProducts.map((p) =>
+          p.product_id === productIdToUpdate
+            ? updatedProductData // 업데이트된 데이터로 교체
+            : p
+        )
+      );
+      console.log("로컬 products 상태 즉시 업데이트 완료.");
+      // --- 여기가 핵심적인 수정 ---
+      console.log(
+        "상품 업데이트 성공, 전역 mutate 호출하여 모든 products 캐시 갱신 시도!"
+      );
+
+      // 키 매처 함수: '/api/products?userId=...'로 시작하는 모든 키를 대상으로 함
+      // 실제 useProducts 훅의 키 생성 방식과 일치해야 함
+      const productsKeyPattern = (key) =>
+        typeof key === "string" &&
+        key.startsWith(`/api/products?userId=${userData.userId}`);
+
+      // 또는 키가 배열 형태 ['/api/products', userId, ...] 라면:
+      // const productsKeyPattern = (key) => Array.isArray(key) && key[0] === '/api/products' && key[1] === currentUserId;
+
+      // 전역 mutate를 사용하여 패턴에 맞는 모든 키를 재검증
+      mutate(productsKeyPattern, undefined, { revalidate: true }); // <<< 전역 mutate 사용
+
+      // localMutateProducts(); // <<< 기존 로컬 mutate는 이제 필수는 아님 (전역이 처리)
+
       handleCloseModal();
+
       // alert("상품 정보가 업데이트되었습니다.");
     } catch (error) {
       console.error("상품 정보 업데이트 오류:", error);
