@@ -461,14 +461,16 @@ export default function OrdersPage() {
       startDate: startDate, // startDate 추가
       endDate: endDate, // endDate 추가
     },
-    swrOptions
+    {
+      revalidateOnFocus: false, // 예시: 포커스 시 재검증 비활성화
+      // revalidateOnMount: true, // <-- 기본값이거나 true로 설정되어 있을 수 있음
+    }
   );
-  const { data: productsData, error: productsError } = useProducts(
-    userData?.userId,
-    1,
-    { limit: 1000 },
-    swrOptions
-  );
+  const {
+    data: productsData,
+    error: productsError,
+    mutate: mutateProducts,
+  } = useProducts(userData?.userId, 1, { limit: 1000 }, swrOptions);
   // --- Modify: useOrderStats 훅에 filterDateRange 사용 및 mutate 함수 가져오기 ---
   const {
     data: orderStatsData,
@@ -520,6 +522,33 @@ export default function OrdersPage() {
       setError("Order Fetch Error");
     }
   }, [ordersData, ordersError]);
+
+  // --- 페이지 진입 시 데이터 강제 새로고침 (수정) ---
+  useEffect(() => {
+    if (userData?.userId) {
+      // userId만 체크 (mutate 함수는 훅 호출 시 바로 생성됨)
+      console.log(
+        "[OrdersPage Effect] userId 확인됨. 데이터 재검증 트리거 시도..."
+      );
+      if (mutateOrders) {
+        console.log("[OrdersPage Effect] mutateOrders() 호출!");
+        mutateOrders(); // 주문 데이터 갱신
+      } else {
+        console.warn("[OrdersPage Effect] mutateOrders 함수 없음!");
+      }
+      // --- 여기가 추가된 부분 ---
+      if (mutateProducts) {
+        console.log("[OrdersPage Effect] mutateProducts() 호출!");
+        mutateProducts(); // 상품 데이터도 함께 갱신
+      } else {
+        console.warn("[OrdersPage Effect] mutateProducts 함수 없음!");
+      }
+      // --- 추가 끝 ---
+    } else {
+      console.log("[OrdersPage Effect] userId 없음. 대기 중...");
+    }
+  }, [userData?.userId, mutateOrders, mutateProducts]); // 의존성 배열에 mutateProducts 추가
+
   useEffect(() => {
     setStatsLoading(isOrderStatsLoading);
   }, [isOrderStatsLoading]);
@@ -603,6 +632,13 @@ export default function OrdersPage() {
         updateData.pickupTime = null;
         updateData.completed_at = null;
         updateData.canceled_at = null;
+      } else if (newStatus === "확인필요") {
+        // 확인필요 시: 모든 시간 관련 필드 초기화 (미확정 상태이므로 관련 시간 정보 없음)
+        updateData.pickupTime = null;
+        updateData.completed_at = null;
+        updateData.canceled_at = null;
+        // 여기에 '확인필요' 상태에만 필요한 추가 로직이 있다면 추가할 수 있습니다.
+        // 예: updateData.needs_review = true; (백엔드 스키마에 따라 다름)
       }
       const response = await api.put(
         `/orders/${orderId}/status?userId=${userData.userId}`,
@@ -839,7 +875,7 @@ export default function OrdersPage() {
                   <button
                     key={option.value}
                     onClick={() => handleDateRangeChange(option.value)}
-                    className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
+                    className={`px-5 py-3 rounded-md text-sm font-semibold transition ${
                       filterDateRange === option.value
                         ? "bg-gray-200 text-gray-900" // 활성 스타일
                         : "text-gray-600 hover:bg-gray-100" // 비활성 스타일
@@ -856,7 +892,7 @@ export default function OrdersPage() {
               {/* 반응형 그리드 */}
               {/* Stat Item: 총 주문 */}
               <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase tracking-wider">
+                <dt className="text-sm text-gray-500 uppercase tracking-wider">
                   총 주문
                 </dt>
                 <dd className="font-semibold text-xl text-gray-900 mt-0.5">
@@ -865,7 +901,7 @@ export default function OrdersPage() {
               </div>
               {/* Stat Item: 수령완료 */}
               <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase tracking-wider">
+                <dt className="text-sm text-gray-500 uppercase tracking-wider">
                   수령완료
                 </dt>
                 <dd className="font-semibold text-xl text-gray-900 mt-0.5">
@@ -874,7 +910,7 @@ export default function OrdersPage() {
               </div>
               {/* Stat Item: 미수령 */}
               <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase tracking-wider">
+                <dt className="text-sm text-gray-500 uppercase tracking-wider">
                   미수령
                 </dt>
                 <dd className="font-semibold text-xl text-gray-900 mt-0.5">
@@ -883,7 +919,7 @@ export default function OrdersPage() {
               </div>
               {/* Stat Item: 완료율 */}
               <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase tracking-wider">
+                <dt className="text-sm text-gray-500 uppercase tracking-wider">
                   완료율
                 </dt>
                 <dd className="font-semibold text-xl text-gray-900 mt-0.5">
@@ -909,7 +945,7 @@ export default function OrdersPage() {
                 <button
                   key={s.value}
                   onClick={() => handleFilterChange(s.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition ${
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition ${
                     filterStatus === s.value
                       ? "bg-blue-100 text-blue-500  shadow-sm"
                       : "bg-white text-gray-700 hover:bg-gray-100"
@@ -941,24 +977,17 @@ export default function OrdersPage() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      #
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("ordered_at")}
-                        className="inline-flex items-center bg-none border-none p-0 cursor-pointer font-inherit text-inherit"
-                      >
-                        주문일시 {getSortIcon("ordered_at")}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      <button
-                        onClick={() => handleSortChange("completed_at")}
-                        className="inline-flex items-center bg-none border-none p-0 cursor-pointer font-inherit text-inherit"
-                      >
-                        수령일시 {getSortIcon("completed_at")}
-                      </button>
+                    <th
+                      scope="col"
+                      className="relative w-12 px-6 sm:w-16 sm:px-8"
+                    >
+                      <input
+                        type="checkbox"
+                        className="absolute left-4 top-1/2 -mt-2 h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 sm:left-6"
+                        ref={checkbox} // Ref for indeterminate state
+                        checked={isAllDisplayedSelected} // Calculated below
+                        onChange={handleSelectAllChange}
+                      />
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       상품명
@@ -971,7 +1000,6 @@ export default function OrdersPage() {
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    {/* 고객 댓글 열 너비 수정: max-w-xs 사용 (약 160px) */}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell max-w-[160ㅔpx]">
                       고객 댓글
                     </th>
@@ -981,6 +1009,9 @@ export default function OrdersPage() {
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       수량
                     </th>
+                    {/* <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      #
+                    </th> */}
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       <button
                         onClick={() => handleSortChange("total_amount")}
@@ -989,23 +1020,28 @@ export default function OrdersPage() {
                         금액 {getSortIcon("total_amount")}
                       </button>
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSortChange("ordered_at")}
+                        className="inline-flex items-center bg-none border-none p-0 cursor-pointer font-inherit text-inherit"
+                      >
+                        주문일시 {getSortIcon("ordered_at")}
+                      </button>
+                    </th>
+
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
                       바코드
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       상태
                     </th>
-                    <th
-                      scope="col"
-                      className="relative w-12 px-6 sm:w-16 sm:px-8"
-                    >
-                      <input
-                        type="checkbox"
-                        className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 sm:left-6"
-                        ref={checkbox} // Ref for indeterminate state
-                        checked={isAllDisplayedSelected} // Calculated below
-                        onChange={handleSelectAllChange}
-                      />
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <button
+                        onClick={() => handleSortChange("completed_at")}
+                        className="inline-flex items-center bg-none border-none p-0 cursor-pointer font-inherit text-inherit"
+                      >
+                        수령일시 {getSortIcon("completed_at")}
+                      </button>
                     </th>
                   </tr>
                 </thead>
@@ -1049,14 +1085,23 @@ export default function OrdersPage() {
                             isSelected ? "bg-orange-50" : "hover:bg-gray-50" // isSelected 사용
                           } transition-colors group`}
                         >
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                            {orderNum}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {formatDate(order.ordered_at)}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {formatDate(order.completed_at)}
+                          <td
+                            onClick={(e) => e.stopPropagation()}
+                            className="relative w-12 px-6 sm:w-16 sm:px-8"
+                          >
+                            {/* Optional: Add visual indication when selected */}
+
+                            <input
+                              type="checkbox"
+                              className="absolute left-4 top-1/2 -mt-3 h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 sm:left-6"
+                              value={order.order_id}
+                              checked={isSelected}
+                              onChange={(e) =>
+                                handleCheckboxChange(e, order.order_id)
+                              }
+                              // Prevent row onClick when clicking checkbox
+                              onClick={(e) => e.stopPropagation()}
+                            />
                           </td>
                           <td
                             className="px-4 py-4 text-sm text-blue-600 font-medium max-w-[150px] truncate"
@@ -1083,6 +1128,10 @@ export default function OrdersPage() {
                               </span>
                             </div>
                           </td>
+                          {/* <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                            {orderNum}
+                          </td> */}
+
                           <td className="px-4 py-4 whitespace-nowrap text-center text-sm text-gray-700 font-medium">
                             {order.item_number || "-"}
                           </td>
@@ -1090,8 +1139,12 @@ export default function OrdersPage() {
                             {order.quantity || 0}
                           </td>
                           <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-700 text-right">
-                            {formatCurrency(order.total_amount)}
+                            {order.total_amount.toLocaleString()}
                           </td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {formatDate(order.ordered_at)}
+                          </td>
+
                           <td className="px-4 py-4 whitespace-nowrap text-center hidden md:table-cell">
                             {getProductBarcode(order.product_id) ? (
                               <div className="mx-auto max-w-[100px] h-[40px] flex items-center justify-center">
@@ -1111,20 +1164,8 @@ export default function OrdersPage() {
                           <td className="px-4 py-4 whitespace-nowrap text-center">
                             <StatusBadge status={order.status} />
                           </td>
-                          <td className="relative w-12 px-6 sm:w-16 sm:px-8">
-                            {/* Optional: Add visual indication when selected */}
-
-                            <input
-                              type="checkbox"
-                              className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 sm:left-6"
-                              value={order.order_id}
-                              checked={isSelected}
-                              onChange={(e) =>
-                                handleCheckboxChange(e, order.order_id)
-                              }
-                              // Prevent row onClick when clicking checkbox
-                              onClick={(e) => e.stopPropagation()}
-                            />
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {formatDate(order.completed_at)}
                           </td>
                         </tr>
                       );
@@ -1218,45 +1259,42 @@ export default function OrdersPage() {
               </nav>
             </div>
           )}
-
-          {/* Left: Bulk Action Buttons (항상 공간은 차지, 내용은 선택 시 보임) */}
-          <div className="flex items-center space-x-3 flex-row-reverse ">
-            {/* 선택된 항목이 있을 때만 버튼 내용 활성화 */}
-            <button
-              onClick={() => handleBulkStatusUpdate("수령완료")}
-              disabled={selectedOrderIds.length === 0 || loading} // Disable if no selection or during loading
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-base font-medium bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${
-                selectedOrderIds.length === 0
-                  ? "opacity-0 pointer-events-none"
-                  : "opacity-100" // 선택 없을 시 숨김
-              }`}
-              aria-hidden={selectedOrderIds.length === 0} // 접근성 개선
-            >
-              <CheckCircleIcon className="w-6 h-6" />
-              선택 수령완료 ({selectedOrderIds.length})
-            </button>
-            <button
-              onClick={() => handleBulkStatusUpdate("결제완료")}
-              disabled={selectedOrderIds.length === 0 || loading}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-base font-medium bg-yellow-100 text-yellow-700 hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${
-                selectedOrderIds.length === 0
-                  ? "opacity-0 pointer-events-none"
-                  : "opacity-100" // 선택 없을 시 숨김
-              }`}
-              aria-hidden={selectedOrderIds.length === 0} // 접근성 개선
-            >
-              <CurrencyDollarIcon className="w-6 h-6" />
-              선택 결제완료 ({selectedOrderIds.length})
-            </button>
-            {/* 선택된 항목이 없을 때 보여줄 플레이스홀더 (선택사항) */}
-            {selectedOrderIds.length === 0 && (
-              <span className="text-xs text-gray-400 italic h-[26px] flex items-center mr-4">
-                항목을 선택하세요
-              </span> // 버튼 높이와 유사하게 맞춤
-            )}
-          </div>
         </LightCard>
-
+        <div className="flex items-center space-x-3 flex-row-reverse pt-3 ">
+          {/* 선택된 항목이 있을 때만 버튼 내용 활성화 */}
+          <button
+            onClick={() => handleBulkStatusUpdate("수령완료")}
+            disabled={selectedOrderIds.length === 0 || loading} // Disable if no selection or during loading
+            className={`inline-flex items-center gap-1.5 px-5 py-3  rounded-md text-base font-semibold bg-green-300 text-green-800 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${
+              selectedOrderIds.length === 0
+                ? "opacity-0 pointer-events-none"
+                : "opacity-100" // 선택 없을 시 숨김
+            }`}
+            aria-hidden={selectedOrderIds.length === 0} // 접근성 개선
+          >
+            <CheckCircleIcon className="w-6 h-6" />
+            선택 수령완료 ({selectedOrderIds.length})
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("결제완료")}
+            disabled={selectedOrderIds.length === 0 || loading}
+            className={`inline-flex items-center gap-1.5 mr-3 px-5 py-3 rounded-md text-base font-medium bg-gray-300 text-gray-600 hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity ${
+              selectedOrderIds.length === 0
+                ? "opacity-0 pointer-events-none"
+                : "opacity-100" // 선택 없을 시 숨김
+            }`}
+            aria-hidden={selectedOrderIds.length === 0} // 접근성 개선
+          >
+            <CurrencyDollarIcon className="w-6 h-6" />
+            선택 결제완료 ({selectedOrderIds.length})
+          </button>
+          {/* 선택된 항목이 없을 때 보여줄 플레이스홀더 (선택사항) */}
+          {selectedOrderIds.length === 0 && (
+            <span className="text-sm text-gray-400 italic h-[26px] flex items-center mr-4">
+              항목을 선택하세요
+            </span> // 버튼 높이와 유사하게 맞춤
+          )}
+        </div>
         {/* 주문 상세 모달 */}
         {isDetailModalOpen && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -1326,9 +1364,6 @@ export default function OrdersPage() {
                         padding="p-4"
                         className="!shadow-sm text-center bg-gray-50"
                       >
-                        <h4 className="text-base font-medium text-gray-800 mb-3">
-                          상품 바코드
-                        </h4>
                         <div className="max-w-xs mx-auto h-[80px] flex items-center justify-center">
                           {getProductBarcode(selectedOrder.product_id) ? (
                             <Barcode

@@ -170,6 +170,7 @@ export default function PostsPage() {
   // 게시물 데이터 상태 업데이트
   useEffect(() => {
     if (postsData?.data) {
+      console.log("Received posts data:", postsData.data);
       setPosts(postsData.data);
     } else if (postsError) {
       // 에러 발생 시 빈 배열로 설정

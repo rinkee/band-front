@@ -180,16 +180,6 @@ export default function SettingsPage() {
         setUserData(userDataObj); // 원본 세션 데이터 저장
         setUserId(userDataObj.userId);
 
-        // 상태 초기화 (세션 데이터 기반)
-        setOwnerName(userDataObj.ownerName || "");
-        setStoreName(userDataObj.storeName || "");
-        setBandNumber(userDataObj.bandNumber || "");
-        // Removed setNaverId
-        setExcludedCustomers(userDataObj.excluded_customers || []);
-        // 세션에 크롤링 정보가 있다면 초기값으로 사용 (없으면 SWR 또는 fetch 결과 사용)
-        setIsAutoCrawlingEnabled(userDataObj.auto_crawl ?? false);
-        setCrawlInterval(userDataObj.crawl_interval ?? 10);
-
         // 최신 크롤링 설정 가져오기 (세션 데이터보다 우선)
         await fetchAutoCrawlSettings(userDataObj.userId);
 
@@ -211,23 +201,19 @@ export default function SettingsPage() {
 
   // 2. SWR 데이터 변경 시 로컬 상태 업데이트 (프로필 정보만)
   useEffect(() => {
+    console.log("--- useEffect [userData] running ---", {
+      userLoading,
+      isLoading: loading,
+      hasUserData: !!userData?.data,
+    }); // <<< ADD
     if (!userLoading && userData?.data && !loading) {
       const latestData = userData.data;
       console.log("Updating state with latest SWR data:", latestData);
 
-      if (ownerName !== (latestData.ownerName || ""))
-        setOwnerName(latestData.ownerName || "");
-      if (storeName !== (latestData.storeName || ""))
-        setStoreName(latestData.storeName || "");
-      if (bandNumber !== (latestData.bandNumber || ""))
-        setBandNumber(latestData.bandNumber || "");
-      // Removed naverId update
-      if (
-        JSON.stringify(excludedCustomers) !==
-        JSON.stringify(latestData.excluded_customers || [])
-      ) {
-        setExcludedCustomers(latestData.excluded_customers || []);
-      }
+      setOwnerName(latestData.ownerName || "");
+      setStoreName(latestData.storeName || "");
+      setBandNumber(latestData.bandNumber || "");
+      setExcludedCustomers(latestData.excluded_customers || []); // <<< 이것이 중요!
     }
   }, [userData, userLoading, loading]);
 
@@ -414,12 +400,22 @@ export default function SettingsPage() {
 
   // 전체 저장
   const handleSaveProfile = async () => {
+    console.log("--- handleSaveProfile START ---"); // <<< ADD
     if (!userId) {
+      console.error("handleSaveProfile: userId not found"); // <<< ADD
       setError("사용자 ID를 찾을 수 없습니다.");
       return;
     }
     setSaving(true);
     setError(null);
+    console.log("handleSaveProfile: State before save:", {
+      ownerName,
+      storeName,
+      bandNumber,
+      excludedCustomers,
+      isAutoCrawlingEnabled,
+      crawlInterval,
+    }); // <<< ADD
 
     const profileData = {
       ownerName,
