@@ -6,6 +6,7 @@ import { useEffect } from "react";
 
 // 이 컴포넌트는 searchParams를 읽고 부모에게 상태 업데이트를 전달하거나
 // 직접 메시지를 표시하는 역할만 함
+//
 export default function SearchParamsHandler({ setSuccess, setError }) {
   const searchParams = useSearchParams();
 
