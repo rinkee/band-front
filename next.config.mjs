@@ -2,13 +2,18 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    return [
-      {
-        source: "/api/proxy/:path*",
-        // 👇 실제 백엔드 주소를 가진 BACKEND_API_URL 사용
-        destination: `${process.env.BACKEND_API_URL}/:path*`,
-      },
-    ];
+    if (
+      process.env.VERCEL_ENV === "production" ||
+      process.env.VERCEL_ENV === "preview"
+    ) {
+      return [
+        {
+          source: "/api/proxy/:path*",
+          destination: `${process.env.NEXT_PUBLIC_API_URL}/:path*`,
+        },
+      ];
+    }
+    return [];
   },
   env: {
     API_URL: process.env.API_URL || "http://localhost:8000/api",
