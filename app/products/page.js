@@ -36,6 +36,7 @@ import {
   ArrowTopRightOnSquareIcon,
   CheckIcon,
   FunnelIcon,
+  CalendarDaysIcon,
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
 } from "@heroicons/react/24/outline";

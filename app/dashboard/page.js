@@ -23,7 +23,7 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   AdjustmentsHorizontalIcon,
-  CalendarDaysIcon,
+  XCircleIconOutline,
   ArrowLongRightIcon,
   ArrowLongLeftIcon,
   SparklesIcon,
