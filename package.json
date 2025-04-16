@@ -15,9 +15,11 @@
     "@tailwindcss/vite": "^4.0.12",
     "axios": "^1.8.4",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "jsbarcode": "^3.11.6",
     "next": "15.2.1",
     "react": "^19.0.0",
+    "react-datepicker": "^8.3.0",
     "react-dom": "^19.0.0",
     "swr": "^2.3.3"
   },
