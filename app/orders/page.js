@@ -13,6 +13,7 @@ import { api } from "../lib/fetcher";
 import JsBarcode from "jsbarcode";
 import { useUser, useOrders, useProducts, useOrderStats } from "../hooks";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
+import { useSWRConfig } from "swr";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -31,7 +32,7 @@ import {
   ChevronDownIcon, // PencilSquareIcon 다시 사용
   ChevronUpDownIcon,
   AdjustmentsHorizontalIcon,
-  ArrowUturnLeftIcon,
+  ArrowUturnLeftIcon, // 추가: 검색 초기화 아이콘
   ArrowPathIcon,
   UserCircleIcon,
   ChatBubbleBottomCenterTextIcon,
@@ -153,6 +154,11 @@ function StatusBadge({ status }) {
       textColor = "text-yellow-700";
       Icon = CurrencyDollarIcon;
       break;
+    case "미수령":
+      bgColor = "bg-red-200";
+      textColor = "text-red-700";
+      Icon = CurrencyDollarIcon;
+      break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-600";
@@ -227,6 +233,8 @@ const getStatusButtonStyle = (status) => {
   // 모달 푸터 수령 완료 버튼
   else if (status === "수령완료")
     statusClass = "bg-green-600 text-white hover:bg-green-700";
+  else if (status === "미수령")
+    statusClass = "bg-green-600 text-white hover:bg-green-700";
   else statusClass = "bg-gray-800 text-white hover:bg-gray-900"; // 기본/폴백
   return `${baseStyle} ${statusClass}`;
 };
@@ -241,6 +249,8 @@ const getStatusIcon = (status) => {
     case "주문완료":
       return <SparklesIcon className="w-4 h-4" />;
     case "확인필요":
+      return <ExclamationCircleIcon className="w-4 h-4" />;
+    case "미수령":
       return <ExclamationCircleIcon className="w-4 h-4" />;
     default:
       return null;
@@ -281,6 +291,8 @@ export default function OrdersPage() {
   const displayOrders = orders || [];
   const checkbox = useRef();
 
+  const { mutate } = useSWRConfig(); //
+
   const dateRangeOptions = [
     { value: "90days", label: "3개월" },
     { value: "30days", label: "1개월" },
@@ -291,6 +303,7 @@ export default function OrdersPage() {
     { value: "all", label: "전체" },
     { value: "주문완료", label: "주문완료" },
     { value: "수령완료", label: "수령완료" },
+    { value: "미수령", label: "미수령" },
     { value: "주문취소", label: "주문취소" },
     { value: "결제완료", label: "결제완료" },
     { value: "확인필요", label: "확인필요" },
@@ -445,9 +458,9 @@ export default function OrdersPage() {
           updateData.completed_at = nowISO;
           updateData.canceled_at = null;
         } else if (targetStatus === "결제완료") {
-          console.warn(
-            `Backend logic for '결제완료' status on order ${orderId} needs implementation.`
-          );
+          // console.warn(
+          //   `Backend logic for '결제완료' status on order ${orderId} needs implementation.`
+          // );
           updateData.paid_at = nowISO; // 예시: 결제 시간 추가
           updateData.completed_at = null;
           updateData.canceled_at = null;
@@ -664,11 +677,7 @@ export default function OrdersPage() {
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
-    // Error Fix: useRef 호출 제거
     if (!orderId || !userData?.userId) return;
-    // const operationLoadingRef = useRef(false); // 제거
-    // if (operationLoadingRef.current) return; // 제거
-    // operationLoadingRef.current = true; // 제거
     try {
       const allowed = ["주문완료", "주문취소", "수령완료", "확인필요"];
       if (!allowed.includes(newStatus)) return;
@@ -699,16 +708,44 @@ export default function OrdersPage() {
         throw new Error(response.data?.message || "Status Change Failed");
       if (selectedOrder?.order_id === orderId)
         setSelectedOrder((prev) => (prev ? { ...prev, ...updateData } : null));
-      if (newStatus === "수령완료") closeDetailModal();
       await mutateOrders();
+      // 2. 다른 캐시된 뷰 갱신 (URL 문자열 Key에 맞게 Predicate 수정)
+      await mutate(
+        (key) => {
+          // Key가 문자열이고, '/orders?' 로 시작하며, 현재 사용자의 userId 파라미터를 포함하는지 확인
+          return (
+            typeof key === "string" &&
+            key.startsWith("/orders?") && // '/api' 없이 '/orders?' 로 시작하는지 확인!
+            key.includes(`userId=${userData.userId}`) // 현재 사용자의 주문 목록 Key인지 확인
+          );
+        },
+        undefined,
+        { revalidate: true } // true로 설정하여 재검증 강제
+      );
+      // --- ---
+      // await mutateOrders();
       await mutateOrderStats();
+      closeDetailModal();
     } catch (err) {
       console.error("Status Change Error:", err);
       alert(`상태 변경 오류: ${err.message}`);
-      mutateOrders();
+      await mutateOrders();
+      // 2. 다른 캐시된 뷰 갱신 (URL 문자열 Key에 맞게 Predicate 수정)
+      await mutate(
+        (key) => {
+          // Key가 문자열이고, '/orders?' 로 시작하며, 현재 사용자의 userId 파라미터를 포함하는지 확인
+          return (
+            typeof key === "string" &&
+            key.startsWith("/orders?") && // '/api' 없이 '/orders?' 로 시작하는지 확인!
+            key.includes(`userId=${userData.userId}`) // 현재 사용자의 주문 목록 Key인지 확인
+          );
+        },
+        undefined,
+        { revalidate: true } // true로 설정하여 재검증 강제
+      );
+      // --- ---
       mutateOrderStats();
     }
-    // finally { operationLoadingRef.current = false; } // 제거
   };
   const handleTabChange = (tab) => setActiveTab(tab);
   const openDetailModal = (order) => {
@@ -734,6 +771,15 @@ export default function OrdersPage() {
   const handleSearchChange = (e) => {
     setInputValue(e.target.value);
   }; // inputValue 업데이트만
+
+  // --- 검색 초기화 함수 ---
+  const resetSearch = () => {
+    setInputValue(""); // 검색 입력 필드 클리어
+    setFilterDateRange("30days");
+    setFilterStatus("all");
+    // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
+  };
+
   const handleSortChange = (field) => {
     if (sortBy === field)
       setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -899,7 +945,7 @@ export default function OrdersPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto"
+      className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto p-4 sm:p-6" // 패딩 추가
     >
       <main className="max-w-7xl mx-auto">
         {/* 헤더 */}
@@ -926,26 +972,58 @@ export default function OrdersPage() {
               </div>
             )}
             <div className="grid grid-cols-4 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm w-full md:w-auto">
-              <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase">총 주문</dt>
+              {/* --- 총 주문 --- */}
+              <div
+                className="flex flex-col items-start cursor-pointer p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
+                onClick={() => handleFilterChange("all")} // 클릭 시 전체 필터 적용
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    handleFilterChange("all");
+                }}
+                title="전체 주문 보기" // 툴팁 추가
+              >
+                <dt className="text-sm text-gray-500 uppercase">총 주문</dt>
                 <dd className="font-semibold text-lg mt-0.5">
                   {totalStatsOrders.toLocaleString()}
                 </dd>
               </div>
-              <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase">수령완료</dt>
+              <div
+                className="flex flex-col items-start cursor-pointer p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
+                onClick={() => handleFilterChange("수령완료")} // 클릭 시 수령완료 필터 적용
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    handleFilterChange("수령완료");
+                }}
+                title="수령완료 주문 필터링" // 툴팁 추가
+              >
+                <dt className="text-sm text-gray-500 uppercase">수령완료</dt>
                 <dd className="font-semibold text-lg mt-0.5">
                   {totalCompletedOrders.toLocaleString()}
                 </dd>
               </div>
-              <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase">미수령</dt>
+              {/* --- 미수령 (여기가 핵심 수정 부분) --- */}
+              <div
+                className="flex flex-col items-start cursor-pointer p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
+                onClick={() => handleFilterChange("미수령")} // 클릭 시 미수령 필터 적용
+                role="button" // 접근성을 위해 role 추가
+                tabIndex={0} // 키보드 포커스 가능하도록 설정
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    handleFilterChange("미수령");
+                }} // Enter/Space 키로도 동작하도록
+                title="미수령 주문 필터링" // 툴팁 추가
+              >
+                <dt className="text-sm text-gray-500 uppercase">미수령</dt>
                 <dd className="font-semibold text-lg mt-0.5">
                   {totalPendingOrders.toLocaleString()}
                 </dd>
               </div>
               <div className="flex flex-col items-start">
-                <dt className="text-xs text-gray-500 uppercase">완료율</dt>
+                <dt className="text-sm text-gray-500 uppercase">완료율</dt>
                 <dd className="font-semibold text-lg mt-0.5">
                   {completionRate}%
                 </dd>
@@ -957,6 +1035,7 @@ export default function OrdersPage() {
         {/* 필터 섹션 */}
         <LightCard padding="p-0" className="mb-6 md:mb-8 overflow-hidden">
           <div className="divide-y divide-gray-200">
+            {/* 조회 기간 */}
             <div className="grid grid-cols-[max-content_1fr] items-center">
               <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                 <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
@@ -1002,6 +1081,7 @@ export default function OrdersPage() {
                 />
               </div>
             </div>
+            {/* 상태 필터 */}
             <div className="grid grid-cols-[max-content_1fr] items-center">
               <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                 <FunnelIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
@@ -1017,13 +1097,15 @@ export default function OrdersPage() {
                 />
               </div>
             </div>
+            {/* 검색 필터 */}
             <div className="grid grid-cols-[max-content_1fr] items-center">
               <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                 <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 검색
               </div>
-              <div className="bg-white px-4 py-3 flex items-center">
-                <div className="relative w-full sm:max-w-xs">
+              {/* 검색 입력 및 초기화 버튼 */}
+              <div className="bg-white px-4 py-3 flex items-center gap-2 justify-between ">
+                <div className="relative flex-grow w-full sm:max-w-xs">
                   <input
                     type="text"
                     placeholder="고객명, 상품명, 바코드..."
@@ -1036,6 +1118,16 @@ export default function OrdersPage() {
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
                 </div>
+                {/* 검색 초기화 버튼 추가 */}
+                <button
+                  onClick={resetSearch}
+                  disabled={isDataLoading}
+                  className="flex p-2 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  aria-label="검색 초기화"
+                  title="검색 초기화"
+                >
+                  <p>초기화</p>
+                </button>
               </div>
             </div>
           </div>
@@ -1135,7 +1227,9 @@ export default function OrdersPage() {
                     >
                       {searchTerm ||
                       filterStatus !== "all" ||
-                      filterDateRange !== "7days"
+                      filterDateRange !== "30days" || // 기본값 변경 반영
+                      (filterDateRange === "custom" &&
+                        (customStartDate || customEndDate))
                         ? "조건에 맞는 주문이 없습니다."
                         : "표시할 주문이 없습니다."}
                     </td>
@@ -1223,6 +1317,7 @@ export default function OrdersPage() {
               </tbody>
             </table>
           </div>
+          {/* 페이지네이션 */}
           {totalItems > itemsPerPage && (
             <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white sm:px-6 rounded-b-xl">
               <div>
@@ -1347,10 +1442,11 @@ export default function OrdersPage() {
         {isDetailModalOpen && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-xl max-w-2xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+              {/* 모달 헤더 */}
               <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                 <h3 className="text-lg font-semibold text-gray-900">
                   주문 상세
-                  <span className="text-gray-500 font-normal text-sm">
+                  <span className="text-gray-500 font-normal text-sm ml-1">
                     (ID: {selectedOrder.order_id.substring(0, 8)}...)
                   </span>
                 </h3>
@@ -1362,7 +1458,9 @@ export default function OrdersPage() {
                   <XMarkIcon className="w-6 h-6" />
                 </button>
               </div>
+              {/* 모달 본문 */}
               <div className="flex-grow overflow-y-auto p-4 sm:p-6">
+                {/* 탭 네비게이션 */}
                 <div className="border-b border-gray-200 mb-6">
                   <div className="flex -mb-px space-x-6 sm:space-x-8">
                     {/* 상태 관리 탭 */}
@@ -1394,14 +1492,10 @@ export default function OrdersPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => {
-                          e.stopPropagation();
-                          handleTabChange("go");
+                          e.stopPropagation(); // 모달 닫힘 방지
+                          // handleTabChange("go"); // 탭 상태 변경 (선택사항)
                         }}
-                        className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                          activeTab === "go"
-                            ? "border-orange-500 text-orange-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                        }`}
+                        className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`} // 'go' 탭은 활성 상태를 시각적으로 표시하지 않음
                       >
                         <ArrowTopRightOnSquareIcon className="w-5 h-5 mr-1.5" />
                         주문 보러가기
@@ -1409,6 +1503,7 @@ export default function OrdersPage() {
                     )}
                   </div>
                 </div>
+                {/* 탭 콘텐츠 */}
                 <div className="space-y-6">
                   {/* 상태 관리 탭 내용 */}
                   {activeTab === "status" && (
@@ -1504,11 +1599,41 @@ export default function OrdersPage() {
                           value: getProductNameById(selectedOrder.product_id),
                           readOnly: true,
                         },
+                        // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
+                        // {
+                        //   label: "상품명", // This was incorrect
+                        //   value: getProductNameById(
+                        //     selectedOrder.price_option_description
+                        //   ),
+                        //   readOnly: true,
+                        // },
+                        // --- END REMOVAL ---
+
                         {
                           label: "고객명",
                           value: selectedOrder.customer_name || "-",
                           readOnly: true,
                         },
+
+                        // --- ADD PRICE OPTION DESCRIPTION HERE ---
+                        {
+                          label: "선택 옵션", // Or "가격 옵션 설명"
+                          value: selectedOrder.price_option_description || "-",
+                          readOnly: true,
+                          colSpan: 2, // Make it full width as it might be long
+                          preWrap: true, // Allow line breaks if needed
+                        },
+                        // --- END ADD ---
+
+                        // --- ADD PRODUCT PICKUP DATE HERE ---
+                        {
+                          label: "상품 픽업 예정일",
+                          // Use the new helper function
+                          value: formatDate(selectedOrder.product_pickup_date),
+                          readOnly: true,
+                        },
+                        // --- END ADD ---
+
                         {
                           label: "주문 일시",
                           value: formatDate(selectedOrder.ordered_at),
@@ -1537,6 +1662,7 @@ export default function OrdersPage() {
                           readOnly: true,
                           preWrap: true,
                         },
+                        // --- Editable fields below ---
                         {
                           label: "상품 번호",
                           field: "itemNumber",
@@ -1569,6 +1695,7 @@ export default function OrdersPage() {
                           highlight: true,
                         },
                       ].map((item, index) => (
+                        // ... The existing rendering logic for each item ...
                         <div
                           key={item.label + index}
                           className={item.colSpan === 2 ? "md:col-span-2" : ""}
@@ -1588,12 +1715,17 @@ export default function OrdersPage() {
                               } ${
                                 item.smallText ? "text-xs break-all" : "text-sm"
                               } ${
-                                item.preWrap
+                                item.preWrap // Apply preWrap style if needed
                                   ? "whitespace-pre-wrap break-words"
                                   : ""
                               } min-h-[38px] flex items-center`}
                             >
-                              {item.value}
+                              {/* Display simple value or React node */}
+                              {typeof item.value === "string" ||
+                              typeof item.value === "number" ||
+                              React.isValidElement(item.value)
+                                ? item.value
+                                : String(item.value)}
                             </div>
                           ) : (
                             <input
@@ -1609,6 +1741,9 @@ export default function OrdersPage() {
                                 )
                               }
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              // Disable editing for readOnly fields conceptually,
+                              // though we render a div above for readOnly=true
+                              disabled={item.readOnly}
                             />
                           )}
                         </div>

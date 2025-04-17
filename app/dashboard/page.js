@@ -23,7 +23,7 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   AdjustmentsHorizontalIcon,
-  XCircleIconOutline,
+  XCircleIcon as XCircleIconOutline,
   ArrowLongRightIcon,
   ArrowLongLeftIcon,
   SparklesIcon,
