@@ -577,7 +577,7 @@ export default function ProductsPage() {
   if (combinedError)
     return (
       <div className="min-h-screen flex items-center justify-center bg-white p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg border border-red-300 text-center">
+        <div className=" w-full bg-white p-8 rounded-xl shadow-lg border border-red-300 text-center">
           <XCircleIconOutline className="w-16 h-16 text-red-500 mx-auto mb-5" />
           <h2 className="text-xl font-semibold text-gray-900 mb-3">
             오류 발생

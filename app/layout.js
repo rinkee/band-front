@@ -192,7 +192,7 @@ export default function RootLayout({ children }) {
           {/* 로그인 상태일 때만 헤더 표시 */}
           {isLoggedIn && (
             <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full  ">
-              <div className="flex items-center justify-between px-4 py-2   max-w-[1200px] mx-auto">
+              <div className="flex items-center justify-between px-4 py-2  mx-auto">
                 <div className="flex items-center">
                   <Link
                     className="text-xl font-bold text-gray-800 mr-6"
@@ -474,9 +474,7 @@ export default function RootLayout({ children }) {
           {/* 메인 컨텐츠 영역 */}
           <div className="flex-1 overflow-y-auto w-full">
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
-            <main className=" p-4 md:p-6 lg:p-8  max-w-[1200px] mx-auto">
-              {children}
-            </main>
+            <main className="  mx-auto">{children}</main>
           </div>
         </div>
       </body>
