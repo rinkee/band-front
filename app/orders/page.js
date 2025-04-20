@@ -625,7 +625,7 @@ export default function OrdersPage() {
         setCurrentPage(1);
         setSelectedOrderIds([]);
       }
-    }, 500);
+    }, 1500);
     return () => clearTimeout(timerId);
   }, [inputValue, searchTerm]); // 의존성 배열에 searchTerm 추가
 
