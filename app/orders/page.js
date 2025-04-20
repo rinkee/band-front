@@ -186,7 +186,7 @@ function LightCard({ children, className = "", padding = "p-6" }) {
 }
 
 // --- 바코드 컴포넌트 ---
-const Barcode = ({ value, width = 2, height = 60, fontSize = 16 }) => {
+const Barcode = ({ value, width = 2, height = 100, fontSize = 16 }) => {
   const barcodeRef = useRef(null);
   useEffect(() => {
     if (barcodeRef.current && value) {
@@ -947,7 +947,7 @@ export default function OrdersPage() {
       ref={topRef}
       className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto p-4 sm:p-6" // 패딩 추가
     >
-      <main className="max-w-7xl mx-auto">
+      <main className="mx-auto">
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
@@ -1264,7 +1264,7 @@ export default function OrdersPage() {
                         </div>
                       </td>
                       <td
-                        className="px-4 py-3 text-sm text-gray-700 font-medium max-w-[120px] truncate"
+                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[120px] truncate"
                         title={getProductNameById(order.product_id)}
                       >
                         {getProductNameById(order.product_id)}
@@ -1297,8 +1297,8 @@ export default function OrdersPage() {
                         {getProductBarcode(order.product_id) ? (
                           <Barcode
                             value={getProductBarcode(order.product_id)}
-                            height={30}
-                            width={1}
+                            height={50}
+                            width={1.2}
                             fontSize={8}
                           />
                         ) : (
