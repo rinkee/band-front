@@ -38,9 +38,8 @@ export function useOrder(orderId, options = {}) {
  * @returns {object} SWR 훅의 반환값 { data, error, isLoading, mutate }
  */
 export function useOrderStats(userId, filterOptions = {}, swrOptions = {}) {
-  // --- 1. 옵션 객체에서 각 필터 값 추출 ---
   const {
-    dateRange = "7days", // 기본값 설정
+    dateRange = "7days",
     startDate,
     endDate,
     status,
@@ -48,41 +47,41 @@ export function useOrderStats(userId, filterOptions = {}, swrOptions = {}) {
     search,
   } = filterOptions;
 
-  // --- 2. API 요청 URLSearchParams 생성 ---
-  const params = new URLSearchParams();
+  // 1. SWR 키 생성 로직 (조건부로 null 반환)
+  const getKey = () => {
+    if (!userId) {
+      return null; // userId 없으면 요청 안 함
+    }
 
-  // userId는 필수
-  if (userId) {
+    const params = new URLSearchParams();
     params.append("userId", userId);
-  } else {
-    // userId가 없으면 요청하지 않음 (SWR 키를 null로 설정하기 위함)
-    return useSWR(null, axiosFetcher, swrOptions);
-  }
+    params.append("dateRange", dateRange);
+    if (dateRange === "custom" && startDate && endDate) {
+      params.append("startDate", startDate);
+      params.append("endDate", endDate);
+    }
+    if (status) {
+      params.append("status", status);
+    }
+    if (subStatus) {
+      params.append("sub_status", subStatus);
+    }
+    if (search) {
+      params.append("search", search);
+    }
 
-  // 날짜 관련 파라미터 추가
-  params.append("dateRange", dateRange);
-  if (dateRange === "custom" && startDate && endDate) {
-    params.append("startDate", startDate);
-    params.append("endDate", endDate);
-  }
+    return `/orders/stats?${params.toString()}`; // 최종 엔드포인트
+  };
 
-  // --- 3. 추가된 필터 파라미터 추가 ---
-  if (status) {
-    params.append("status", status);
-  }
-  if (subStatus) {
-    params.append("sub_status", subStatus); // 백엔드 API 파라미터 이름과 일치 확인 ('subStatus' or 'sub_status')
-  }
-  if (search) {
-    params.append("search", search);
-  }
+  // 2. useSWR 훅은 항상 최상위 레벨에서 호출
+  const swrResult = useSWR(
+    getKey, // 키 생성 함수 전달 (userId 없으면 null 반환)
+    axiosFetcher,
+    swrOptions
+  );
 
-  // --- 4. 최종 API 엔드포인트 생성 ---
-  const endpoint = `/orders/stats?${params.toString()}`; // API 경로 확인 ('/api' 등 필요시 추가)
-
-  // --- 5. SWR 호출 ---
-  // userId가 있을 때만 SWR 호출
-  return useSWR(endpoint, axiosFetcher, swrOptions);
+  // 3. 결과 반환
+  return swrResult;
 }
 
 /**
