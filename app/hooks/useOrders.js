@@ -25,33 +25,64 @@ export function useOrder(orderId, options = {}) {
 }
 
 /**
- * 주문 통계를 가져오는 훅
- * @param {string} userId - 사용자 ID
- * @param {string} dateRange - 기간 (7days, 30days, 90days, custom)
- * @param {string} startDate - 커스텀 기간 시작일 (dateRange가 custom일 때만 사용)
- * @param {string} endDate - 커스텀 기간 종료일 (dateRange가 custom일 때만 사용)
- * @param {Object} options - SWR 옵션
- * @returns {Object} SWR 응답
+ * 주문 통계 데이터를 가져오는 커스텀 훅
+ * @param {string | null | undefined} userId - 사용자 ID
+ * @param {object} filterOptions - 필터 옵션 객체
+ * @param {string} [filterOptions.dateRange='7days'] - 날짜 범위 (today, 7days, 30days, custom 등)
+ * @param {string | undefined} [filterOptions.startDate] - 사용자 지정 시작일 (ISO 문자열)
+ * @param {string | undefined} [filterOptions.endDate] - 사용자 지정 종료일 (ISO 문자열)
+ * @param {string | undefined} [filterOptions.status] - 주 상태 필터
+ * @param {string | undefined} [filterOptions.subStatus] - 부가 상태 필터
+ * @param {string | undefined} [filterOptions.search] - 검색어
+ * @param {object} swrOptions - SWR 옵션
+ * @returns {object} SWR 훅의 반환값 { data, error, isLoading, mutate }
  */
-export function useOrderStats(
-  userId,
-  dateRange = "7days",
-  startDate = null,
-  endDate = null,
-  options = {}
-) {
-  const params = new URLSearchParams({ userId, dateRange });
+export function useOrderStats(userId, filterOptions = {}, swrOptions = {}) {
+  // --- 1. 옵션 객체에서 각 필터 값 추출 ---
+  const {
+    dateRange = "7days", // 기본값 설정
+    startDate,
+    endDate,
+    status,
+    subStatus,
+    search,
+  } = filterOptions;
 
+  // --- 2. API 요청 URLSearchParams 생성 ---
+  const params = new URLSearchParams();
+
+  // userId는 필수
+  if (userId) {
+    params.append("userId", userId);
+  } else {
+    // userId가 없으면 요청하지 않음 (SWR 키를 null로 설정하기 위함)
+    return useSWR(null, axiosFetcher, swrOptions);
+  }
+
+  // 날짜 관련 파라미터 추가
+  params.append("dateRange", dateRange);
   if (dateRange === "custom" && startDate && endDate) {
     params.append("startDate", startDate);
     params.append("endDate", endDate);
   }
 
-  return useSWR(
-    userId ? `/orders/stats?${params}` : null,
-    axiosFetcher,
-    options
-  );
+  // --- 3. 추가된 필터 파라미터 추가 ---
+  if (status) {
+    params.append("status", status);
+  }
+  if (subStatus) {
+    params.append("sub_status", subStatus); // 백엔드 API 파라미터 이름과 일치 확인 ('subStatus' or 'sub_status')
+  }
+  if (search) {
+    params.append("search", search);
+  }
+
+  // --- 4. 최종 API 엔드포인트 생성 ---
+  const endpoint = `/orders/stats?${params.toString()}`; // API 경로 확인 ('/api' 등 필요시 추가)
+
+  // --- 5. SWR 호출 ---
+  // userId가 있을 때만 SWR 호출
+  return useSWR(endpoint, axiosFetcher, swrOptions);
 }
 
 /**

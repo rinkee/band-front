@@ -199,11 +199,15 @@ export default function DashboardPage() {
   } = useOrders(userId, 1, { limit: 5 }, swrOptions); // Fetch recent 5 orders
 
   const {
-    data: orderStatsData, // API response shape: { data: { totalOrders: ... }, ... }
+    data: orderStatsData,
     isLoading: isOrderStatsLoading,
     error: orderStatsError,
-    mutate: orderStatsMutate, // Function to re-fetch stats
-  } = useOrderStats(userId, dateRange, null, null, swrOptions); // Fetch stats based on userId and dateRange
+    mutate: orderStatsMutate,
+  } = useOrderStats(
+    userId,
+    { dateRange: dateRange }, // <<<--- filterOptions 객체로 전달 (dateRange만 필요)
+    swrOptions
+  );
 
   // Combined loading/error state
   const isDataLoading =
@@ -355,7 +359,7 @@ export default function DashboardPage() {
 
   // --- Main Render ---
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-gray-100 text-gray-900 p-5">
       {/* Top Loading Bar */}
       {isDataLoading && (
         <div className="fixed top-0 left-0 right-0 h-1 bg-orange-100 z-50 overflow-hidden">

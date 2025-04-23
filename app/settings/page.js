@@ -73,7 +73,7 @@ function InfoBox({
     textColor = "text-green-700";
     borderColor = "border-green-200";
     Icon = CheckCircleIcon;
-    message = `자동 크롤링 활성 (작업 ID: ${jobId || "알 수 없음"}, 간격: ${
+    message = `자동 수집 활성 (작업 ID: ${jobId || "알 수 없음"}, 간격: ${
       interval || "?"
     }분)`;
   } else if (type === "pending") {
@@ -81,7 +81,7 @@ function InfoBox({
     textColor = "text-blue-700";
     borderColor = "border-blue-200";
     Icon = InformationCircleIcon;
-    message = `자동 크롤링 활성화됨. 첫 작업이 곧 예약됩니다 (간격: ${
+    message = `자동 밴드 정보 업데이트 활성화됨. 첫 작업이 곧 예약됩니다 (간격: ${
       interval || "?"
     }분)`;
   } else if (type === "warning") {
@@ -89,7 +89,7 @@ function InfoBox({
     textColor = "text-yellow-700";
     borderColor = "border-yellow-200";
     Icon = ExclamationTriangleIcon;
-    message = `자동 크롤링 비활성. 이전에 예약된 작업(${
+    message = `자동 밴드 정보 업데이트 비활성. 이전에 예약된 작업(${
       jobId || "알 수 없음"
     })이 남아있을 수 있습니다. (변경사항 저장 시 정리)`;
   } else {
@@ -119,7 +119,7 @@ export default function SettingsPage() {
   const [userId, setUserId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false); // 프로필 저장 상태
-  const [savingCrawling, setSavingCrawling] = useState(false); // 크롤링 저장 상태
+  const [savingCrawling, setSavingCrawling] = useState(false); // 밴드 정보 업데이트 저장 상태
   const [savingExcluded, setSavingExcluded] = useState(false); // 제외 고객 저장 상태
   const [error, setError] = useState(null);
   const [ownerName, setOwnerName] = useState("");
@@ -133,6 +133,8 @@ export default function SettingsPage() {
   const [initialCrawlSettings, setInitialCrawlSettings] = useState(null);
   const [manualCrawling, setManualCrawling] = useState(false);
   const [manualCrawlPostCount, setManualCrawlPostCount] = useState(10);
+  const [manualCrawlDaysLimit, setManualCrawlDaysLimit] = useState(5); // <<<--- 새로운 상태 추가 (기본값 1일)
+  const [daysLimit, setDaysLimit] = useState(5); // 예: 기본값 5일
 
   const { mutate: globalMutate } = useSWRConfig();
   const swrOptions = {
@@ -254,7 +256,7 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Error updating auto crawl settings:", error);
       setError(
-        `자동 크롤링 설정 업데이트 오류: ${
+        `자동 밴드 정보 업데이트 설정 업데이트 오류: ${
           error.response?.data?.message || error.message
         }`
       );
@@ -277,24 +279,26 @@ export default function SettingsPage() {
     try {
       const response = await api.post(`/crawl/${bandNumber}/details`, {
         userId: userId,
-        maxPosts: manualCrawlPostCount,
+        // maxPosts: manualCrawlPostCount,
         processProducts: true,
+        daysLimit: manualCrawlDaysLimit, // <<<--- 상태에서 가져온 daysLimit 값 추가
       });
       if (response.data?.success) {
         alert(
-          `수동 크롤링 요청 성공: ${
+          `수동 밴드 정보 업데이트 요청 성공: ${
             response.data.message || "백그라운드에서 크롤링이 시작됩니다."
           }`
         );
       } else {
         throw new Error(
-          response.data?.message || "수동 크롤링 요청에 실패했습니다."
+          response.data?.message ||
+            "수동 밴드 정보 업데이트 요청에 실패했습니다."
         );
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message;
-      setError(`수동 크롤링 오류: ${errMsg}`);
-      alert(`수동 크롤링 요청 중 오류 발생: ${errMsg}`);
+      setError(`수동 밴드 정보 업데이트 오류: ${errMsg}`);
+      alert(`수동 밴드 정보 업데이트 요청 중 오류 발생: ${errMsg}`);
     } finally {
       setManualCrawling(false);
     }
@@ -303,7 +307,7 @@ export default function SettingsPage() {
     setIsAutoCrawlingEnabled((prev) => !prev);
   const handleIntervalChange = (e) => {
     let newInterval = parseInt(e.target.value, 10);
-    if (isNaN(newInterval) || newInterval < 30) {
+    if (isNaN(newInterval) || newInterval < 1) {
       newInterval = 30;
     }
     setCrawlInterval(newInterval);
@@ -376,11 +380,11 @@ export default function SettingsPage() {
         crawlInterval
       );
       if (success) {
-        alert("크롤링 설정이 저장되었습니다.");
+        alert("밴드 정보 업데이트 설정이 저장되었습니다.");
       } else {
         throw new Error("API 호출 실패");
       } // updateAutoCrawlSettingsAPI 내부에서 setError 처리됨
-      // 크롤링 설정 변경 시 사용자 데이터 재검증 (선택적)
+      // 밴드 정보 업데이트 설정 변경 시 사용자 데이터 재검증 (선택적)
       // userMutate();
     } catch (err) {
       /* 에러는 updateAutoCrawlSettingsAPI 내부 또는 여기서 처리 */
@@ -451,7 +455,7 @@ export default function SettingsPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto"
+      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5"
     >
       {userLoading && userId && (
         <div className="fixed top-0 left-0 right-0 h-1 bg-orange-100 z-50">
@@ -473,7 +477,7 @@ export default function SettingsPage() {
           </h1>{" "}
           <p className="text-sm text-gray-500">
             {" "}
-            계정 정보 및 크롤링 설정을 관리합니다.{" "}
+            계정 정보 및 밴드 정보 업데이트 설정을 관리합니다.{" "}
           </p>{" "}
         </div>
         {combinedError && (
@@ -542,7 +546,7 @@ export default function SettingsPage() {
                   },
                   {
                     id: "bandNumber",
-                    label: "밴드 ID (크롤링 대상)",
+                    label: "밴드 ID (밴드 정보 업데이트 대상)",
                     value: bandNumber,
                     // setter 제거 (수정 불가)
                     placeholder: "밴드 ID 없음", // 값이 없을 때 표시될 플레이스홀더
@@ -603,16 +607,16 @@ export default function SettingsPage() {
                 </button>
               </div>
             </LightCard>
-            {/* 크롤링 설정 및 실행 카드 */}
-            {/* --- 크롤링 설정 및 실행 카드 --- */}
+            {/* 밴드 정보 업데이트 설정 및 실행 카드 */}
+            {/* --- 밴드 정보 업데이트 설정 및 실행 카드 --- */}
             <LightCard padding="p-0" className="overflow-hidden">
               {/* ... (카드 헤더) ... */}
               <div className="divide-y divide-gray-200">
-                {/* 자동 크롤링 활성화 행 */}
+                {/* 자동 밴드 정보 업데이트 활성화 행 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
                     {" "}
-                    자동 크롤링{" "}
+                    자동 밴드 업데이트{" "}
                   </div>
                   <div className="bg-white px-4 py-3 flex items-center justify-between">
                     {/* 토글 스위치 (isAutoCrawlingEnabled 사용 - UI 즉시 반영) */}
@@ -629,7 +633,7 @@ export default function SettingsPage() {
                     </label>
                   </div>
                 </div>
-                {/* 크롤링 간격 설정 행 */}
+                {/* 밴드 정보 업데이트 간격 설정 행 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
                     {" "}
@@ -640,7 +644,7 @@ export default function SettingsPage() {
                     <input
                       type="number"
                       id="crawlInterval"
-                      min="30"
+                      min="1"
                       value={crawlInterval}
                       onChange={handleIntervalChange}
                       disabled={
@@ -656,7 +660,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-                {/* 크롤링 상태 정보 행 */}
+                {/* 밴드 정보 업데이트 상태 정보 행 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
                     {" "}
@@ -682,11 +686,11 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
-                {/* 크롤링 설정 저장 버튼 행 */}
+                {/* 밴드 정보 업데이트 설정 저장 버튼 행 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
                     {" "}
-                    크롤링 저장{" "}
+                    자동 수집{" "}
                   </div>
                   <div className="bg-white px-4 py-3">
                     <button
@@ -702,15 +706,12 @@ export default function SettingsPage() {
                       ) : (
                         <CheckIcon className="w-5 h-5" />
                       )}{" "}
-                      <span>
-                        {savingCrawling ? "저장 중..." : "크롤링 설정 저장"}
-                      </span>
+                      <span>{savingCrawling ? "저장 중..." : "설정 저장"}</span>
                     </button>
                   </div>
                 </div>
-                {/* 수동 크롤링 실행 행 */}
+
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  {/* ... (수동 크롤링 UI 동일) ... */}
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
                     {" "}
                     수동 실행{" "}
@@ -721,14 +722,16 @@ export default function SettingsPage() {
                       {" "}
                       <input
                         type="number"
-                        value={manualCrawlPostCount}
+                        value={manualCrawlDaysLimit}
                         onChange={(e) =>
-                          setManualCrawlPostCount(
+                          setManualCrawlDaysLimit(
+                            // 상태 업데이트 함수 변경
                             Math.max(1, parseInt(e.target.value, 10) || 1)
                           )
                         }
-                        min="1"
-                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
+                        min="3"
+                        max="7"
+                        className="w-14 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
                         disabled={
                           manualCrawling ||
                           savingProfile ||
@@ -736,8 +739,9 @@ export default function SettingsPage() {
                           savingExcluded ||
                           !bandNumber
                         }
-                        title="가져올 게시물 수"
+                        title="수집할 최근 일 수" // title 속성 변경
                       />{" "}
+                      <p>일</p>
                       <button
                         onClick={handleManualCrawl}
                         disabled={
@@ -745,7 +749,8 @@ export default function SettingsPage() {
                           savingProfile ||
                           savingCrawling ||
                           savingExcluded ||
-                          !bandNumber
+                          !bandNumber ||
+                          manualCrawlDaysLimit < 1 // daysLimit 유효성 검사 추가
                         }
                         className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 w-32"
                       >
@@ -764,13 +769,14 @@ export default function SettingsPage() {
                       </button>{" "}
                     </div>{" "}
                     <p className="text-xs text-gray-500 mt-1.5">
-                      {" "}
-                      현재 밴드({bandNumber || "미설정"})에서{" "}
+                      {/* <<<--- 설명 문구 변경 --- START --->>> */}
+                      현재 밴드({bandNumber || "미설정"})에서 최근{" "}
                       <span className="font-medium">
-                        {manualCrawlPostCount}
-                      </span>
-                      개 게시물 즉시 수집.{" "}
-                    </p>{" "}
+                        {manualCrawlDaysLimit}
+                      </span>{" "}
+                      일간의 게시물 즉시 수집.
+                      {/* <<<--- 설명 문구 변경 --- END --->>> */}
+                    </p>
                   </div>
                 </div>
               </div>

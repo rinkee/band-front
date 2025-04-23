@@ -619,7 +619,7 @@ export default function ProductsPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto"
+      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5"
     >
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 md:mb-8">
@@ -775,8 +775,14 @@ export default function ProductsPage() {
                 {/* colspan 수정 */}
                 {products.map((product, index) => {
                   // Index 계산
-                  const baseIndex = (currentPage - 1) * itemsPerPage;
-                  const rowNum = baseIndex + index + 1;
+                  // --- 역순 Index 계산 ---
+                  // 페이지네이션 데이터에서 총 아이템 수를 가져옵니다.
+                  const totalItems = productsData?.pagination?.totalItems || 0;
+                  // 현재 아이템의 0부터 시작하는 절대 인덱스를 계산합니다.
+                  const currentItemAbsoluteIndex =
+                    (currentPage - 1) * itemsPerPage + index;
+                  // 총 아이템 수에서 현재 아이템의 절대 인덱스를 빼서 역순 번호를 계산합니다.
+                  const rowNum = totalItems - currentItemAbsoluteIndex;
                   return (
                     <tr
                       key={product.product_id}
