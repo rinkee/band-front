@@ -45,6 +45,29 @@ import {
   CheckIcon,
 } from "@heroicons/react/24/outline";
 
+function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
+  if (!Array.isArray(priceOptions) || priceOptions.length === 0) {
+    return fallbackPrice * qty;
+  }
+  const sortedOptions = [...priceOptions].sort(
+    (a, b) => b.quantity - a.quantity
+  );
+  let remain = qty;
+  let total = 0;
+  for (const opt of sortedOptions) {
+    const cnt = Math.floor(remain / opt.quantity);
+    if (cnt > 0) {
+      total += cnt * opt.price;
+      remain -= cnt * opt.quantity;
+    }
+  }
+  if (remain > 0) {
+    const smallest = sortedOptions[sortedOptions.length - 1];
+    total += remain * (smallest.price / smallest.quantity);
+  }
+  return Math.round(total);
+}
+
 // --- 커스텀 라디오 버튼 그룹 컴포넌트 ---
 function CustomRadioGroup({
   name,
@@ -167,9 +190,9 @@ function StatusBadge({ status }) {
   }
   return (
     <span
-      className={`inline-flex items-center gap-x-1 rounded-md px-2 py-1 text-xs font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center gap-x-1 rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
     >
-      <Icon className="h-3.5 w-3.5" /> {status}
+      <Icon className="h-5 w-5" /> {status}
     </span>
   );
 }
@@ -269,7 +292,8 @@ export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
+
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(30);
   const [products, setProducts] = useState([]);
@@ -322,6 +346,7 @@ export default function OrdersPage() {
     error: userError,
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
+  // useOrders 훅 호출 부분 수정
   const {
     data: ordersData,
     error: ordersError,
@@ -334,7 +359,37 @@ export default function OrdersPage() {
       limit: itemsPerPage,
       sortBy,
       sortOrder,
-      status: filterStatus !== "all" ? filterStatus : undefined,
+      // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
+      status: (() => {
+        // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
+        // 주 상태(status) 필터는 적용하지 않음 (undefined)
+        if (
+          filterSelection === "확인필요" ||
+          filterSelection === "미수령" ||
+          filterSelection === "none"
+        ) {
+          return undefined;
+        }
+        // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
+        if (filterSelection === "all") {
+          return undefined;
+        }
+        // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
+        return filterSelection;
+      })(),
+      subStatus: (() => {
+        // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
+        if (
+          filterSelection === "확인필요" ||
+          filterSelection === "미수령" ||
+          filterSelection === "none"
+        ) {
+          return filterSelection;
+        }
+        // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
+        return undefined;
+      })(),
+      // --- 파라미터 동적 결정 로직 끝 ---
       search: searchTerm.trim() || undefined,
       startDate: calculateDateFilterParams(
         filterDateRange,
@@ -349,6 +404,7 @@ export default function OrdersPage() {
     },
     swrOptions
   );
+
   const {
     data: productsData,
     error: productsError,
@@ -361,11 +417,47 @@ export default function OrdersPage() {
     mutate: mutateOrderStats,
   } = useOrderStats(
     userData?.userId,
-    filterDateRange === "custom" ? "7days" : filterDateRange,
+    // --- 현재 필터 상태를 기반으로 파라미터 객체 생성 ---
+    {
+      // 날짜 범위 파라미터 (기존과 동일)
+      dateRange: filterDateRange,
+      startDate:
+        filterDateRange === "custom"
+          ? customStartDate?.toISOString()
+          : undefined,
+      endDate:
+        filterDateRange === "custom" ? customEndDate?.toISOString() : undefined,
+
+      // <<< 추가된 필터 파라미터 >>>
+      // filterSelection 값을 기반으로 status 또는 subStatus 결정
+      status: (() => {
+        if (
+          filterSelection === "확인필요" ||
+          filterSelection === "미수령" ||
+          filterSelection === "none" ||
+          filterSelection === "all"
+        ) {
+          return undefined; // 부가 상태 필터 또는 전체 시에는 status 전달 안 함
+        }
+        return filterSelection; // 주 상태 필터 값 전달
+      })(),
+      subStatus: (() => {
+        if (
+          filterSelection === "확인필요" ||
+          filterSelection === "미수령" ||
+          filterSelection === "none"
+        ) {
+          return filterSelection; // 부가 상태 필터 값 전달
+        }
+        return undefined; // 전체 또는 주 상태 필터 시 subStatus 전달 안 함
+      })(),
+      search: searchTerm.trim() || undefined, // 검색어 전달
+    },
     null,
     null,
     swrOptions
   );
+
   const isDataLoading = isUserLoading || isOrdersLoading || isOrderStatsLoading;
   const displayedOrderIds = displayOrders.map((o) => o.order_id);
   const isAllDisplayedSelected =
@@ -789,11 +881,13 @@ export default function OrdersPage() {
     }
     setCurrentPage(1);
   };
-  const handleFilterChange = (status) => {
-    setFilterStatus(status);
+  // 필터 변경 핸들러 (선택된 값을 filterSelection state에 저장)
+  const handleFilterChange = (selectedValue) => {
+    setFilterSelection(selectedValue); // 사용자가 선택한 값을 그대로 저장
     setCurrentPage(1);
     setSelectedOrderIds([]);
   };
+
   const handleDateRangeChange = (range) => {
     setFilterDateRange(range);
     setCurrentPage(1);
@@ -892,7 +986,7 @@ export default function OrdersPage() {
     );
   if (error)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5">
         <LightCard className="max-w-md w-full text-center border-red-300">
           <XCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-5" />
           <h2 className="text-xl font-semibold text-gray-900 mb-3">
@@ -924,6 +1018,7 @@ export default function OrdersPage() {
     );
 
   // --- 데이터 준비 ---
+  const filteredTotalItems = ordersData?.pagination?.total ?? 0; // <<< 이 변수를 사용해야 합니다.
   const totalItems = ordersData?.pagination?.total || 0;
   const totalPages = ordersData?.pagination?.totalPages || 1;
   const stats = orderStatsData?.data || {
@@ -984,9 +1079,15 @@ export default function OrdersPage() {
                 }}
                 title="전체 주문 보기" // 툴팁 추가
               >
-                <dt className="text-sm text-gray-500 uppercase">총 주문</dt>
+                <dt className="text-sm text-gray-500 uppercase">
+                  {searchTerm ||
+                  filterSelection !== "all" ||
+                  filterDateRange === "custom"
+                    ? "필터된 주문"
+                    : "총 주문"}
+                </dt>
                 <dd className="font-semibold text-lg mt-0.5">
-                  {totalStatsOrders.toLocaleString()}
+                  {filteredTotalItems.toLocaleString()}
                 </dd>
               </div>
               <div
@@ -1091,7 +1192,7 @@ export default function OrdersPage() {
                 <CustomRadioGroup
                   name="orderStatus"
                   options={orderStatusOptions}
-                  selectedValue={filterStatus}
+                  selectedValue={filterSelection}
                   onChange={handleFilterChange}
                   disabled={isDataLoading}
                 />
@@ -1197,15 +1298,6 @@ export default function OrdersPage() {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     상태
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSortChange("completed_at")}
-                      className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={isDataLoading}
-                    >
-                      수령일시 {getSortIcon("completed_at")}
-                    </button>
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -1226,7 +1318,7 @@ export default function OrdersPage() {
                       className="px-6 py-10 text-center text-sm text-gray-500"
                     >
                       {searchTerm ||
-                      filterStatus !== "all" ||
+                      filterSelection !== "all" ||
                       filterDateRange !== "30days" || // 기본값 변경 반영
                       (filterDateRange === "custom" &&
                         (customStartDate || customEndDate))
@@ -1305,11 +1397,50 @@ export default function OrdersPage() {
                           <span className="text-xs text-gray-400">없음</span>
                         )}
                       </td>
+
                       <td className="px-4 py-3 text-center whitespace-nowrap">
-                        <StatusBadge status={order.status} />
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {formatDate(order.completed_at)}
+                        {(() => {
+                          // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
+                          const actualStatus = order.status;
+                          const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
+                          return (
+                            <div className="flex flex-col items-center">
+                              {" "}
+                              {/* 세로 정렬을 위해 div 추가 */}
+                              {/* 메인 상태 배지 (항상 order.status 기준) */}
+                              <StatusBadge status={actualStatus} />
+                              {/* 부가 상태가 있으면 추가 배지 표시 */}
+                              {actualSubStatus === "확인필요" && (
+                                <span
+                                  className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
+                                  title="부가 상태: 확인필요"
+                                >
+                                  <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                  확인 필요
+                                </span>
+                              )}
+                              {actualSubStatus === "미수령" && (
+                                <span
+                                  className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
+                                  title="부가 상태: 미수령"
+                                >
+                                  <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                  미수령
+                                </span>
+                              )}
+                              {actualStatus === "수령완료" && (
+                                <span
+                                  className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
+                                  title="부가 상태: 수령완료"
+                                >
+                                  {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
+                                  {formatDate(order.completed_at)}
+                                </span>
+                              )}
+                              {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -1688,8 +1819,13 @@ export default function OrdersPage() {
                         {
                           label: "총 금액 (계산됨)",
                           value: formatCurrency(
-                            (parseFloat(tempPrice) || 0) *
-                              (parseInt(tempQuantity, 10) || 0)
+                            calculateTotalAmount(
+                              parseInt(tempQuantity, 10) || 0,
+                              selectedOrder?.product?.price_options || [
+                                { price: tempPrice, quantity: 1 },
+                              ],
+                              parseFloat(tempPrice) || 0
+                            )
                           ),
                           readOnly: true,
                           highlight: true,

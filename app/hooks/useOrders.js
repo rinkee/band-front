@@ -25,33 +25,63 @@ export function useOrder(orderId, options = {}) {
 }
 
 /**
- * 주문 통계를 가져오는 훅
- * @param {string} userId - 사용자 ID
- * @param {string} dateRange - 기간 (7days, 30days, 90days, custom)
- * @param {string} startDate - 커스텀 기간 시작일 (dateRange가 custom일 때만 사용)
- * @param {string} endDate - 커스텀 기간 종료일 (dateRange가 custom일 때만 사용)
- * @param {Object} options - SWR 옵션
- * @returns {Object} SWR 응답
+ * 주문 통계 데이터를 가져오는 커스텀 훅
+ * @param {string | null | undefined} userId - 사용자 ID
+ * @param {object} filterOptions - 필터 옵션 객체
+ * @param {string} [filterOptions.dateRange='7days'] - 날짜 범위 (today, 7days, 30days, custom 등)
+ * @param {string | undefined} [filterOptions.startDate] - 사용자 지정 시작일 (ISO 문자열)
+ * @param {string | undefined} [filterOptions.endDate] - 사용자 지정 종료일 (ISO 문자열)
+ * @param {string | undefined} [filterOptions.status] - 주 상태 필터
+ * @param {string | undefined} [filterOptions.subStatus] - 부가 상태 필터
+ * @param {string | undefined} [filterOptions.search] - 검색어
+ * @param {object} swrOptions - SWR 옵션
+ * @returns {object} SWR 훅의 반환값 { data, error, isLoading, mutate }
  */
-export function useOrderStats(
-  userId,
-  dateRange = "7days",
-  startDate = null,
-  endDate = null,
-  options = {}
-) {
-  const params = new URLSearchParams({ userId, dateRange });
+export function useOrderStats(userId, filterOptions = {}, swrOptions = {}) {
+  const {
+    dateRange = "7days",
+    startDate,
+    endDate,
+    status,
+    subStatus,
+    search,
+  } = filterOptions;
 
-  if (dateRange === "custom" && startDate && endDate) {
-    params.append("startDate", startDate);
-    params.append("endDate", endDate);
-  }
+  // 1. SWR 키 생성 로직 (조건부로 null 반환)
+  const getKey = () => {
+    if (!userId) {
+      return null; // userId 없으면 요청 안 함
+    }
 
-  return useSWR(
-    userId ? `/orders/stats?${params}` : null,
+    const params = new URLSearchParams();
+    params.append("userId", userId);
+    params.append("dateRange", dateRange);
+    if (dateRange === "custom" && startDate && endDate) {
+      params.append("startDate", startDate);
+      params.append("endDate", endDate);
+    }
+    if (status) {
+      params.append("status", status);
+    }
+    if (subStatus) {
+      params.append("sub_status", subStatus);
+    }
+    if (search) {
+      params.append("search", search);
+    }
+
+    return `/orders/stats?${params.toString()}`; // 최종 엔드포인트
+  };
+
+  // 2. useSWR 훅은 항상 최상위 레벨에서 호출
+  const swrResult = useSWR(
+    getKey, // 키 생성 함수 전달 (userId 없으면 null 반환)
     axiosFetcher,
-    options
+    swrOptions
   );
+
+  // 3. 결과 반환
+  return swrResult;
 }
 
 /**

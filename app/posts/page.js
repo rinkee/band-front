@@ -357,7 +357,7 @@ export default function PostsPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto"
+      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5"
     >
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 md:mb-8">
