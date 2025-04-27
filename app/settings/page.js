@@ -226,31 +226,55 @@ export default function SettingsPage() {
   }, [router, fetchAutoCrawlSettings]);
   useEffect(() => {
     if (!userLoading && !initialLoading && swrUserData) {
+      console.log("[Settings Effect] SWR User Data Received:", swrUserData);
       setOwnerName(swrUserData.owner_name || "");
       setStoreName(swrUserData.store_name || "");
       setBandNumber(swrUserData.band_number || "");
-      if (swrUserData.excluded_customers !== undefined) {
+
+      // --- excludedCustomers 처리 (null 및 undefined 방어) ---
+      if (Array.isArray(swrUserData.excluded_customers)) {
+        console.log(
+          "[Settings Effect] Setting excludedCustomers from SWR (Array):",
+          swrUserData.excluded_customers
+        );
         setExcludedCustomers(swrUserData.excluded_customers);
       } else {
-        setExcludedCustomers([]);
-        console.warn(
-          "`excluded_customers` field is missing from SWR user data response."
-        );
+        if (swrUserData.excluded_customers === null) {
+          console.warn(
+            "[Settings Effect] `excluded_customers` is null from SWR data. Defaulting to empty array."
+          );
+        } else if (swrUserData.excluded_customers === undefined) {
+          console.warn(
+            "[Settings Effect] `excluded_customers` field is missing from SWR data. Defaulting to empty array."
+          );
+        } else {
+          console.warn(
+            `[Settings Effect] Invalid 'excluded_customers' data type (${typeof swrUserData.excluded_customers}), expected array. Defaulting to empty array.`
+          );
+        }
+        setExcludedCustomers([]); // <<<--- null, undefined, 배열 아닌 경우 빈 배열로 설정
       }
-      // <<<--- 바코드 설정 상태 초기화 --- START --->>>
-      // user 데이터에 auto_barcode_generation 필드가 없으면 false를 기본값으로 사용
+      // --- excludedCustomers 처리 끝 ---
+
+      // --- auto_barcode_generation 처리 ---
       const initialBarcodePref = swrUserData.auto_barcode_generation ?? false;
       setAutoBarcodeGeneration(initialBarcodePref);
-      setInitialAutoBarcodeGeneration(initialBarcodePref); // 초기값 저장 (변경 감지용)
-      // <<<--- 바코드 설정 상태 초기화 --- END --->>>
+      setInitialAutoBarcodeGeneration(initialBarcodePref);
+      // --- auto_barcode_generation 처리 끝 ---
     } else if (!userLoading && !initialLoading && !swrUserData && userId) {
       console.warn(
-        "SWR finished loading but swrUserData is null/undefined for userId:",
+        "[Settings Effect] SWR loaded but swrUserData is null/undefined for userId:",
         userId
       );
-      setExcludedCustomers([]);
+      // 데이터 없을 시 기본값 설정
+      setOwnerName("");
+      setStoreName("");
+      setBandNumber("");
+      setExcludedCustomers([]); // <<<--- 여기서도 빈 배열로 초기화
+      setAutoBarcodeGeneration(false);
+      setInitialAutoBarcodeGeneration(false);
     }
-  }, [swrUserData, userLoading, initialLoading, userId, userSWRError]);
+  }, [swrUserData, userLoading, initialLoading, userId]); // 의존성 배열
 
   // <<<--- 바코드 설정 저장 함수 추가 --- START --->>>
   const handleSaveBarcodeSetting = async () => {
@@ -963,12 +987,14 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-gray-50 min-h-[60px]">
                   {" "}
-                  {excludedCustomers.length === 0 ? (
+                  {Array.isArray(excludedCustomers) &&
+                  excludedCustomers.length === 0 ? (
                     <p className="text-sm text-gray-400 italic self-center w-full text-center">
                       {" "}
                       제외된 고객이 없습니다.{" "}
                     </p>
                   ) : (
+                    Array.isArray(excludedCustomers) &&
                     excludedCustomers.map((customer) => (
                       <span
                         key={customer}
