@@ -247,6 +247,7 @@ export default function SettingsPage() {
         "SWR finished loading but swrUserData is null/undefined for userId:",
         userId
       );
+      setExcludedCustomers([]);
     }
   }, [swrUserData, userLoading, initialLoading, userId, userSWRError]);
 
