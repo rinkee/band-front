@@ -929,7 +929,7 @@ export default function ProductsPage() {
 
         {/* 상품 수정 모달 */}
         {isModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
             <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl max-h-[90vh] flex flex-col border border-gray-300">
               <div className="flex justify-between items-center p-5 border-b border-gray-200 flex-shrink-0">
                 <h3 className="text-lg font-semibold text-gray-900">
