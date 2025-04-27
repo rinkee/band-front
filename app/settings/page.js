@@ -232,6 +232,7 @@ export default function SettingsPage() {
       if (swrUserData.excluded_customers !== undefined) {
         setExcludedCustomers(swrUserData.excluded_customers);
       } else {
+        setExcludedCustomers([]);
         console.warn(
           "`excluded_customers` field is missing from SWR user data response."
         );
