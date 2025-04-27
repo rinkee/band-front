@@ -15,7 +15,7 @@ const nextConfig = {
         {
           source: "/api/proxy/:path*",
           // 👇 여기가 중요! 실제 백엔드 주소를 가진 환경 변수 사용
-          destination: `${process.env.BACKEND_API_URL}/:path*`,
+          destination: `${process.env.BACKEND_API_URL}/api/:path*`,
         },
       ];
     }
