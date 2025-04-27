@@ -1,10 +1,11 @@
+// api/auth/register/route.js
 import { NextResponse } from "next/server";
 
 // API 기본 URL 설정
 const API_BASE_URL =
   process.env.NODE_ENV === "development"
     ? "http://localhost:8080/api"
-    : process.env.NEXT_PUBLIC_API_URL;
+    : process.env.BACKEND_API_URL;
 
 /**
  * 회원가입 처리 API
@@ -68,7 +69,7 @@ export async function POST(request) {
     });
 
     // 서버 API 호출
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

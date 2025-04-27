@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 const API_BASE_URL =
   process.env.NODE_ENV === "development"
     ? "http://localhost:8080/api"
-    : process.env.NEXT_PUBLIC_API_URL;
+    : process.env.BACKEND_API_URL;
 
 /**
  * 로그인 처리 API
@@ -27,7 +27,7 @@ export async function POST(request) {
     console.log("로그인 요청:", { loginId, loginPassword });
 
     // 서버 API 호출
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
