@@ -206,7 +206,7 @@ export default function RootLayout({ children }) {
                       href="/dashboard"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/dashboard"
-                          ? "bg-blue-100 text-gray-900" // 활성 스타일
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100" // 비활성 스타일
                       }`}
                     >
@@ -216,7 +216,7 @@ export default function RootLayout({ children }) {
                       href="/products"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/products"
-                          ? "bg-blue-100 text-gray-900"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
@@ -226,7 +226,7 @@ export default function RootLayout({ children }) {
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/posts"
-                          ? "bg-blue-100 text-gray-900"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
@@ -236,7 +236,7 @@ export default function RootLayout({ children }) {
                       href="/orders"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/orders"
-                          ? "bg-blue-100 text-gray-900"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
@@ -246,7 +246,7 @@ export default function RootLayout({ children }) {
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/customers"
-                          ? "bg-blue-100 text-gray-900"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
@@ -256,7 +256,7 @@ export default function RootLayout({ children }) {
                       href="/settings"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/settings"
-                          ? "bg-blue-100 text-gray-900"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >

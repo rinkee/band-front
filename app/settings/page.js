@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useUser, useUserMutations } from "../hooks";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
+import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴포넌트 import
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -20,6 +21,7 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
   CheckCircleIcon,
+  QrCodeIcon,
   XCircleIcon as XCircleIconOutline,
   // DocumentMagnifyingGlassIcon, // 제거됨
 } from "@heroicons/react/24/outline";
@@ -121,6 +123,7 @@ export default function SettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false); // 프로필 저장 상태
   const [savingCrawling, setSavingCrawling] = useState(false); // 밴드 정보 업데이트 저장 상태
   const [savingExcluded, setSavingExcluded] = useState(false); // 제외 고객 저장 상태
+  const [savingBarcodeSetting, setSavingBarcodeSetting] = useState(false); // <<<--- 바코드 설정 저장 상태 추가
   const [error, setError] = useState(null);
   const [ownerName, setOwnerName] = useState("");
   const [storeName, setStoreName] = useState("");
@@ -135,6 +138,10 @@ export default function SettingsPage() {
   const [manualCrawlPostCount, setManualCrawlPostCount] = useState(10);
   const [manualCrawlDaysLimit, setManualCrawlDaysLimit] = useState(5); // <<<--- 새로운 상태 추가 (기본값 1일)
   const [daysLimit, setDaysLimit] = useState(5); // 예: 기본값 5일
+  const [manualCrawlTaskId, setManualCrawlTaskId] = useState(null);
+  const [autoBarcodeGeneration, setAutoBarcodeGeneration] = useState(false); // <<<--- 바코드 생성 상태 추가
+  const [initialAutoBarcodeGeneration, setInitialAutoBarcodeGeneration] =
+    useState(null); // <<<--- 바코드 초기 상태 추가
 
   const { mutate: globalMutate } = useSWRConfig();
   const swrOptions = {
@@ -229,6 +236,12 @@ export default function SettingsPage() {
           "`excluded_customers` field is missing from SWR user data response."
         );
       }
+      // <<<--- 바코드 설정 상태 초기화 --- START --->>>
+      // user 데이터에 auto_barcode_generation 필드가 없으면 false를 기본값으로 사용
+      const initialBarcodePref = swrUserData.auto_barcode_generation ?? false;
+      setAutoBarcodeGeneration(initialBarcodePref);
+      setInitialAutoBarcodeGeneration(initialBarcodePref); // 초기값 저장 (변경 감지용)
+      // <<<--- 바코드 설정 상태 초기화 --- END --->>>
     } else if (!userLoading && !initialLoading && !swrUserData && userId) {
       console.warn(
         "SWR finished loading but swrUserData is null/undefined for userId:",
@@ -236,6 +249,48 @@ export default function SettingsPage() {
       );
     }
   }, [swrUserData, userLoading, initialLoading, userId, userSWRError]);
+
+  // <<<--- 바코드 설정 저장 함수 추가 --- START --->>>
+  const handleSaveBarcodeSetting = async () => {
+    // 사용자 ID가 없거나, 로딩 중이거나, 초기값이 아직 설정되지 않았으면 실행 중지
+    if (!userId || userLoading || initialAutoBarcodeGeneration === null) return;
+
+    // 현재 설정값(autoBarcodeGeneration)과 초기값(initialAutoBarcodeGeneration) 비교하여 변경사항 없으면 알림 후 종료
+    if (autoBarcodeGeneration === initialAutoBarcodeGeneration) {
+      alert("변경된 내용이 없습니다.");
+      return;
+    }
+
+    setSavingBarcodeSetting(true); // 저장 시작 상태로 변경
+    setError(null); // 이전 에러 메시지 초기화
+    const payload = { auto_barcode_generation: autoBarcodeGeneration }; // API로 보낼 데이터
+
+    try {
+      // 낙관적 업데이트: API 요청 전에 UI를 먼저 업데이트
+      const optimisticUserData = { ...(swrUserData || {}), ...payload };
+      await userMutate(optimisticUserData, {
+        optimisticData: optimisticUserData,
+        revalidate: false, // API 성공 후 재검증할 것이므로 지금은 false
+        rollbackOnError: true, // 에러 발생 시 원래 상태로 되돌림
+        populateCache: true, // 캐시 업데이트
+      });
+
+      // API 호출 (updateUserProfile 훅 사용)
+      await updateUserProfile(userId, payload);
+      alert("상품 자동 바코드 생성 설정이 저장되었습니다.");
+
+      // 성공 시 초기 상태 업데이트 및 SWR 데이터 재검증
+      setInitialAutoBarcodeGeneration(autoBarcodeGeneration); // 현재 값을 새로운 초기값으로 설정
+      userMutate(); // 서버로부터 최신 데이터를 다시 불러옴
+    } catch (err) {
+      setError(`바코드 설정 저장 오류: ${err.message}`);
+      alert(`바코드 설정 저장 중 오류가 발생했습니다: ${err.message}`);
+      // 에러 발생 시 SWR이 자동으로 롤백 처리
+    } finally {
+      setSavingBarcodeSetting(false); // 저장 완료 상태로 변경
+    }
+  };
+  // <<<--- 바코드 설정 저장 함수 추가 --- END --->>>
 
   const updateAutoCrawlSettingsAPI = async (autoCrawl, interval) => {
     /* API 호출 로직 동일 */ if (!userId) return false;
@@ -263,6 +318,16 @@ export default function SettingsPage() {
       return false;
     }
   };
+
+  // <<<--- 작업 완료/실패 시 호출될 콜백 함수 --- START --->>>
+  const handleManualTaskEnd = useCallback((finalStatus) => {
+    console.log(`[SettingsPage] Manual task ended with status: ${finalStatus}`);
+    setManualCrawling(false); // 작업 종료 시 버튼 다시 활성화
+    // 필요하다면 finalStatus에 따라 추가적인 알림이나 데이터 갱신 로직 수행
+    // if (finalStatus === 'completed') { ... }
+    // if (finalStatus === 'failed') { ... }
+  }, []); // 의존성 배열 확인
+  // <<<--- 작업 완료/실패 시 호출될 콜백 함수 --- END --->>>
   const handleManualCrawl = async () => {
     /* 로직 동일 */ if (!userId || !bandNumber) {
       alert(
@@ -274,8 +339,9 @@ export default function SettingsPage() {
       alert("크롤링할 게시물 수는 1 이상이어야 합니다.");
       return;
     }
-    setManualCrawling(true);
+    setManualCrawling(true); // 버튼 비활성화 시작
     setError(null);
+    setManualCrawlTaskId(null); // 이전 작업 ID 초기화
     try {
       const response = await api.post(`/crawl/${bandNumber}/details`, {
         userId: userId,
@@ -284,11 +350,8 @@ export default function SettingsPage() {
         daysLimit: manualCrawlDaysLimit, // <<<--- 상태에서 가져온 daysLimit 값 추가
       });
       if (response.data?.success) {
-        alert(
-          `수동 밴드 정보 업데이트 요청 성공: ${
-            response.data.message || "백그라운드에서 크롤링이 시작됩니다."
-          }`
-        );
+        const newTaskId = response.data.taskId;
+        setManualCrawlTaskId(newTaskId); // <<<--- 새 Task ID 설정
       } else {
         throw new Error(
           response.data?.message ||
@@ -297,8 +360,10 @@ export default function SettingsPage() {
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message;
-      setError(`수동 밴드 정보 업데이트 오류: ${errMsg}`);
-      alert(`수동 밴드 정보 업데이트 요청 중 오류 발생: ${errMsg}`);
+      setError(`수동 업데이트 오류: ${errMsg}`);
+      alert(`수동 업데이트 요청 중 오류 발생: ${errMsg}`);
+      setManualCrawling(false); // 오류 시 버튼 즉시 활성화
+      setManualCrawlTaskId(null); // 오류 시 Task ID 초기화
     } finally {
       setManualCrawling(false);
     }
@@ -343,7 +408,6 @@ export default function SettingsPage() {
     const profileData = {
       owner_name: ownerName,
       store_name: storeName,
-      band_number: bandNumber,
     };
     try {
       const optimisticUserData = { ...(swrUserData || {}), ...profileData };
@@ -608,6 +672,77 @@ export default function SettingsPage() {
               </div>
             </LightCard>
             {/* 밴드 정보 업데이트 설정 및 실행 카드 */}
+            {/* <<<--- 상품 설정 카드 추가 --- START --->>> */}
+            <LightCard padding="p-0">
+              {/* 카드 헤더 */}
+              <div className="p-5 sm:p-6 border-b">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <QrCodeIcon className="w-5 h-5 text-gray-500" /> 상품 설정
+                  {/* 로딩 중 표시 (초기값이 아직 로드되지 않았을 때) */}
+                  {userLoading && initialAutoBarcodeGeneration === null && (
+                    <LoadingSpinner className="w-4 h-4 ml-2" />
+                  )}
+                </h2>
+              </div>
+              {/* 카드 본문 */}
+              <div className="p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  {/* 설정 설명 */}
+                  <div>
+                    <label
+                      htmlFor="autoBarcodeToggle"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      상품 자동 바코드 생성
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      활성화 시, 새로 처리되는 상품에 고유 바코드를 자동
+                      생성합니다.
+                    </p>
+                  </div>
+                  {/* 토글 스위치 */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="autoBarcodeToggle"
+                      checked={autoBarcodeGeneration} // 현재 상태값 바인딩
+                      onChange={() => setAutoBarcodeGeneration((prev) => !prev)} // 클릭 시 상태 변경
+                      disabled={
+                        savingBarcodeSetting ||
+                        isDataLoading ||
+                        initialAutoBarcodeGeneration === null
+                      } // 저장 중이거나 로딩 중이거나 초기값이 없으면 비활성화
+                      className="sr-only peer"
+                    />
+                    {/* 스위치 디자인 (Tailwind CSS) */}
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </label>
+                </div>
+              </div>
+              {/* 카드 푸터 (저장 버튼) */}
+              <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end rounded-b-xl">
+                <button
+                  onClick={handleSaveBarcodeSetting} // 저장 함수 연결
+                  disabled={
+                    savingBarcodeSetting ||
+                    isDataLoading ||
+                    autoBarcodeGeneration === initialAutoBarcodeGeneration
+                  } // 저장 중, 로딩 중, 또는 변경사항 없으면 비활성화
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {/* 저장 중일 때 로딩 스피너 표시 */}
+                  {savingBarcodeSetting ? (
+                    <LoadingSpinner className="w-4 h-4" color="text-white" />
+                  ) : (
+                    <CheckIcon className="w-5 h-5" />
+                  )}
+                  <span>
+                    {savingBarcodeSetting ? "저장 중..." : "바코드 설정 저장"}
+                  </span>
+                </button>
+              </div>
+            </LightCard>
+            {/* <<<--- 상품 설정 카드 추가 --- END --->>> */}
             {/* --- 밴드 정보 업데이트 설정 및 실행 카드 --- */}
             <LightCard padding="p-0" className="overflow-hidden">
               {/* ... (카드 헤더) ... */}
@@ -781,6 +916,10 @@ export default function SettingsPage() {
                 </div>
               </div>
             </LightCard>
+            <TaskStatusDisplay
+              taskId={manualCrawlTaskId}
+              onTaskEnd={handleManualTaskEnd}
+            />
             {/* 제외 고객 설정 카드 */}
             <LightCard padding="p-0">
               <div className="p-5 sm:p-6 border-b">

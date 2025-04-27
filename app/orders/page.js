@@ -292,7 +292,7 @@ export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
+  const [filterSelection, setFilterSelection] = useState("all"); // 사용자가 UI에서 선택한 값
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(30);
@@ -313,6 +313,24 @@ export default function OrdersPage() {
   const [tempPrice, setTempPrice] = useState(0);
 
   const displayOrders = orders || [];
+
+  // --- 현재 페이지 주문들의 총 수량 계산 ---
+
+  // --- 현재 페이지 주문들의 총 수량 및 총 금액 계산 ---
+  const { currentPageTotalQuantity, currentPageTotalAmount } =
+    displayOrders.reduce(
+      (totals, order) => {
+        const quantity = parseInt(order.quantity, 10);
+        const amount = parseFloat(order.total_amount); // <<< total_amount는 실수일 수 있으므로 parseFloat 사용
+
+        totals.currentPageTotalQuantity += isNaN(quantity) ? 0 : quantity;
+        totals.currentPageTotalAmount += isNaN(amount) ? 0 : amount; // <<< 총 금액 합산
+
+        return totals;
+      },
+      { currentPageTotalQuantity: 0, currentPageTotalAmount: 0 } // <<< 초기값을 객체로 설정
+    );
+  // --- 총 수량 및 총 금액 계산 끝 ---
   const checkbox = useRef();
 
   const { mutate } = useSWRConfig(); //
@@ -333,13 +351,14 @@ export default function OrdersPage() {
     { value: "확인필요", label: "확인필요" },
   ];
 
+  // SWR 옵션 설정
   const swrOptions = {
-    revalidateOnFocus: true,
-    revalidateOnReconnect: true,
-    refreshInterval: 60000,
-    dedupingInterval: 30000,
+    revalidateOnFocus: true, // 창 포커스 시 재검증 (유지 권장)
+    revalidateOnReconnect: true, // 네트워크 재연결 시 재검증 (유지 권장)
+    refreshInterval: 600000, // <<<--- 10분(600,000ms)마다 자동 재검증 추가
+    dedupingInterval: 30000, // 중복 요청 방지 간격 (기존 유지 또는 조정)
     onError: (err) => console.error("SWR Error:", err),
-    keepPreviousData: true,
+    keepPreviousData: true, // 이전 데이터 유지 (기존 유지)
   };
   const {
     data: userDataFromHook,
@@ -868,7 +887,8 @@ export default function OrdersPage() {
   const resetSearch = () => {
     setInputValue(""); // 검색 입력 필드 클리어
     setFilterDateRange("30days");
-    setFilterStatus("all");
+
+    setFilterSelection("all");
     // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
   };
 
@@ -1040,9 +1060,9 @@ export default function OrdersPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto p-4 sm:p-6" // 패딩 추가
+      className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto p-4 sm:p-6  pb-[300px]" // 패딩 추가
     >
-      <main className="mx-auto">
+      <main className="max-w-7xl mx-auto">
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
@@ -1448,6 +1468,7 @@ export default function OrdersPage() {
               </tbody>
             </table>
           </div>
+
           {/* 페이지네이션 */}
           {totalItems > itemsPerPage && (
             <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white sm:px-6 rounded-b-xl">
@@ -1534,17 +1555,40 @@ export default function OrdersPage() {
           )}
         </LightCard>
 
+        <LightCard
+          padding="p-5 mt-5"
+          className="overflow-hidden justify-end flex"
+        >
+          <span className="mr-5 text-xl text-gray-600">
+            총 수량:{" "}
+            <strong className="text-gray-800">
+              {currentPageTotalQuantity.toLocaleString()}
+            </strong>{" "}
+            개
+          </span>
+
+          <span className=" text-xl text-gray-600">
+            총 금액:{" "}
+            <strong className="text-gray-800">
+              {currentPageTotalAmount.toLocaleString()}
+            </strong>{" "}
+            원
+          </span>
+        </LightCard>
+
+        <div className=" pb-20"></div>
+
         {/* 일괄 처리 버튼 */}
-        <div className="flex items-center justify-end space-x-3 pt-4">
+        <div className="fixed flex justify-end bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
           {selectedOrderIds.length === 0 && !isDataLoading && (
-            <span className="text-sm text-gray-500 italic h-[38px] flex items-center">
+            <span className="text-sm text-gray-500 italic h-[38px] flex items-center mr-2">
               항목을 선택하여 일괄 처리하세요.
             </span>
           )}
           <button
             onClick={() => handleBulkStatusUpdate("결제완료")}
             disabled={selectedOrderIds.length === 0 || isDataLoading}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
                 : "opacity-100 scale-100"
@@ -1571,15 +1615,12 @@ export default function OrdersPage() {
 
         {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
         {isDetailModalOpen && selectedOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
             <div className="bg-white rounded-xl max-w-2xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
               {/* 모달 헤더 */}
               <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  주문 상세
-                  <span className="text-gray-500 font-normal text-sm ml-1">
-                    (ID: {selectedOrder.order_id.substring(0, 8)}...)
-                  </span>
+                  {getProductNameById(selectedOrder.product_id)}
                 </h3>
                 <button
                   onClick={closeDetailModal}
@@ -1641,7 +1682,7 @@ export default function OrdersPage() {
                     <div className="space-y-5">
                       <LightCard
                         padding="p-4"
-                        className="!shadow-sm text-center bg-gray-50"
+                        className="text-center bg-gray-50"
                       >
                         <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
                           상품 바코드
@@ -1663,7 +1704,7 @@ export default function OrdersPage() {
                           )}
                         </div>
                       </LightCard>
-                      <LightCard padding="p-4" className="!shadow-sm">
+                      <LightCard padding="p-4" className="">
                         <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
                           고객 주문 정보
                         </label>
@@ -1683,7 +1724,7 @@ export default function OrdersPage() {
                           </div>
                         </div>
                       </LightCard>
-                      <LightCard padding="p-4" className="!shadow-sm">
+                      <LightCard padding="p-4" className="">
                         <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
                           주문 상태 변경
                         </label>
