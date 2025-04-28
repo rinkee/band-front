@@ -130,16 +130,16 @@ function StatusBadge({ status }) {
       textColor = "text-green-600";
       Icon = CheckCircleIcon;
       break;
-    case "품절":
+    case "마감":
       bgColor = "bg-red-100";
       textColor = "text-red-600";
       Icon = XCircleIconOutline;
       break;
-    case "판매중지":
-      bgColor = "bg-yellow-100";
-      textColor = "text-yellow-600";
-      Icon = SparklesIcon;
-      break;
+    // case "판매중지":
+    //   bgColor = "bg-yellow-100";
+    //   textColor = "text-yellow-600";
+    //   Icon = SparklesIcon;
+    //   break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-500";
@@ -264,8 +264,8 @@ export default function ProductsPage() {
   const statusFilterOptions = [
     { value: "all", label: "전체" },
     { value: "판매중", label: "판매중" },
-    { value: "품절", label: "품절" },
-    { value: "판매중지", label: "판매중지" },
+    { value: "마감", label: "마감" },
+    // { value: "판매중지", label: "판매중지" },
   ];
 
   // SWR 옵션
