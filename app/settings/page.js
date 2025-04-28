@@ -193,6 +193,53 @@ export default function SettingsPage() {
       console.error("Error fetching auto crawl settings:", error);
     }
   }, []);
+
+  // 2. 컴포넌트 마운트 시 sessionStorage 확인
+  useEffect(() => {
+    const checkAuthAndStoredTask = async () => {
+      setError(null);
+      let sessionUserId = null;
+      try {
+        const sessionData = sessionStorage.getItem("userData");
+        if (!sessionData) {
+          router.replace("/login");
+          return;
+        }
+        const userDataObj = JSON.parse(sessionData);
+        if (!userDataObj?.userId) {
+          throw new Error("Invalid session data: userId missing.");
+        }
+        sessionUserId = userDataObj.userId;
+        setUserId(sessionUserId);
+
+        // --- sessionStorage에서 Task ID 확인 로직 추가 ---
+        const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
+        if (storedTaskId) {
+          console.log(
+            "세션 스토리지에서 진행 중인 Task ID 발견:",
+            storedTaskId
+          );
+          setManualCrawlTaskId(storedTaskId); // 상태 업데이트
+        }
+        // --- 확인 로직 끝 ---
+
+        await fetchAutoCrawlSettings(sessionUserId);
+      } catch (error) {
+        console.error("Error during initial auth/setup:", error);
+        setError(
+          "세션 정보를 확인하거나 초기 데이터를 불러오는 중 오류가 발생했습니다. 다시 로그인해주세요."
+        );
+        sessionStorage.removeItem("userData");
+        localStorage.removeItem("userId");
+        sessionStorage.removeItem("manualCrawlTaskId"); // 오류 시 Task ID도 제거
+        router.replace("/login");
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    checkAuthAndStoredTask();
+  }, [router, fetchAutoCrawlSettings]); // 의존성 배열 확인
+
   useEffect(() => {
     const checkAuth = async () => {
       setError(null);
@@ -349,6 +396,7 @@ export default function SettingsPage() {
   const handleManualTaskEnd = useCallback((finalStatus) => {
     console.log(`[SettingsPage] Manual task ended with status: ${finalStatus}`);
     setManualCrawling(false); // 작업 종료 시 버튼 다시 활성화
+    sessionStorage.removeItem("manualCrawlTaskId"); // sessionStorage에서 제거
     // 필요하다면 finalStatus에 따라 추가적인 알림이나 데이터 갱신 로직 수행
     // if (finalStatus === 'completed') { ... }
     // if (finalStatus === 'failed') { ... }
@@ -367,7 +415,9 @@ export default function SettingsPage() {
     }
     setManualCrawling(true); // 버튼 비활성화 시작
     setError(null);
-    setManualCrawlTaskId(null); // 이전 작업 ID 초기화
+    setManualCrawlTaskId(null); // 시작 시 이전 ID 초기화 (상태만)
+    sessionStorage.removeItem("manualCrawlTaskId"); // 시작 시 이전 ID 초기화 (세션 스토리지)
+
     try {
       const response = await api.post(`/crawl/${bandNumber}/details`, {
         userId: userId,
@@ -375,9 +425,10 @@ export default function SettingsPage() {
         processProducts: true,
         daysLimit: manualCrawlDaysLimit, // <<<--- 상태에서 가져온 daysLimit 값 추가
       });
-      if (response.data?.success) {
+      if (response.data?.success && response.data.taskId) {
         const newTaskId = response.data.taskId;
         setManualCrawlTaskId(newTaskId); // <<<--- 새 Task ID 설정
+        sessionStorage.setItem("manualCrawlTaskId", newTaskId); // sessionStorage에 저장
       } else {
         throw new Error(
           response.data?.message ||
@@ -390,6 +441,7 @@ export default function SettingsPage() {
       alert(`수동 업데이트 요청 중 오류 발생: ${errMsg}`);
       setManualCrawling(false); // 오류 시 버튼 즉시 활성화
       setManualCrawlTaskId(null); // 오류 시 Task ID 초기화
+      sessionStorage.removeItem("manualCrawlTaskId"); // 오류 시 세션 스토리지 초기화
     } finally {
       setManualCrawling(false);
     }
@@ -890,7 +942,7 @@ export default function SettingsPage() {
                             Math.max(1, parseInt(e.target.value, 10) || 1)
                           )
                         }
-                        min="3"
+                        min="1"
                         max="7"
                         className="w-14 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
                         disabled={
