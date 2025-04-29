@@ -1246,6 +1246,7 @@ export default function OrdersPage() {
                     placeholder="고객명, 상품명, 바코드..."
                     value={inputValue}
                     onChange={handleSearchChange}
+                    onKeyDown={handleKeyDown}
                     className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 focus:border-orange-400 disabled:bg-gray-100"
                     disabled={isDataLoading}
                   />
