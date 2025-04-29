@@ -386,18 +386,18 @@ export default function ProductsPage() {
     ) {
       setCurrentPage(1);
     }
-  }, [productsData, productsError, currentPage]); // currentPage 의존성 추가
+  }, [productsData, productsError, currentPage, searchTerm]); // currentPage 의존성 추가
 
   // 검색 디바운스 useEffect
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      if (inputValue !== searchTerm) {
-        setSearchTerm(inputValue);
-        setCurrentPage(1);
-      }
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [inputValue, searchTerm]);
+  // useEffect(() => {
+  //   const handler = setTimeout(() => {
+  //     if (inputValue !== searchTerm) {
+  //       setSearchTerm(inputValue);
+  //       setCurrentPage(1);
+  //     }
+  //   }, 500);
+  //   return () => clearTimeout(handler);
+  // }, [inputValue, searchTerm]);
   // 바코드 디바운스 useEffect
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -415,6 +415,25 @@ export default function ProductsPage() {
   const handleSearchChange = (e) => {
     setInputValue(e.target.value);
   };
+
+  const handleSearch = () => {
+    setSearchTerm(inputValue.trim());
+    setCurrentPage(1);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  // 검색 초기화 함수
+  const handleClearSearch = () => {
+    setInputValue("");
+    setSearchTerm("");
+    setCurrentPage(1);
+  };
+
   const handleSortChange = (field) => {
     if (sortBy === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -479,11 +498,18 @@ export default function ProductsPage() {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (name === "base_price" || name === "quantity") {
-      setEditedProduct({ ...editedProduct, [name]: parseInt(value) || 0 });
+      setEditedProduct((prev) => ({ ...prev, [name]: parseInt(value) || 0 }));
+    } else if (name === "pickup_date") {
+      // Explicitly handle empty string for pickup_date
+      setEditedProduct((prev) => ({
+        ...prev,
+        [name]: value === "" ? null : new Date(value),
+      }));
     } else {
-      setEditedProduct({ ...editedProduct, [name]: value });
+      setEditedProduct((prev) => ({ ...prev, [name]: value }));
     }
   };
+
   const updateProduct = async () => {
     if (
       !selectedProduct ||
@@ -491,11 +517,13 @@ export default function ProductsPage() {
       !editedProduct.title ||
       editedProduct.base_price < 0
     ) {
+      console.log("Invalid data:", editedProduct);
       alert("상품명과 가격을 올바르게 입력해주세요.");
       return;
     }
     const productIdToUpdate = selectedProduct.product_id;
     try {
+      console.log("Sending data to update:", editedProduct); // Add logging to inspect the data being sent
       const response = await api.patch(
         `/products/${productIdToUpdate}?userId=${userData.userId}`,
         editedProduct
@@ -659,6 +687,7 @@ export default function ProductsPage() {
                     placeholder="상품명 검색..."
                     value={inputValue}
                     onChange={handleSearchChange}
+                    onKeyDown={handleKeyDown}
                     className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 focus:border-orange-400 disabled:bg-gray-100"
                     disabled={isDataLoading}
                   />
@@ -666,6 +695,21 @@ export default function ProductsPage() {
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
                 </div>
+
+                <button
+                  onClick={handleSearch} // 검색 버튼 클릭 이벤트 핸들러 추가
+                  className="ml-2 px-3 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isDataLoading}
+                >
+                  검색
+                </button>
+                <button
+                  onClick={handleClearSearch} // 초기화 버튼 클릭 이벤트 핸들러
+                  className="px-3 py-2 ml-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 mr-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isDataLoading}
+                >
+                  초기화
+                </button>
                 {/* 총 상품 개수 표시 (페이지네이션 정보 사용) */}
                 <span className="ml-auto text-sm text-gray-500">
                   총 {totalItems > 0 ? totalItems.toLocaleString() : "0"}개 상품

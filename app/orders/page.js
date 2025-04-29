@@ -724,21 +724,21 @@ export default function OrdersPage() {
       currentPage > ordersData.pagination.totalPages
     )
       setCurrentPage(1);
-  }, [ordersData, ordersError, currentPage]);
+  }, [ordersData, ordersError, currentPage, searchTerm]);
   useEffect(() => {
     setStatsLoading(isOrderStatsLoading);
   }, [isOrderStatsLoading]);
   // 검색 디바운스 useEffect
-  useEffect(() => {
-    const timerId = setTimeout(() => {
-      if (inputValue !== searchTerm) {
-        setSearchTerm(inputValue);
-        setCurrentPage(1);
-        setSelectedOrderIds([]);
-      }
-    }, 1500);
-    return () => clearTimeout(timerId);
-  }, [inputValue, searchTerm]); // 의존성 배열에 searchTerm 추가
+  // useEffect(() => {
+  //   const timerId = setTimeout(() => {
+  //     if (inputValue !== searchTerm) {
+  //       setSearchTerm(inputValue);
+  //       setCurrentPage(1);
+  //       setSelectedOrderIds([]);
+  //     }
+  //   }, 1500);
+  //   return () => clearTimeout(timerId);
+  // }, [inputValue, searchTerm]); // 의존성 배열에 searchTerm 추가
 
   const getTimeDifferenceInMinutes = (ds) => {
     if (!ds) return "알 수 없음";
@@ -883,11 +883,25 @@ export default function OrdersPage() {
     setInputValue(e.target.value);
   }; // inputValue 업데이트만
 
+  // 검색 버튼 클릭 이벤트 핸들러
+  const handleSearch = () => {
+    setSearchTerm(inputValue.trim());
+    setCurrentPage(1);
+  };
+
+  // 입력란에서 엔터 키 누를 때 이벤트 핸들러
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
   // --- 검색 초기화 함수 ---
-  const resetSearch = () => {
+  const handleClearSearch = () => {
     setInputValue(""); // 검색 입력 필드 클리어
     setFilterDateRange("30days");
-
+    setSearchTerm("");
+    setCurrentPage(1);
     setFilterSelection("all");
     // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
   };
@@ -1225,7 +1239,7 @@ export default function OrdersPage() {
                 검색
               </div>
               {/* 검색 입력 및 초기화 버튼 */}
-              <div className="bg-white px-4 py-3 flex items-center gap-2 justify-between ">
+              <div className="bg-white px-4 py-3 flex items-center gap-2  ">
                 <div className="relative flex-grow w-full sm:max-w-xs">
                   <input
                     type="text"
@@ -1241,7 +1255,14 @@ export default function OrdersPage() {
                 </div>
                 {/* 검색 초기화 버튼 추가 */}
                 <button
-                  onClick={resetSearch}
+                  onClick={handleSearch}
+                  className="px-5 py-2  font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isDataLoading}
+                >
+                  검색
+                </button>
+                <button
+                  onClick={handleClearSearch}
                   disabled={isDataLoading}
                   className="flex p-2 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                   aria-label="검색 초기화"
