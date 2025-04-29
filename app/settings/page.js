@@ -23,6 +23,7 @@ import {
   CheckCircleIcon,
   QrCodeIcon,
   XCircleIcon as XCircleIconOutline,
+  TrashIcon,
   // DocumentMagnifyingGlassIcon, // 제거됨
 } from "@heroicons/react/24/outline";
 
@@ -142,6 +143,7 @@ export default function SettingsPage() {
   const [autoBarcodeGeneration, setAutoBarcodeGeneration] = useState(false); // <<<--- 바코드 생성 상태 추가
   const [initialAutoBarcodeGeneration, setInitialAutoBarcodeGeneration] =
     useState(null); // <<<--- 바코드 초기 상태 추가
+  const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
 
   const { mutate: globalMutate } = useSWRConfig();
   const swrOptions = {
@@ -160,6 +162,32 @@ export default function SettingsPage() {
   } = useUser(userId, swrOptions);
   const { updateUserProfile } = useUserMutations();
   const isDataLoading = initialLoading || userLoading;
+
+  // --- 타임스탬프 포맷팅 헬퍼 함수 ---
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return "기록 없음";
+    try {
+      const date = new Date(timestamp);
+      // 유효한 날짜인지 확인
+      if (isNaN(date.getTime())) {
+        console.warn("Invalid timestamp received:", timestamp);
+        return "유효하지 않은 날짜";
+      }
+      // 예: YYYY. MM. DD. 오전/오후 H:MM:SS
+      return date.toLocaleString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true, // 오전/오후 표시 원하면 true, 24시간제는 false
+      });
+    } catch (e) {
+      console.error("Error formatting timestamp:", timestamp, e);
+      return "날짜 형식 오류";
+    }
+  };
 
   const fetchAutoCrawlSettings = useCallback(async (currentUserId) => {
     if (!currentUserId) return;
@@ -307,6 +335,9 @@ export default function SettingsPage() {
       const initialBarcodePref = swrUserData.auto_barcode_generation ?? false;
       setAutoBarcodeGeneration(initialBarcodePref);
       setInitialAutoBarcodeGeneration(initialBarcodePref);
+      // --- last_crawl_at 설정 추가 ---
+      setLastCrawlTime(swrUserData.last_crawl_at || null); // DB 값 또는 null 설정
+      // -----------------------------
       // --- auto_barcode_generation 처리 끝 ---
     } else if (!userLoading && !initialLoading && !swrUserData && userId) {
       console.warn(
@@ -320,6 +351,7 @@ export default function SettingsPage() {
       setExcludedCustomers([]); // <<<--- 여기서도 빈 배열로 초기화
       setAutoBarcodeGeneration(false);
       setInitialAutoBarcodeGeneration(false);
+      setLastCrawlTime(null); // <<<--- 데이터 없을 때도 초기화
     }
   }, [swrUserData, userLoading, initialLoading, userId]); // 의존성 배열
 
@@ -899,6 +931,21 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
+                {/* <<<--- 마지막 자동 수집 시간 행 추가 --- START --->>> */}
+                <div className="grid grid-cols-[max-content_1fr] items-center">
+                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
+                    마지막 자동 수집
+                  </div>
+                  <div className="bg-white px-4 py-3 text-sm text-gray-700">
+                    {/* 로딩 중이거나 아직 값이 없을 때 처리 */}
+                    {userLoading && lastCrawlTime === null ? (
+                      <span className="text-gray-400 italic">확인 중...</span>
+                    ) : (
+                      formatTimestamp(lastCrawlTime) // 포맷팅 함수 사용
+                    )}
+                  </div>
+                </div>
+                {/* <<<--- 마지막 자동 수집 시간 행 추가 --- END --->>> */}
                 {/* 밴드 정보 업데이트 설정 저장 버튼 행 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">

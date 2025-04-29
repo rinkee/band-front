@@ -111,7 +111,7 @@ export default function RegisterPage() {
       <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
         <div className="text-center">
           <h2 className="text-3xl font-extrabold text-gray-900 mb-6">
-            밴드 크롤러 회원가입
+            회원가입
           </h2>
           <p className="text-sm text-gray-600 mb-8">
             이미 계정이 있으신가요?{" "}
