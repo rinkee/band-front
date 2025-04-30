@@ -1141,7 +1141,7 @@ export default function ProductsPage() {
                           바코드 번호
                         </label>
                         <input
-                          type="tel"
+                          type="number"
                           name="barcode"
                           value={editedProduct.barcode}
                           onChange={handleInputChange}
