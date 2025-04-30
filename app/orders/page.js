@@ -507,6 +507,19 @@ export default function OrdersPage() {
       return isChecked ? [...new Set([...others, ...currentIds])] : others;
     });
   };
+
+  // --- 검색창 업데이트 및 검색 실행 함수 ---
+  const handleCellClickToSearch = (searchValue) => {
+    if (!searchValue) return; // 빈 값은 무시
+    const trimmedValue = searchValue.trim();
+    setInputValue(trimmedValue); // 검색창 UI 업데이트
+    setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
+    setCurrentPage(1); // 검색 시 첫 페이지로 이동
+    setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
+    // 필요하다면 검색 후 맨 위로 스크롤
+    // scrollToTop();
+  };
+
   // --- 일괄 상태 변경 핸들러 (중복 업데이트 방지 추가) ---
   const handleBulkStatusUpdate = async (newStatus) => {
     if (selectedOrderIds.length === 0) {
@@ -1400,12 +1413,24 @@ export default function OrdersPage() {
                       <td
                         className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[120px] truncate"
                         title={getProductNameById(order.product_id)}
+                        onClick={(e) => {
+                          // 클릭 핸들러 추가
+                          e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
+                          handleCellClickToSearch(
+                            getProductNameById(order.product_id)
+                          ); // 검색 함수 호출
+                        }}
                       >
                         {getProductNameById(order.product_id)}
                       </td>
                       <td
                         className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate"
                         title={order.customer_name}
+                        onClick={(e) => {
+                          // 클릭 핸들러 추가
+                          e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
+                          handleCellClickToSearch(order.customer_name); // 검색 함수 호출
+                        }}
                       >
                         {order.customer_name || "-"}
                       </td>
