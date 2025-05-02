@@ -1,9 +1,11 @@
 // src/components/PostUpdater.jsx (파일 경로 예시)
 import React, { useState, useCallback, useEffect } from "react";
 
-// API 기본 URL (환경 변수 등으로 관리하는 것이 좋음)
+// API 기본 URL 설정
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:8080/api"; // 실제 URL로 변경하세요
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:8080/api"
+    : process.env.BACKEND_API_URL;
 
 const PostUpdater = ({ initialLimit = 200 }) => {
   // 초기 limit 값을 prop으로 받을 수 있도록 추가
