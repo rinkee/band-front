@@ -1,6 +1,6 @@
 // src/components/PostUpdater.jsx (파일 경로 예시)
 import React, { useState, useCallback, useEffect } from "react";
-import api from "../lib/fetcher";
+import { api } from "../lib/fetcher";
 
 const PostUpdater = ({ initialLimit = 200 }) => {
   // 초기 limit 값을 prop으로 받을 수 있도록 추가
@@ -74,30 +74,28 @@ const PostUpdater = ({ initialLimit = 200 }) => {
     // 4. API 호출
     try {
       const response = await api.get(`/band/posts`, {
-        // <<< 상대 경로 사용
         params: {
-          // <<< URLSearchParams 대신 params 객체 사용
           userId: userId,
-          limit: limit, // 숫자로 보내도 axios가 처리 가능
+          limit: limit, // axios가 자동으로 문자열 변환
           ...(bandNumber && { bandNumber: bandNumber }),
-        },
+        }
       });
 
+      // axios 응답은 response.data에 실제 데이터가 있음
       const data = response.data;
 
-      if (!response.ok) {
-        const errorMsg = data?.message || `HTTP 오류! 상태: ${response.status}`;
-        setError(`게시글 조회 오류: ${errorMsg}`);
-        console.error("백엔드 오류:", data);
-        setPostsResponse(null);
-      } else {
-        setPostsResponse(data); // 성공 시 결과 저장
-        console.log("게시물 업데이트 완료:", data);
-        // 필요시 추가 작업 (예: 알림 표시)
-      }
+      // axios는 2xx 외 상태 코드에서 자동으로 에러를 throw하므로, !response.ok 체크 불필요
+      // (단, 인터셉터에서 에러 처리를 커스텀했다면 달라질 수 있음)
+
+      setPostsResponse(data); // 성공 시 결과 저장
+      console.log("게시물 업데이트 완료:", data);
+      // 필요시 추가 작업 (예: 알림 표시)
+
     } catch (e) {
-      console.error("네트워크/Fetch 오류:", e);
-      setError(`네트워크 오류 (게시글): ${e.message}`);
+      // axios 에러 객체는 e.response?.data?.message 등에 상세 정보가 있을 수 있음
+      const errorMsg = e.response?.data?.message || e.message || "알 수 없는 오류";
+      console.error("API 호출 오류:", e.response || e);
+      setError(`게시글 조회 오류: ${errorMsg}`);
       setPostsResponse(null);
     } finally {
       setLoadingPosts(false); // 항상 로딩 상태 종료
