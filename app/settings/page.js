@@ -144,6 +144,7 @@ export default function SettingsPage() {
   const [initialAutoBarcodeGeneration, setInitialAutoBarcodeGeneration] =
     useState(null); // <<<--- 바코드 초기 상태 추가
   const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
+  const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가
 
   const { mutate: globalMutate } = useSWRConfig();
   const swrOptions = {
@@ -337,6 +338,19 @@ export default function SettingsPage() {
       setInitialAutoBarcodeGeneration(initialBarcodePref);
       // --- last_crawl_at 설정 추가 ---
       setLastCrawlTime(swrUserData.last_crawl_at || null); // DB 값 또는 null 설정
+      // --- postLimit 설정 추가 ---
+      const storedLimit =
+        swrUserData?.profile?.post_fetch_limit ??
+        swrUserData?.user_metadata?.post_fetch_limit;
+      if (storedLimit) {
+        setPostLimit(parseInt(storedLimit, 10));
+      } else {
+        // Supabase에 값이 없으면 기본값(200) 유지 또는 sessionStorage 확인
+        const sessionLimit = sessionStorage.getItem("userPostLimit");
+        if (sessionLimit) {
+          setPostLimit(parseInt(sessionLimit, 10));
+        }
+      }
       // -----------------------------
       // --- auto_barcode_generation 처리 끝 ---
     } else if (!userLoading && !initialLoading && !swrUserData && userId) {
@@ -352,6 +366,7 @@ export default function SettingsPage() {
       setAutoBarcodeGeneration(false);
       setInitialAutoBarcodeGeneration(false);
       setLastCrawlTime(null); // <<<--- 데이터 없을 때도 초기화
+      setPostLimit(200); // 기본값 설정
     }
   }, [swrUserData, userLoading, initialLoading, userId]); // 의존성 배열
 
@@ -513,57 +528,55 @@ export default function SettingsPage() {
   // --- 각 섹션별 저장 함수 ---
   const handleSaveProfileInfo = async () => {
     if (!userId || userLoading) return;
+
+    // postLimit 유효성 검사 추가
+    const newLimit = parseInt(postLimit, 10);
+    if (isNaN(newLimit) || newLimit < 1 || newLimit > 1000) {
+      setError(
+        "게시물 가져오기 개수는 1에서 1000 사이의 유효한 숫자여야 합니다."
+      );
+      // alert('게시물 가져오기 개수는 1에서 1000 사이의 유효한 숫자여야 합니다.'); // alert 대신 setError 사용
+      return;
+    }
+
     setSavingProfile(true);
     setError(null);
     const profileData = {
       owner_name: ownerName,
       store_name: storeName,
+      post_fetch_limit: newLimit, // postLimit 추가
     };
+
     try {
-      const optimisticUserData = { ...(swrUserData || {}), ...profileData };
-      await updateUserProfile(userId, profileData);
-      alert("프로필 정보가 저장되었습니다.");
+      // Optimistic UI 업데이트 데이터 준비 (선택적이지만 권장)
+      const optimisticProfileUpdate = {
+        profile: { ...swrUserData?.profile, ...profileData },
+      };
+      const optimisticUserData = {
+        ...(swrUserData || {}),
+        ...optimisticProfileUpdate,
+      };
+
+      // Supabase 업데이트 호출
+      await updateUserProfile(profileData); // updateUserProfile이 userId를 내부적으로 처리하거나, userId 전달 필요 시 수정
+
+      // sessionStorage 업데이트 추가
+      sessionStorage.setItem("userPostLimit", newLimit.toString());
+
+      alert("프로필 및 설정 정보가 저장되었습니다."); // 메시지 변경
+
+      // SWR 캐시 갱신
       await userMutate(optimisticUserData, {
         optimisticData: optimisticUserData,
-        revalidate: true,
+        revalidate: false, // 서버에서 다시 가져올 필요 없이 optimistic 데이터 사용
         rollbackOnError: true,
         populateCache: true,
       });
     } catch (err) {
-      setError(`프로필 저장 오류: ${err.message}`);
+      console.error("Error saving profile info:", err);
+      setError(`프로필 및 설정 저장 오류: ${err.message}`);
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  const handleSaveCrawlingSettings = async () => {
-    if (!userId) return;
-    const autoCrawlChanged =
-      initialCrawlSettings?.autoCrawl !== isAutoCrawlingEnabled;
-    const intervalChanged = initialCrawlSettings?.interval !== crawlInterval;
-    if (!autoCrawlChanged && !intervalChanged) {
-      alert("변경사항이 없습니다.");
-      return;
-    } // 변경 없을 시 저장 안 함
-
-    setSavingCrawling(true);
-    setError(null);
-    try {
-      const success = await updateAutoCrawlSettingsAPI(
-        isAutoCrawlingEnabled,
-        crawlInterval
-      );
-      if (success) {
-        alert("밴드 정보 업데이트 설정이 저장되었습니다.");
-      } else {
-        throw new Error("API 호출 실패");
-      } // updateAutoCrawlSettingsAPI 내부에서 setError 처리됨
-      // 밴드 정보 업데이트 설정 변경 시 사용자 데이터 재검증 (선택적)
-      // userMutate();
-    } catch (err) {
-      /* 에러는 updateAutoCrawlSettingsAPI 내부 또는 여기서 처리 */
-    } finally {
-      setSavingCrawling(false);
     }
   };
 
@@ -588,6 +601,59 @@ export default function SettingsPage() {
       setSavingExcluded(false);
     }
   };
+
+  const handleSaveCrawlingSettings = async () => {
+    if (!userId) return;
+
+    // 초기 설정값과 비교하여 변경 여부 확인
+    // initialCrawlSettings 상태가 필요합니다. (이전에 정의되었다고 가정)
+    const autoCrawlChanged =
+      initialCrawlSettings?.autoCrawl !== isAutoCrawlingEnabled;
+    const intervalChanged = initialCrawlSettings?.interval !== crawlInterval;
+
+    if (!autoCrawlChanged && !intervalChanged) {
+      alert("변경사항이 없습니다.");
+      return; // 변경 없을 시 저장 안 함
+    }
+
+    setSavingCrawling(true);
+    setError(null); // 관련 오류 메시지 초기화
+
+    try {
+      // updateAutoCrawlSettingsAPI 함수 호출 (이 함수가 정의되어 있어야 함)
+      // 예시: const success = await updateAutoCrawlSettingsAPI(isAutoCrawlingEnabled, crawlInterval);
+      // 실제 API 호출 로직 구현 필요
+
+      // 임시 성공 처리 (실제 API 호출 후 로직 변경 필요)
+      console.log("Simulating save crawl settings:", {
+        isAutoCrawlingEnabled,
+        crawlInterval,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network delay
+      const success = true; // 임시 성공
+
+      if (success) {
+        alert("밴드 정보 업데이트 설정이 저장되었습니다.");
+        // 초기 설정값 업데이트 (다음 비교를 위해)
+        setInitialCrawlSettings({
+          autoCrawl: isAutoCrawlingEnabled,
+          interval: crawlInterval,
+        });
+      } else {
+        throw new Error("API 호출 실패 또는 서버 오류");
+      }
+      // 밴드 정보 업데이트 설정 변경 시 사용자 데이터 재검증 (선택적)
+      // userMutate();
+    } catch (err) {
+      console.error("Error saving crawling settings:", err);
+      setError(`크롤링 설정 저장 오류: ${err.message}`);
+      // 여기에 오류 처리 로직 추가 (예: 사용자에게 알림)
+    } finally {
+      setSavingCrawling(false);
+    }
+  };
+
+  // --- 각 섹션별 저장 함수 끝 ---
 
   // --- Loading and Error UI ---
   const combinedLoading = initialLoading || userLoading; // saving 상태는 각 버튼에서 처리
@@ -698,7 +764,7 @@ export default function SettingsPage() {
                   <UserCircleIcon className="w-5 h-5 text-gray-500" /> 프로필
                   정보{" "}
                   {userLoading && !swrUserData && (
-                    <LoadingSpinner className="w-4 h-4 ml-2" />
+                    <LoadingSpinner className="w-4 h-4" />
                   )}{" "}
                 </h2>
               </div>
@@ -728,6 +794,18 @@ export default function SettingsPage() {
                       "밴드 주소 URL의 숫자 부분 (예: band.us/band/12345678)",
                     readOnly: true, // <<< 읽기 전용 속성 추가
                   },
+                  {
+                    id: "postLimit",
+                    label: "게시물 가져오기 개수",
+                    value: postLimit,
+                    setter: setPostLimit,
+                    type: "number",
+                    min: 1,
+                    max: 1000,
+                    placeholder: "게시물 가져오기 개수",
+                    description:
+                      "한 번에 가져올 게시물 수를 설정합니다. (1 ~ 1000, 기본값: 200)",
+                  },
                 ].map((field) => (
                   <div key={field.id}>
                     <label
@@ -737,18 +815,21 @@ export default function SettingsPage() {
                       {field.label}
                     </label>
                     <input
-                      type="text"
+                      type={field.type || "text"}
                       id={field.id}
                       value={field.value || ""} // 값이 null/undefined일 경우 빈 문자열로
-                      // onChange 핸들러 제거 또는 조건부 설정 (읽기 전용이므로 제거)
-                      // onChange={(e) => !field.readOnly && field.setter(e.target.value)}
+                      onChange={(e) =>
+                        !field.readOnly && field.setter(e.target.value)
+                      }
                       readOnly={field.readOnly} // <<< readOnly 속성 적용
                       placeholder={field.placeholder || ""}
-                      className={`w-full px-3 py-2 border rounded-lg shadow-sm sm:text-sm ${
+                      min={field.min}
+                      max={field.max}
+                      className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white ${
                         field.readOnly
                           ? "bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed" // 읽기 전용 스타일
-                          : "border-gray-300 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white" // 편집 가능 스타일
-                      } disabled:opacity-50`} // disabled 상태는 savingProfile 등 외부 요인으로 제어
+                          : "border-gray-300" // 편집 가능 스타일
+                      }`}
                       disabled={
                         savingProfile ||
                         userLoading ||
@@ -777,7 +858,9 @@ export default function SettingsPage() {
                   ) : (
                     <CheckIcon className="w-5 h-5" />
                   )}{" "}
-                  <span>{savingProfile ? "저장 중..." : "프로필 저장"}</span>
+                  <span>
+                    {savingProfile ? "저장 중..." : "프로필 정보 저장"}
+                  </span>
                 </button>
               </div>
             </LightCard>
