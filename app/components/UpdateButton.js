@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { api } from "../lib/fetcher";
 
-const PostUpdater = ({ initialLimit = 200 }) => {
+const PostUpdater = ({ initialLimit = 20 }) => {
   // 초기 limit 값을 prop으로 받을 수 있도록 추가
   const [isLoadingPosts, setLoadingPosts] = useState(false);
   const [error, setError] = useState("");
@@ -78,7 +78,7 @@ const PostUpdater = ({ initialLimit = 200 }) => {
           userId: userId,
           limit: limit, // axios가 자동으로 문자열 변환
           ...(bandNumber && { bandNumber: bandNumber }),
-        }
+        },
       });
 
       // axios 응답은 response.data에 실제 데이터가 있음
@@ -90,10 +90,10 @@ const PostUpdater = ({ initialLimit = 200 }) => {
       setPostsResponse(data); // 성공 시 결과 저장
       console.log("게시물 업데이트 완료:", data);
       // 필요시 추가 작업 (예: 알림 표시)
-
     } catch (e) {
       // axios 에러 객체는 e.response?.data?.message 등에 상세 정보가 있을 수 있음
-      const errorMsg = e.response?.data?.message || e.message || "알 수 없는 오류";
+      const errorMsg =
+        e.response?.data?.message || e.message || "알 수 없는 오류";
       console.error("API 호출 오류:", e.response || e);
       setError(`게시글 조회 오류: ${errorMsg}`);
       setPostsResponse(null);
