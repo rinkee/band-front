@@ -10,6 +10,7 @@ import { useSWRConfig } from "swr";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ko } from "date-fns/locale";
+import UpdateButton from "../components/UpdateButton"; // UpdateButton 컴포넌트 import
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -237,7 +238,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState("updated_at");
+  const [sortBy, setSortBy] = useState("posted_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterStatus, setFilterStatus] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -252,7 +253,7 @@ export default function ProductsPage() {
     quantity: 0,
     status: "판매중",
     barcode: "",
-    meno: "",
+    memo: "",
     pickup_info: "",
     pickup_date: "",
   });
@@ -373,7 +374,10 @@ export default function ProductsPage() {
   useEffect(() => {
     if (productsData?.data) {
       setProducts(
-        productsData.data.map((p) => ({ ...p, barcode: p.barcode || "" }))
+        productsData.data
+          .slice() // Create a shallow copy before reversing
+          .reverse() // Reverse the array
+          .map((p) => ({ ...p, barcode: p.barcode || "" }))
       );
     } else if (productsError) {
       setProducts([]);
@@ -604,7 +608,7 @@ export default function ProductsPage() {
     error || productsError || productDetailError || userError;
   if (combinedError)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white p-4">
+      <div className="min-h-screen flex items-center justify-center bg-white p-4 ">
         <div className=" w-full bg-white p-8 rounded-xl shadow-lg border border-red-300 text-center">
           <XCircleIconOutline className="w-16 h-16 text-red-500 mx-auto mb-5" />
           <h2 className="text-xl font-semibold text-gray-900 mb-3">
@@ -680,8 +684,8 @@ export default function ProductsPage() {
                 <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 검색
               </div>
-              <div className="bg-white px-4 py-3 flex items-center">
-                <div className="relative w-full sm:max-w-xs">
+              <div className="bg-white px-4 py-3 flex items-center space-x-2">
+                <div className="relative flex-grow sm:max-w-xs">
                   <input
                     type="search"
                     placeholder="상품명 검색..."
@@ -697,14 +701,14 @@ export default function ProductsPage() {
                 </div>
 
                 <button
-                  onClick={handleSearch} // 검색 버튼 클릭 이벤트 핸들러 추가
+                  onClick={handleSearch}
                   className="ml-2 px-3 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isDataLoading}
                 >
                   검색
                 </button>
                 <button
-                  onClick={handleClearSearch} // 초기화 버튼 클릭 이벤트 핸들러
+                  onClick={handleClearSearch}
                   className="px-3 py-2 ml-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 mr-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isDataLoading}
                 >
@@ -714,6 +718,26 @@ export default function ProductsPage() {
                 <span className="ml-auto text-sm text-gray-500">
                   총 {totalItems > 0 ? totalItems.toLocaleString() : "0"}개 상품
                 </span>
+                {/* 업데이트 버튼 추가 */}
+                <UpdateButton
+                  onClick={() => mutateProducts()}
+                  loading={isDataLoading}
+                  disabled={isDataLoading}
+                  style={{ marginLeft: "2px" }}
+                >
+                  업데이트
+                </UpdateButton>
+                {/* 검색어 입력 시 초기화 버튼 표시 */}
+                {inputValue && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-300 transition disabled:opacity-50"
+                    disabled={isDataLoading}
+                    aria-label="검색 초기화"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -861,9 +885,9 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-col">
-                          <span>{formatDate(product.created_at)}</span>
+                          <span>{formatDate(product.posted_at)}</span>
                           <span className="text-xs">
-                            {formatDateTime(product.created_at)}
+                            {formatDateTime(product.posted_at)}
                           </span>
                         </div>
                       </td>
@@ -1210,7 +1234,7 @@ export default function ProductsPage() {
                 <div className="flex space-x-3">
                   <button
                     onClick={handleCloseModal}
-                    className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                    className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
                   >
                     취소
                   </button>

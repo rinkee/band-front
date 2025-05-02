@@ -14,6 +14,7 @@ import JsBarcode from "jsbarcode";
 import { useUser, useOrders, useProducts, useOrderStats } from "../hooks";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
+import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -1093,7 +1094,9 @@ export default function OrdersPage() {
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">주문 관리</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              주문 관리
+            </h1>
             <p className="text-sm md:text-base text-gray-600">
               최근 업데이트:
               {userDataFromHook?.last_crawl_at
@@ -1251,8 +1254,8 @@ export default function OrdersPage() {
                 <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 검색
               </div>
-              {/* 검색 입력 및 초기화 버튼 */}
-              <div className="bg-white px-4 py-3 flex items-center gap-2  ">
+              {/* 검색 입력 및 버튼들 */}
+              <div className="bg-white px-4 py-3 flex items-center gap-2 flex-wrap">
                 <div className="relative flex-grow w-full sm:max-w-xs">
                   <input
                     type="text"
@@ -1278,12 +1281,22 @@ export default function OrdersPage() {
                 <button
                   onClick={handleClearSearch}
                   disabled={isDataLoading}
-                  className="flex p-2 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  className="flex items-center px-3 py-2 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                   aria-label="검색 초기화"
-                  title="검색 초기화"
+                  title="검색 및 필터 초기화"
                 >
-                  <p>초기화</p>
+                  <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
+                  초기화
                 </button>
+                {/* 업데이트 버튼 추가 */}
+                <UpdateButton
+                  onClick={() => mutateOrders()}
+                  loading={isDataLoading}
+                  disabled={isDataLoading}
+                  style={{ marginLeft: "2px" }}
+                >
+                  업데이트
+                </UpdateButton>
               </div>
             </div>
           </div>
@@ -1297,7 +1310,7 @@ export default function OrdersPage() {
                 <tr>
                   <th
                     scope="col"
-                    className="relative w-12 px-6 sm:w-16 sm:px-8 py-3"
+                    className="relative w-20 px-6 sm:w-16 sm:px-8 py-3"
                   >
                     <input
                       type="checkbox"
@@ -1411,7 +1424,7 @@ export default function OrdersPage() {
                         </div>
                       </td>
                       <td
-                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[120px] truncate"
+                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate"
                         title={getProductNameById(order.product_id)}
                         onClick={(e) => {
                           // 클릭 핸들러 추가
@@ -1458,7 +1471,7 @@ export default function OrdersPage() {
                             value={getProductBarcode(order.product_id)}
                             height={50}
                             width={1.2}
-                            fontSize={8}
+                            fontSize={12}
                           />
                         ) : (
                           <span className="text-xs text-gray-400">없음</span>
@@ -1842,8 +1855,6 @@ export default function OrdersPage() {
                           colSpan: 2, // Make it full width as it might be long
                           preWrap: true, // Allow line breaks if needed
                         },
-                        // --- END ADD ---
-
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
@@ -1851,8 +1862,6 @@ export default function OrdersPage() {
                           value: formatDate(selectedOrder.product_pickup_date),
                           readOnly: true,
                         },
-                        // --- END ADD ---
-
                         {
                           label: "주문 일시",
                           value: formatDate(selectedOrder.ordered_at),
