@@ -1,11 +1,6 @@
 // src/components/PostUpdater.jsx (파일 경로 예시)
 import React, { useState, useCallback, useEffect } from "react";
-
-// API 기본 URL 설정
-const API_BASE_URL =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8080/api"
-    : process.env.BACKEND_API_URL;
+import api from "../lib/fetcher";
 
 const PostUpdater = ({ initialLimit = 200 }) => {
   // 초기 limit 값을 prop으로 받을 수 있도록 추가
@@ -78,10 +73,17 @@ const PostUpdater = ({ initialLimit = 200 }) => {
 
     // 4. API 호출
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/band/posts?${queryParams.toString()}`
-      );
-      const data = await response.json();
+      const response = await api.get(`/band/posts`, {
+        // <<< 상대 경로 사용
+        params: {
+          // <<< URLSearchParams 대신 params 객체 사용
+          userId: userId,
+          limit: limit, // 숫자로 보내도 axios가 처리 가능
+          ...(bandNumber && { bandNumber: bandNumber }),
+        },
+      });
+
+      const data = response.data;
 
       if (!response.ok) {
         const errorMsg = data?.message || `HTTP 오류! 상태: ${response.status}`;
