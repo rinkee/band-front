@@ -79,7 +79,7 @@ const PostUpdater = ({ initialLimit = 200 }) => {
     // 4. API 호출
     try {
       const response = await fetch(
-        `${API_BASE_URL}/band/posts?${queryParams.toString()}`
+        `${API_BASE_URL}/api/band/posts?${queryParams.toString()}`
       );
       const data = await response.json();
 
