@@ -719,14 +719,14 @@ export default function ProductsPage() {
                   총 {totalItems > 0 ? totalItems.toLocaleString() : "0"}개 상품
                 </span>
                 {/* 업데이트 버튼 추가 */}
-                {/* <UpdateButton
+                <UpdateButton
                   onClick={() => mutateProducts()}
                   loading={isDataLoading}
                   disabled={isDataLoading}
                   style={{ marginLeft: "2px" }}
                 >
                   업데이트
-                </UpdateButton> */}
+                </UpdateButton>
                 {/* 검색어 입력 시 초기화 버튼 표시 */}
                 {inputValue && (
                   <button

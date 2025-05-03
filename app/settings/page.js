@@ -36,7 +36,6 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
       fill="none"
       viewBox="0 0 24 24"
     >
-      {" "}
       <circle
         className="opacity-25"
         cx="12"
@@ -44,12 +43,12 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
         r="10"
         stroke="currentColor"
         strokeWidth="4"
-      ></circle>{" "}
+      ></circle>
       <path
         className="opacity-75"
         fill="currentColor"
         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      ></path>{" "}
+      ></path>
     </svg>
   );
 }
@@ -106,12 +105,10 @@ function InfoBox({
     <div
       className={`p-3 rounded-lg text-xs border ${bgColor} ${borderColor} ${className}`}
     >
-      {" "}
       <div className="flex items-start gap-2">
-        {" "}
-        <Icon className={`w-4 h-4 ${textColor} flex-shrink-0 mt-0.5`} />{" "}
-        <span className={textColor}>{message}</span>{" "}
-      </div>{" "}
+        <Icon className={`w-4 h-4 ${textColor} flex-shrink-0 mt-0.5`} />
+        <span className={textColor}>{message}</span>
+      </div>
     </div>
   );
 }
@@ -677,27 +674,22 @@ export default function SettingsPage() {
   if (!initialLoading && !userId && !userLoading)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        {" "}
         <LightCard className="max-w-md w-full text-center border-red-300">
-          {" "}
-          <XCircleIconOutline className="w-16 h-16 text-red-500 mx-auto mb-5" />{" "}
+          <XCircleIconOutline className="w-16 h-16 text-red-500 mx-auto mb-5" />
           <h2 className="text-xl font-semibold text-gray-900 mb-3">
-            {" "}
-            접근 불가{" "}
-          </h2>{" "}
+            접근 불가
+          </h2>
           <p className="text-sm text-gray-600 mb-6">
-            {" "}
             {error ||
-              "사용자 세션 정보를 확인할 수 없습니다. 다시 로그인해주세요."}{" "}
-          </p>{" "}
+              "사용자 세션 정보를 확인할 수 없습니다. 다시 로그인해주세요."}
+          </p>
           <button
             onClick={() => router.push("/login")}
             className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-lg shadow-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-400 transition"
           >
-            {" "}
-            로그인 페이지로 이동{" "}
-          </button>{" "}
-        </LightCard>{" "}
+            로그인 페이지로 이동
+          </button>
+        </LightCard>
       </div>
     );
 
@@ -708,77 +700,64 @@ export default function SettingsPage() {
     >
       {userLoading && userId && (
         <div className="fixed top-0 left-0 right-0 h-1 bg-orange-100 z-50">
-          {" "}
           <div
             className="h-full bg-orange-500 animate-pulse-fast"
             style={{
               animation: `pulse-fast 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite`,
             }}
-          ></div>{" "}
+          ></div>
         </div>
       )}
       <main className="max-w-4xl mx-auto">
         <div className="mb-6 md:mb-8">
-          {" "}
           <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
-            {" "}
-            <Cog6ToothIcon className="w-6 h-6 text-gray-500" /> 설정{" "}
-          </h1>{" "}
+            <Cog6ToothIcon className="w-6 h-6 text-gray-500" /> 설정
+          </h1>
           <p className="text-sm text-gray-500">
-            {" "}
-            계정 정보 및 밴드 정보 업데이트 설정을 관리합니다.{" "}
-          </p>{" "}
+            계정 정보 및 밴드 정보 업데이트 설정을 관리합니다.
+          </p>
         </div>
         {combinedError && (
           <div className="mb-6 p-4 bg-red-50 text-red-700 border border-red-200 rounded-lg shadow-sm flex items-start gap-3">
-            {" "}
-            <ExclamationTriangleIcon className="w-5 h-5 mt-0.5 flex-shrink-0" />{" "}
+            <ExclamationTriangleIcon className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <div>
-              {" "}
-              <p className="font-medium">오류 발생:</p>{" "}
+              <p className="font-medium">오류 발생:</p>
               <p className="text-sm">
-                {" "}
                 {userSWRError
                   ? `데이터 로딩 실패: ${
                       userSWRError.message || String(userSWRError)
                     }`
-                  : String(error)}{" "}
-              </p>{" "}
+                  : String(error)}
+              </p>
               {error && (
                 <button
                   onClick={() => setError(null)}
                   className="mt-2 text-xs text-red-600 hover:underline font-medium"
                 >
-                  {" "}
-                  닫기{" "}
+                  닫기
                 </button>
-              )}{" "}
-            </div>{" "}
+              )}
+            </div>
           </div>
         )}
 
         {userId ? (
           <div className="space-y-6">
-            {" "}
             {/* mb-6 제거하고 하단 버튼 영역에 mt-6 추가 */}
             {/* 프로필 정보 카드 */}
             <LightCard padding="p-0">
-              {" "}
               {/* 패딩 제거 */}
               <div className="p-5 sm:p-6 border-b">
-                {" "}
                 {/* 헤더 영역 */}
                 <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  {" "}
                   <UserCircleIcon className="w-5 h-5 text-gray-500" /> 프로필
-                  정보{" "}
+                  정보
                   {userLoading && !swrUserData && (
                     <LoadingSpinner className="w-4 h-4" />
-                  )}{" "}
+                  )}
                 </h2>
               </div>
               <div className="p-5 sm:p-6 space-y-4">
-                {" "}
                 {/* 컨텐츠 영역 */}
                 {[
                   {
@@ -855,7 +834,6 @@ export default function SettingsPage() {
                 ))}
               </div>
               <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end rounded-b-xl">
-                {" "}
                 {/* 푸터 영역 */}
                 <button
                   onClick={handleSaveProfileInfo}
@@ -866,7 +844,7 @@ export default function SettingsPage() {
                     <LoadingSpinner className="w-4 h-4" color="text-white" />
                   ) : (
                     <CheckIcon className="w-5 h-5" />
-                  )}{" "}
+                  )}
                   <span>
                     {savingProfile ? "저장 중..." : "프로필 정보 저장"}
                   </span>
@@ -944,19 +922,18 @@ export default function SettingsPage() {
                 </button>
               </div>
             </LightCard>
-            {/* <<<--- 상품 설정 카드 추가 --- END --->>> */}
-            {/* --- 밴드 정보 업데이트 설정 및 실행 카드 --- */}
-            <LightCard padding="p-0" className="overflow-hidden">
-              {/* ... (카드 헤더) ... */}
+
+            {/* <LightCard padding="p-0" className="overflow-hidden">
+              
               <div className="divide-y divide-gray-200">
-                {/* 자동 밴드 정보 업데이트 활성화 행 */}
+               
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    {" "}
-                    자동 밴드 업데이트{" "}
+                    
+                    자동 밴드 업데이트
                   </div>
                   <div className="bg-white px-4 py-3 flex items-center justify-between">
-                    {/* 토글 스위치 (isAutoCrawlingEnabled 사용 - UI 즉시 반영) */}
+                   
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input
                         type="checkbox"
@@ -970,14 +947,14 @@ export default function SettingsPage() {
                     </label>
                   </div>
                 </div>
-                {/* 밴드 정보 업데이트 간격 설정 행 */}
+              
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    {" "}
-                    간격 (분){" "}
+                    
+                    간격 (분)
                   </div>
                   <div className="bg-white px-4 py-3 flex items-center">
-                    {/* 간격 입력 (crawlInterval 사용 - UI 즉시 반영) */}
+                  
                     <input
                       type="number"
                       id="crawlInterval"
@@ -992,19 +969,19 @@ export default function SettingsPage() {
                       className="w-24 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
                     />
                     <p className="text-xs text-gray-500 ml-3">
-                      {" "}
-                      최소 30분 이상. (권장: 60분 이상){" "}
+                      
+                      최소 30분 이상. (권장: 60분 이상)
                     </p>
                   </div>
                 </div>
-                {/* 밴드 정보 업데이트 상태 정보 행 */}
+              
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    {" "}
-                    자동화 상태{" "}
+                    
+                    자동화 상태
                   </div>
                   <div className="bg-white px-4 py-3">
-                    {/* --- InfoBox props 수정: initialCrawlSettings 사용 --- */}
+                   
                     <InfoBox
                       type={
                         initialCrawlSettings?.autoCrawl &&
@@ -1023,13 +1000,13 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
-                {/* <<<--- 마지막 자동 수집 시간 행 추가 --- START --->>> */}
+                
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
                     마지막 자동 수집
                   </div>
                   <div className="bg-white px-4 py-3 text-sm text-gray-700">
-                    {/* 로딩 중이거나 아직 값이 없을 때 처리 */}
+                 
                     {userLoading && lastCrawlTime === null ? (
                       <span className="text-gray-400 italic">확인 중...</span>
                     ) : (
@@ -1037,12 +1014,11 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </div>
-                {/* <<<--- 마지막 자동 수집 시간 행 추가 --- END --->>> */}
-                {/* 밴드 정보 업데이트 설정 저장 버튼 행 */}
+                
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    {" "}
-                    자동 수집{" "}
+                    
+                    자동 수집
                   </div>
                   <div className="bg-white px-4 py-3">
                     <button
@@ -1057,7 +1033,7 @@ export default function SettingsPage() {
                         />
                       ) : (
                         <CheckIcon className="w-5 h-5" />
-                      )}{" "}
+                      )}
                       <span>{savingCrawling ? "저장 중..." : "설정 저장"}</span>
                     </button>
                   </div>
@@ -1065,13 +1041,13 @@ export default function SettingsPage() {
 
                 <div className="grid grid-cols-[max-content_1fr] items-center">
                   <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    {" "}
-                    수동 실행{" "}
+                    
+                    수동 실행
                   </div>
                   <div className="bg-white px-4 py-3">
-                    {" "}
+                    
                     <div className="flex items-center gap-2">
-                      {" "}
+                      
                       <input
                         type="number"
                         value={manualCrawlDaysLimit}
@@ -1092,7 +1068,7 @@ export default function SettingsPage() {
                           !bandNumber
                         }
                         title="수집할 최근 일 수" // title 속성 변경
-                      />{" "}
+                      />
                       <p>일</p>
                       <button
                         onClick={handleManualCrawl}
@@ -1106,7 +1082,7 @@ export default function SettingsPage() {
                         }
                         className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 w-32"
                       >
-                        {" "}
+                        
                         {manualCrawling ? (
                           <LoadingSpinner
                             className="w-4 h-4"
@@ -1114,50 +1090,46 @@ export default function SettingsPage() {
                           />
                         ) : (
                           <CloudArrowDownIcon className="w-5 h-5" />
-                        )}{" "}
+                        )}
                         <span>
                           {manualCrawling ? "실행 중..." : "즉시 실행"}
-                        </span>{" "}
-                      </button>{" "}
-                    </div>{" "}
+                        </span>
+                      </button>
+                    </div>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      {/* <<<--- 설명 문구 변경 --- START --->>> */}
-                      현재 밴드({bandNumber || "미설정"})에서 최근{" "}
+                      
+                      현재 밴드({bandNumber || "미설정"})에서 최근
                       <span className="font-medium">
                         {manualCrawlDaysLimit}
-                      </span>{" "}
+                      </span>
                       일간의 게시물 즉시 수집.
-                      {/* <<<--- 설명 문구 변경 --- END --->>> */}
+                      
                     </p>
                   </div>
                 </div>
               </div>
-            </LightCard>
-            <TaskStatusDisplay
+            </LightCard> */}
+            {/* <TaskStatusDisplay
               taskId={manualCrawlTaskId}
               onTaskEnd={handleManualTaskEnd}
-            />
+            /> */}
             {/* 제외 고객 설정 카드 */}
             <LightCard padding="p-0">
               <div className="p-5 sm:p-6 border-b">
-                {" "}
                 <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  {" "}
                   <UserMinusIcon className="w-5 h-5 text-gray-500" /> 제외 고객
-                  설정{" "}
+                  설정
                   {userLoading && !swrUserData && (
                     <LoadingSpinner className="w-4 h-4 ml-2" />
-                  )}{" "}
-                </h2>{" "}
+                  )}
+                </h2>
               </div>
               <div className="p-5 sm:p-6 space-y-4">
                 <p className="text-xs text-gray-500">
-                  {" "}
                   여기에 추가된 고객 이름(밴드 프로필 이름과 일치)의 댓글은
-                  주문으로 처리되지 않습니다.{" "}
+                  주문으로 처리되지 않습니다.
                 </p>
                 <div className="flex items-center gap-2">
-                  {" "}
                   <input
                     type="text"
                     value={newCustomerInput}
@@ -1166,23 +1138,20 @@ export default function SettingsPage() {
                     placeholder="제외할 고객 이름 입력 (예: 관리자 계정)"
                     className="flex-grow px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
                     disabled={savingExcluded || userLoading}
-                  />{" "}
+                  />
                   <button
                     onClick={handleAddCustomer}
                     disabled={savingExcluded || userLoading}
                     className="inline-flex items-center justify-center gap-1 px-4 py-2 bg-gray-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-gray-700 transition-colors disabled:opacity-50"
                   >
-                    {" "}
-                    <PlusIcon className="w-4 h-4" /> 추가{" "}
-                  </button>{" "}
+                    <PlusIcon className="w-4 h-4" /> 추가
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-gray-50 min-h-[60px]">
-                  {" "}
                   {Array.isArray(excludedCustomers) &&
                   excludedCustomers.length === 0 ? (
                     <p className="text-sm text-gray-400 italic self-center w-full text-center">
-                      {" "}
-                      제외된 고객이 없습니다.{" "}
+                      제외된 고객이 없습니다.
                     </p>
                   ) : (
                     Array.isArray(excludedCustomers) &&
@@ -1191,20 +1160,18 @@ export default function SettingsPage() {
                         key={customer}
                         className="inline-flex items-center bg-gray-200 text-gray-800 text-sm font-medium pl-3 pr-1.5 py-1 rounded-full shadow-sm"
                       >
-                        {" "}
-                        {customer}{" "}
+                        {customer}
                         <button
                           onClick={() => handleRemoveCustomer(customer)}
                           disabled={savingExcluded || userLoading}
                           className="ml-1.5 text-gray-500 hover:text-red-600 focus:outline-none disabled:opacity-50 p-0.5 rounded-full hover:bg-gray-300"
                           aria-label={`Remove ${customer}`}
                         >
-                          {" "}
-                          <XMarkIcon className="w-3 h-3" />{" "}
-                        </button>{" "}
+                          <XMarkIcon className="w-3 h-3" />
+                        </button>
                       </span>
                     ))
-                  )}{" "}
+                  )}
                 </div>
               </div>
               <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end rounded-b-xl">
@@ -1217,7 +1184,7 @@ export default function SettingsPage() {
                     <LoadingSpinner className="w-4 h-4" color="text-white" />
                   ) : (
                     <CheckIcon className="w-5 h-5" />
-                  )}{" "}
+                  )}
                   <span>
                     {savingExcluded ? "저장 중..." : "제외 목록 저장"}
                   </span>
@@ -1226,30 +1193,25 @@ export default function SettingsPage() {
             </LightCard>
             {/* 계정 관리 카드 */}
             <LightCard padding="p-5 sm:p-6">
-              {" "}
               <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2 border-b pb-3">
-                {" "}
-                <PowerIcon className="w-5 h-5 text-red-500" /> 계정 관리{" "}
-              </h2>{" "}
+                <PowerIcon className="w-5 h-5 text-red-500" /> 계정 관리
+              </h2>
               <button
                 onClick={handleLogout}
                 disabled={savingProfile || savingCrawling || savingExcluded}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-60"
               >
-                {" "}
-                <PowerIcon className="w-4 h-4" /> 로그아웃{" "}
-              </button>{" "}
+                <PowerIcon className="w-4 h-4" /> 로그아웃
+              </button>
               <p className="text-xs text-gray-500 mt-1.5">
-                {" "}
-                현재 계정에서 로그아웃하고 로그인 페이지로 이동합니다.{" "}
-              </p>{" "}
+                현재 계정에서 로그아웃하고 로그인 페이지로 이동합니다.
+              </p>
             </LightCard>
           </div>
         ) : (
           !combinedError && (
             <div className="text-center py-10 text-gray-500">
-              {" "}
-              사용자 정보를 로드하는 중입니다...{" "}
+              사용자 정보를 로드하는 중입니다...
             </div>
           )
         )}
