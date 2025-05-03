@@ -527,6 +527,15 @@ export default function SettingsPage() {
 
   // --- 각 섹션별 저장 함수 ---
   const handleSaveProfileInfo = async () => {
+    // <<< 디버깅 로그 추가 >>>
+    console.log(
+      "Attempting to save profile. userId:",
+      userId,
+      "userLoading:",
+      userLoading
+    );
+    console.log("updateUserProfile function:", updateUserProfile);
+    // <<< 디버깅 로그 추가 끝 >>>
     if (!userId || userLoading) return;
 
     // postLimit 유효성 검사 추가

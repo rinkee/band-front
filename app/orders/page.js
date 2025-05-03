@@ -1094,9 +1094,7 @@ export default function OrdersPage() {
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              주문 관리
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900">주문 관리</h1>
             <p className="text-sm md:text-base text-gray-600">
               최근 업데이트:
               {userDataFromHook?.last_crawl_at
@@ -1289,14 +1287,14 @@ export default function OrdersPage() {
                   초기화
                 </button>
                 {/* 업데이트 버튼 추가 */}
-                <UpdateButton
+                {/* <UpdateButton
                   onClick={() => mutateOrders()}
                   loading={isDataLoading}
                   disabled={isDataLoading}
                   style={{ marginLeft: "2px" }}
                 >
                   업데이트
-                </UpdateButton>
+                </UpdateButton> */}
               </div>
             </div>
           </div>
