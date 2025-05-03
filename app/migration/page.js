@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "../lib/fetcher"; // API 호출 유틸리티
-import UpdateButton from "../components/UpdateButton"; // 사용할 버튼 컴포넌트
+import { api } from "../lib/fetcher";
+import UpdateButton from "../components/UpdateButton";
 
-// --- 간단화된 레이아웃 컴포넌트 (선택 사항, 없어도 무방) ---
+// --- 간단화된 레이아웃 컴포넌트 ---
 function LightCard({ children, className = "", padding = "p-6" }) {
   return (
     <div
@@ -42,40 +42,71 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 }
 // --- 레이아웃 컴포넌트 끝 ---
 
-import { XCircleIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
+import {
+  XCircleIcon,
+  CheckCircleIcon,
+  InformationCircleIcon,
+  ChatBubbleLeftRightIcon,
+  PhotoIcon,
+  TagIcon, // 상품 태그 아이콘 예시
+  UserCircleIcon,
+  ClockIcon,
+} from "@heroicons/react/24/outline";
+
+// 날짜 포맷팅 헬퍼 함수 (OrdersPage에서 가져오거나 새로 정의)
+const formatDate = (timestamp) => {
+  if (!timestamp) return "-";
+  try {
+    // 타임스탬프가 밀리초 단위라고 가정
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return "Invalid Date";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch (e) {
+    console.error("Date format error:", e);
+    return "Error";
+  }
+};
 
 // --- 메인 페이지 컴포넌트 ---
-export default function SimpleMigrationPage() {
+export default function BandPostUpdatePage() {
+  // 페이지 이름 변경 (선택 사항)
   const router = useRouter();
   const [userData, setUserData] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
   // --- 버튼 작업 관련 상태 ---
-  const [isUpdating, setIsUpdating] = useState(false); // 버튼 로딩 상태
-  const [updateError, setUpdateError] = useState(null); // 작업 에러 메시지
-  const [updateSuccessMessage, setUpdateSuccessMessage] = useState(null); // 작업 성공 메시지
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState(null);
+  const [updateSuccessMessage, setUpdateSuccessMessage] = useState(null);
+  const [fetchedPosts, setFetchedPosts] = useState([]); // <<<--- 게시물 배열 저장 상태
 
   // 1. 페이지 접근 시 인증 확인
   useEffect(() => {
+    // ... (인증 로직은 이전과 동일) ...
     const checkAuth = async () => {
       setAuthError(null);
       try {
         const d = sessionStorage.getItem("userData");
         if (!d) {
-          router.replace("/login"); // 로그인 안됐으면 로그인 페이지로
+          router.replace("/login");
           return;
         }
         const o = JSON.parse(d);
         if (!o?.userId) throw new Error("세션 정보가 유효하지 않습니다.");
-        setUserData(o); // 사용자 정보 저장
+        setUserData(o);
       } catch (err) {
         console.error("페이지 인증 오류:", err);
         setAuthError("인증 오류: " + err.message);
         sessionStorage.clear();
         localStorage.removeItem("userId");
       } finally {
-        setAuthLoading(false); // 인증 확인 로딩 끝
+        setAuthLoading(false);
       }
     };
     checkAuth();
@@ -92,34 +123,78 @@ export default function SimpleMigrationPage() {
     setIsUpdating(true);
     setUpdateError(null);
     setUpdateSuccessMessage(null);
+    setFetchedPosts([]); // <<<--- 게시물 배열 초기화
 
     try {
-      // --- 중요: 실제 백엔드 API 엔드포인트를 정의하세요 ---
-      // 예시: 모든 게시물의 상태를 업데이트하는 API
-      const apiEndpoint = "/api/admin/trigger-post-update"; // <-- 실제 사용할 API 경로로 변경하세요!
+      // 중요: 이 페이지의 버튼이 직접 /band/posts 를 호출하는지,
+      // 아니면 별도의 백엔드 트리거 API(/api/admin/trigger-post-update 등)를 호출하고
+      // 그 트리거 API가 /band/posts 데이터를 반환하는지에 따라 API 경로를 수정해야 합니다.
+      // 여기서는 사용자가 제공한 /band/posts 응답 구조를 직접 받는다고 가정하고 작성합니다.
+      // 만약 트리거 API를 호출하고 그 응답 안에 이 데이터가 있다면 response.data.fetchedData.data 와 같이 접근해야 할 수 있습니다.
+
+      const apiEndpoint = "/band/posts"; // 직접 /band/posts 를 호출한다고 가정
+      // const apiEndpoint = "/api/admin/trigger-post-update"; // 트리거 API 예시
+
+      // --- 사용자별 limit 설정 로직 (PostUpdater 에서 가져옴 - 선택 사항) ---
+      let currentLimit = 200; // 기본값
+      const storedLimit = sessionStorage.getItem("userPostLimit");
+      if (storedLimit) {
+        const parsedLimit = parseInt(storedLimit, 10);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          currentLimit = parsedLimit;
+        }
+      }
+      console.log(`게시물 조회 한도: ${currentLimit}`);
+
       console.log(`백엔드 호출 시작: ${apiEndpoint}`);
 
-      // 백엔드 API 호출 (POST, GET 등 백엔드에 맞게 수정)
-      const response = await api.post(
-        `${apiEndpoint}?userId=${userData.userId}`
-      ); // userId를 쿼리로 보내는 예시
+      // API 호출 (GET으로 가정, 필요시 POST 등으로 변경)
+      const response = await api.get(apiEndpoint, {
+        params: {
+          userId: userData.userId,
+          limit: currentLimit,
+          // bandNumber 등 필요한 다른 파라미터 추가
+        },
+        timeout: 600000, // 10분 타임아웃
+      });
 
-      // 백엔드 응답 확인
-      if (response.data && response.data.success) {
+      // 백엔드 응답 확인 (제공된 구조 기준)
+      if (
+        response.data &&
+        response.data.success &&
+        Array.isArray(response.data.data)
+      ) {
+        // 성공 메시지 설정 (백엔드 메시지가 있다면 사용, 없다면 기본 메시지)
         setUpdateSuccessMessage(
           response.data.message ||
-            "게시물 업데이트 작업이 성공적으로 시작되었습니다."
+            `총 ${response.data.data.length}개의 게시물 정보를 성공적으로 가져왔습니다.`
+        );
+        // --- 가져온 게시물 데이터 저장 ---
+        setFetchedPosts(response.data.data); // <<<--- 'data' 배열 저장
+      } else if (response.data && !response.data.success) {
+        // 백엔드에서 success: false 를 명시적으로 보낸 경우
+        throw new Error(
+          response.data.message || "서버에서 게시물 정보를 가져오지 못했습니다."
         );
       } else {
-        // 백엔드에서 success: false 또는 다른 에러 응답 시
-        throw new Error(
-          response.data?.message ||
-            "서버에서 업데이트 작업을 완료하지 못했습니다."
-        );
+        // 예상치 못한 응답 구조
+        throw new Error("서버로부터 유효한 응답을 받지 못했습니다.");
       }
     } catch (err) {
       console.error("게시물 업데이트 작업 오류:", err);
-      setUpdateError(err.message || "알 수 없는 오류로 작업에 실패했습니다.");
+      let errorMessage = "게시물 업데이트 중 오류 발생.";
+      if (err.response) {
+        errorMessage += ` 서버 응답: ${err.response.status} ${
+          err.response.data?.message || ""
+        }`;
+      } else if (err.request) {
+        errorMessage += " 서버 응답 없음 (네트워크/타임아웃 확인).";
+        if (err.code === "ECONNABORTED") errorMessage += " (타임아웃)";
+      } else {
+        errorMessage += ` 오류 메시지: ${err.message}`;
+      }
+      setUpdateError(errorMessage);
+      setFetchedPosts([]); // 에러 시 결과 초기화
     } finally {
       setIsUpdating(false); // 로딩 상태 해제
     }
@@ -127,8 +202,9 @@ export default function SimpleMigrationPage() {
 
   // --- UI 렌더링 ---
 
-  // 인증 로딩 중 표시
+  // ... (인증 로딩, 인증 실패 UI는 이전과 동일) ...
   if (authLoading) {
+    /* ... 로딩 UI ... */
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <LoadingSpinner className="h-10 w-10 text-orange-500" />
@@ -136,9 +212,8 @@ export default function SimpleMigrationPage() {
       </div>
     );
   }
-
-  // 인증 실패 시 표시
   if (authError || !userData) {
+    /* ... 인증 에러 UI ... */
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5">
         <LightCard className="max-w-md w-full text-center border-red-300">
@@ -164,41 +239,40 @@ export default function SimpleMigrationPage() {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 p-4 sm:p-8">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">데이터 업데이트</h1>
+        <h1 className="text-3xl font-bold text-gray-800">
+          밴드 게시물 업데이트
+        </h1>
         <p className="text-sm text-gray-600 mt-1">
-          관리자 전용 업데이트 기능을 실행합니다.
+          최신 밴드 게시물 정보를 가져와 시스템에 반영합니다.
         </p>
       </header>
 
       <LightCard className="shadow-md">
         <h2 className="text-xl font-semibold text-gray-700 mb-2">
-          게시물 일괄 업데이트
+          게시물 정보 가져오기 및 업데이트
         </h2>
         <p className="text-sm text-gray-500 mb-6">
-          이 버튼을 누르면 시스템의 모든 게시물 데이터에 대한 업데이트 작업이
-          시작됩니다.{" "}
-          <strong className="text-red-600">
-            주의: 실행 시 되돌릴 수 없습니다.
-          </strong>
+          아래 버튼을 클릭하여 밴드 API로부터 최신 게시물 정보를 가져옵니다.
+          가져온 정보는 시스템 데이터 업데이트에 사용될 수 있습니다.
         </p>
 
-        {/* --- 여기가 핵심: UpdateButton 사용 --- */}
+        {/* 업데이트 버튼 */}
         <div className="flex justify-start items-center gap-4 mb-4">
           <UpdateButton
-            loading={isUpdating} // 로딩 상태 연결
-            disabled={isUpdating} // 로딩 중일 때 비활성화
-            className="text-base px-6 py-3" // 버튼 크기 및 스타일 조정 (선택 사항)
+            onClick={handleUpdatePosts}
+            loading={isUpdating}
+            disabled={isUpdating}
+            className="text-base px-6 py-3"
           >
-            {isUpdating ? "업데이트 작업 진행 중..." : "게시물 업데이트 시작"}
+            {isUpdating ? "게시물 정보 가져오는 중..." : "밴드 게시물 가져오기"}
           </UpdateButton>
         </div>
-        {/* --- UpdateButton 끝 --- */}
 
-        {/* 작업 결과 메시지 표시 영역 */}
-        <div className="mt-6 space-y-3 text-sm">
+        {/* --- 작업 결과 표시 영역 (개선) --- */}
+        <div className="mt-6 space-y-4">
           {/* 성공 메시지 */}
           {updateSuccessMessage && (
-            <div className="p-3 text-green-700 bg-green-100 rounded-md border border-green-200 flex items-center gap-2">
+            <div className="p-3 text-sm text-green-700 bg-green-100 rounded-md border border-green-200 flex items-center gap-2">
               <CheckCircleIcon className="w-5 h-5 flex-shrink-0" />
               <span>{updateSuccessMessage}</span>
             </div>
@@ -206,12 +280,87 @@ export default function SimpleMigrationPage() {
 
           {/* 에러 메시지 */}
           {updateError && (
-            <div className="p-3 text-red-700 bg-red-100 rounded-md border border-red-200 flex items-center gap-2">
+            <div className="p-3 text-sm text-red-700 bg-red-100 rounded-md border border-red-200 flex items-center gap-2">
               <XCircleIcon className="w-5 h-5 flex-shrink-0" />
               <span>{updateError}</span>
             </div>
           )}
+
+          {/* --- 가져온 게시물 목록 표시 (fetchedPosts 상태 사용) --- */}
+          {fetchedPosts.length > 0 &&
+            !updateError && ( // 성공하고 결과 배열에 내용이 있을 때만 표시
+              <div className="p-4 border border-gray-200 bg-gray-50 rounded-md">
+                <h3 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <InformationCircleIcon className="w-5 h-5 text-blue-500" />
+                  가져온 게시물 목록 ({fetchedPosts.length}개)
+                </h3>
+                {/* 스크롤 가능한 목록 영역 */}
+                <ul className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                  {fetchedPosts.map((post) => (
+                    <li
+                      key={post.post_key}
+                      className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm"
+                    >
+                      {/* 작성자 및 작성일 */}
+                      <div className="flex items-center justify-between mb-2 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <UserCircleIcon className="w-4 h-4" />
+                          {post.author?.name || "이름 없음"}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <ClockIcon className="w-4 h-4" />
+                          {formatDate(post.created_at)}
+                        </span>
+                      </div>
+
+                      {/* 게시물 내용 (일부만 표시) */}
+                      <p className="text-sm text-gray-800 mb-3 line-clamp-3">
+                        {" "}
+                        {/* line-clamp-3: 최대 3줄 표시 */}
+                        {post.content}
+                      </p>
+
+                      {/* 추가 정보 (아이콘과 함께) */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 border-t pt-2 mt-2">
+                        <span className="inline-flex items-center gap-1">
+                          <ChatBubbleLeftRightIcon className="w-4 h-4 text-blue-500" />{" "}
+                          댓글: {post.comment_count} (DB:{" "}
+                          {post.db_comment_count ?? "N/A"})
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <PhotoIcon className="w-4 h-4 text-purple-500" />{" "}
+                          사진: {post.photos?.length || 0}개
+                        </span>
+                        {/* AI 분석 결과 (상품 여부) */}
+                        {post.ai_analysis && (
+                          <span
+                            className={`inline-flex items-center gap-1 font-medium ${
+                              post.ai_analysis.is_product
+                                ? "text-green-600"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            <TagIcon
+                              className={`w-4 h-4 ${
+                                post.ai_analysis.is_product
+                                  ? "text-green-500"
+                                  : "text-gray-400"
+                              }`}
+                            />
+                            {post.ai_analysis.is_product
+                              ? "상품 게시물"
+                              : "일반 게시물"}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          {/* --- 게시물 목록 표시 끝 --- */}
         </div>
+        {/* --- 작업 결과 표시 영역 끝 --- */}
       </LightCard>
 
       <footer className="mt-12 text-center text-sm text-gray-500">

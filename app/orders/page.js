@@ -1287,14 +1287,14 @@ export default function OrdersPage() {
                   초기화
                 </button>
                 {/* 업데이트 버튼 추가 */}
-                {/* <UpdateButton
+                <UpdateButton
                   onClick={() => mutateOrders()}
                   loading={isDataLoading}
                   disabled={isDataLoading}
                   style={{ marginLeft: "2px" }}
                 >
                   업데이트
-                </UpdateButton> */}
+                </UpdateButton>
               </div>
             </div>
           </div>
