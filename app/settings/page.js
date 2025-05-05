@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, useUserMutations } from "../hooks";
-import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
 import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴포넌트 import
+import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 추가
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -190,19 +190,20 @@ export default function SettingsPage() {
   const fetchAutoCrawlSettings = useCallback(async (currentUserId) => {
     if (!currentUserId) return;
     try {
-      const response = await api.get(
-        `/scheduler/users/${currentUserId}/auto-crawl`
-      );
-      if (response.data?.data) {
-        const {
-          autoCrawl,
-          crawlInterval: interval,
-          jobId,
-        } = response.data.data;
+      // Supabase 쿼리로 변경
+      const { data, error } = await supabase
+        .from("scheduler_settings")
+        .select("auto_crawl, crawl_interval, job_id")
+        .eq("user_id", currentUserId)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
         const settings = {
-          autoCrawl: autoCrawl ?? false,
-          interval: Math.max(30, interval || 30),
-          jobId: jobId,
+          autoCrawl: data.auto_crawl ?? false,
+          interval: Math.max(30, data.crawl_interval || 30),
+          jobId: data.job_id,
         };
         setIsAutoCrawlingEnabled(settings.autoCrawl);
         setCrawlInterval(settings.interval);
@@ -238,6 +239,8 @@ export default function SettingsPage() {
         sessionUserId = userDataObj.userId;
         setUserId(sessionUserId);
 
+        console.log("세션에서 userId 가져옴:", sessionUserId); // 디버깅용 로그 추가
+
         // --- sessionStorage에서 Task ID 확인 로직 추가 ---
         const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
         if (storedTaskId) {
@@ -248,6 +251,47 @@ export default function SettingsPage() {
           setManualCrawlTaskId(storedTaskId); // 상태 업데이트
         }
         // --- 확인 로직 끝 ---
+
+        // Supabase에서 직접 사용자 정보를 가져오는 로직 추가
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", sessionUserId)
+            .single();
+
+          if (userError) {
+            console.error("Supabase에서 사용자 정보 가져오기 실패:", userError);
+          } else if (userData) {
+            console.log("Supabase에서 사용자 정보 가져옴:", userData);
+            // 사용자 정보 직접 설정
+            setOwnerName(userData.owner_name || "");
+            setStoreName(userData.store_name || "");
+            setBandNumber(userData.band_number || "");
+            setExcludedCustomers(
+              Array.isArray(userData.excluded_customers)
+                ? userData.excluded_customers
+                : []
+            );
+            setAutoBarcodeGeneration(userData.auto_barcode_generation ?? false);
+            setInitialAutoBarcodeGeneration(
+              userData.auto_barcode_generation ?? false
+            );
+            setLastCrawlTime(userData.last_crawl_at || null);
+
+            // postLimit 설정
+            const storedLimit =
+              userData?.profile?.post_fetch_limit ||
+              userData?.user_metadata?.post_fetch_limit ||
+              userData?.post_fetch_limit;
+
+            if (storedLimit) {
+              setPostLimit(parseInt(storedLimit, 10));
+            }
+          }
+        } catch (supabaseError) {
+          console.error("Supabase 직접 조회 오류:", supabaseError);
+        }
 
         await fetchAutoCrawlSettings(sessionUserId);
       } catch (error) {
@@ -266,6 +310,8 @@ export default function SettingsPage() {
     checkAuthAndStoredTask();
   }, [router, fetchAutoCrawlSettings]); // 의존성 배열 확인
 
+  // 이 useEffect는 중복으로 제거 (위의 checkAuthAndStoredTask가 이미 처리)
+  /*
   useEffect(() => {
     const checkAuth = async () => {
       setError(null);
@@ -297,6 +343,8 @@ export default function SettingsPage() {
     };
     checkAuth();
   }, [router, fetchAutoCrawlSettings]);
+  */
+
   useEffect(() => {
     if (!userLoading && !initialLoading && swrUserData) {
       console.log("[Settings Effect] SWR User Data Received:", swrUserData);
@@ -392,8 +440,14 @@ export default function SettingsPage() {
         populateCache: true, // 캐시 업데이트
       });
 
-      // API 호출 (updateUserProfile 훅 사용)
-      await updateUserProfile(userId, payload);
+      // Supabase 업데이트 호출
+      const { data, error } = await supabase
+        .from("users")
+        .update(payload)
+        .eq("id", userId);
+
+      if (error) throw error;
+
       alert("상품 자동 바코드 생성 설정이 저장되었습니다.");
 
       // 성공 시 초기 상태 업데이트 및 SWR 데이터 재검증
@@ -410,28 +464,34 @@ export default function SettingsPage() {
   // <<<--- 바코드 설정 저장 함수 추가 --- END --->>>
 
   const updateAutoCrawlSettingsAPI = async (autoCrawl, interval) => {
-    /* API 호출 로직 동일 */ if (!userId) return false;
+    if (!userId) return false;
     try {
-      const response = await api.put(`/scheduler/users/${userId}/auto-crawl`, {
-        autoCrawl,
-        crawlInterval: interval,
-      });
-      if (response.data?.success) {
-        const newJobId = response.data.data?.jobId;
+      // Supabase upsert로 변경
+      const { data, error } = await supabase.from("scheduler_settings").upsert(
+        {
+          user_id: userId,
+          auto_crawl: autoCrawl,
+          crawl_interval: interval,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id",
+          returning: "representation",
+        }
+      );
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const newJobId = data[0].job_id;
         setCrawlingJobId(newJobId);
         setInitialCrawlSettings({ autoCrawl, interval, jobId: newJobId });
         return true;
       }
-      throw new Error(
-        response.data?.message || "Failed to update auto crawl settings"
-      );
+      return false;
     } catch (error) {
       console.error("Error updating auto crawl settings:", error);
-      setError(
-        `자동 밴드 정보 업데이트 설정 업데이트 오류: ${
-          error.response?.data?.message || error.message
-        }`
-      );
+      setError(`자동 밴드 정보 업데이트 설정 업데이트 오류: ${error.message}`);
       return false;
     }
   };
@@ -447,7 +507,7 @@ export default function SettingsPage() {
   }, []); // 의존성 배열 확인
   // <<<--- 작업 완료/실패 시 호출될 콜백 함수 --- END --->>>
   const handleManualCrawl = async () => {
-    /* 로직 동일 */ if (!userId || !bandNumber) {
+    if (!userId || !bandNumber) {
       alert(
         "사용자 ID 또는 밴드 ID가 설정되지 않아 크롤링을 시작할 수 없습니다."
       );
@@ -463,24 +523,29 @@ export default function SettingsPage() {
     sessionStorage.removeItem("manualCrawlTaskId"); // 시작 시 이전 ID 초기화 (세션 스토리지)
 
     try {
-      const response = await api.post(`/crawl/${bandNumber}/details`, {
-        userId: userId,
-        // maxPosts: manualCrawlPostCount,
-        processProducts: true,
-        daysLimit: manualCrawlDaysLimit, // <<<--- 상태에서 가져온 daysLimit 값 추가
+      // Supabase Function 호출로 변경
+      const { data, error } = await supabase.functions.invoke("crawl-band", {
+        body: {
+          userId: userId,
+          bandNumber: bandNumber,
+          processProducts: true,
+          daysLimit: manualCrawlDaysLimit,
+        },
       });
-      if (response.data?.success && response.data.taskId) {
-        const newTaskId = response.data.taskId;
+
+      if (error) throw error;
+
+      if (data?.success && data.taskId) {
+        const newTaskId = data.taskId;
         setManualCrawlTaskId(newTaskId); // <<<--- 새 Task ID 설정
         sessionStorage.setItem("manualCrawlTaskId", newTaskId); // sessionStorage에 저장
       } else {
         throw new Error(
-          response.data?.message ||
-            "수동 밴드 정보 업데이트 요청에 실패했습니다."
+          data?.message || "수동 밴드 정보 업데이트 요청에 실패했습니다."
         );
       }
     } catch (err) {
-      const errMsg = err.response?.data?.message || err.message;
+      const errMsg = err.message;
       setError(`수동 업데이트 오류: ${errMsg}`);
       alert(`수동 업데이트 요청 중 오류 발생: ${errMsg}`);
       setManualCrawling(false); // 오류 시 버튼 즉시 활성화
@@ -564,7 +629,12 @@ export default function SettingsPage() {
       };
 
       // Supabase 업데이트 호출
-      await updateUserProfile(profileData); // updateUserProfile이 userId를 내부적으로 처리하거나, userId 전달 필요 시 수정
+      const { data, error } = await supabase
+        .from("users")
+        .update(profileData)
+        .eq("id", userId);
+
+      if (error) throw error;
 
       // sessionStorage 업데이트 추가
       sessionStorage.setItem("userPostLimit", newLimit.toString());
@@ -593,7 +663,13 @@ export default function SettingsPage() {
     const profileData = { excluded_customers: excludedCustomers };
     try {
       const optimisticUserData = { ...(swrUserData || {}), ...profileData };
-      await updateUserProfile(userId, profileData); // updateUserProfile이 부분 업데이트 지원 가정
+      const { data, error } = await supabase
+        .from("users")
+        .update(profileData)
+        .eq("id", userId);
+
+      if (error) throw error;
+
       alert("제외 고객 목록이 저장되었습니다.");
       await userMutate(optimisticUserData, {
         optimisticData: optimisticUserData,
@@ -626,17 +702,11 @@ export default function SettingsPage() {
     setError(null); // 관련 오류 메시지 초기화
 
     try {
-      // updateAutoCrawlSettingsAPI 함수 호출 (이 함수가 정의되어 있어야 함)
-      // 예시: const success = await updateAutoCrawlSettingsAPI(isAutoCrawlingEnabled, crawlInterval);
-      // 실제 API 호출 로직 구현 필요
-
-      // 임시 성공 처리 (실제 API 호출 후 로직 변경 필요)
-      console.log("Simulating save crawl settings:", {
+      // Supabase 함수 호출
+      const success = await updateAutoCrawlSettingsAPI(
         isAutoCrawlingEnabled,
-        crawlInterval,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network delay
-      const success = true; // 임시 성공
+        crawlInterval
+      );
 
       if (success) {
         alert("밴드 정보 업데이트 설정이 저장되었습니다.");
@@ -644,16 +714,14 @@ export default function SettingsPage() {
         setInitialCrawlSettings({
           autoCrawl: isAutoCrawlingEnabled,
           interval: crawlInterval,
+          jobId: crawlingJobId,
         });
       } else {
-        throw new Error("API 호출 실패 또는 서버 오류");
+        throw new Error("설정 저장에 실패했습니다");
       }
-      // 밴드 정보 업데이트 설정 변경 시 사용자 데이터 재검증 (선택적)
-      // userMutate();
     } catch (err) {
       console.error("Error saving crawling settings:", err);
       setError(`크롤링 설정 저장 오류: ${err.message}`);
-      // 여기에 오류 처리 로직 추가 (예: 사용자에게 알림)
     } finally {
       setSavingCrawling(false);
     }
@@ -798,7 +866,7 @@ export default function SettingsPage() {
                   <div key={field.id}>
                     <label
                       htmlFor={field.id}
-                      className="block text-sm font-medium text-gray-700 mb-1.5"
+                      className="block text-sm font-medium text-gray-700"
                     >
                       {field.label}
                     </label>
@@ -923,196 +991,6 @@ export default function SettingsPage() {
               </div>
             </LightCard>
 
-            {/* <LightCard padding="p-0" className="overflow-hidden">
-              
-              <div className="divide-y divide-gray-200">
-               
-                <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    
-                    자동 밴드 업데이트
-                  </div>
-                  <div className="bg-white px-4 py-3 flex items-center justify-between">
-                   
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        id="autoCrawlToggle"
-                        checked={isAutoCrawlingEnabled}
-                        onChange={handleToggleAutoCrawling}
-                        disabled={savingCrawling || isDataLoading}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                    </label>
-                  </div>
-                </div>
-              
-                <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    
-                    간격 (분)
-                  </div>
-                  <div className="bg-white px-4 py-3 flex items-center">
-                  
-                    <input
-                      type="number"
-                      id="crawlInterval"
-                      min="1"
-                      value={crawlInterval}
-                      onChange={handleIntervalChange}
-                      disabled={
-                        savingCrawling ||
-                        !isAutoCrawlingEnabled ||
-                        isDataLoading
-                      }
-                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
-                    />
-                    <p className="text-xs text-gray-500 ml-3">
-                      
-                      최소 30분 이상. (권장: 60분 이상)
-                    </p>
-                  </div>
-                </div>
-              
-                <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    
-                    자동화 상태
-                  </div>
-                  <div className="bg-white px-4 py-3">
-                   
-                    <InfoBox
-                      type={
-                        initialCrawlSettings?.autoCrawl &&
-                        initialCrawlSettings?.jobId
-                          ? "success" // 저장된 상태가 활성 + Job ID 있음
-                          : initialCrawlSettings?.autoCrawl &&
-                            !initialCrawlSettings?.jobId
-                          ? "pending" // 저장된 상태가 활성 + Job ID 없음 (보류중)
-                          : !initialCrawlSettings?.autoCrawl &&
-                            initialCrawlSettings?.jobId
-                          ? "warning" // 저장된 상태가 비활성 + Job ID 있음 (경고)
-                          : "disabled" // 저장된 상태가 비활성 + Job ID 없음
-                      }
-                      jobId={initialCrawlSettings?.jobId || null} // 저장된 Job ID 사용
-                      interval={initialCrawlSettings?.interval || crawlInterval} // 저장된 간격 또는 현재 UI 간격 사용 (선택적)
-                    />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    마지막 자동 수집
-                  </div>
-                  <div className="bg-white px-4 py-3 text-sm text-gray-700">
-                 
-                    {userLoading && lastCrawlTime === null ? (
-                      <span className="text-gray-400 italic">확인 중...</span>
-                    ) : (
-                      formatTimestamp(lastCrawlTime) // 포맷팅 함수 사용
-                    )}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    
-                    자동 수집
-                  </div>
-                  <div className="bg-white px-4 py-3">
-                    <button
-                      onClick={handleSaveCrawlingSettings}
-                      disabled={savingCrawling || isDataLoading}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {savingCrawling ? (
-                        <LoadingSpinner
-                          className="w-4 h-4"
-                          color="text-white"
-                        />
-                      ) : (
-                        <CheckIcon className="w-5 h-5" />
-                      )}
-                      <span>{savingCrawling ? "저장 중..." : "설정 저장"}</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-40 self-stretch">
-                    
-                    수동 실행
-                  </div>
-                  <div className="bg-white px-4 py-3">
-                    
-                    <div className="flex items-center gap-2">
-                      
-                      <input
-                        type="number"
-                        value={manualCrawlDaysLimit}
-                        onChange={(e) =>
-                          setManualCrawlDaysLimit(
-                            // 상태 업데이트 함수 변경
-                            Math.max(1, parseInt(e.target.value, 10) || 1)
-                          )
-                        }
-                        min="1"
-                        max="7"
-                        className="w-14 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white"
-                        disabled={
-                          manualCrawling ||
-                          savingProfile ||
-                          savingCrawling ||
-                          savingExcluded ||
-                          !bandNumber
-                        }
-                        title="수집할 최근 일 수" // title 속성 변경
-                      />
-                      <p>일</p>
-                      <button
-                        onClick={handleManualCrawl}
-                        disabled={
-                          manualCrawling ||
-                          savingProfile ||
-                          savingCrawling ||
-                          savingExcluded ||
-                          !bandNumber ||
-                          manualCrawlDaysLimit < 1 // daysLimit 유효성 검사 추가
-                        }
-                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 w-32"
-                      >
-                        
-                        {manualCrawling ? (
-                          <LoadingSpinner
-                            className="w-4 h-4"
-                            color="text-white"
-                          />
-                        ) : (
-                          <CloudArrowDownIcon className="w-5 h-5" />
-                        )}
-                        <span>
-                          {manualCrawling ? "실행 중..." : "즉시 실행"}
-                        </span>
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      
-                      현재 밴드({bandNumber || "미설정"})에서 최근
-                      <span className="font-medium">
-                        {manualCrawlDaysLimit}
-                      </span>
-                      일간의 게시물 즉시 수집.
-                      
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </LightCard> */}
-            {/* <TaskStatusDisplay
-              taskId={manualCrawlTaskId}
-              onTaskEnd={handleManualTaskEnd}
-            /> */}
             {/* 제외 고객 설정 카드 */}
             <LightCard padding="p-0">
               <div className="p-5 sm:p-6 border-b">

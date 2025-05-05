@@ -3,6 +3,56 @@ import axios from "axios";
 // API 기본 URL 설정
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api/proxy";
 
+// 환경 변수 가져오기 (여기서 직접 가져오거나, 함수 인자로 받을 수 있음)
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+if (!supabaseAnonKey) {
+  console.error("Fetcher: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set!");
+}
+
+// Supabase Function 용 Fetcher 함수
+export const supabaseFunctionFetcher = async (url) => {
+  const headers = {
+    apikey: supabaseAnonKey || "", // 키가 없으면 빈 문자열 전달 (오류 발생 가능성 있음)
+    "Content-Type": "application/json",
+    // 필요 시 다른 기본 헤더 추가
+  };
+
+  try {
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { message: `HTTP error! status: ${response.status}` };
+      }
+      const error = new Error(
+        errorData?.message || `HTTP error ${response.status}`
+      );
+      error.info = errorData;
+      error.status = response.status;
+      throw error;
+    }
+
+    const data = await response.json();
+    if (data && data.success !== undefined) {
+      // success 필드 존재 여부 확인
+      return data; // 성공/실패 여부 포함한 전체 객체 반환
+    } else {
+      // 응답 형식이 예상과 다를 경우
+      console.warn("API response format might be incorrect:", data);
+      // success 필드가 없어도 일단 데이터 반환 (호출부에서 처리) 또는 에러 throw
+      return data;
+      // 또는 throw new Error("API 응답 형식 오류");
+    }
+  } catch (error) {
+    // 네트워크 오류 등 fetch 자체의 오류 또는 위에서 throw된 오류
+    console.error("Fetcher error:", error);
+    throw error; // SWR이 받을 수 있도록 다시 throw
+  }
+};
+
 // 개발 모드에서만 로깅하는 함수
 const devLog = (...args) => {
   if (

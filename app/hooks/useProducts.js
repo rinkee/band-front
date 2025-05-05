@@ -1,108 +1,356 @@
+// hooks/useProducts.js (또는 유사한 파일)
 import useSWR, { useSWRConfig } from "swr";
-import { axiosFetcher, api } from "../lib/fetcher";
+// import { axiosFetcher, api } from "../lib/fetcher"; // 제거
+import supabase from "../lib/supabaseClient"; // Supabase 클라이언트
+import { supabaseFunctionFetcher } from "../lib/fetcher";
+
+// 환경 변수
+const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
- * 상품 목록을 가져오는 훅
- * @param {string} userId - 사용자 ID
+ * 상품 목록을 가져오는 훅 (Supabase Function 용)
+ * @param {string | null | undefined} userId - 사용자 ID (JWT 제거 시 필수)
  * @param {number} page - 페이지 번호
- * @param {Object} filters - 필터링 옵션
+ * @param {Object} filters - 필터링 옵션 (status, search 등)
  * @param {Object} options - SWR 옵션
- * @returns {Object} SWR 응답
+ * @returns {Object} SWR 응답 { data: { data: Product[], pagination: {...} }, error, isLoading, mutate }
  */
 export function useProducts(userId, page = 1, filters = {}, options = {}) {
-  const params = new URLSearchParams({ userId, page, ...filters });
+  // SWR 키 생성 함수
+  const getKey = () => {
+    if (!userId) {
+      console.warn("useProducts: userId is required when not using JWT auth.");
+      return null;
+    }
 
-  // 기본 옵션 설정 (캐시 사용 및 중복 요청 방지)
-  const defaultOptions = {
-    revalidateIfStale: false, // 캐시가 오래되었더라도 자동으로 재검증하지 않음
-    revalidateOnFocus: false, // 포커스를 받았을 때 재검증하지 않음
-    revalidateOnReconnect: true, // 네트워크 연결 재개시에만 재검증
-    dedupingInterval: 5000, // 5초 내에 같은 요청은 중복 실행하지 않음
-    ...options, // 사용자 정의 옵션으로 기본 옵션 덮어쓰기 가능
+    const params = new URLSearchParams();
+    params.append("userId", userId); // <<<--- userId 쿼리 파라미터 추가
+    params.append("page", page.toString());
+
+    // filters 객체의 키-값을 파라미터로 추가
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        if (Array.isArray(value)) {
+          if (value.length > 0) params.append(key, value.join(","));
+        } else {
+          params.append(key, value.toString());
+        }
+      }
+    });
+
+    // 최종 함수 URL 생성 (Edge Function 이름 확인!)
+    return `${functionsBaseUrl}/products-get-all?${params.toString()}`;
   };
 
-  return useSWR(
-    userId ? `/products?${params}` : null,
-    axiosFetcher,
-    defaultOptions
-  );
+  // 기본 SWR 옵션과 사용자 정의 옵션 병합
+  const swrOptions = {
+    revalidateIfStale: false,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 5000,
+    ...options,
+  };
+
+  // useSWR 훅 호출
+  return useSWR(getKey, supabaseFunctionFetcher, swrOptions);
 }
 
 /**
- * 특정 상품 정보를 가져오는 훅
- * @param {string} productId - 상품 ID
+ * 특정 상품 정보를 가져오는 훅 (Supabase Function 용)
+ * @param {string | null | undefined} productId - 상품 ID
  * @param {Object} options - SWR 옵션
- * @returns {Object} SWR 응답
+ * @returns {Object} SWR 응답 { data: { data: Product }, error, isLoading, mutate }
  */
 export function useProduct(productId, options = {}) {
-  return useSWR(
-    productId ? `/products/${productId}` : null,
-    axiosFetcher,
-    options
-  );
+  // SWR 키 생성 함수
+  const getKey = () => {
+    if (!productId) return null;
+    // Edge Function 이름 및 쿼리 파라미터 확인!
+    return `${functionsBaseUrl}/products-get-by-id?productId=${productId}`;
+  };
+
+  // useSWR 훅 호출
+  return useSWR(getKey, supabaseFunctionFetcher, options);
 }
 
 /**
- * 상품 데이터 변경 함수들을 제공하는 훅
+ * 상품 데이터 변경 함수들을 제공하는 훅 (Supabase Function 용)
  * @returns {Object} 상품 데이터 변경 함수들
  */
 export function useProductMutations() {
-  const { mutate } = useSWRConfig();
+  const { mutate: globalMutate } = useSWRConfig();
 
   /**
-   * 상품 추가 함수
-   * @param {Object} productData - 상품 데이터
-   * @returns {Promise} API 응답
+   * ⚠️ 상품 추가 함수 (Supabase Function 호출 - 보안 주의) ⚠️
+   * Edge Function 'products-create' 구현 필요
+   * @param {Object} productData - 추가할 상품 데이터 (userId 포함해야 함)
+   * @returns {Promise<object>} API 응답의 data 객체
+   * @throws {Error} API 호출 실패 시
    */
   const addProduct = async (productData) => {
-    const response = await api.post("/products", productData);
-
-    // 캐시 갱신
-    const userId = productData.userId;
-    if (userId) {
-      mutate(`/products?userId=${userId}`);
+    console.warn(
+      "addProduct: JWT 인증 없이 상품을 추가하는 것은 보안 위험이 있습니다."
+    );
+    if (!productData || !productData.userId) {
+      throw new Error("userId는 필수 상품 데이터입니다.");
     }
 
-    return response.data;
+    // Edge Function 경로 확인 필요
+    const url = `${functionsBaseUrl}/products-create`;
+    const headers = {
+      apikey: supabaseAnonKey,
+      "Content-Type": "application/json",
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(productData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        const error = new Error(
+          result?.message || `HTTP error ${response.status}`
+        );
+        error.info = result;
+        throw error;
+      }
+
+      if (result.success) {
+        console.log("Product added successfully via function.");
+        // --- SWR 캐시 갱신 ---
+        // 관련된 상품 목록 캐시 갱신
+        globalMutate(
+          (key) =>
+            typeof key === "string" &&
+            key.startsWith(
+              `${functionsBaseUrl}/products-get-all?userId=${productData.userId}`
+            ),
+          undefined,
+          { revalidate: true }
+        );
+        // --------------------
+        return result.data; // 생성된 상품 데이터 반환
+      } else {
+        throw new Error(result?.message || "상품 추가 실패");
+      }
+    } catch (error) {
+      console.error("Error adding product:", error);
+      throw error;
+    }
   };
 
   /**
-   * 상품 업데이트 함수
-   * @param {string} productId - 상품 ID
-   * @param {Object} productData - 변경할 상품 데이터
-   * @returns {Promise} API 응답
+   * ⚠️ 상품 업데이트 함수 (Supabase Function 호출 - 보안 주의) ⚠️
+   * Edge Function 'products-update' 구현 필요
+   * @param {string} productId - 업데이트할 상품 ID
+   * @param {Object} productData - 변경할 전체 상품 데이터 (userId 포함 필요 - 권한 확인용)
+   * @returns {Promise<object>} API 응답의 data 객체
+   * @throws {Error} API 호출 실패 시
    */
   const updateProduct = async (productId, productData) => {
-    const response = await api.put(`/products/${productId}`, productData);
-
-    // 캐시 갱신
-    mutate(`/products/${productId}`);
-    const userId = productData.userId;
-    if (userId) {
-      mutate(`/products?userId=${userId}`);
+    console.warn(
+      "updateProduct: JWT 인증 없이 상품을 수정하는 것은 보안 위험이 있습니다."
+    );
+    if (!productId || !productData || !productData.userId) {
+      // 권한 확인 위한 userId 포함 가정
+      throw new Error(
+        "Product ID와 userId를 포함한 전체 상품 데이터가 필요합니다."
+      );
     }
 
-    return response.data;
+    // Edge Function 경로 확인 필요
+    const url = `${functionsBaseUrl}/products-update?productId=${productId}`;
+    const headers = {
+      apikey: supabaseAnonKey,
+      "Content-Type": "application/json",
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: "PUT", // 전체 업데이트는 PUT
+        headers: headers,
+        body: JSON.stringify(productData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        const error = new Error(
+          result?.message || `HTTP error ${response.status}`
+        );
+        error.info = result;
+        throw error;
+      }
+
+      if (result.success) {
+        console.log(`Product ${productId} updated successfully via function.`);
+        // --- SWR 캐시 갱신 ---
+        const productSWRKey = `${functionsBaseUrl}/products-get-by-id?productId=${productId}`;
+        globalMutate(productSWRKey); // 단일 상품 갱신
+        globalMutate(
+          (key) =>
+            typeof key === "string" &&
+            key.startsWith(
+              `${functionsBaseUrl}/products-get-all?userId=${productData.userId}`
+            ),
+          undefined,
+          { revalidate: true }
+        ); // 목록 갱신
+        // --------------------
+        return result.data; // 업데이트된 상품 데이터 반환
+      } else {
+        throw new Error(result?.message || "상품 업데이트 실패");
+      }
+    } catch (error) {
+      console.error(`Error updating product ${productId}:`, error);
+      throw error;
+    }
   };
 
   /**
-   * 상품 삭제 함수
-   * @param {string} productId - 상품 ID
-   * @param {string} userId - 사용자 ID
-   * @returns {Promise} API 응답
+   * ⚠️ 상품 부분 업데이트 함수 (Supabase Function 호출 - 보안 주의) ⚠️
+   * Edge Function 'products-patch' 구현 필요
+   * @param {string} productId - 업데이트할 상품 ID
+   * @param {Object} patchData - 변경할 부분 상품 데이터
+   * @param {string} userId - 캐시 갱신용 사용자 ID
+   * @returns {Promise<object>} API 응답의 data 객체
+   * @throws {Error} API 호출 실패 시
    */
-  const deleteProduct = async (productId, userId) => {
-    const response = await api.delete(`/products/${productId}`);
-
-    // 캐시 갱신
-    if (userId) {
-      mutate(`/products?userId=${userId}`);
+  const patchProduct = async (productId, patchData, userId) => {
+    console.warn(
+      "patchProduct: JWT 인증 없이 상품을 수정하는 것은 보안 위험이 있습니다."
+    );
+    if (!productId || !patchData || Object.keys(patchData).length === 0) {
+      throw new Error("Product ID와 업데이트할 데이터가 필요합니다.");
     }
 
-    return response.data;
+    const url = `${functionsBaseUrl}/products-patch?productId=${productId}`;
+    const headers = {
+      apikey: supabaseAnonKey,
+      "Content-Type": "application/json",
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: "PATCH", // 부분 업데이트는 PATCH
+        headers: headers,
+        body: JSON.stringify(patchData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        const error = new Error(
+          result?.message || `HTTP error ${response.status}`
+        );
+        error.info = result;
+        throw error;
+      }
+
+      if (result.success) {
+        console.log(`Product ${productId} patched successfully via function.`);
+        // --- SWR 캐시 갱신 ---
+        const productSWRKey = `${functionsBaseUrl}/products-get-by-id?productId=${productId}`;
+        globalMutate(productSWRKey);
+        if (userId) {
+          globalMutate(
+            (key) =>
+              typeof key === "string" &&
+              key.startsWith(
+                `${functionsBaseUrl}/products-get-all?userId=${userId}`
+              ),
+            undefined,
+            { revalidate: true }
+          );
+        }
+        // --------------------
+        return result.data;
+      } else {
+        throw new Error(result?.message || "상품 부분 업데이트 실패");
+      }
+    } catch (error) {
+      console.error(`Error patching product ${productId}:`, error);
+      throw error;
+    }
   };
 
-  return { addProduct, updateProduct, deleteProduct };
+  /**
+   * ⚠️ 상품 삭제 함수 (Supabase Function 호출 - 보안 주의) ⚠️
+   * @param {string} productId - 삭제할 상품 ID
+   * @param {string} userId - 캐시 갱신용 사용자 ID (선택적)
+   * @returns {Promise<object>} API 응답 객체
+   * @throws {Error} API 호출 실패 시
+   */
+  const deleteProduct = async (productId, userId) => {
+    console.warn(
+      "deleteProduct: JWT 인증 없이 상품을 삭제하는 것은 보안 위험이 있습니다."
+    );
+    if (!productId) {
+      throw new Error("Product ID가 필요합니다.");
+    }
+
+    // Edge Function 경로 및 쿼리 파라미터 사용
+    const url = `${functionsBaseUrl}/products-delete?productId=${productId}`;
+    const headers = {
+      apikey: supabaseAnonKey,
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: headers,
+      });
+
+      // 200 OK 또는 204 No Content 확인
+      if (response.status === 200 || response.status === 204) {
+        console.log(`Product ${productId} deleted successfully via function.`);
+        // --- SWR 캐시 갱신 ---
+        const productSWRKey = `${functionsBaseUrl}/products-get-by-id?productId=${productId}`;
+        globalMutate(productSWRKey, undefined, { revalidate: false }); // 캐시 제거
+        if (userId) {
+          globalMutate(
+            (key) =>
+              typeof key === "string" &&
+              key.startsWith(
+                `${functionsBaseUrl}/products-get-all?userId=${userId}`
+              ),
+            undefined,
+            { revalidate: true }
+          ); // 목록 갱신
+        }
+        // --------------------
+        try {
+          return await response.json();
+        } catch (e) {
+          return { success: true, message: "상품이 삭제되었습니다." };
+        }
+      } else {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { message: `HTTP error ${response.status}` };
+        }
+        const error = new Error(
+          errorData?.message || `HTTP error ${response.status}`
+        );
+        error.info = errorData;
+        throw error;
+      }
+    } catch (error) {
+      console.error(`Error deleting product ${productId}:`, error);
+      throw error;
+    }
+  };
+
+  // 반환하는 함수 목록 (patchProduct 추가)
+  return { addProduct, updateProduct, patchProduct, deleteProduct };
 }
 
+// 기본 export
 export default useProducts;

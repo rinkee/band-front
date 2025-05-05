@@ -6,6 +6,15 @@ import Link from "next/link";
 import SearchParamsHandler from "./SearchParamsHandler"; // 분리된 컴포넌트 임포트
 import { api } from "../lib/fetcher"; // api 인스턴스 임포트
 
+import { createClient } from "@supabase/supabase-js";
+
+const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -107,6 +116,180 @@ export default function LoginPage() {
     }
   };
 
+  // --- 표준 fetch API를 사용하는 로그인 함수 ---
+  async function loginUserWithFetch(e) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    // 입력값 확인
+    if (!loginId || !loginPassword) {
+      setError("아이디와 비밀번호를 입력해주세요.");
+      setLoading(false);
+      return;
+    }
+
+    const credentials = {
+      loginId,
+      loginPassword,
+    };
+    console.log("Credentials for fetch:", credentials);
+
+    try {
+      const response = await fetch(`${functionsBaseUrl}/auth-login`, {
+        method: "POST",
+        headers: {
+          apikey: supabaseAnonKey, // 필수!
+          // Authorization: "Bearer INVALID_TOKEN_FOR_TEST", // 임시 헤더 추가
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(credentials), // 요청 본문
+      });
+
+      const result = await response.json(); // 응답 본문을 JSON으로 파싱
+
+      if (!response.ok) {
+        // HTTP 상태 코드가 2xx가 아닌 경우
+        console.error(
+          "Login fetch error:",
+          result.message || `HTTP status ${response.status}`
+        );
+        // 서버에서 보낸 오류 메시지를 사용하거나 기본 메시지 표시
+        setError(result.message || "로그인에 실패했습니다.");
+        return; // 함수 종료
+      }
+
+      // 성공 응답 처리 (HTTP 200 OK)
+      console.log("Login fetch successful:", result);
+      if (result.success && result.token && result.user) {
+        const userDetails = result.user;
+        const token = result.token;
+
+        const userDataToStore = {
+          userId: userDetails.userId,
+          loginId: userDetails.loginId,
+          storeName: userDetails.storeName,
+          ownerName: userDetails.ownerName,
+          bandNumber: userDetails.bandNumber,
+          naverId: userDetails.naverId,
+          excludedCustomers: userDetails.excludedCustomers || [],
+          token: token,
+        };
+        console.log("SessionStorage에 저장할 데이터:", userDataToStore);
+        sessionStorage.setItem("userData", JSON.stringify(userDataToStore));
+
+        setSuccess(
+          `${userDetails.storeName} ${userDetails.ownerName}님, 환영합니다!`
+        );
+        setTimeout(() => {
+          router.replace("/dashboard");
+        }, 500);
+      } else {
+        // 성공 응답(200)이지만 백엔드 로직상 실패 처리된 경우 (예: success: false)
+        setError(result.message || "로그인에 실패했습니다. (응답 형식 오류)");
+      }
+    } catch (err) {
+      // 네트워크 오류 또는 JSON 파싱 오류 등
+      console.error("Login fetch exception:", err);
+      // === 오류 메시지를 상태에 저장 ===
+      setError("로그인 요청 중 네트워크 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }
+  // --- fetch API 로그인 함수 끝 ---
+
+  async function loginUserWithClient(e) {
+    e.preventDefault();
+    // === 디버깅 로그 추가 ===
+    console.log("Login attempt with ID:", loginId);
+    console.log("Login attempt with Password:", loginPassword); // 비밀번호 로깅은 개발 중에만!
+    // credentials = { loginId, loginPassword }
+
+    if (!loginId || !loginPassword) {
+      console.error(
+        "Login ID or Password is empty before creating credentials."
+      );
+      setError("아이디 또는 비밀번호가 입력되지 않았습니다."); // 사용자에게 피드백
+      return; // 함수 종료
+    }
+    // =======================
+
+    const credentials = {
+      loginId,
+      loginPassword,
+    };
+
+    // === 디버깅 로그 추가 ===
+    console.log("Credentials object:", credentials);
+    console.log("Credentials as JSON string:", JSON.stringify(credentials));
+    // =======================
+
+    try {
+      const { data, error } = await supabase.functions.invoke("login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: { loginId: "admin", loginPassword: "0000" },
+
+        // 또는 body: credentials
+        // body: credentials,
+      });
+
+      if (error) {
+        console.error("Login error:", error.message);
+        const errorMessage = data?.message || error.message;
+        alert(`로그인 실패: ${errorMessage}`);
+        return null; // 실패 시 null 반환
+      }
+
+      // 로그인 성공 시 사용자 정보 저장
+      if (data.success && data.token && data.user) {
+        const userDetails = data.user; // user 객체
+        const token = data.token; // 최상위 token
+        // --- !!! 여기가 핵심 수정 !!! ---
+        // 인터셉터가 읽을 수 있도록 하나의 객체에 필요한 정보와 토큰을 모두 포함
+        const userDataToStore = {
+          // 필요한 사용자 정보 추가
+          userId: userDetails.userId,
+          loginId: userDetails.loginId,
+          storeName: userDetails.storeName,
+          ownerName: userDetails.ownerName, // ownerName 추가 (표시 등 활용)
+          bandNumber: userDetails.bandNumber,
+          naverId: userDetails.naverId,
+          excludedCustomers: userDetails.excludedCustomers || [], // 예시
+
+          // !!! 토큰을 이 객체 안에 포함 !!!
+          token: token,
+        };
+        console.log("SessionStorage에 저장할 데이터:", userDataToStore);
+
+        // --- !!! 여기가 핵심 수정 !!! ---
+        // 통합된 객체를 "userData" 키로 저장
+        sessionStorage.setItem("userData", JSON.stringify(userDataToStore));
+        // sessionStorage.setItem("token", data.token); // <-- 이 줄은 이제 삭제 (중복 저장 불필요)
+        // --- 핵심 수정 끝 ---
+        // 성공 메시지 표시
+        setSuccess(
+          `${userDetails.storeName} ${userDetails.ownerName}님, 환영합니다!`
+        );
+
+        // 0.5초 후 대시보드로 이동
+        setTimeout(() => {
+          router.replace("/dashboard");
+        }, 500);
+      } else {
+        setError(
+          "로그인에 실패했습니다. 응답 데이터 형식이 올바르지 않습니다."
+        );
+      }
+    } catch (e) {
+      console.error("네트워크 또는 예외 오류:", e);
+      alert("로그인 요청 중 오류가 발생했습니다.");
+      return null;
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -132,8 +315,100 @@ export default function LoginPage() {
         <Suspense fallback={null}>
           <SearchParamsHandler setSuccess={setSuccess} setError={setError} />
         </Suspense>
+        <form className="mt-8 space-y-6" onSubmit={loginUserWithFetch}>
+          {success && (
+            <div className="rounded-md bg-green-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="h-5 w-5 text-green-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">
+                    {success}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm -space-y-px">
+            <div>
+              <label htmlFor="loginId" className="sr-only">
+                아이디
+              </label>
+              <input
+                id="loginId"
+                name="loginId"
+                type="text"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="아이디"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="loginPassword" className="sr-only">
+                비밀번호
+              </label>
+              <input
+                id="loginPassword"
+                name="loginPassword"
+                type="password"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="비밀번호"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="h-5 w-5 text-red-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
+            >
+              {loading ? "로그인 중..." : "수파베이스로 로인"}
+            </button>
+          </div>
+        </form>
+
+        {/* <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {success && (
             <div className="rounded-md bg-green-50 p-4 mb-4">
               <div className="flex">
@@ -224,7 +499,7 @@ export default function LoginPage() {
               {loading ? "로그인 중..." : "로그인"}
             </button>
           </div>
-        </form>
+        </form> */}
       </div>
     </div>
   );
