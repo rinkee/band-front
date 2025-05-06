@@ -222,7 +222,7 @@ export default function RootLayout({ children }) {
                     >
                       상품 관리
                     </Link>
-                    <Link
+                    {/* <Link
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/posts"
@@ -231,7 +231,7 @@ export default function RootLayout({ children }) {
                       }`}
                     >
                       게시물 관리
-                    </Link>
+                    </Link> */}
                     <Link
                       href="/orders"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -341,7 +341,7 @@ export default function RootLayout({ children }) {
                     </svg>
                     상품 관리
                   </Link>
-                  <Link
+                  {/* <Link
                     href="/posts"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/posts"
@@ -363,7 +363,7 @@ export default function RootLayout({ children }) {
                       />
                     </svg>
                     게시물 관리
-                  </Link>
+                  </Link> */}
                   <Link
                     href="/orders"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${

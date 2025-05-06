@@ -10,6 +10,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { ko } from "date-fns/locale"; // 한국어 로케일
 
 import { api } from "../lib/fetcher";
+import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import JsBarcode from "jsbarcode";
 import { useUser, useOrders, useProducts, useOrderStats } from "../hooks";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
@@ -478,6 +479,9 @@ export default function OrdersPage() {
     swrOptions
   );
 
+  const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
   const isDataLoading = isUserLoading || isOrdersLoading || isOrderStatsLoading;
   const displayedOrderIds = displayOrders.map((o) => o.order_id);
   const isAllDisplayedSelected =
@@ -486,6 +490,12 @@ export default function OrdersPage() {
   const isSomeDisplayedSelected =
     displayedOrderIds.length > 0 &&
     displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+
+  useEffect(() => {
+    if (!isUserLoading) {
+      console.log("User Data from Hook:", userDataFromHook);
+    }
+  }, [isUserLoading, userDataFromHook]);
 
   useEffect(() => {
     if (checkbox.current)
@@ -583,24 +593,48 @@ export default function OrdersPage() {
           updateData.completed_at = nowISO;
           updateData.canceled_at = null;
         } else if (targetStatus === "결제완료") {
-          // console.warn(
-          //   `Backend logic for '결제완료' status on order ${orderId} needs implementation.`
-          // );
           updateData.paid_at = nowISO; // 예시: 결제 시간 추가
           updateData.completed_at = null;
           updateData.canceled_at = null;
         }
 
-        const response = await api.put(
-          `/orders/${orderId}/status?userId=${userData.userId}`,
-          updateData
-        );
+        // fetch API를 사용하여 Supabase Function 호출
+        const functionsUrl = `${functionsBaseUrl}/orders-update-status?orderId=${orderId}`;
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-        if (!response.data?.success) {
+        const response = await fetch(functionsUrl, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${anonKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userId: userData.userId,
+            orderId: orderId,
+            updateData: updateData,
+            status: targetStatus,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response
+            .json()
+            .catch(() => ({ message: response.statusText }));
           throw new Error(
-            response.data?.message || `Order ${orderId} status update failed`
+            `주문 ${orderId} 상태 업데이트 오류 (${response.status}): ${
+              errorData.message || "Unknown error"
+            }`
           );
         }
+
+        const data = await response.json();
+
+        if (!data?.success) {
+          throw new Error(
+            data?.message || `주문 ${orderId} 상태 업데이트 실패`
+          );
+        }
+
         successCount++;
         updatedIds.push(orderId);
       } catch (err) {
@@ -825,51 +859,65 @@ export default function OrdersPage() {
         updateData.completed_at = null;
         updateData.canceled_at = null;
       }
-      const response = await api.put(
-        `/orders/${orderId}/status?userId=${userData.userId}`,
-        updateData
-      );
-      if (!response.data?.success)
-        throw new Error(response.data?.message || "Status Change Failed");
-      if (selectedOrder?.order_id === orderId)
-        setSelectedOrder((prev) => (prev ? { ...prev, ...updateData } : null));
-      await mutateOrders();
-      // 2. 다른 캐시된 뷰 갱신 (URL 문자열 Key에 맞게 Predicate 수정)
-      await mutate(
-        (key) => {
-          // Key가 문자열이고, '/orders?' 로 시작하며, 현재 사용자의 userId 파라미터를 포함하는지 확인
-          return (
-            typeof key === "string" &&
-            key.startsWith("/orders?") && // '/api' 없이 '/orders?' 로 시작하는지 확인!
-            key.includes(`userId=${userData.userId}`) // 현재 사용자의 주문 목록 Key인지 확인
-          );
+      // fetch API를 사용하여 Supabase Function 호출
+      const functionUrl = `${functionsBaseUrl}/orders-update-status?orderId=${orderId}`; // orderId 파라미터 사용
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const requestBody = {
+        status: newStatus,
+        // 필요시 subStatus, cancelReason 등 추가
+      };
+
+      const response = await fetch(functionUrl, {
+        method: "PATCH", // 또는 PUT (함수에서 둘 다 허용)
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey, // apikey 사용
         },
-        undefined,
-        { revalidate: true } // true로 설정하여 재검증 강제
-      );
-      // --- ---
-      // await mutateOrders();
-      await mutateOrderStats();
-      closeDetailModal();
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: response.statusText }));
+        throw new Error(
+          `주문 상태 업데이트 오류 (${response.status}): ${
+            errorData.message || "Unknown error"
+          }`
+        );
+      }
+
+      const data = await response.json();
+
+      if (!data?.success) {
+        throw new Error(data?.message || "주문 상태 업데이트에 실패했습니다.");
+      }
+
+      // 성공 후 처리
+      // 옵티미스틱 업데이트: 기존 주문 상태를 클라이언트 측에서 즉시 업데이트
+      const updatedOrders = orders.map((order) => {
+        if (order.order_id === orderId) {
+          return {
+            ...order,
+            status: newStatus,
+            ...(newStatus === "수령완료" && {
+              pickupTime: nowISO,
+              completed_at: nowISO,
+            }),
+            ...(newStatus === "결제완료" && { paid_at: nowISO }),
+          };
+        }
+        return order;
+      });
+      setOrders(updatedOrders);
+
+      // SWR 데이터 업데이트
+      mutate();
+      setIsDetailModalOpen(false); // 모달 닫기 추가
     } catch (err) {
       console.error("Status Change Error:", err);
       alert(`상태 변경 오류: ${err.message}`);
-      await mutateOrders();
-      // 2. 다른 캐시된 뷰 갱신 (URL 문자열 Key에 맞게 Predicate 수정)
-      await mutate(
-        (key) => {
-          // Key가 문자열이고, '/orders?' 로 시작하며, 현재 사용자의 userId 파라미터를 포함하는지 확인
-          return (
-            typeof key === "string" &&
-            key.startsWith("/orders?") && // '/api' 없이 '/orders?' 로 시작하는지 확인!
-            key.includes(`userId=${userData.userId}`) // 현재 사용자의 주문 목록 Key인지 확인
-          );
-        },
-        undefined,
-        { revalidate: true } // true로 설정하여 재검증 강제
-      );
-      // --- ---
-      mutateOrderStats();
+      mutate();
     }
   };
   const handleTabChange = (tab) => setActiveTab(tab);
@@ -999,12 +1047,45 @@ export default function OrdersPage() {
     };
     // setLoading(true); // 저장 로딩 상태 추가 필요 시
     try {
-      const response = await api.put(
-        `/orders/${order_id}?userId=${userData.userId}`,
-        updateData
-      );
-      if (!response.data?.success)
-        throw new Error(response.data?.message || "Update Failed");
+      // fetch API를 사용하여 Supabase Function 호출
+      // 함수 URL 및 요청 데이터 준비
+      const functionUrl = `${functionsBaseUrl}/orders-update-details?orderId=${order_id}`;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const updateData = {
+        item_number: itemNum,
+        order_quantity: qty, // 함수에서 받는 필드명 사용 (order_quantity)
+        order_price: price, // 함수에서 받는 필드명 사용 (order_price)
+        total_amount: totalAmount, // 계산된 총액
+        // 필요시 order_options, order_memo 등 추가
+      };
+
+      const response = await fetch(functionUrl, {
+        method: "PATCH", // 또는 PUT
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey, // apikey 사용
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: response.statusText }));
+        throw new Error(
+          `주문 정보 업데이트 오류 (${response.status}): ${
+            errorData.message || "Unknown error"
+          }`
+        );
+      }
+
+      const data = await response.json();
+
+      if (!data?.success) {
+        throw new Error(data?.message || "주문 정보 업데이트에 실패했습니다.");
+      }
+
       const updated = { ...selectedOrder, ...updateData };
       setOrders((curr) =>
         curr.map((o) => (o.order_id === order_id ? updated : o))
@@ -1014,6 +1095,7 @@ export default function OrdersPage() {
       alert("주문 정보가 성공적으로 업데이트되었습니다.");
       mutateOrders();
       mutateOrderStats();
+      setIsDetailModalOpen(false); // 모달 닫기 추가
     } catch (err) {
       console.error("Update Error:", err);
       alert(`주문 정보 업데이트 오류: ${err.message}`);
@@ -1095,10 +1177,24 @@ export default function OrdersPage() {
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">주문 관리</h1>
-            <p className="text-sm md:text-base text-gray-600">
+            {/* <p className="text-sm md:text-base text-gray-600">
               최근 업데이트:
               {userDataFromHook?.last_crawl_at
                 ? getTimeDifferenceInMinutes(userDataFromHook.last_crawl_at)
+                : "알 수 없음"}
+              {isUserLoading && (
+                <LoadingSpinner
+                  className="inline-block ml-2 h-4 w-4"
+                  color="text-gray-400"
+                />
+              )}
+            </p> */}
+            <p className="text-sm md:text-base text-gray-600">
+              최근 업데이트:
+              {userDataFromHook?.data?.last_crawl_at // Change this line! Access via .data
+                ? getTimeDifferenceInMinutes(
+                    userDataFromHook.data.last_crawl_at
+                  ) // Also change here
                 : "알 수 없음"}
               {isUserLoading && (
                 <LoadingSpinner
@@ -1252,49 +1348,63 @@ export default function OrdersPage() {
                 <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 검색
               </div>
-              {/* 검색 입력 및 버튼들 */}
-              <div className="bg-white px-4 py-3 flex items-center gap-2 flex-wrap">
-                <div className="relative flex-grow w-full sm:max-w-xs">
+              {/* 검색 입력 및 버튼들 - 반응형 레이아웃 재조정 */}
+              <div className="bg-white flex-grow w-full px-4 py-3 flex flex-wrap md:flex-nowrap md:items-center gap-2">
+                {/* 검색 입력 */}
+                <div className="relative w-full md:w-auto md:max-w-xs order-1">
+                  {" "}
+                  {/* order-1 */}
                   <input
                     type="text"
                     placeholder="고객명, 상품명, 바코드..."
                     value={inputValue}
                     onChange={handleSearchChange}
                     onKeyDown={handleKeyDown}
-                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 focus:border-orange-400 disabled:bg-gray-100"
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                     disabled={isDataLoading}
                   />
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
                 </div>
-                {/* 검색 초기화 버튼 추가 */}
-                <button
-                  onClick={handleSearch}
-                  className="px-5 py-2  font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isDataLoading}
-                >
-                  검색
-                </button>
-                <button
-                  onClick={handleClearSearch}
-                  disabled={isDataLoading}
-                  className="flex items-center px-3 py-2 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                  aria-label="검색 초기화"
-                  title="검색 및 필터 초기화"
-                >
-                  <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
-                  초기화
-                </button>
-                {/* 업데이트 버튼 추가 */}
-                <UpdateButton
-                  onClick={() => mutateOrders()}
-                  loading={isDataLoading}
-                  disabled={isDataLoading}
-                  style={{ marginLeft: "2px" }}
-                >
-                  업데이트
-                </UpdateButton>
+                {/* 검색/초기화 버튼 그룹 */}
+                <div className="flex flex-row gap-2 w-full sm:w-auto order-2">
+                  {" "}
+                  {/* order-2, sm:w-auto */}
+                  <button
+                    onClick={handleSearch}
+                    className="flex-1 sm:flex-none px-5 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
+                    disabled={isDataLoading}
+                  >
+                    검색
+                  </button>
+                  <button
+                    onClick={handleClearSearch}
+                    disabled={isDataLoading}
+                    className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
+                    aria-label="검색 초기화"
+                    title="검색 및 필터 초기화"
+                  >
+                    <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
+                    초기화
+                  </button>
+                </div>
+                {/* 업데이트 버튼 컨테이너 */}
+                <div className="w-full md:w-auto order-3 md:ml-auto">
+                  {" "}
+                  {/* order-3, md:ml-auto */}
+                  <UpdateButton
+                    onClick={() => {
+                      mutateOrders();
+                      mutateProducts();
+                    }}
+                    loading={isDataLoading}
+                    disabled={isDataLoading}
+                    className="w-full md:w-auto" // w-full md:w-auto
+                  >
+                    업데이트
+                  </UpdateButton>
+                </div>
               </div>
             </div>
           </div>
@@ -1613,28 +1723,7 @@ export default function OrdersPage() {
           )}
         </LightCard>
 
-        <LightCard
-          padding="p-5 mt-5"
-          className="overflow-hidden justify-end flex"
-        >
-          <span className="mr-5 text-xl text-gray-600">
-            총 수량:{" "}
-            <strong className="text-gray-800">
-              {currentPageTotalQuantity.toLocaleString()}
-            </strong>{" "}
-            개
-          </span>
-
-          <span className=" text-xl text-gray-600">
-            총 금액:{" "}
-            <strong className="text-gray-800">
-              {currentPageTotalAmount.toLocaleString()}
-            </strong>{" "}
-            원
-          </span>
-        </LightCard>
-
-        <div className=" pb-20"></div>
+        <div className="pt-[100px]"></div>
 
         {/* 일괄 처리 버튼 */}
         <div className="fixed flex justify-end bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
@@ -1733,6 +1822,7 @@ export default function OrdersPage() {
                     )}
                   </div>
                 </div>
+
                 {/* 탭 콘텐츠 */}
                 <div className="space-y-6">
                   {/* 상태 관리 탭 내용 */}
