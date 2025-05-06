@@ -1,3 +1,4 @@
+"use client";
 import React, { useState, useCallback, useEffect } from "react";
 import { api } from "../lib/fetcher";
 
@@ -123,29 +124,39 @@ const PostUpdater = ({ bandNumber = null }) => {
       <button
         onClick={handleUpdatePosts}
         disabled={isLoadingPosts}
-        style={{
-          padding: "10px 15px",
-          cursor: isLoadingPosts ? "not-allowed" : "pointer",
-          backgroundColor: isLoadingPosts
-            ? "#ccc"
-            : updateSuccess
-            ? "#218838"
-            : "#28a745",
-          color: "white",
-          border: "none",
-          borderRadius: "5px",
-          transition: "background-color 0.3s ease",
-          opacity: isLoadingPosts ? 0.7 : 1,
-        }}
+        className={`
+          px-5 py-2 /* Padding: Approx 16px horizontal, 8px vertical */
+          text-white /* Text Color */
+          font-medium /* Font Weight */
+          rounded-md /* Border Radius: Approx 6px */
+          transition-colors duration-300 ease-in-out /* Transitions */
+          focus:outline-none focus:ring-2 focus:ring-offset-2 /* Focus Outline */
+          disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed /* Disabled State */
+          ${
+            /* Conditional classes for active (non-disabled) states */
+            updateSuccess && !isLoadingPosts
+              ? "bg-green-700 hover:bg-green-800 focus:ring-green-600" // Success State Colors
+              : !isLoadingPosts
+              ? "bg-green-600 hover:bg-green-700 focus:ring-green-500" // Default Active State Colors
+              : "" // No specific classes needed when loading (disabled handles it)
+          }
+        `}
       >
         {isLoadingPosts
           ? "업데이트 중..."
           : updateSuccess
-          ? "업데이트 성공"
-          : "게시물 업데이트"}
+          ? "업데이트 성공" // You might want an icon here too
+          : "업데이트"}
       </button>
 
-      {error && <p style={{ color: "red", marginTop: "5px" }}>{error}</p>}
+      {/* Error Message Area */}
+      {error && (
+        <p className="mt-1.5 text-sm text-red-600">
+          {" "}
+          {/* Margin top, small text, red color */}
+          {error}
+        </p>
+      )}
     </div>
   );
 };

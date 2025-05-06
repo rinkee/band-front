@@ -257,7 +257,7 @@ export default function SettingsPage() {
           const { data: userData, error: userError } = await supabase
             .from("users")
             .select("*")
-            .eq("id", sessionUserId)
+            .eq("user_id", sessionUserId)
             .single();
 
           if (userError) {
@@ -444,7 +444,7 @@ export default function SettingsPage() {
       const { data, error } = await supabase
         .from("users")
         .update(payload)
-        .eq("id", userId);
+        .eq("user_id", userId);
 
       if (error) throw error;
 
@@ -666,7 +666,7 @@ export default function SettingsPage() {
       const { data, error } = await supabase
         .from("users")
         .update(profileData)
-        .eq("id", userId);
+        .eq("user_id", userId);
 
       if (error) throw error;
 
