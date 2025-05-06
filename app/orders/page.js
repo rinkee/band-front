@@ -1351,7 +1351,9 @@ export default function OrdersPage() {
               {/* 검색 입력 및 버튼들 - 반응형 레이아웃 재조정 */}
               <div className="bg-white flex-grow w-full px-4 py-3 flex flex-wrap md:flex-nowrap md:items-center gap-2">
                 {/* 검색 입력 */}
-                <div className="relative w-full md:w-auto md:max-w-xs order-1"> {/* order-1 */}
+                <div className="relative w-full md:w-auto md:max-w-xs order-1">
+                  {" "}
+                  {/* order-1 */}
                   <input
                     type="text"
                     placeholder="고객명, 상품명, 바코드..."
@@ -1366,7 +1368,9 @@ export default function OrdersPage() {
                   </div>
                 </div>
                 {/* 검색/초기화 버튼 그룹 */}
-                <div className="flex flex-row gap-2 w-full sm:w-auto order-2"> {/* order-2, sm:w-auto */}
+                <div className="flex flex-row gap-2 w-full sm:w-auto order-2">
+                  {" "}
+                  {/* order-2, sm:w-auto */}
                   <button
                     onClick={handleSearch}
                     className="flex-1 sm:flex-none px-5 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
@@ -1386,7 +1390,9 @@ export default function OrdersPage() {
                   </button>
                 </div>
                 {/* 업데이트 버튼 컨테이너 */}
-                <div className="w-full md:w-auto order-3 md:ml-auto"> {/* order-3, md:ml-auto */}
+                <div className="w-full md:w-auto order-3 md:ml-auto">
+                  {" "}
+                  {/* order-3, md:ml-auto */}
                   <UpdateButton
                     onClick={() => {
                       mutateOrders();
@@ -1717,6 +1723,43 @@ export default function OrdersPage() {
           )}
         </LightCard>
 
+        <div className="pt-[100px]"></div>
+
+        {/* 일괄 처리 버튼 */}
+        <div className="fixed flex justify-end bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
+          {selectedOrderIds.length === 0 && !isDataLoading && (
+            <span className="text-sm text-gray-500 italic h-[38px] flex items-center mr-2">
+              항목을 선택하여 일괄 처리하세요.
+            </span>
+          )}
+          <button
+            onClick={() => handleBulkStatusUpdate("결제완료")}
+            disabled={selectedOrderIds.length === 0 || isDataLoading}
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+              selectedOrderIds.length === 0
+                ? "opacity-0 scale-95 pointer-events-none"
+                : "opacity-100 scale-100"
+            }`}
+            aria-hidden={selectedOrderIds.length === 0}
+          >
+            <CurrencyDollarIcon className="w-5 h-5" /> 선택 결제완료 (
+            {selectedOrderIds.length})
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("수령완료")}
+            disabled={selectedOrderIds.length === 0 || isDataLoading}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+              selectedOrderIds.length === 0
+                ? "opacity-0 scale-95 pointer-events-none"
+                : "opacity-100 scale-100"
+            }`}
+            aria-hidden={selectedOrderIds.length === 0}
+          >
+            <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
+            {selectedOrderIds.length})
+          </button>
+        </div>
+
         {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
         {isDetailModalOpen && selectedOrder && (
           <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
@@ -1779,6 +1822,7 @@ export default function OrdersPage() {
                     )}
                   </div>
                 </div>
+
                 {/* 탭 콘텐츠 */}
                 <div className="space-y-6">
                   {/* 상태 관리 탭 내용 */}
