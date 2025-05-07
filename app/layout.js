@@ -7,6 +7,7 @@ import { useState, useEffect } from "react"; // React 훅을 임포트합니다.
 import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 Next.js 훅을 임포트합니다.
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
+import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< ScrollContext 임포트
 
 // Pretendard 폰트 설정 (가변 폰트 사용 예시)
 const pretendard = localFont({
@@ -16,7 +17,16 @@ const pretendard = localFont({
   variable: "--font-pretendard", // 사용할 CSS 변수 이름 지정
 });
 
-export default function RootLayout({ children }) {
+export default function RootLayoutWrapper({ children }) {
+  // Provider를 사용하기 위해 래퍼 컴포넌트
+  return (
+    <ScrollProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </ScrollProvider>
+  );
+}
+
+function LayoutContent({ children }) {
   // 사용자 데이터 상태 (로그인 시 사용자 정보 저장)
   const [userData, setUserData] = useState(null);
   // 로그인 상태 (true: 로그인됨, false: 로그아웃됨)
@@ -27,6 +37,9 @@ export default function RootLayout({ children }) {
   const pathname = usePathname();
 
   const { mutate } = useSWRConfig(); // <-- 전역 mutate 함수 가져오기
+
+  // ScrollContext에서 scrollableContentRef 가져오기
+  const { scrollableContentRef } = useScroll(); // <<< Context에서 ref 가져오기
 
   // --- 주문 관리 메뉴 클릭 핸들러 추가 ---
   const handleOrdersMenuClick = () => {
@@ -265,11 +278,23 @@ export default function RootLayout({ children }) {
                   </nav>
                 </div>
                 {/* 헤더 우측 영역 */}
-                <div className="flex items-center">
+                <div className="flex items-center space-x-4">
+                  {/* 사용자 정보 표시 */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600">
+                      로그인ID: {userData?.loginId}
+                    </span>
+                    {process.env.NEXT_PUBLIC_DB_NAME && (
+                      <span className="text-sm text-gray-600">
+                        DB: {process.env.NEXT_PUBLIC_DB_NAME}
+                      </span>
+                    )}
+                  </div>
+
                   {/* 모바일 메뉴 토글 버튼 */}
                   <button
                     onClick={toggleMobileMenu}
-                    className="md:hidden p-2 ml-2 rounded-md text-gray-600 hover:bg-gray-100"
+                    className="md:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100"
                   >
                     <svg
                       className="w-6 h-6"
@@ -472,7 +497,10 @@ export default function RootLayout({ children }) {
           )}
 
           {/* 메인 컨텐츠 영역 */}
-          <div className="flex-1 overflow-y-auto w-full">
+          <div
+            ref={scrollableContentRef}
+            className="flex-1 overflow-y-auto w-full"
+          >
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
             <main className="  mx-auto">{children}</main>
           </div>

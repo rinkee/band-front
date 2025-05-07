@@ -16,6 +16,7 @@ import { useUser, useOrders, useProducts, useOrderStats } from "../hooks";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
+import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -285,7 +286,7 @@ const getStatusIcon = (status) => {
 // --- 메인 페이지 컴포넌트 ---
 export default function OrdersPage() {
   const router = useRouter();
-  const topRef = useRef(null);
+  const { scrollToTop } = useScroll();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -295,6 +296,7 @@ export default function OrdersPage() {
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("all"); // 사용자가 UI에서 선택한 값
+  const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(30);
@@ -313,6 +315,10 @@ export default function OrdersPage() {
   const [tempItemNumber, setTempItemNumber] = useState(1);
   const [tempQuantity, setTempQuantity] = useState(1);
   const [tempPrice, setTempPrice] = useState(0);
+
+  // --- 바코드 저장 관련 상태 및 함수 ---
+  const [newBarcodeValue, setNewBarcodeValue] = useState("");
+  const [isSavingBarcode, setIsSavingBarcode] = useState(false);
 
   const displayOrders = orders || [];
 
@@ -411,7 +417,10 @@ export default function OrdersPage() {
         return undefined;
       })(),
       // --- 파라미터 동적 결정 로직 끝 ---
-      search: searchTerm.trim() || undefined,
+      // --- 👇 검색 관련 파라미터 수정 👇 ---
+      search: searchTerm.trim() || undefined, // 일반 검색어
+      exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
+      // --- 👆 검색 관련 파라미터 수정 👆 ---
       startDate: calculateDateFilterParams(
         filterDateRange,
         customStartDate,
@@ -528,13 +537,11 @@ export default function OrdersPage() {
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
     // 필요하다면 검색 후 맨 위로 스크롤
-    // scrollToTop();
   };
 
   // --- 일괄 상태 변경 핸들러 (중복 업데이트 방지 추가) ---
   const handleBulkStatusUpdate = async (newStatus) => {
     if (selectedOrderIds.length === 0) {
-      alert("먼저 주문을 선택해주세요.");
       return;
     }
 
@@ -552,9 +559,6 @@ export default function OrdersPage() {
     const skippedCount = selectedOrderIds.length - orderIdsToUpdate.length; // 건너뛴 주문 수 계산
 
     if (orderIdsToUpdate.length === 0) {
-      alert(
-        `선택된 모든 주문이 이미 '${targetStatus}' 상태이거나 처리할 수 없는 상태입니다.`
-      );
       setSelectedOrderIds([]); // 선택 해제
       return;
     }
@@ -664,7 +668,6 @@ export default function OrdersPage() {
     if (failCount > 0) message += `${failCount}건 실패. `;
     if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`; // 건너뛴 횟수 메시지 추가
     if (!message) message = "상태 변경 작업 완료 (변경 대상 없음)."; // 모든 주문이 이미 해당 상태였을 경우
-    alert(message.trim());
   };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
@@ -787,6 +790,8 @@ export default function OrdersPage() {
   //   }, 1500);
   //   return () => clearTimeout(timerId);
   // }, [inputValue, searchTerm]); // 의존성 배열에 searchTerm 추가
+
+  // currentPage 변경 감지하여 스크롤하는 useEffect 추가
 
   const getTimeDifferenceInMinutes = (ds) => {
     if (!ds) return "알 수 없음";
@@ -916,7 +921,7 @@ export default function OrdersPage() {
       setIsDetailModalOpen(false); // 모달 닫기 추가
     } catch (err) {
       console.error("Status Change Error:", err);
-      alert(`상태 변경 오류: ${err.message}`);
+
       mutate();
     }
   };
@@ -945,11 +950,33 @@ export default function OrdersPage() {
     setInputValue(e.target.value);
   }; // inputValue 업데이트만
 
+  // <<< 추가: 검색창 내용 지우기 함수 >>>
+  const clearInputValue = () => {
+    setInputValue("");
+    // 선택: 내용을 지울 때 바로 검색을 실행할지, 아니면 사용자가 다시 검색 버튼을 누르도록 할지 결정
+    // setSearchTerm(""); // 만약 바로 검색 결과도 초기화하고 싶다면 이 줄의 주석을 해제
+    // setCurrentPage(1); // 첫 페이지로 이동
+  };
+
   // 검색 버튼 클릭 이벤트 핸들러
   const handleSearch = () => {
     setSearchTerm(inputValue.trim());
     setCurrentPage(1);
+    setExactCustomerFilter(null); // <<< 일반 검색 시 정확 필터 초기화
   };
+
+  // --- 👇 [추가] 테이블 셀 클릭 시 정확 필터 적용 함수 👇 ---
+  const handleExactCustomerSearch = (customerName) => {
+    if (!customerName || customerName === "-") return; // 이름 없거나 '-' 이면 무시
+    const trimmedName = customerName.trim();
+    console.log(`Exact customer search triggered for: "${trimmedName}"`); // 디버깅 로그
+    setInputValue(trimmedName); // 검색창에도 표시 (선택적)
+    setSearchTerm(""); // <<< 정확 필터 시 일반 검색어 초기화
+    setExactCustomerFilter(trimmedName); // <<< 정확 필터 설정
+    setCurrentPage(1);
+    setSelectedOrderIds([]); // 선택 항목 초기화
+  };
+  // --- 👆 [추가] 테이블 셀 클릭 시 정확 필터 적용 함수 👆 ---
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -963,6 +990,7 @@ export default function OrdersPage() {
     setInputValue(""); // 검색 입력 필드 클리어
     setFilterDateRange("30days");
     setSearchTerm("");
+    setExactCustomerFilter(null); // <<< 정확 필터도 초기화
     setCurrentPage(1);
     setFilterSelection("all");
     // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
@@ -1001,13 +1029,26 @@ export default function OrdersPage() {
       handleDateRangeChange("7days");
     }
   };
-  const scrollToTop = () =>
-    topRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+
+  useEffect(() => {
+    console.log(
+      `OrdersPage: Current page changed to ${currentPage}, calling scrollToTop from context.`
+    );
+    if (scrollToTop) {
+      // scrollToTop 함수가 존재할 때만 호출
+      // 약간의 지연을 주어 DOM 업데이트 후 스크롤 시도
+      const timerId = setTimeout(() => {
+        scrollToTop();
+      }, 0); // 0ms 지연으로도 충분할 수 있음, 필요시 50ms 등으로 조정
+      return () => clearTimeout(timerId);
+    }
+  }, [currentPage, scrollToTop]); // scrollToTop도 의존성 배열에 추가
+
   const paginate = (pageNumber) => {
     const total = ordersData?.pagination?.totalPages || 1;
     if (pageNumber >= 1 && pageNumber <= total) {
       setCurrentPage(pageNumber);
-      scrollToTop();
+      // scrollToTop();
     }
   };
   const goToPreviousPage = () => paginate(currentPage - 1);
@@ -1092,17 +1133,116 @@ export default function OrdersPage() {
       );
       setSelectedOrder(updated);
       setIsEditingDetails(false); // 편집 모드 종료
-      alert("주문 정보가 성공적으로 업데이트되었습니다.");
+
       mutateOrders();
       mutateOrderStats();
       setIsDetailModalOpen(false); // 모달 닫기 추가
     } catch (err) {
       console.error("Update Error:", err);
-      alert(`주문 정보 업데이트 오류: ${err.message}`);
+
       mutateOrders();
       mutateOrderStats(); // 에러 시에도 원복 위해
     } finally {
       // setLoading(false);
+    }
+  };
+
+  // --- 바코드 저장 함수 ---
+  const handleSaveBarcode = async (productId, barcodeValue) => {
+    // <<< --- 디버깅 로그 추가 --- >>>
+    console.log("handleSaveBarcode called with:", { productId, barcodeValue });
+    console.log("Current userData:", userData);
+    // <<< --- 디버깅 로그 추가 끝 --- >>>
+
+    if (!barcodeValue.trim()) {
+      return;
+    }
+
+    // --- !!! 중요: userData.id 대신 userData.userId 사용 확인 !!! ---
+    if (!userData || !userData.userId) {
+      // userData.id 였던 부분을 userData.userId로 변경
+      alert("사용자 정보가 유효하지 않습니다. 다시 로그인해주세요."); // 사용자에게 피드백
+      console.error(
+        "User data or userId is missing. Current userData:",
+        userData
+      );
+      return;
+    }
+    const userId = userData.userId; // userId 사용
+    // --- !!! 중요 수정 끝 !!! ---
+
+    setIsSavingBarcode(true);
+    // <<< --- 디버깅 로그 추가 --- >>>
+    console.log("setIsSavingBarcode(true) executed. Proceeding to fetch.");
+    // <<< --- 디버깅 로그 추가 끝 --- >>>
+
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      // <<< --- 디버깅 로그 추가 --- >>>
+      console.log("Supabase URL:", supabaseUrl);
+      console.log("Supabase Anon Key (exists):", !!supabaseAnonKey); // 실제 키 값은 로깅하지 않음
+      // <<< --- 디버깅 로그 추가 끝 --- >>>
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        console.error("Supabase URL 또는 Anon Key가 설정되지 않았습니다.");
+        throw new Error("애플리케이션 설정 오류가 발생했습니다.");
+      }
+
+      // Supabase 함수 호출 URL 구성 (productId와 userId를 쿼리 파라미터로 전달)
+      const functionUrl = `${supabaseUrl}/functions/v1/products-update-barcode?productId=${encodeURIComponent(
+        productId
+      )}&userId=${encodeURIComponent(userId)}`;
+
+      // <<< --- 디버깅 로그 추가 --- >>>
+      console.log("Constructed Function URL:", functionUrl);
+      console.log("Request Body:", { barcode: barcodeValue });
+      // <<< --- 디버깅 로그 추가 끝 --- >>>
+
+      const response = await fetch(functionUrl, {
+        method: "PATCH", // 백엔드 API가 PATCH 메소드를 사용하므로 변경
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey, // Supabase Anon Key를 헤더에 추가
+          // 백엔드 함수에서 사용자 인증을 위해 Supabase의 Authorization 헤더가 필요할 수 있습니다.
+          // 현재 제공된 함수 코드에는 명시적인 JWT 토큰 검증 로직은 없으나,
+          // RLS(Row Level Security) 등이 적용되어 있다면 필요할 수 있습니다.
+          // const { data: { session } } = await supabase.auth.getSession();
+          // if (session) headers.Authorization = `Bearer ${session.access_token}`;
+        },
+        body: JSON.stringify({ barcode: barcodeValue }), // 요청 본문에 바코드 값 전달
+      });
+
+      const responseData = await response.json(); // 응답을 JSON으로 파싱
+
+      // 응답 상태 및 백엔드 응답의 success 필드로 성공 여부 판단
+      if (!response.ok || !responseData.success) {
+        throw new Error(
+          responseData.message || "바코드 저장 중 오류가 발생했습니다."
+        );
+      }
+
+      console.log("바코드 저장 성공:", responseData);
+
+      // --- !!! 수정된 부분 !!! ---
+      // refreshOrdersAndProducts() 대신 SWR의 mutate 함수를 사용합니다.
+      if (mutateProducts) {
+        await mutateProducts(); // 상품 목록 SWR 캐시 갱신
+        console.log("Products list revalidated via SWR mutate.");
+      } else {
+        console.warn(
+          "mutateProducts is not available. Product list might not be up-to-date."
+        );
+      }
+      // --- !!! 수정된 부분 끝 !!! ---
+
+      // 성공 시
+      setNewBarcodeValue(""); // 입력 필드 초기화
+    } catch (error) {
+      console.error("Failed to save barcode:", error);
+    } finally {
+      setIsSavingBarcode(false);
     }
   };
 
@@ -1169,15 +1309,31 @@ export default function OrdersPage() {
   // --- 메인 UI ---
   return (
     <div
-      ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto p-4 sm:p-6  pb-[300px]" // 패딩 추가
+      className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto px-4 py-2 sm:px-6 sm:py-4  pb-[300px]" // 패딩 추가
     >
       <main className="max-w-7xl mx-auto">
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">주문 관리</h1>
-            {/* <p className="text-sm md:text-base text-gray-600">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 mb-1">
+                주문 관리
+              </h1>
+              <p className="text-sm text-gray-500 mb-2">
+                등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.
+              </p>
+              <UpdateButton
+                onClick={() => {
+                  mutateOrders();
+                  mutateProducts();
+                }}
+                loading={isDataLoading}
+                disabled={isDataLoading}
+                className="w-full md:w-auto" // w-full md:w-auto
+              >
+                업데이트
+              </UpdateButton>
+              {/* <p className="text-sm md:text-base text-gray-600">
               최근 업데이트:
               {userDataFromHook?.last_crawl_at
                 ? getTimeDifferenceInMinutes(userDataFromHook.last_crawl_at)
@@ -1189,20 +1345,22 @@ export default function OrdersPage() {
                 />
               )}
             </p> */}
-            <p className="text-sm md:text-base text-gray-600">
-              최근 업데이트:
-              {userDataFromHook?.data?.last_crawl_at // Change this line! Access via .data
-                ? getTimeDifferenceInMinutes(
-                    userDataFromHook.data.last_crawl_at
-                  ) // Also change here
-                : "알 수 없음"}
-              {isUserLoading && (
-                <LoadingSpinner
-                  className="inline-block ml-2 h-4 w-4"
-                  color="text-gray-400"
-                />
-              )}
-            </p>
+
+              <p className="text-xs md:text-sm text-gray-600">
+                최근 업데이트 :
+                {userDataFromHook?.data?.last_crawl_at // Change this line! Access via .data
+                  ? getTimeDifferenceInMinutes(
+                      userDataFromHook.data.last_crawl_at
+                    ) // Also change here
+                  : "알 수 없음"}
+                {isUserLoading && (
+                  <LoadingSpinner
+                    className="inline-block ml-2 h-4 w-4"
+                    color="text-gray-400"
+                  />
+                )}
+              </p>
+            </div>
           </div>
           <div className="w-full md:w-auto relative ">
             {statsLoading && (
@@ -1226,7 +1384,9 @@ export default function OrdersPage() {
                 <dt className="text-sm text-gray-500 uppercase">
                   {searchTerm ||
                   filterSelection !== "all" ||
-                  filterDateRange === "custom"
+                  filterDateRange !== "30days" || // 기본값 변경 반영
+                  (filterDateRange === "custom" &&
+                    (customStartDate || customEndDate))
                     ? "필터된 주문"
                     : "총 주문"}
                 </dt>
@@ -1349,9 +1509,9 @@ export default function OrdersPage() {
                 검색
               </div>
               {/* 검색 입력 및 버튼들 - 반응형 레이아웃 재조정 */}
-              <div className="bg-white flex-grow w-full px-4 py-3 flex flex-wrap md:flex-nowrap md:items-center gap-2">
+              <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2">
                 {/* 검색 입력 */}
-                <div className="relative w-full md:w-auto md:max-w-xs order-1">
+                <div className="relative w-full md:flex-grow md:max-w-sm order-1">
                   {" "}
                   {/* order-1 */}
                   <input
@@ -1366,14 +1526,25 @@ export default function OrdersPage() {
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
+                  {/* --- 👇 X 버튼 추가 👇 --- */}
+                  {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
+                    <button
+                      type="button"
+                      onClick={clearInputValue}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      aria-label="검색 내용 지우기"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
                 {/* 검색/초기화 버튼 그룹 */}
-                <div className="flex flex-row gap-2 w-full sm:w-auto order-2">
+                <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
                   {" "}
                   {/* order-2, sm:w-auto */}
                   <button
                     onClick={handleSearch}
-                    className="flex-1 sm:flex-none px-5 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
+                    className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
                     disabled={isDataLoading}
                   >
                     검색
@@ -1388,22 +1559,6 @@ export default function OrdersPage() {
                     <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
                     초기화
                   </button>
-                </div>
-                {/* 업데이트 버튼 컨테이너 */}
-                <div className="w-full md:w-auto order-3 md:ml-auto">
-                  {" "}
-                  {/* order-3, md:ml-auto */}
-                  <UpdateButton
-                    onClick={() => {
-                      mutateOrders();
-                      mutateProducts();
-                    }}
-                    loading={isDataLoading}
-                    disabled={isDataLoading}
-                    className="w-full md:w-auto" // w-full md:w-auto
-                  >
-                    업데이트
-                  </UpdateButton>
                 </div>
               </div>
             </div>
@@ -1434,7 +1589,7 @@ export default function OrdersPage() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     <button
-                      onClick={() => handleSortChange("customer_name")}
+                      onClick={() => handleSortChange("customer_name")} // 정렬 함수
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isDataLoading}
                     >
@@ -1532,7 +1687,7 @@ export default function OrdersPage() {
                         </div>
                       </td>
                       <td
-                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate"
+                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
                         title={getProductNameById(order.product_id)}
                         onClick={(e) => {
                           // 클릭 핸들러 추가
@@ -1545,12 +1700,11 @@ export default function OrdersPage() {
                         {getProductNameById(order.product_id)}
                       </td>
                       <td
-                        className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate"
+                        className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
                         title={order.customer_name}
                         onClick={(e) => {
-                          // 클릭 핸들러 추가
-                          e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
-                          handleCellClickToSearch(order.customer_name); // 검색 함수 호출
+                          e.stopPropagation(); // 행 전체 onClick(모달) 방지
+                          handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
                         }}
                       >
                         {order.customer_name || "-"}
@@ -1836,6 +1990,8 @@ export default function OrdersPage() {
                           상품 바코드
                         </label>
                         <div className="max-w-xs mx-auto h-[70px] flex items-center justify-center">
+                          {" "}
+                          {/* 세로 정렬 및 최소 높이 보장 */}
                           {getProductBarcode(selectedOrder.product_id) ? (
                             <Barcode
                               value={getProductBarcode(
@@ -1846,9 +2002,36 @@ export default function OrdersPage() {
                               fontSize={12}
                             />
                           ) : (
-                            <span className="text-sm text-gray-500">
-                              바코드 정보 없음
-                            </span>
+                            // 바코드가 없을 때 입력 필드와 저장 버튼 표시
+                            <div className="flex flex-col items-center space-y-2 w-full px-2 py-2">
+                              <input
+                                type="text"
+                                placeholder="바코드 입력"
+                                value={newBarcodeValue}
+                                onChange={(e) =>
+                                  setNewBarcodeValue(e.target.value)
+                                }
+                                className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900"
+                              />
+                              <button
+                                onClick={() =>
+                                  handleSaveBarcode(
+                                    selectedOrder.product_id,
+                                    newBarcodeValue
+                                  )
+                                }
+                                disabled={
+                                  !newBarcodeValue.trim() || isSavingBarcode
+                                }
+                                className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed w-full"
+                              >
+                                {isSavingBarcode ? (
+                                  <LoadingSpinner className="h-4 w-4 mr-1 text-white" />
+                                ) : null}{" "}
+                                {/* 로딩 스피너 색상 및 간격 조정 */}
+                                저장
+                              </button>
+                            </div>
                           )}
                         </div>
                       </LightCard>
