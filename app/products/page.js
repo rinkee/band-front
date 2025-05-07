@@ -18,26 +18,21 @@ import {
   ChevronUpIcon,
   ChevronDownIcon,
   ChevronUpDownIcon,
-  AdjustmentsHorizontalIcon,
   QrCodeIcon,
   InformationCircleIcon,
   XMarkIcon,
   PrinterIcon,
   ClipboardDocumentIcon,
   TrashIcon,
-  ArrowPathIcon,
-  UserCircleIcon,
-  ArrowLeftOnRectangleIcon,
   CheckCircleIcon,
   XCircleIcon as XCircleIconOutline,
-  SparklesIcon,
   ExclamationCircleIcon,
-  ArrowUpRightIcon,
   TagIcon,
   ArrowTopRightOnSquareIcon,
   CheckIcon,
   FunnelIcon,
   CalendarDaysIcon,
+  ArrowUturnLeftIcon,
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
 } from "@heroicons/react/24/outline";
@@ -161,7 +156,7 @@ function StatusBadge({ status }) {
 function LightCard({ children, className = "", padding = "p-6" }) {
   return (
     <div
-      className={`bg-white rounded-xl shadow-md border border-gray-200 ${padding} ${className}`}
+      className={`bg-white rounded-xl  border border-gray-200 ${padding} ${className}`}
     >
       {children}
     </div>
@@ -418,9 +413,25 @@ export default function ProductsPage() {
     setInputValue(e.target.value);
   };
 
+  // 전체 필터 및 검색 초기화 함수 (OrdersPage와 유사하게 수정)
+  const handleClearSearchAndFilters = () => {
+    setInputValue("");
+    setSearchTerm("");
+    setFilterStatus("all"); // 상태 필터도 초기화
+    setCurrentPage(1);
+    // 다른 필터가 있다면 함께 초기화
+  };
+
   const handleSearch = () => {
     setSearchTerm(inputValue.trim());
     setCurrentPage(1);
+  };
+
+  // 검색창 내용 지우기 함수 (OrdersPage와 동일)
+  const clearInputValue = () => {
+    setInputValue("");
+    // setSearchTerm(""); // 필요시 주석 해제하여 검색 결과도 바로 초기화
+    // setCurrentPage(1);
   };
 
   const handleKeyDown = (e) => {
@@ -709,18 +720,26 @@ export default function ProductsPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5"
+      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto px-4 py-2 sm:px-6 sm:py-4"
     >
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">상품 관리</h1>
-          <p className="text-sm text-gray-500">
+        <div className="mb-4 md:mb-4">
+          <h1 className="text-xl font-bold text-gray-900 mb-1">상품 관리</h1>
+          <p className="text-sm text-gray-500 mb-1">
             등록된 상품을 관리하고 바코드를 생성/수정할 수 있습니다.
           </p>
+          <UpdateButton
+            onClick={() => mutateProducts()} // mutateProducts만 호출 (필요시 다른 mutate도 추가)
+            loading={isDataLoading}
+            disabled={isDataLoading}
+            className="w-full md:w-auto" // OrdersPage와 동일한 스타일
+          >
+            업데이트
+          </UpdateButton>
         </div>
 
         {/* 필터 섹션 */}
-        <LightCard padding="p-0" className="mb-6 md:mb-8 overflow-hidden">
+        <LightCard padding="p-0" className="mb-4 md:mb-4 overflow-hidden">
           <div className="divide-y divide-gray-200">
             <div className="grid grid-cols-[max-content_1fr] items-center">
               <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
@@ -742,61 +761,62 @@ export default function ProductsPage() {
                 <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 검색
               </div>
-              <div className="bg-white px-4 py-3 flex items-center space-x-2">
-                <div className="relative flex-grow sm:max-w-xs">
+              {/* --- 👇 OrdersPage와 유사하게 검색창 및 버튼 레이아웃 수정 👇 --- */}
+              <div className="bg-white flex-grow w-full px-4 py-2 flex flex-wrap md:flex-nowrap md:items-center gap-2">
+                {/* 검색 입력 */}
+                <div className="relative w-full md:flex-grow md:max-w-lg order-1 ">
+                  {" "}
+                  {/* 너비 정책 OrdersPage와 동일하게 */}
                   <input
-                    type="search"
+                    type="text" // type="text" 또는 "search"
                     placeholder="상품명 검색..."
                     value={inputValue}
                     onChange={handleSearchChange}
                     onKeyDown={handleKeyDown}
-                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 focus:border-orange-400 disabled:bg-gray-100"
+                    className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed" // X 버튼 공간 확보
                     disabled={isDataLoading}
                   />
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
+                  {/* X 버튼 추가 */}
+                  {inputValue && (
+                    <button
+                      type="button"
+                      onClick={clearInputValue}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      aria-label="검색 내용 지우기"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
 
-                <button
-                  onClick={handleSearch}
-                  className="ml-2 px-3 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isDataLoading}
-                >
-                  검색
-                </button>
-                <button
-                  onClick={handleClearSearch}
-                  className="px-3 py-2 ml-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 mr-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isDataLoading}
-                >
-                  초기화
-                </button>
-                {/* 총 상품 개수 표시 (페이지네이션 정보 사용) */}
-                <span className="ml-auto text-sm text-gray-500">
-                  총 {totalItems > 0 ? totalItems.toLocaleString() : "0"}개 상품
-                </span>
-                {/* 업데이트 버튼 추가 */}
-                <UpdateButton
-                  onClick={() => mutateProducts()}
-                  loading={isDataLoading}
-                  disabled={isDataLoading}
-                  style={{ marginLeft: "2px" }}
-                >
-                  업데이트
-                </UpdateButton>
-                {/* 검색어 입력 시 초기화 버튼 표시 */}
-                {inputValue && (
+                {/* 검색/초기화 버튼 그룹 */}
+                <div className="flex flex-row gap-2 w-full sm:w-auto order-2 md:flex-shrink-0">
+                  {" "}
+                  {/* 버튼 그룹 스타일 */}
                   <button
-                    onClick={handleClearSearch}
-                    className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-300 transition disabled:opacity-50"
+                    onClick={handleSearch}
+                    className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // OrdersPage와 동일한 스타일
                     disabled={isDataLoading}
-                    aria-label="검색 초기화"
                   >
-                    <XMarkIcon className="w-4 h-4" />
+                    검색
                   </button>
-                )}
+                  <button
+                    onClick={handleClearSearchAndFilters} // 전체 초기화 함수로 변경
+                    disabled={isDataLoading}
+                    className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // OrdersPage와 동일한 스타일
+                    aria-label="검색 및 필터 초기화"
+                    title="검색 및 필터 초기화"
+                  >
+                    <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />{" "}
+                    {/* 아이콘 추가 */}
+                    초기화
+                  </button>
+                </div>
               </div>
+              {/* --- 👆 검색창 및 버튼 레이아웃 수정 끝 👆 --- */}
             </div>
           </div>
         </LightCard>
