@@ -297,6 +297,7 @@ export default function OrdersPage() {
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("all"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
+  const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(30);
@@ -545,8 +546,18 @@ export default function OrdersPage() {
       return;
     }
 
-    const targetStatus = newStatus === "결제완료" ? "결제완료" : "수령완료";
-    const statusVerb = targetStatus === "수령완료" ? "수령 완료" : "결제 완료";
+    setBulkUpdateLoading(true); // 로딩 상태 시작
+
+    let targetStatus = newStatus;
+    let statusVerb;
+
+    if (newStatus === "결제완료") {
+      statusVerb = "결제 완료";
+    } else if (newStatus === "수령완료") {
+      statusVerb = "수령 완료";
+    } else if (newStatus === "주문취소") {
+      statusVerb = "주문 취소";
+    }
 
     // --- 1. 실제로 상태 변경이 필요한 주문 ID 필터링 ---
     const ordersToUpdate = orders.filter(
@@ -600,6 +611,9 @@ export default function OrdersPage() {
           updateData.paid_at = nowISO; // 예시: 결제 시간 추가
           updateData.completed_at = null;
           updateData.canceled_at = null;
+        } else if (targetStatus === "주문취소") {
+          updateData.canceled_at = nowISO;
+          updateData.completed_at = null;
         }
 
         // fetch API를 사용하여 Supabase Function 호출
@@ -647,8 +661,6 @@ export default function OrdersPage() {
       }
     }
 
-    // setLoading(false);
-
     // --- 4. 결과 처리 및 상태 업데이트 ---
     if (successCount > 0) {
       // mutate를 호출하여 서버 데이터와 동기화
@@ -668,6 +680,9 @@ export default function OrdersPage() {
     if (failCount > 0) message += `${failCount}건 실패. `;
     if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`; // 건너뛴 횟수 메시지 추가
     if (!message) message = "상태 변경 작업 완료 (변경 대상 없음)."; // 모든 주문이 이미 해당 상태였을 경우
+
+    // 작업 완료 후 로딩 상태 종료
+    setBulkUpdateLoading(false);
   };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
@@ -1311,6 +1326,15 @@ export default function OrdersPage() {
     <div
       className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto px-4 py-2 sm:px-6 sm:py-4  pb-[300px]" // 패딩 추가
     >
+      {/* 일괄 처리 중 로딩 오버레이 */}
+      {bulkUpdateLoading && (
+        <div className="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-xl shadow-xl flex flex-col items-center">
+            <LoadingSpinner className="h-12 w-12 text-orange-500 mb-3" />
+            <p className="text-gray-700 font-medium">상태 변경 중...</p>
+          </div>
+        </div>
+      )}
       <main className="max-w-7xl mx-auto">
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
@@ -1751,8 +1775,8 @@ export default function OrdersPage() {
                               {/* 세로 정렬을 위해 div 추가 */}
                               {/* 메인 상태 배지 (항상 order.status 기준) */}
                               <StatusBadge status={actualStatus} />
-                              {/* 부가 상태가 있으면 추가 배지 표시 */}
-                              {actualSubStatus === "확인필요" && (
+                              {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
+                              {actualStatus !== "수령완료" && actualSubStatus === "확인필요" && (
                                 <span
                                   className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
                                   title="부가 상태: 확인필요"
@@ -1761,7 +1785,7 @@ export default function OrdersPage() {
                                   확인 필요
                                 </span>
                               )}
-                              {actualSubStatus === "미수령" && (
+                              {actualStatus !== "수령완료" && actualSubStatus === "미수령" && (
                                 <span
                                   className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
                                   title="부가 상태: 미수령"
@@ -1888,7 +1912,11 @@ export default function OrdersPage() {
           )}
           <button
             onClick={() => handleBulkStatusUpdate("결제완료")}
-            disabled={selectedOrderIds.length === 0 || isDataLoading}
+            disabled={
+              selectedOrderIds.length === 0 ||
+              isDataLoading ||
+              bulkUpdateLoading
+            }
             className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
@@ -1901,8 +1929,12 @@ export default function OrdersPage() {
           </button>
           <button
             onClick={() => handleBulkStatusUpdate("수령완료")}
-            disabled={selectedOrderIds.length === 0 || isDataLoading}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+            disabled={
+              selectedOrderIds.length === 0 ||
+              isDataLoading ||
+              bulkUpdateLoading
+            }
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
                 : "opacity-100 scale-100"
@@ -1910,6 +1942,23 @@ export default function OrdersPage() {
             aria-hidden={selectedOrderIds.length === 0}
           >
             <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
+            {selectedOrderIds.length})
+          </button>
+          <button
+            onClick={() => handleBulkStatusUpdate("주문취소")}
+            disabled={
+              selectedOrderIds.length === 0 ||
+              isDataLoading ||
+              bulkUpdateLoading
+            }
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+              selectedOrderIds.length === 0
+                ? "opacity-0 scale-95 pointer-events-none"
+                : "opacity-100 scale-100"
+            }`}
+            aria-hidden={selectedOrderIds.length === 0}
+          >
+            <XCircleIcon className="w-5 h-5" /> 선택 주문취소 (
             {selectedOrderIds.length})
           </button>
         </div>
