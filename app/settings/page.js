@@ -62,62 +62,12 @@ function LightCard({ children, className = "", padding = "p-6" }) {
     </div>
   );
 }
-// --- 정보/상태 알림 ---
-function InfoBox({
-  type = "info",
-  jobId = null,
-  interval = null,
-  className = "",
-}) {
-  /* ... */ let bgColor, textColor, borderColor, Icon, message;
-  if (type === "success") {
-    bgColor = "bg-green-50";
-    textColor = "text-green-700";
-    borderColor = "border-green-200";
-    Icon = CheckCircleIcon;
-    message = `자동 수집 활성 (작업 ID: ${jobId || "알 수 없음"}, 간격: ${
-      interval || "?"
-    }분)`;
-  } else if (type === "pending") {
-    bgColor = "bg-blue-50";
-    textColor = "text-blue-700";
-    borderColor = "border-blue-200";
-    Icon = InformationCircleIcon;
-    message = `자동 밴드 정보 업데이트 활성화됨. 첫 작업이 곧 예약됩니다 (간격: ${
-      interval || "?"
-    }분)`;
-  } else if (type === "warning") {
-    bgColor = "bg-yellow-50";
-    textColor = "text-yellow-700";
-    borderColor = "border-yellow-200";
-    Icon = ExclamationTriangleIcon;
-    message = `자동 밴드 정보 업데이트 비활성. 이전에 예약된 작업(${
-      jobId || "알 수 없음"
-    })이 남아있을 수 있습니다. (변경사항 저장 시 정리)`;
-  } else {
-    bgColor = "bg-gray-50";
-    textColor = "text-gray-600";
-    borderColor = "border-gray-200";
-    Icon = InformationCircleIcon;
-    message = "자동 크롤링이 비활성화되어 있습니다.";
-  }
-  return (
-    <div
-      className={`p-3 rounded-lg text-xs border ${bgColor} ${borderColor} ${className}`}
-    >
-      <div className="flex items-start gap-2">
-        <Icon className={`w-4 h-4 ${textColor} flex-shrink-0 mt-0.5`} />
-        <span className={textColor}>{message}</span>
-      </div>
-    </div>
-  );
-}
 
 export default function SettingsPage() {
   const router = useRouter();
   const topRef = useRef(null);
   const [userId, setUserId] = useState(null);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true); // 컴포넌트 초기 설정 로딩
   const [savingProfile, setSavingProfile] = useState(false); // 프로필 저장 상태
   const [savingCrawling, setSavingCrawling] = useState(false); // 밴드 정보 업데이트 저장 상태
   const [savingExcluded, setSavingExcluded] = useState(false); // 제외 고객 저장 상태
@@ -157,9 +107,9 @@ export default function SettingsPage() {
     isLoading: userLoading,
     error: userSWRError,
     mutate: userMutate,
-  } = useUser(userId, swrOptions);
+  } = useUser(userId, swrOptions); // useUser는 userId가 null이면 요청 안 하도록 가정 또는 수정
   const { updateUserProfile } = useUserMutations();
-  const isDataLoading = initialLoading || userLoading;
+  const isDataLoading = initialLoading || userLoading; // isDataLoading은 SWR 로딩 상태를 주로 반영
 
   // --- 타임스탬프 포맷팅 헬퍼 함수 ---
   const formatTimestamp = (timestamp) => {
@@ -221,247 +171,167 @@ export default function SettingsPage() {
     }
   }, []);
 
-  // 2. 컴포넌트 마운트 시 sessionStorage 확인
-  useEffect(() => {
-    const checkAuthAndStoredTask = async () => {
-      setError(null);
-      let sessionUserId = null;
+  // --- Helper: 세션 스토리지에서 사용자 데이터 로드 및 UI 상태 설정 ---
+  const loadUserFromSession = useCallback(() => {
+    const sessionDataString = sessionStorage.getItem("userData");
+    if (sessionDataString) {
       try {
-        const sessionData = sessionStorage.getItem("userData");
-        if (!sessionData) {
-          router.replace("/login");
-          return;
+        const sessionUserData = JSON.parse(sessionDataString);
+        console.log("세션에서 userData 로드:", sessionUserData);
+        setOwnerName(sessionUserData.owner_name || "");
+        setStoreName(sessionUserData.store_name || "");
+        setBandNumber(sessionUserData.band_number || ""); // 밴드 번호는 보통 변경되지 않으므로 세션 우선도 가능
+        setExcludedCustomers(Array.isArray(sessionUserData.excluded_customers) ? sessionUserData.excluded_customers : []);
+        setAutoBarcodeGeneration(sessionUserData.auto_barcode_generation ?? false);
+        setInitialAutoBarcodeGeneration(sessionUserData.auto_barcode_generation ?? false); // 세션값을 초기값으로
+
+        // postLimit도 세션에서 가져오기
+        const sessionPostLimit = sessionStorage.getItem("userPostLimit");
+        if (sessionPostLimit) {
+          setPostLimit(parseInt(sessionPostLimit, 10));
+        } else if (sessionUserData.post_fetch_limit) { // userData 객체에 있다면 사용
+          setPostLimit(parseInt(sessionUserData.post_fetch_limit, 10));
         }
-        const userDataObj = JSON.parse(sessionData);
-        if (!userDataObj?.userId) {
-          throw new Error("Invalid session data: userId missing.");
-        }
-        sessionUserId = userDataObj.userId;
-        setUserId(sessionUserId);
-
-        console.log("세션에서 userId 가져옴:", sessionUserId); // 디버깅용 로그 추가
-
-        // --- sessionStorage에서 Task ID 확인 로직 추가 ---
-        const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
-        if (storedTaskId) {
-          console.log(
-            "세션 스토리지에서 진행 중인 Task ID 발견:",
-            storedTaskId
-          );
-          setManualCrawlTaskId(storedTaskId); // 상태 업데이트
-        }
-        // --- 확인 로직 끝 ---
-
-        // Supabase에서 직접 사용자 정보를 가져오는 로직 추가
-        try {
-          const { data: userData, error: userError } = await supabase
-            .from("users")
-            .select("*")
-            .eq("user_id", sessionUserId)
-            .single();
-
-          if (userError) {
-            console.error("Supabase에서 사용자 정보 가져오기 실패:", userError);
-          } else if (userData) {
-            console.log("Supabase에서 사용자 정보 가져옴:", userData);
-            // 사용자 정보 직접 설정
-            setOwnerName(userData.owner_name || "");
-            setStoreName(userData.store_name || "");
-            setBandNumber(userData.band_number || "");
-            setExcludedCustomers(
-              Array.isArray(userData.excluded_customers)
-                ? userData.excluded_customers
-                : []
-            );
-            setAutoBarcodeGeneration(userData.auto_barcode_generation ?? false);
-            setInitialAutoBarcodeGeneration(
-              userData.auto_barcode_generation ?? false
-            );
-            setLastCrawlTime(userData.last_crawl_at || null);
-
-            // postLimit 설정
-            const storedLimit =
-              userData?.profile?.post_fetch_limit ||
-              userData?.user_metadata?.post_fetch_limit ||
-              userData?.post_fetch_limit;
-
-            if (storedLimit) {
-              setPostLimit(parseInt(storedLimit, 10));
-            }
-          }
-        } catch (supabaseError) {
-          console.error("Supabase 직접 조회 오류:", supabaseError);
-        }
-
-        await fetchAutoCrawlSettings(sessionUserId);
-      } catch (error) {
-        console.error("Error during initial auth/setup:", error);
-        setError(
-          "세션 정보를 확인하거나 초기 데이터를 불러오는 중 오류가 발생했습니다. 다시 로그인해주세요."
-        );
-        sessionStorage.removeItem("userData");
-        localStorage.removeItem("userId");
-        sessionStorage.removeItem("manualCrawlTaskId"); // 오류 시 Task ID도 제거
-        router.replace("/login");
-      } finally {
-        setInitialLoading(false);
+        return sessionUserData.user_id || null;
+      } catch (e) {
+        console.error("세션 userData 파싱 오류:", e);
+        sessionStorage.removeItem("userData"); // 파싱 오류 시 세션 제거
       }
-    };
-    checkAuthAndStoredTask();
-  }, [router, fetchAutoCrawlSettings]); // 의존성 배열 확인
-
-  // 이 useEffect는 중복으로 제거 (위의 checkAuthAndStoredTask가 이미 처리)
-  /*
-  useEffect(() => {
-    const checkAuth = async () => {
-      setError(null);
-      let sessionUserId = null;
-      try {
-        const sessionData = sessionStorage.getItem("userData");
-        if (!sessionData) {
-          router.replace("/login");
-          return;
-        }
-        const userDataObj = JSON.parse(sessionData);
-        if (!userDataObj?.userId) {
-          throw new Error("Invalid session data: userId missing.");
-        }
-        sessionUserId = userDataObj.userId;
-        setUserId(sessionUserId);
-        await fetchAutoCrawlSettings(sessionUserId);
-      } catch (error) {
-        console.error("Error during initial auth/setup:", error);
-        setError(
-          "세션 정보를 확인하거나 초기 데이터를 불러오는 중 오류가 발생했습니다. 다시 로그인해주세요."
-        );
-        sessionStorage.removeItem("userData");
-        localStorage.removeItem("userId");
-        router.replace("/login");
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-    checkAuth();
-  }, [router, fetchAutoCrawlSettings]);
-  */
-
-  useEffect(() => {
-    if (!userLoading && !initialLoading && swrUserData) {
-      console.log("[Settings Effect] SWR User Data Received:", swrUserData);
-      setOwnerName(swrUserData.owner_name || "");
-      setStoreName(swrUserData.store_name || "");
-      setBandNumber(swrUserData.band_number || "");
-
-      // --- excludedCustomers 처리 (null 및 undefined 방어) ---
-      if (Array.isArray(swrUserData.excluded_customers)) {
-        console.log(
-          "[Settings Effect] Setting excludedCustomers from SWR (Array):",
-          swrUserData.excluded_customers
-        );
-        setExcludedCustomers(swrUserData.excluded_customers);
-      } else {
-        if (swrUserData.excluded_customers === null) {
-          console.warn(
-            "[Settings Effect] `excluded_customers` is null from SWR data. Defaulting to empty array."
-          );
-        } else if (swrUserData.excluded_customers === undefined) {
-          console.warn(
-            "[Settings Effect] `excluded_customers` field is missing from SWR data. Defaulting to empty array."
-          );
-        } else {
-          console.warn(
-            `[Settings Effect] Invalid 'excluded_customers' data type (${typeof swrUserData.excluded_customers}), expected array. Defaulting to empty array.`
-          );
-        }
-        setExcludedCustomers([]); // <<<--- null, undefined, 배열 아닌 경우 빈 배열로 설정
-      }
-      // --- excludedCustomers 처리 끝 ---
-
-      // --- auto_barcode_generation 처리 ---
-      const initialBarcodePref = swrUserData.auto_barcode_generation ?? false;
-      setAutoBarcodeGeneration(initialBarcodePref);
-      setInitialAutoBarcodeGeneration(initialBarcodePref);
-      // --- last_crawl_at 설정 추가 ---
-      setLastCrawlTime(swrUserData.last_crawl_at || null); // DB 값 또는 null 설정
-      // --- postLimit 설정 추가 ---
-      const storedLimit =
-        swrUserData?.profile?.post_fetch_limit ??
-        swrUserData?.user_metadata?.post_fetch_limit;
-      if (storedLimit) {
-        setPostLimit(parseInt(storedLimit, 10));
-      } else {
-        // Supabase에 값이 없으면 기본값(200) 유지 또는 sessionStorage 확인
-        const sessionLimit = sessionStorage.getItem("userPostLimit");
-        if (sessionLimit) {
-          setPostLimit(parseInt(sessionLimit, 10));
-        }
-      }
-      // -----------------------------
-      // --- auto_barcode_generation 처리 끝 ---
-    } else if (!userLoading && !initialLoading && !swrUserData && userId) {
-      console.warn(
-        "[Settings Effect] SWR loaded but swrUserData is null/undefined for userId:",
-        userId
-      );
-      // 데이터 없을 시 기본값 설정
-      setOwnerName("");
-      setStoreName("");
-      setBandNumber("");
-      setExcludedCustomers([]); // <<<--- 여기서도 빈 배열로 초기화
-      setAutoBarcodeGeneration(false);
-      setInitialAutoBarcodeGeneration(false);
-      setLastCrawlTime(null); // <<<--- 데이터 없을 때도 초기화
-      setPostLimit(200); // 기본값 설정
     }
-  }, [swrUserData, userLoading, initialLoading, userId]); // 의존성 배열
+    return null;
+  }, []);
 
-  // <<<--- 바코드 설정 저장 함수 추가 --- START --->>>
+  // --- Helper: 사용자 데이터를 세션 스토리지에 저장 ---
+  const saveUserToSession = useCallback((userDataToSave) => {
+    if (!userDataToSave) return;
+    try {
+      // 필요한 정보만 선택적으로 저장하거나, 전체 userDataToSave를 저장할 수 있음
+      // 여기서는 주요 프로필 정보를 포함하는 객체를 만든다고 가정
+      const relevantSessionData = {
+        user_id: userDataToSave.user_id || userId, // userId가 확실히 있도록
+        owner_name: userDataToSave.owner_name,
+        store_name: userDataToSave.store_name,
+        band_number: userDataToSave.band_number,
+        excluded_customers: userDataToSave.excluded_customers,
+        auto_barcode_generation: userDataToSave.auto_barcode_generation,
+        post_fetch_limit: userDataToSave.post_fetch_limit, // post_fetch_limit도 userDataToSave에 있다고 가정
+        // ... 기타 필요한 세션 정보
+      };
+      sessionStorage.setItem("userData", JSON.stringify(relevantSessionData));
+      if (userDataToSave.post_fetch_limit !== undefined) {
+        sessionStorage.setItem("userPostLimit", userDataToSave.post_fetch_limit.toString());
+      }
+      console.log("세션에 userData 저장:", relevantSessionData);
+    } catch (e) {
+      console.error("세션 userData 저장 오류:", e);
+    }
+  }, [userId]);
+
+
+  // 1. 컴포넌트 마운트 시: 세션 확인, userId 설정, 초기 UI 값 로드, SWR 시작
+  useEffect(() => {
+    setError(null);
+    let sessionUserId = loadUserFromSession(); // 세션에서 데이터 로드 및 UI 일부 초기화, userId 반환
+
+    if (!sessionUserId) { // 세션에 user_id가 없거나 userData 자체가 없는 경우
+      const sessionDataFallback = sessionStorage.getItem("userData"); // 혹시 user_id만 없는 경우 대비
+      if (sessionDataFallback) {
+        try {
+            sessionUserId = JSON.parse(sessionDataFallback)?.userId || JSON.parse(sessionDataFallback)?.user_id;
+        } catch (e) { /* 파싱 실패 무시 */ }
+      }
+      if(!sessionUserId) {
+        console.log("세션에 userId 없음, 로그인 페이지로 이동");
+        router.replace("/login");
+        setInitialLoading(false);
+        return;
+      }
+    }
+
+    setUserId(sessionUserId);
+    console.log("최종 설정된 userId:", sessionUserId);
+
+    // manualCrawlTaskId, fetchAutoCrawlSettings 등 기타 초기화 로직
+    const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
+    if (storedTaskId) setManualCrawlTaskId(storedTaskId);
+    fetchAutoCrawlSettings(sessionUserId); // fetchAutoCrawlSettings는 userId에 의존
+
+    setInitialLoading(false); // 초기 세션 처리 및 기본 설정 완료
+  }, [router, loadUserFromSession, fetchAutoCrawlSettings]);
+
+
+  // 2. SWR 데이터 로드 완료 후: UI 상태 및 세션 업데이트
+  useEffect(() => {
+    if (!initialLoading && swrUserData && !userLoading) { // 초기 로딩 끝났고, SWR 데이터 있고, SWR 로딩도 끝났을 때
+      // swrUserData의 구조를 확인해야 함. useUser가 { success: true, data: { ... } } 형태인지, 아니면 직접 user 객체인지.
+      // 여기서는 swrUserData가 직접 사용자 객체라고 가정. (또는 swrUserData.data 사용)
+      const userDataFromServer = swrUserData.data || swrUserData; // 실제 데이터 객체 접근
+
+      if (userDataFromServer && typeof userDataFromServer === 'object') {
+        console.log("[SWR Effect] SWR User Data로 UI 및 세션 업데이트:", userDataFromServer);
+
+        // UI 상태 업데이트
+        setOwnerName(userDataFromServer.owner_name || "");
+        setStoreName(userDataFromServer.store_name || "");
+        setBandNumber(userDataFromServer.band_number || "");
+        setExcludedCustomers(Array.isArray(userDataFromServer.excluded_customers) ? userDataFromServer.excluded_customers : []);
+        setAutoBarcodeGeneration(userDataFromServer.auto_barcode_generation ?? false);
+        setInitialAutoBarcodeGeneration(userDataFromServer.auto_barcode_generation ?? false); // 서버 값을 최종 초기값으로
+        setPostLimit(parseInt(userDataFromServer.post_fetch_limit, 10) || postLimit); // 서버 값 우선, 없으면 기존 값 유지
+
+        // 세션 스토리지도 최신 서버 데이터로 업데이트
+        saveUserToSession(userDataFromServer);
+      } else {
+        console.warn("[SWR Effect] swrUserData.data가 유효한 객체가 아님:", userDataFromServer);
+      }
+    } else if (!initialLoading && !swrUserData && !userLoading && userId && userSWRError) {
+      // SWR 로드 실패 시 (세션 데이터는 이미 로드되어 있을 수 있음)
+      console.warn("[SWR Effect] SWR 데이터 로드 실패, userId:", userId, "Error:", userSWRError);
+      // 필요하다면 여기서 에러 처리 (이미 세션 값으로 UI는 어느 정도 채워져 있을 것)
+      // setError("최신 사용자 정보를 가져오는데 실패했습니다. 저장된 정보로 표시됩니다.");
+    }
+  }, [initialLoading, swrUserData, userLoading, userId, saveUserToSession, userSWRError, postLimit]);
+
+  // --- 바코드 설정 저장 함수 ---
   const handleSaveBarcodeSetting = async () => {
-    // 사용자 ID가 없거나, 로딩 중이거나, 초기값이 아직 설정되지 않았으면 실행 중지
     if (!userId || userLoading || initialAutoBarcodeGeneration === null) return;
-
-    // 현재 설정값(autoBarcodeGeneration)과 초기값(initialAutoBarcodeGeneration) 비교하여 변경사항 없으면 알림 후 종료
     if (autoBarcodeGeneration === initialAutoBarcodeGeneration) {
       alert("변경된 내용이 없습니다.");
       return;
     }
 
-    setSavingBarcodeSetting(true); // 저장 시작 상태로 변경
-    setError(null); // 이전 에러 메시지 초기화
-    const payload = { auto_barcode_generation: autoBarcodeGeneration }; // API로 보낼 데이터
+    setSavingBarcodeSetting(true);
+    setError(null);
+    const barcodePayload = { auto_barcode_generation: autoBarcodeGeneration };
 
     try {
-      // 낙관적 업데이트: API 요청 전에 UI를 먼저 업데이트
-      const optimisticUserData = { ...(swrUserData || {}), ...payload };
-      await userMutate(optimisticUserData, {
-        optimisticData: optimisticUserData,
-        revalidate: false, // API 성공 후 재검증할 것이므로 지금은 false
-        rollbackOnError: true, // 에러 발생 시 원래 상태로 되돌림
-        populateCache: true, // 캐시 업데이트
-      });
-
-      // Supabase 업데이트 호출
-      const { data, error } = await supabase
+      const { data: updatedUser, error: updateError } = await supabase
         .from("users")
-        .update(payload)
-        .eq("user_id", userId);
+        .update(barcodePayload)
+        .eq("user_id", userId) // PK 컬럼명 확인!
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
       alert("상품 자동 바코드 생성 설정이 저장되었습니다.");
 
-      // 성공 시 초기 상태 업데이트 및 SWR 데이터 재검증
-      setInitialAutoBarcodeGeneration(autoBarcodeGeneration); // 현재 값을 새로운 초기값으로 설정
-      userMutate(); // 서버로부터 최신 데이터를 다시 불러옴
+      setInitialAutoBarcodeGeneration(autoBarcodeGeneration); // 성공 시 UI의 현재 값을 새 초기값으로
+
+      if (updatedUser) {
+        await userMutate(updatedUser, { optimisticData: updatedUser, revalidate: false });
+        // saveUserToSession(updatedUser); // SWR useEffect가 처리하도록 유도하거나 직접 호출
+      } else {
+        userMutate();
+      }
+
     } catch (err) {
       setError(`바코드 설정 저장 오류: ${err.message}`);
       alert(`바코드 설정 저장 중 오류가 발생했습니다: ${err.message}`);
-      // 에러 발생 시 SWR이 자동으로 롤백 처리
     } finally {
-      setSavingBarcodeSetting(false); // 저장 완료 상태로 변경
+      setSavingBarcodeSetting(false);
     }
   };
-  // <<<--- 바코드 설정 저장 함수 추가 --- END --->>>
 
   const updateAutoCrawlSettingsAPI = async (autoCrawl, interval) => {
     if (!userId) return false;
@@ -496,74 +366,6 @@ export default function SettingsPage() {
     }
   };
 
-  // <<<--- 작업 완료/실패 시 호출될 콜백 함수 --- START --->>>
-  const handleManualTaskEnd = useCallback((finalStatus) => {
-    console.log(`[SettingsPage] Manual task ended with status: ${finalStatus}`);
-    setManualCrawling(false); // 작업 종료 시 버튼 다시 활성화
-    sessionStorage.removeItem("manualCrawlTaskId"); // sessionStorage에서 제거
-    // 필요하다면 finalStatus에 따라 추가적인 알림이나 데이터 갱신 로직 수행
-    // if (finalStatus === 'completed') { ... }
-    // if (finalStatus === 'failed') { ... }
-  }, []); // 의존성 배열 확인
-  // <<<--- 작업 완료/실패 시 호출될 콜백 함수 --- END --->>>
-  const handleManualCrawl = async () => {
-    if (!userId || !bandNumber) {
-      alert(
-        "사용자 ID 또는 밴드 ID가 설정되지 않아 크롤링을 시작할 수 없습니다."
-      );
-      return;
-    }
-    if (manualCrawlPostCount < 1) {
-      alert("크롤링할 게시물 수는 1 이상이어야 합니다.");
-      return;
-    }
-    setManualCrawling(true); // 버튼 비활성화 시작
-    setError(null);
-    setManualCrawlTaskId(null); // 시작 시 이전 ID 초기화 (상태만)
-    sessionStorage.removeItem("manualCrawlTaskId"); // 시작 시 이전 ID 초기화 (세션 스토리지)
-
-    try {
-      // Supabase Function 호출로 변경
-      const { data, error } = await supabase.functions.invoke("crawl-band", {
-        body: {
-          userId: userId,
-          bandNumber: bandNumber,
-          processProducts: true,
-          daysLimit: manualCrawlDaysLimit,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data.taskId) {
-        const newTaskId = data.taskId;
-        setManualCrawlTaskId(newTaskId); // <<<--- 새 Task ID 설정
-        sessionStorage.setItem("manualCrawlTaskId", newTaskId); // sessionStorage에 저장
-      } else {
-        throw new Error(
-          data?.message || "수동 밴드 정보 업데이트 요청에 실패했습니다."
-        );
-      }
-    } catch (err) {
-      const errMsg = err.message;
-      setError(`수동 업데이트 오류: ${errMsg}`);
-      alert(`수동 업데이트 요청 중 오류 발생: ${errMsg}`);
-      setManualCrawling(false); // 오류 시 버튼 즉시 활성화
-      setManualCrawlTaskId(null); // 오류 시 Task ID 초기화
-      sessionStorage.removeItem("manualCrawlTaskId"); // 오류 시 세션 스토리지 초기화
-    } finally {
-      setManualCrawling(false);
-    }
-  };
-  const handleToggleAutoCrawling = () =>
-    setIsAutoCrawlingEnabled((prev) => !prev);
-  const handleIntervalChange = (e) => {
-    let newInterval = parseInt(e.target.value, 10);
-    if (isNaN(newInterval) || newInterval < 1) {
-      newInterval = 30;
-    }
-    setCrawlInterval(newInterval);
-  };
   const handleAddCustomer = () => {
     const newCustomer = newCustomerInput.trim();
     if (newCustomer && !excludedCustomers.includes(newCustomer)) {
@@ -681,49 +483,6 @@ export default function SettingsPage() {
       setError(`제외 고객 저장 오류: ${err.message}`);
     } finally {
       setSavingExcluded(false);
-    }
-  };
-
-  const handleSaveCrawlingSettings = async () => {
-    if (!userId) return;
-
-    // 초기 설정값과 비교하여 변경 여부 확인
-    // initialCrawlSettings 상태가 필요합니다. (이전에 정의되었다고 가정)
-    const autoCrawlChanged =
-      initialCrawlSettings?.autoCrawl !== isAutoCrawlingEnabled;
-    const intervalChanged = initialCrawlSettings?.interval !== crawlInterval;
-
-    if (!autoCrawlChanged && !intervalChanged) {
-      alert("변경사항이 없습니다.");
-      return; // 변경 없을 시 저장 안 함
-    }
-
-    setSavingCrawling(true);
-    setError(null); // 관련 오류 메시지 초기화
-
-    try {
-      // Supabase 함수 호출
-      const success = await updateAutoCrawlSettingsAPI(
-        isAutoCrawlingEnabled,
-        crawlInterval
-      );
-
-      if (success) {
-        alert("밴드 정보 업데이트 설정이 저장되었습니다.");
-        // 초기 설정값 업데이트 (다음 비교를 위해)
-        setInitialCrawlSettings({
-          autoCrawl: isAutoCrawlingEnabled,
-          interval: crawlInterval,
-          jobId: crawlingJobId,
-        });
-      } else {
-        throw new Error("설정 저장에 실패했습니다");
-      }
-    } catch (err) {
-      console.error("Error saving crawling settings:", err);
-      setError(`크롤링 설정 저장 오류: ${err.message}`);
-    } finally {
-      setSavingCrawling(false);
     }
   };
 
