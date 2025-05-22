@@ -1328,14 +1328,14 @@ export default function OrdersPage() {
     >
       {/* 일괄 처리 중 로딩 오버레이 */}
       {bulkUpdateLoading && (
-        <div className="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
           <div className="bg-white p-6 rounded-xl shadow-xl flex flex-col items-center">
             <LoadingSpinner className="h-12 w-12 text-orange-500 mb-3" />
             <p className="text-gray-700 font-medium">상태 변경 중...</p>
           </div>
         </div>
       )}
-      <main className="max-w-7xl mx-auto">
+      <main className="max-w-[1440px] mx-auto">
         {/* 헤더 */}
         <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
           <div className="flex items-center gap-4">
@@ -1911,6 +1911,23 @@ export default function OrdersPage() {
             </span>
           )}
           <button
+            onClick={() => handleBulkStatusUpdate("주문취소")}
+            disabled={
+              selectedOrderIds.length === 0 ||
+              isDataLoading ||
+              bulkUpdateLoading
+            }
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+              selectedOrderIds.length === 0
+                ? "opacity-0 scale-95 pointer-events-none"
+                : "opacity-100 scale-100"
+            }`}
+            aria-hidden={selectedOrderIds.length === 0}
+          >
+            <XCircleIcon className="w-5 h-5" /> 선택 주문취소 (
+            {selectedOrderIds.length})
+          </button>
+          <button
             onClick={() => handleBulkStatusUpdate("결제완료")}
             disabled={
               selectedOrderIds.length === 0 ||
@@ -1934,7 +1951,7 @@ export default function OrdersPage() {
               isDataLoading ||
               bulkUpdateLoading
             }
-            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
                 : "opacity-100 scale-100"
@@ -1942,23 +1959,6 @@ export default function OrdersPage() {
             aria-hidden={selectedOrderIds.length === 0}
           >
             <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
-            {selectedOrderIds.length})
-          </button>
-          <button
-            onClick={() => handleBulkStatusUpdate("주문취소")}
-            disabled={
-              selectedOrderIds.length === 0 ||
-              isDataLoading ||
-              bulkUpdateLoading
-            }
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
-              selectedOrderIds.length === 0
-                ? "opacity-0 scale-95 pointer-events-none"
-                : "opacity-100 scale-100"
-            }`}
-            aria-hidden={selectedOrderIds.length === 0}
-          >
-            <XCircleIcon className="w-5 h-5" /> 선택 주문취소 (
             {selectedOrderIds.length})
           </button>
         </div>

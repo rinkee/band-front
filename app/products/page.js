@@ -722,7 +722,7 @@ export default function ProductsPage() {
       ref={topRef}
       className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto px-4 py-2 sm:px-6 sm:py-4"
     >
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-[1440px] mx-auto">
         <div className="mb-4 md:mb-4">
           <h1 className="text-xl font-bold text-gray-900 mb-1">상품 관리</h1>
           <p className="text-sm text-gray-500 mb-1">

@@ -359,7 +359,7 @@ export default function PostsPage() {
       ref={topRef}
       className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5"
     >
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-[1440px] mx-auto">
         <div className="mb-6 md:mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">게시물 관리</h1>
           <p className="text-sm text-gray-500">
