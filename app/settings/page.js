@@ -177,22 +177,33 @@ export default function SettingsPage() {
     if (sessionDataString) {
       try {
         const sessionUserData = JSON.parse(sessionDataString);
+
         console.log("세션에서 userData 로드:", sessionUserData);
         setOwnerName(sessionUserData.owner_name || "");
         setStoreName(sessionUserData.store_name || "");
         setBandNumber(sessionUserData.band_number || ""); // 밴드 번호는 보통 변경되지 않으므로 세션 우선도 가능
-        setExcludedCustomers(Array.isArray(sessionUserData.excluded_customers) ? sessionUserData.excluded_customers : []);
-        setAutoBarcodeGeneration(sessionUserData.auto_barcode_generation ?? false);
-        setInitialAutoBarcodeGeneration(sessionUserData.auto_barcode_generation ?? false); // 세션값을 초기값으로
+        setExcludedCustomers(
+          Array.isArray(sessionUserData.excluded_customers)
+            ? sessionUserData.excluded_customers
+            : []
+        );
+        setAutoBarcodeGeneration(
+          sessionUserData.auto_barcode_generation ?? false
+        );
+        setInitialAutoBarcodeGeneration(
+          sessionUserData.auto_barcode_generation ?? false
+        ); // 세션값을 초기값으로
 
         // postLimit도 세션에서 가져오기
         const sessionPostLimit = sessionStorage.getItem("userPostLimit");
         if (sessionPostLimit) {
           setPostLimit(parseInt(sessionPostLimit, 10));
-        } else if (sessionUserData.post_fetch_limit) { // userData 객체에 있다면 사용
+        } else if (sessionUserData.post_fetch_limit) {
+          // userData 객체에 있다면 사용
           setPostLimit(parseInt(sessionUserData.post_fetch_limit, 10));
         }
-        return sessionUserData.user_id || null;
+        // 다른 페이지들과 일관성을 위해 userId 또는 user_id 키 모두 확인
+        return sessionUserData.userId || sessionUserData.user_id || sessionUserData.id || null;
       } catch (e) {
         console.error("세션 userData 파싱 오류:", e);
         sessionStorage.removeItem("userData"); // 파싱 오류 시 세션 제거
@@ -202,45 +213,91 @@ export default function SettingsPage() {
   }, []);
 
   // --- Helper: 사용자 데이터를 세션 스토리지에 저장 ---
-  const saveUserToSession = useCallback((userDataToSave) => {
-    if (!userDataToSave) return;
-    try {
-      // 필요한 정보만 선택적으로 저장하거나, 전체 userDataToSave를 저장할 수 있음
-      // 여기서는 주요 프로필 정보를 포함하는 객체를 만든다고 가정
-      const relevantSessionData = {
-        user_id: userDataToSave.user_id || userId, // userId가 확실히 있도록
-        owner_name: userDataToSave.owner_name,
-        store_name: userDataToSave.store_name,
-        band_number: userDataToSave.band_number,
-        excluded_customers: userDataToSave.excluded_customers,
-        auto_barcode_generation: userDataToSave.auto_barcode_generation,
-        post_fetch_limit: userDataToSave.post_fetch_limit, // post_fetch_limit도 userDataToSave에 있다고 가정
-        // ... 기타 필요한 세션 정보
-      };
-      sessionStorage.setItem("userData", JSON.stringify(relevantSessionData));
-      if (userDataToSave.post_fetch_limit !== undefined) {
-        sessionStorage.setItem("userPostLimit", userDataToSave.post_fetch_limit.toString());
+  const saveUserToSession = useCallback(
+    (userDataToSave) => {
+      if (!userDataToSave) return;
+      try {
+        // 기존 세션 데이터를 먼저 가져와서 구조를 유지
+        const existingSessionDataString = sessionStorage.getItem("userData");
+        let existingSessionData = {};
+        
+        if (existingSessionDataString) {
+          try {
+            existingSessionData = JSON.parse(existingSessionDataString);
+          } catch (parseError) {
+            console.error("기존 세션 데이터 파싱 오류:", parseError);
+            // 파싱 오류 시 빈 객체로 시작
+          }
+        }
+        
+        // 새로운 데이터로 기존 데이터 업데이트 (기존 구조 유지)
+        const updatedSessionData = {
+          ...existingSessionData, // 기존 세션 데이터 유지 (loginId, naverId, token 등)
+          userId: userDataToSave.id || userId || existingSessionData.userId, // ID 필드 업데이트
+          owner_name: userDataToSave.owner_name || existingSessionData.owner_name,
+          ownerName: userDataToSave.owner_name || existingSessionData.ownerName, // 두 형식 모두 유지
+          store_name: userDataToSave.store_name || existingSessionData.store_name,
+          storeName: userDataToSave.store_name || existingSessionData.storeName, // 두 형식 모두 유지
+          band_number: userDataToSave.band_number || existingSessionData.band_number,
+          bandNumber: userDataToSave.band_number || existingSessionData.bandNumber, // 두 형식 모두 유지
+          excluded_customers: userDataToSave.excluded_customers || existingSessionData.excluded_customers,
+          excludedCustomers: userDataToSave.excluded_customers || existingSessionData.excludedCustomers, // 두 형식 모두 유지
+          auto_barcode_generation: userDataToSave.auto_barcode_generation ?? existingSessionData.auto_barcode_generation,
+          post_fetch_limit: userDataToSave.post_fetch_limit ?? existingSessionData.post_fetch_limit
+        };
+        
+        // 세션 스토리지에 업데이트된 데이터 저장
+        sessionStorage.setItem("userData", JSON.stringify(updatedSessionData));
+        
+        // localStorage에도 userId 저장 (다른 페이지와 일관성)
+        if (updatedSessionData.userId) {
+          localStorage.setItem("userId", updatedSessionData.userId);
+        }
+        
+        // postLimit도 별도로 저장
+        if (userDataToSave.post_fetch_limit !== undefined) {
+          sessionStorage.setItem(
+            "userPostLimit",
+            userDataToSave.post_fetch_limit.toString()
+          );
+        }
+        
+        console.log("세션에 userData 저장 (기존 구조 유지):", updatedSessionData);
+      } catch (e) {
+        console.error("세션 userData 저장 오류:", e);
       }
-      console.log("세션에 userData 저장:", relevantSessionData);
-    } catch (e) {
-      console.error("세션 userData 저장 오류:", e);
-    }
-  }, [userId]);
-
+    },
+    [userId]
+  );
 
   // 1. 컴포넌트 마운트 시: 세션 확인, userId 설정, 초기 UI 값 로드, SWR 시작
   useEffect(() => {
     setError(null);
     let sessionUserId = loadUserFromSession(); // 세션에서 데이터 로드 및 UI 일부 초기화, userId 반환
 
-    if (!sessionUserId) { // 세션에 user_id가 없거나 userData 자체가 없는 경우
-      const sessionDataFallback = sessionStorage.getItem("userData"); // 혹시 user_id만 없는 경우 대비
+    if (!sessionUserId) {
+      // 세션에 userId가 없거나 userData 자체가 없는 경우
+      const sessionDataFallback = sessionStorage.getItem("userData"); // 혹시 userId만 없는 경우 대비
       if (sessionDataFallback) {
         try {
-            sessionUserId = JSON.parse(sessionDataFallback)?.userId || JSON.parse(sessionDataFallback)?.user_id;
-        } catch (e) { /* 파싱 실패 무시 */ }
+          sessionUserId =
+            JSON.parse(sessionDataFallback)?.userId ||
+            JSON.parse(sessionDataFallback)?.user_id ||
+            JSON.parse(sessionDataFallback)?.id;
+        } catch (e) {
+          /* 파싱 실패 무시 */
+        }
       }
-      if(!sessionUserId) {
+      // localStorage에서도 userId 확인 (다른 페이지와 일관성)
+      if (!sessionUserId) {
+        const localStorageUserId = localStorage.getItem("userId");
+        if (localStorageUserId) {
+          sessionUserId = localStorageUserId;
+          // localStorage에서 가져온 userId로 세션 데이터 복구
+          saveUserToSession({ id: localStorageUserId });
+        }
+      }
+      if (!sessionUserId) {
         console.log("세션에 userId 없음, 로그인 페이지로 이동");
         router.replace("/login");
         setInitialLoading(false);
@@ -259,38 +316,73 @@ export default function SettingsPage() {
     setInitialLoading(false); // 초기 세션 처리 및 기본 설정 완료
   }, [router, loadUserFromSession, fetchAutoCrawlSettings]);
 
-
   // 2. SWR 데이터 로드 완료 후: UI 상태 및 세션 업데이트
   useEffect(() => {
-    if (!initialLoading && swrUserData && !userLoading) { // 초기 로딩 끝났고, SWR 데이터 있고, SWR 로딩도 끝났을 때
+    if (!initialLoading && swrUserData && !userLoading) {
+      // 초기 로딩 끝났고, SWR 데이터 있고, SWR 로딩도 끝났을 때
       // swrUserData의 구조를 확인해야 함. useUser가 { success: true, data: { ... } } 형태인지, 아니면 직접 user 객체인지.
       // 여기서는 swrUserData가 직접 사용자 객체라고 가정. (또는 swrUserData.data 사용)
       const userDataFromServer = swrUserData.data || swrUserData; // 실제 데이터 객체 접근
 
-      if (userDataFromServer && typeof userDataFromServer === 'object') {
-        console.log("[SWR Effect] SWR User Data로 UI 및 세션 업데이트:", userDataFromServer);
+      if (userDataFromServer && typeof userDataFromServer === "object") {
+        console.log(
+          "[SWR Effect] SWR User Data로 UI 및 세션 업데이트:",
+          userDataFromServer
+        );
 
         // UI 상태 업데이트
         setOwnerName(userDataFromServer.owner_name || "");
         setStoreName(userDataFromServer.store_name || "");
         setBandNumber(userDataFromServer.band_number || "");
-        setExcludedCustomers(Array.isArray(userDataFromServer.excluded_customers) ? userDataFromServer.excluded_customers : []);
-        setAutoBarcodeGeneration(userDataFromServer.auto_barcode_generation ?? false);
-        setInitialAutoBarcodeGeneration(userDataFromServer.auto_barcode_generation ?? false); // 서버 값을 최종 초기값으로
-        setPostLimit(parseInt(userDataFromServer.post_fetch_limit, 10) || postLimit); // 서버 값 우선, 없으면 기존 값 유지
+        setExcludedCustomers(
+          Array.isArray(userDataFromServer.excluded_customers)
+            ? userDataFromServer.excluded_customers
+            : []
+        );
+        setAutoBarcodeGeneration(
+          userDataFromServer.auto_barcode_generation ?? false
+        );
+        setInitialAutoBarcodeGeneration(
+          userDataFromServer.auto_barcode_generation ?? false
+        ); // 서버 값을 최종 초기값으로
+        setPostLimit(
+          parseInt(userDataFromServer.post_fetch_limit, 10) || postLimit
+        ); // 서버 값 우선, 없으면 기존 값 유지
 
         // 세션 스토리지도 최신 서버 데이터로 업데이트
         saveUserToSession(userDataFromServer);
       } else {
-        console.warn("[SWR Effect] swrUserData.data가 유효한 객체가 아님:", userDataFromServer);
+        console.warn(
+          "[SWR Effect] swrUserData.data가 유효한 객체가 아님:",
+          userDataFromServer
+        );
       }
-    } else if (!initialLoading && !swrUserData && !userLoading && userId && userSWRError) {
+    } else if (
+      !initialLoading &&
+      !swrUserData &&
+      !userLoading &&
+      userId &&
+      userSWRError
+    ) {
       // SWR 로드 실패 시 (세션 데이터는 이미 로드되어 있을 수 있음)
-      console.warn("[SWR Effect] SWR 데이터 로드 실패, userId:", userId, "Error:", userSWRError);
+      console.warn(
+        "[SWR Effect] SWR 데이터 로드 실패, userId:",
+        userId,
+        "Error:",
+        userSWRError
+      );
       // 필요하다면 여기서 에러 처리 (이미 세션 값으로 UI는 어느 정도 채워져 있을 것)
       // setError("최신 사용자 정보를 가져오는데 실패했습니다. 저장된 정보로 표시됩니다.");
     }
-  }, [initialLoading, swrUserData, userLoading, userId, saveUserToSession, userSWRError, postLimit]);
+  }, [
+    initialLoading,
+    swrUserData,
+    userLoading,
+    userId,
+    saveUserToSession,
+    userSWRError,
+    postLimit,
+  ]);
 
   // --- 바코드 설정 저장 함수 ---
   const handleSaveBarcodeSetting = async () => {
@@ -319,12 +411,14 @@ export default function SettingsPage() {
       setInitialAutoBarcodeGeneration(autoBarcodeGeneration); // 성공 시 UI의 현재 값을 새 초기값으로
 
       if (updatedUser) {
-        await userMutate(updatedUser, { optimisticData: updatedUser, revalidate: false });
+        await userMutate(updatedUser, {
+          optimisticData: updatedUser,
+          revalidate: false,
+        });
         // saveUserToSession(updatedUser); // SWR useEffect가 처리하도록 유도하거나 직접 호출
       } else {
         userMutate();
       }
-
     } catch (err) {
       setError(`바코드 설정 저장 오류: ${err.message}`);
       alert(`바코드 설정 저장 중 오류가 발생했습니다: ${err.message}`);
@@ -384,7 +478,7 @@ export default function SettingsPage() {
   };
   const handleLogout = () => {
     console.log("Logging out user:", userId);
-    sessionStorage.removeItem("userData");
+    sessionStorage.clear(); // 모든 세션 데이터 제거 (다른 페이지와 일관성)
     localStorage.removeItem("userId");
     router.replace("/login");
   };
