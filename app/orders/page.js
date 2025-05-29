@@ -540,149 +540,122 @@ export default function OrdersPage() {
     // 필요하다면 검색 후 맨 위로 스크롤
   };
 
-  // --- 일괄 상태 변경 핸들러 (중복 업데이트 방지 추가) ---
   const handleBulkStatusUpdate = async (newStatus) => {
-    if (selectedOrderIds.length === 0) {
-      return;
-    }
+    if (selectedOrderIds.length === 0) return;
+    setBulkUpdateLoading(true);
 
-    setBulkUpdateLoading(true); // 로딩 상태 시작
-
-    let targetStatus = newStatus;
-    let statusVerb;
-
-    if (newStatus === "결제완료") {
-      statusVerb = "결제 완료";
-    } else if (newStatus === "수령완료") {
-      statusVerb = "수령 완료";
-    } else if (newStatus === "주문취소") {
-      statusVerb = "주문 취소";
-    }
-
-    // --- 1. 실제로 상태 변경이 필요한 주문 ID 필터링 ---
-    const ordersToUpdate = orders.filter(
+    const ordersToUpdateFilter = orders.filter(
       (order) =>
-        selectedOrderIds.includes(order.order_id) && // 선택된 주문이면서
-        order.status !== targetStatus // 현재 상태가 목표 상태와 다른 경우
+        selectedOrderIds.includes(order.order_id) &&
+        order.status !== newStatus
     );
+    const orderIdsToProcess = ordersToUpdateFilter.map((order) => order.order_id);
+    const skippedCount = selectedOrderIds.length - orderIdsToProcess.length;
 
-    const orderIdsToUpdate = ordersToUpdate.map((order) => order.order_id);
-    const skippedCount = selectedOrderIds.length - orderIdsToUpdate.length; // 건너뛴 주문 수 계산
-
-    if (orderIdsToUpdate.length === 0) {
-      setSelectedOrderIds([]); // 선택 해제
+    if (orderIdsToProcess.length === 0) {
+      setBulkUpdateLoading(false);
+      setSelectedOrderIds([]);
+      alert(`건너뛴 주문: ${skippedCount}개. 변경할 주문이 없습니다.`);
       return;
     }
 
-    // --- 2. 사용자 확인 (실제 변경될 주문 수 기준) ---
     if (
       !window.confirm(
-        `${orderIdsToUpdate.length}개의 주문을 '${statusVerb}' 상태로 변경하시겠습니까?` +
-          (skippedCount > 0
-            ? `\n(${skippedCount}개는 이미 해당 상태이므로 건너뜁니다.)`
-            : "")
+        `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
+          (skippedCount > 0 ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)` : "")
       )
     ) {
+      setBulkUpdateLoading(false);
       return;
     }
 
     console.log(
-      `Attempting to update ${orderIdsToUpdate.length} orders to ${targetStatus} (skipped ${skippedCount})`
+      `Attempting to bulk update ${orderIdsToProcess.length} orders to ${newStatus}`
     );
+
+    // --- 낙관적 업데이트 (SWR 사용 시) ---
+    const nowISO = new Date().toISOString();
+    await mutateOrders(
+      (currentData) => {
+        if (!currentData || !currentData.data) return currentData;
+        const newOrdersList = currentData.data.map(order => {
+          if (orderIdsToProcess.includes(order.order_id)) {
+            let updatedFields = { status: newStatus };
+              if (newStatus === "수령완료") { updatedFields = { ...updatedFields, pickupTime: nowISO, completed_at: nowISO, canceled_at: null };}
+              else if (newStatus === "결제완료") { updatedFields = { ...updatedFields, paid_at: nowISO, completed_at: null, canceled_at: null };}
+              else if (newStatus === "주문취소") { updatedFields = { ...updatedFields, canceled_at: nowISO, completed_at: null };}
+              // 기타 상태 처리...
+            return { ...order, ...updatedFields };
+          }
+          return order;
+        });
+        return { ...currentData, data: newOrdersList };
+      },
+      { revalidate: false } // 재검증은 API 호출 후 결정
+    );
+    // --- 낙관적 업데이트 끝 ---
 
     let successCount = 0;
     let failCount = 0;
-    const updatedIds = [];
-    // setLoading(true); // 필요시 로딩 상태 관리
 
-    // --- 3. 필터링된 ID 목록으로 API 요청 ---
-    for (const orderId of orderIdsToUpdate) {
-      // 필터링된 orderIdsToUpdate 사용
-      try {
-        const updateData = { status: targetStatus };
-        const nowISO = new Date().toISOString();
+    try {
+      // 새로운 일괄 처리 함수 호출
+      const bulkUpdateUrl = `${functionsBaseUrl}/orders-bulk-update-status`; // 새 함수 경로
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-        // 상태별 타임스탬프 설정 (이전 로직과 동일)
-        if (targetStatus === "수령완료") {
-          updateData.pickupTime = nowISO;
-          updateData.completed_at = nowISO;
-          updateData.canceled_at = null;
-        } else if (targetStatus === "결제완료") {
-          updateData.paid_at = nowISO; // 예시: 결제 시간 추가
-          updateData.completed_at = null;
-          updateData.canceled_at = null;
-        } else if (targetStatus === "주문취소") {
-          updateData.canceled_at = nowISO;
-          updateData.completed_at = null;
-        }
+      const response = await fetch(bulkUpdateUrl, {
+        method: "POST", // 메소드 변경
+        headers: {
+          Authorization: `Bearer ${anonKey}`, // 또는 supabase.auth.getSession()으로 얻은 토큰
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderIds: orderIdsToProcess, // 배열로 전달
+          status: newStatus,
+          // userId: userData.userId, // 함수 내부에서 인증/권한 처리를 한다면 필요 없을 수 있음
+                                    // Service Role Key를 사용하므로 userId 기반 RLS는 직접 적용 안됨.
+                                    // 함수 로직 내에서 user_id를 검증해야 함 (현재 코드에는 없음)
+          // 필요하다면 subStatus 등 추가 정보 전달
+          // subStatus: newStatus === "확인필요" ? "확인필요" : null,
+        }),
+      });
 
-        // fetch API를 사용하여 Supabase Function 호출
-        const functionsUrl = `${functionsBaseUrl}/orders-update-status?orderId=${orderId}`;
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const resultData = await response.json();
 
-        const response = await fetch(functionsUrl, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${anonKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            userId: userData.userId,
-            orderId: orderId,
-            updateData: updateData,
-            status: targetStatus,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response
-            .json()
-            .catch(() => ({ message: response.statusText }));
-          throw new Error(
-            `주문 ${orderId} 상태 업데이트 오류 (${response.status}): ${
-              errorData.message || "Unknown error"
-            }`
-          );
-        }
-
-        const data = await response.json();
-
-        if (!data?.success) {
-          throw new Error(
-            data?.message || `주문 ${orderId} 상태 업데이트 실패`
-          );
-        }
-
-        successCount++;
-        updatedIds.push(orderId);
-      } catch (err) {
-        console.error(`Failed to update order ${orderId}:`, err);
-        failCount++;
+      if (!response.ok || !resultData.success) {
+        throw new Error(resultData.message || `일괄 업데이트 실패 (${response.status})`);
       }
-    }
 
-    // --- 4. 결과 처리 및 상태 업데이트 ---
-    if (successCount > 0) {
-      // mutate를 호출하여 서버 데이터와 동기화
+      successCount = resultData.updatedCount || 0; // 서버에서 반환된 실제 성공 카운트
+      failCount = orderIdsToProcess.length - successCount; // 요청 수 - 성공 수
+
+      console.log("일괄 업데이트 성공:", resultData.message);
+
+      // 성공 시 데이터 재검증 (SWR 사용 시)
+      await mutateOrders(); // 전체 목록 재검증
+      await mutateOrderStats();
+
+    } catch (err) {
+      console.error("Failed to bulk update orders:", err);
+      failCount = orderIdsToProcess.length - successCount; // 에러 발생 시 나머지 실패 처리
+      alert(`일괄 업데이트 중 오류 발생: ${err.message}`);
+      // 에러 발생 시 낙관적 업데이트 롤백 (강제 재검증)
       await mutateOrders();
       await mutateOrderStats();
-    } else if (failCount > 0) {
-      // 실패 시에도 데이터 리프레시 시도 (선택적)
-      mutateOrders();
-      mutateOrderStats();
+    } finally {
+      setBulkUpdateLoading(false);
+      setSelectedOrderIds([]);
+
+      let message = "";
+      if (successCount > 0) message += `${successCount}건 성공. `;
+      if (failCount > 0) message += `${failCount}건 실패. `;
+      if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`;
+      if (!message && successCount === 0 && failCount === 0 && skippedCount === 0) message = "변경 대상 없음.";
+      else if (!message) message = "일괄 처리 완료.";
+
+      // alert(message); // 사용자에게 최종 결과 알림
+      console.log("최종 일괄 처리 결과:", message);
     }
-
-    setSelectedOrderIds([]); // 선택 해제
-
-    // 결과 메시지 조합
-    let message = "";
-    if (successCount > 0) message += `${successCount}건 성공. `;
-    if (failCount > 0) message += `${failCount}건 실패. `;
-    if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`; // 건너뛴 횟수 메시지 추가
-    if (!message) message = "상태 변경 작업 완료 (변경 대상 없음)."; // 모든 주문이 이미 해당 상태였을 경우
-
-    // 작업 완료 후 로딩 상태 종료
-    setBulkUpdateLoading(false);
   };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
