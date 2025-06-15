@@ -1008,7 +1008,7 @@ export default function OrdersPage() {
     setSearchTerm("");
     setExactCustomerFilter(null); // <<< 정확 필터도 초기화
     setCurrentPage(1);
-    setFilterSelection("all");
+    setFilterSelection("주문완료");
     // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
   };
 
