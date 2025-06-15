@@ -295,7 +295,7 @@ export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [filterSelection, setFilterSelection] = useState("all"); // 사용자가 UI에서 선택한 값
+  const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
@@ -546,10 +546,11 @@ export default function OrdersPage() {
 
     const ordersToUpdateFilter = orders.filter(
       (order) =>
-        selectedOrderIds.includes(order.order_id) &&
-        order.status !== newStatus
+        selectedOrderIds.includes(order.order_id) && order.status !== newStatus
     );
-    const orderIdsToProcess = ordersToUpdateFilter.map((order) => order.order_id);
+    const orderIdsToProcess = ordersToUpdateFilter.map(
+      (order) => order.order_id
+    );
     const skippedCount = selectedOrderIds.length - orderIdsToProcess.length;
 
     if (orderIdsToProcess.length === 0) {
@@ -562,7 +563,9 @@ export default function OrdersPage() {
     if (
       !window.confirm(
         `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
-          (skippedCount > 0 ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)` : "")
+          (skippedCount > 0
+            ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
+            : "")
       )
     ) {
       setBulkUpdateLoading(false);
@@ -578,13 +581,31 @@ export default function OrdersPage() {
     await mutateOrders(
       (currentData) => {
         if (!currentData || !currentData.data) return currentData;
-        const newOrdersList = currentData.data.map(order => {
+        const newOrdersList = currentData.data.map((order) => {
           if (orderIdsToProcess.includes(order.order_id)) {
             let updatedFields = { status: newStatus };
-              if (newStatus === "수령완료") { updatedFields = { ...updatedFields, pickupTime: nowISO, completed_at: nowISO, canceled_at: null };}
-              else if (newStatus === "결제완료") { updatedFields = { ...updatedFields, paid_at: nowISO, completed_at: null, canceled_at: null };}
-              else if (newStatus === "주문취소") { updatedFields = { ...updatedFields, canceled_at: nowISO, completed_at: null };}
-              // 기타 상태 처리...
+            if (newStatus === "수령완료") {
+              updatedFields = {
+                ...updatedFields,
+                pickupTime: nowISO,
+                completed_at: nowISO,
+                canceled_at: null,
+              };
+            } else if (newStatus === "결제완료") {
+              updatedFields = {
+                ...updatedFields,
+                paid_at: nowISO,
+                completed_at: null,
+                canceled_at: null,
+              };
+            } else if (newStatus === "주문취소") {
+              updatedFields = {
+                ...updatedFields,
+                canceled_at: nowISO,
+                completed_at: null,
+              };
+            }
+            // 기타 상태 처리...
             return { ...order, ...updatedFields };
           }
           return order;
@@ -613,8 +634,8 @@ export default function OrdersPage() {
           orderIds: orderIdsToProcess, // 배열로 전달
           status: newStatus,
           // userId: userData.userId, // 함수 내부에서 인증/권한 처리를 한다면 필요 없을 수 있음
-                                    // Service Role Key를 사용하므로 userId 기반 RLS는 직접 적용 안됨.
-                                    // 함수 로직 내에서 user_id를 검증해야 함 (현재 코드에는 없음)
+          // Service Role Key를 사용하므로 userId 기반 RLS는 직접 적용 안됨.
+          // 함수 로직 내에서 user_id를 검증해야 함 (현재 코드에는 없음)
           // 필요하다면 subStatus 등 추가 정보 전달
           // subStatus: newStatus === "확인필요" ? "확인필요" : null,
         }),
@@ -623,7 +644,9 @@ export default function OrdersPage() {
       const resultData = await response.json();
 
       if (!response.ok || !resultData.success) {
-        throw new Error(resultData.message || `일괄 업데이트 실패 (${response.status})`);
+        throw new Error(
+          resultData.message || `일괄 업데이트 실패 (${response.status})`
+        );
       }
 
       successCount = resultData.updatedCount || 0; // 서버에서 반환된 실제 성공 카운트
@@ -634,7 +657,6 @@ export default function OrdersPage() {
       // 성공 시 데이터 재검증 (SWR 사용 시)
       await mutateOrders(); // 전체 목록 재검증
       await mutateOrderStats();
-
     } catch (err) {
       console.error("Failed to bulk update orders:", err);
       failCount = orderIdsToProcess.length - successCount; // 에러 발생 시 나머지 실패 처리
@@ -650,7 +672,13 @@ export default function OrdersPage() {
       if (successCount > 0) message += `${successCount}건 성공. `;
       if (failCount > 0) message += `${failCount}건 실패. `;
       if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`;
-      if (!message && successCount === 0 && failCount === 0 && skippedCount === 0) message = "변경 대상 없음.";
+      if (
+        !message &&
+        successCount === 0 &&
+        failCount === 0 &&
+        skippedCount === 0
+      )
+        message = "변경 대상 없음.";
       else if (!message) message = "일괄 처리 완료.";
 
       // alert(message); // 사용자에게 최종 결과 알림
@@ -1749,24 +1777,26 @@ export default function OrdersPage() {
                               {/* 메인 상태 배지 (항상 order.status 기준) */}
                               <StatusBadge status={actualStatus} />
                               {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
-                              {actualStatus !== "수령완료" && actualSubStatus === "확인필요" && (
-                                <span
-                                  className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
-                                  title="부가 상태: 확인필요"
-                                >
-                                  <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                  확인 필요
-                                </span>
-                              )}
-                              {actualStatus !== "수령완료" && actualSubStatus === "미수령" && (
-                                <span
-                                  className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
-                                  title="부가 상태: 미수령"
-                                >
-                                  <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                  미수령
-                                </span>
-                              )}
+                              {actualStatus !== "수령완료" &&
+                                actualSubStatus === "확인필요" && (
+                                  <span
+                                    className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
+                                    title="부가 상태: 확인필요"
+                                  >
+                                    <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                    확인 필요
+                                  </span>
+                                )}
+                              {actualStatus !== "수령완료" &&
+                                actualSubStatus === "미수령" && (
+                                  <span
+                                    className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
+                                    title="부가 상태: 미수령"
+                                  >
+                                    <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                    미수령
+                                  </span>
+                                )}
                               {actualStatus === "수령완료" && (
                                 <span
                                   className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
