@@ -1151,19 +1151,24 @@ export default function OrdersPage() {
     );
 
   // --- 데이터 준비 ---
-  const filteredTotalItems = ordersData?.pagination?.total ?? 0; // <<< 이 변수를 사용해야 합니다.
-  const totalItems = ordersData?.pagination?.total || 0;
+  const filteredTotalItems = ordersData?.pagination?.totalItems ?? 0;
+  const totalItems = ordersData?.pagination?.totalItems || 0;
   const totalPages = ordersData?.pagination?.totalPages || 1;
+
+  // 클라이언트 사이드 통계 데이터 구조에 맞게 수정
   const stats = orderStatsData?.data || {
     totalOrders: 0,
-    completedOrders: 0,
-    pendingOrders: 0,
+    totalRevenue: 0,
+    statusCounts: {},
+    recentOrders: [],
   };
-  const {
-    totalOrders: totalStatsOrders,
-    completedOrders: totalCompletedOrders,
-    pendingOrders: totalPendingOrders,
-  } = stats;
+
+  const totalStatsOrders = stats.totalOrders || 0;
+  const totalCompletedOrders = stats.statusCounts?.["수령완료"] || 0;
+  const totalPendingOrders =
+    (stats.statusCounts?.["주문완료"] || 0) +
+    (stats.statusCounts?.["결제완료"] || 0);
+
   const completionRate =
     totalStatsOrders > 0
       ? Math.round((totalCompletedOrders / totalStatsOrders) * 100)

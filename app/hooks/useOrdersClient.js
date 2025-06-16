@@ -310,6 +310,14 @@ export function useOrderClientMutations() {
     if (updateData.cancelReason !== undefined)
       updateFields.cancel_reason = updateData.cancelReason;
 
+    // 상태별 시간 필드들 추가
+    if (updateData.completed_at !== undefined)
+      updateFields.completed_at = updateData.completed_at;
+    if (updateData.pickupTime !== undefined)
+      updateFields.pickup_time = updateData.pickupTime;
+    if (updateData.canceled_at !== undefined)
+      updateFields.canceled_at = updateData.canceled_at;
+
     const { data, error } = await supabase
       .from("orders")
       .update(updateFields)
@@ -421,6 +429,26 @@ export function useOrderClientMutations() {
       status: newStatus,
       updated_at: new Date().toISOString(),
     };
+
+    // 상태별 시간 필드 설정
+    const nowISO = new Date().toISOString();
+    if (newStatus === "수령완료") {
+      updateFields.completed_at = nowISO;
+      updateFields.pickup_time = nowISO;
+      updateFields.canceled_at = null;
+    } else if (newStatus === "주문취소") {
+      updateFields.canceled_at = nowISO;
+      updateFields.completed_at = null;
+      updateFields.pickup_time = null;
+    } else if (newStatus === "주문완료") {
+      updateFields.completed_at = null;
+      updateFields.pickup_time = null;
+      updateFields.canceled_at = null;
+    } else if (newStatus === "확인필요") {
+      updateFields.completed_at = null;
+      updateFields.pickup_time = null;
+      updateFields.canceled_at = null;
+    }
 
     const { data, error } = await supabase
       .from("orders")
