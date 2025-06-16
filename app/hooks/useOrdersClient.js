@@ -60,12 +60,22 @@ const fetchOrders = async (key) => {
     }
   }
 
-  // 검색 필터링
+  // 검색 필터링 - 한글 안전 처리
   if (filters.search && filters.search !== "undefined") {
-    const searchTerm = `%${filters.search}%`;
-    query = query.or(
-      `customer_name.ilike.${searchTerm},product_title.ilike.${searchTerm},product_barcode.ilike.${searchTerm}`
-    );
+    const searchTerm = filters.search;
+    // 한글 문자열 처리를 위해 URL 인코딩하지 않고 직접 처리
+    try {
+      query = query.or(
+        `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%`
+      );
+    } catch (error) {
+      console.warn(
+        "Search filter error, falling back to simple filtering:",
+        error
+      );
+      // 에러 발생시 고객명만으로 필터링
+      query = query.ilike("customer_name", `%${searchTerm}%`);
+    }
   }
 
   // 정확한 고객명 필터링
@@ -182,11 +192,50 @@ const fetchOrderStats = async (key) => {
     throw new Error("User ID is required");
   }
 
-  // 기본 통계 쿼리 (간단한 버전)
+  // 기본 통계 쿼리 - orders 테이블과 products 테이블 조인하여 상품 정보도 가져오기
   let query = supabase
     .from("orders")
-    .select("status, total_amount, ordered_at")
+    .select(
+      `
+      status, 
+      sub_status,
+      total_amount, 
+      ordered_at, 
+      product_id,
+      customer_name,
+      quantity,
+      products!inner(title, barcode)
+    `
+    )
     .eq("user_id", userId);
+
+  // 상태 필터링 (status)
+  if (filterOptions.status && filterOptions.status !== "all") {
+    query = query.eq("status", filterOptions.status);
+  }
+
+  // 부가 상태 필터링 (sub_status)
+  if (filterOptions.subStatus && filterOptions.subStatus !== "all") {
+    query = query.eq("sub_status", filterOptions.subStatus);
+  }
+
+  // 검색어 필터링 (상품명, 고객명 등) - 한글 안전 처리
+  if (filterOptions.search) {
+    const searchTerm = filterOptions.search;
+    // 한글 문자열 처리를 위해 URL 인코딩하지 않고 직접 처리
+    try {
+      query = query.or(
+        `customer_name.ilike.%${searchTerm}%,products.title.ilike.%${searchTerm}%`
+      );
+    } catch (error) {
+      console.warn(
+        "Stats search filter error, falling back to simple filtering:",
+        error
+      );
+      // 에러 발생시 고객명만으로 필터링
+      query = query.ilike("customer_name", `%${searchTerm}%`);
+    }
+  }
 
   // 날짜 범위 필터링
   if (filterOptions.startDate && filterOptions.endDate) {
@@ -202,6 +251,33 @@ const fetchOrderStats = async (key) => {
     }
   }
 
+  // 제외 고객 필터링
+  try {
+    const { data: userData } = await supabase
+      .from("users")
+      .select("excluded_customers")
+      .eq("user_id", userId)
+      .single();
+
+    if (
+      userData?.excluded_customers &&
+      Array.isArray(userData.excluded_customers)
+    ) {
+      const excludedCustomers = userData.excluded_customers;
+      if (excludedCustomers.length > 0) {
+        query = query.not(
+          "customer_name",
+          "in",
+          `(${excludedCustomers
+            .map((name) => `"${name.replace(/"/g, '""')}"`)
+            .join(",")})`
+        );
+      }
+    }
+  } catch (e) {
+    console.error("Error fetching excluded customers for stats:", e);
+  }
+
   const { data, error } = await query;
 
   if (error) {
@@ -209,24 +285,73 @@ const fetchOrderStats = async (key) => {
     throw error;
   }
 
+  // 디버깅용 로그
+  console.log("Stats query filterOptions:", filterOptions);
+  console.log("Stats query result:", data);
+
   // 통계 계산
   const totalOrders = data.length;
   const totalRevenue = data.reduce(
     (sum, order) => sum + (order.total_amount || 0),
     0
   );
+
+  // 상태별 카운트 (status 기준)
   const statusCounts = data.reduce((acc, order) => {
     acc[order.status] = (acc[order.status] || 0) + 1;
     return acc;
   }, {});
+
+  // 부가 상태별 카운트 (sub_status 기준)
+  const subStatusCounts = data.reduce((acc, order) => {
+    if (order.sub_status) {
+      acc[order.sub_status] = (acc[order.sub_status] || 0) + 1;
+    }
+    return acc;
+  }, {});
+
+  // 상품별 통계 (검색된 결과에서)
+  const productStats = data.reduce((acc, order) => {
+    const productTitle = order.products?.title || "상품명 없음";
+    if (!acc[productTitle]) {
+      acc[productTitle] = {
+        totalOrders: 0,
+        totalQuantity: 0,
+        totalAmount: 0,
+        completedOrders: 0,
+        pendingOrders: 0,
+      };
+    }
+    acc[productTitle].totalOrders += 1;
+    acc[productTitle].totalQuantity += order.quantity || 0;
+    acc[productTitle].totalAmount += order.total_amount || 0;
+
+    if (order.status === "수령완료") {
+      acc[productTitle].completedOrders += 1;
+    } else if (order.status === "주문완료" || order.sub_status === "미수령") {
+      acc[productTitle].pendingOrders += 1;
+    }
+
+    return acc;
+  }, {});
+
+  // 총 수량 계산
+  const totalQuantity = data.reduce(
+    (sum, order) => sum + (order.quantity || 0),
+    0
+  );
 
   return {
     success: true,
     data: {
       totalOrders,
       totalRevenue,
+      totalQuantity,
       statusCounts,
+      subStatusCounts,
+      productStats,
       recentOrders: data.slice(0, 10), // 최근 10개 주문
+      filteredData: data, // 필터링된 전체 데이터
     },
   };
 };
@@ -313,8 +438,6 @@ export function useOrderClientMutations() {
     // 상태별 시간 필드들 추가
     if (updateData.completed_at !== undefined)
       updateFields.completed_at = updateData.completed_at;
-    if (updateData.pickupTime !== undefined)
-      updateFields.pickup_time = updateData.pickupTime;
     if (updateData.canceled_at !== undefined)
       updateFields.canceled_at = updateData.canceled_at;
 
@@ -434,19 +557,15 @@ export function useOrderClientMutations() {
     const nowISO = new Date().toISOString();
     if (newStatus === "수령완료") {
       updateFields.completed_at = nowISO;
-      updateFields.pickup_time = nowISO;
       updateFields.canceled_at = null;
     } else if (newStatus === "주문취소") {
       updateFields.canceled_at = nowISO;
       updateFields.completed_at = null;
-      updateFields.pickup_time = null;
     } else if (newStatus === "주문완료") {
       updateFields.completed_at = null;
-      updateFields.pickup_time = null;
       updateFields.canceled_at = null;
     } else if (newStatus === "확인필요") {
       updateFields.completed_at = null;
-      updateFields.pickup_time = null;
       updateFields.canceled_at = null;
     }
 

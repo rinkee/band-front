@@ -15,7 +15,6 @@ import JsBarcode from "jsbarcode";
 import { useUser, useProducts } from "../hooks";
 import {
   useOrdersClient,
-  useOrderStatsClient,
   useOrderClientMutations,
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
@@ -310,7 +309,7 @@ export default function OrdersPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
-  const [statsLoading, setStatsLoading] = useState(true);
+  // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
@@ -446,59 +445,13 @@ export default function OrdersPage() {
     error: productsError,
     mutate: mutateProducts,
   } = useProducts(userData?.userId, 1, { limit: 1000 }, swrOptions);
-  const {
-    data: orderStatsData,
-    error: orderStatsError,
-    isLoading: isOrderStatsLoading,
-    mutate: mutateOrderStats,
-  } = useOrderStatsClient(
-    userData?.userId,
-    // --- 현재 필터 상태를 기반으로 파라미터 객체 생성 ---
-    {
-      // 날짜 범위 파라미터 (기존과 동일)
-      dateRange: filterDateRange,
-      startDate:
-        filterDateRange === "custom"
-          ? customStartDate?.toISOString()
-          : undefined,
-      endDate:
-        filterDateRange === "custom" ? customEndDate?.toISOString() : undefined,
-
-      // <<< 추가된 필터 파라미터 >>>
-      // filterSelection 값을 기반으로 status 또는 subStatus 결정
-      status: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none" ||
-          filterSelection === "all"
-        ) {
-          return undefined; // 부가 상태 필터 또는 전체 시에는 status 전달 안 함
-        }
-        return filterSelection; // 주 상태 필터 값 전달
-      })(),
-      subStatus: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection; // 부가 상태 필터 값 전달
-        }
-        return undefined; // 전체 또는 주 상태 필터 시 subStatus 전달 안 함
-      })(),
-      search: searchTerm.trim() || undefined, // 검색어 전달
-    },
-    null,
-    null,
-    swrOptions
-  );
+  // useOrderStatsClient 제거 - 클라이언트에서 직접 계산
 
   // 클라이언트 사이드 mutation 함수들
   const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
     useOrderClientMutations();
 
-  const isDataLoading = isUserLoading || isOrdersLoading || isOrderStatsLoading;
+  const isDataLoading = isUserLoading || isOrdersLoading;
   const displayedOrderIds = displayOrders.map((o) => o.order_id);
   const isAllDisplayedSelected =
     displayedOrderIds.length > 0 &&
@@ -724,9 +677,7 @@ export default function OrdersPage() {
     )
       setCurrentPage(1);
   }, [ordersData, ordersError, currentPage, searchTerm]);
-  useEffect(() => {
-    setStatsLoading(isOrderStatsLoading);
-  }, [isOrderStatsLoading]);
+  // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
   //   const timerId = setTimeout(() => {
@@ -1155,19 +1106,58 @@ export default function OrdersPage() {
   const totalItems = ordersData?.pagination?.totalItems || 0;
   const totalPages = ordersData?.pagination?.totalPages || 1;
 
-  // 클라이언트 사이드 통계 데이터 구조에 맞게 수정
-  const stats = orderStatsData?.data || {
-    totalOrders: 0,
-    totalRevenue: 0,
-    statusCounts: {},
-    recentOrders: [],
+  // 현재 검색된 주문 데이터에서 직접 통계 계산
+  const currentOrders = ordersData?.data || [];
+
+  // 클라이언트 사이드에서 통계 계산 함수
+  const calculateClientStats = (orders) => {
+    const statusCounts = {};
+    const subStatusCounts = {};
+    let completedCount = 0;
+    let pendingCount = 0;
+
+    orders.forEach((order) => {
+      // Status 카운트
+      statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+
+      // Sub_status 카운트
+      if (order.sub_status) {
+        subStatusCounts[order.sub_status] =
+          (subStatusCounts[order.sub_status] || 0) + 1;
+      }
+
+      // 완료/미완료 카운트
+      if (order.status === "수령완료") {
+        completedCount++;
+      } else if (order.sub_status === "미수령") {
+        pendingCount++;
+      }
+    });
+
+    return {
+      totalOrders: orders.length,
+      completedOrders: completedCount,
+      pendingOrders: pendingCount,
+      statusCounts,
+      subStatusCounts,
+    };
   };
 
-  const totalStatsOrders = stats.totalOrders || 0;
-  const totalCompletedOrders = stats.statusCounts?.["수령완료"] || 0;
-  const totalPendingOrders =
-    (stats.statusCounts?.["주문완료"] || 0) +
-    (stats.statusCounts?.["결제완료"] || 0);
+  const clientStats = calculateClientStats(currentOrders);
+  const totalStatsOrders = clientStats.totalOrders;
+  const totalCompletedOrders = clientStats.completedOrders;
+  const totalPendingOrders = clientStats.pendingOrders;
+
+  // 디버깅용 로그
+  console.log("Current search term:", searchTerm);
+  console.log("Current filter selection:", filterSelection);
+  console.log("Current orders data:", currentOrders);
+  console.log("Client calculated stats:", clientStats);
+  console.log("Calculated totals:", {
+    totalStatsOrders,
+    totalCompletedOrders,
+    totalPendingOrders,
+  });
 
   const completionRate =
     totalStatsOrders > 0
@@ -1240,11 +1230,7 @@ export default function OrdersPage() {
             </div>
           </div>
           <div className="w-full md:w-auto relative ">
-            {statsLoading && (
-              <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center rounded-lg z-10 -m-1">
-                <LoadingSpinner color="text-gray-500" />
-              </div>
-            )}
+            {/* statsLoading 제거 - 클라이언트 계산으로 즉시 반영 */}
             <div className="grid grid-cols-4 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm w-full md:w-auto">
               {/* --- 총 주문 --- */}
               <div
@@ -1572,6 +1558,7 @@ export default function OrdersPage() {
                           handleCellClickToSearch(
                             getProductNameById(order.product_id)
                           ); // 검색 함수 호출
+                          setFilterSelection("all");
                         }}
                       >
                         {getProductNameById(order.product_id)}

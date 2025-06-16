@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, forwardRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useUser, usePosts } from "../hooks"; // useUser 훅 추가
+import { useUserClient, usePostsClient } from "../hooks"; // 클라이언트 사이드 훅 사용
 import PostCard from "../components/PostCard";
 import { api } from "../lib/fetcher"; // 필요시 사용
 
@@ -218,14 +218,14 @@ export default function PostsPage() {
     data: userDataFromHook,
     error: userError,
     isLoading: isUserLoading,
-  } = useUser(userData?.userId, swrOptions);
+  } = useUserClient(userData?.userId, swrOptions);
 
-  // 게시물 데이터 가져오기 (usePosts 훅 사용)
+  // 게시물 데이터 가져오기 (usePostsClient 훅 사용)
   const {
     data: postsData,
     error: postsError,
     isLoading: isPostsLoading,
-  } = usePosts(
+  } = usePostsClient(
     userData?.bandNumber, // bandNumber 사용
     currentPage,
     {

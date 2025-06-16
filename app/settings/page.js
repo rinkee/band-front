@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { useRouter } from "next/navigation";
-import { useUser, useUserMutations } from "../hooks";
+import { useUserClient, useUserClientMutations } from "../hooks";
 import { useSWRConfig } from "swr";
 import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴포넌트 import
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 추가
@@ -107,8 +107,8 @@ export default function SettingsPage() {
     isLoading: userLoading,
     error: userSWRError,
     mutate: userMutate,
-  } = useUser(userId, swrOptions); // useUser는 userId가 null이면 요청 안 하도록 가정 또는 수정
-  const { updateUserProfile } = useUserMutations();
+  } = useUserClient(userId, swrOptions); // useUserClient는 userId가 null이면 요청 안 하도록 가정 또는 수정
+  const { updateUserProfile } = useUserClientMutations();
   const isDataLoading = initialLoading || userLoading; // isDataLoading은 SWR 로딩 상태를 주로 반영
 
   // --- 타임스탬프 포맷팅 헬퍼 함수 ---
@@ -203,7 +203,12 @@ export default function SettingsPage() {
           setPostLimit(parseInt(sessionUserData.post_fetch_limit, 10));
         }
         // 다른 페이지들과 일관성을 위해 userId 또는 user_id 키 모두 확인
-        return sessionUserData.userId || sessionUserData.user_id || sessionUserData.id || null;
+        return (
+          sessionUserData.userId ||
+          sessionUserData.user_id ||
+          sessionUserData.id ||
+          null
+        );
       } catch (e) {
         console.error("세션 userData 파싱 오류:", e);
         sessionStorage.removeItem("userData"); // 파싱 오류 시 세션 제거
@@ -220,7 +225,7 @@ export default function SettingsPage() {
         // 기존 세션 데이터를 먼저 가져와서 구조를 유지
         const existingSessionDataString = sessionStorage.getItem("userData");
         let existingSessionData = {};
-        
+
         if (existingSessionDataString) {
           try {
             existingSessionData = JSON.parse(existingSessionDataString);
@@ -229,31 +234,43 @@ export default function SettingsPage() {
             // 파싱 오류 시 빈 객체로 시작
           }
         }
-        
+
         // 새로운 데이터로 기존 데이터 업데이트 (기존 구조 유지)
         const updatedSessionData = {
           ...existingSessionData, // 기존 세션 데이터 유지 (loginId, naverId, token 등)
           userId: userDataToSave.id || userId || existingSessionData.userId, // ID 필드 업데이트
-          owner_name: userDataToSave.owner_name || existingSessionData.owner_name,
+          owner_name:
+            userDataToSave.owner_name || existingSessionData.owner_name,
           ownerName: userDataToSave.owner_name || existingSessionData.ownerName, // 두 형식 모두 유지
-          store_name: userDataToSave.store_name || existingSessionData.store_name,
+          store_name:
+            userDataToSave.store_name || existingSessionData.store_name,
           storeName: userDataToSave.store_name || existingSessionData.storeName, // 두 형식 모두 유지
-          band_number: userDataToSave.band_number || existingSessionData.band_number,
-          bandNumber: userDataToSave.band_number || existingSessionData.bandNumber, // 두 형식 모두 유지
-          excluded_customers: userDataToSave.excluded_customers || existingSessionData.excluded_customers,
-          excludedCustomers: userDataToSave.excluded_customers || existingSessionData.excludedCustomers, // 두 형식 모두 유지
-          auto_barcode_generation: userDataToSave.auto_barcode_generation ?? existingSessionData.auto_barcode_generation,
-          post_fetch_limit: userDataToSave.post_fetch_limit ?? existingSessionData.post_fetch_limit
+          band_number:
+            userDataToSave.band_number || existingSessionData.band_number,
+          bandNumber:
+            userDataToSave.band_number || existingSessionData.bandNumber, // 두 형식 모두 유지
+          excluded_customers:
+            userDataToSave.excluded_customers ||
+            existingSessionData.excluded_customers,
+          excludedCustomers:
+            userDataToSave.excluded_customers ||
+            existingSessionData.excludedCustomers, // 두 형식 모두 유지
+          auto_barcode_generation:
+            userDataToSave.auto_barcode_generation ??
+            existingSessionData.auto_barcode_generation,
+          post_fetch_limit:
+            userDataToSave.post_fetch_limit ??
+            existingSessionData.post_fetch_limit,
         };
-        
+
         // 세션 스토리지에 업데이트된 데이터 저장
         sessionStorage.setItem("userData", JSON.stringify(updatedSessionData));
-        
+
         // localStorage에도 userId 저장 (다른 페이지와 일관성)
         if (updatedSessionData.userId) {
           localStorage.setItem("userId", updatedSessionData.userId);
         }
-        
+
         // postLimit도 별도로 저장
         if (userDataToSave.post_fetch_limit !== undefined) {
           sessionStorage.setItem(
@@ -261,8 +278,11 @@ export default function SettingsPage() {
             userDataToSave.post_fetch_limit.toString()
           );
         }
-        
-        console.log("세션에 userData 저장 (기존 구조 유지):", updatedSessionData);
+
+        console.log(
+          "세션에 userData 저장 (기존 구조 유지):",
+          updatedSessionData
+        );
       } catch (e) {
         console.error("세션 userData 저장 오류:", e);
       }
