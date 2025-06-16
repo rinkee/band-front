@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, forwardRef } from "react"; // forwardRef 추가
+import React, { useState, useEffect, useRef, forwardRef } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -12,7 +12,11 @@ import { ko } from "date-fns/locale"; // 한국어 로케일
 import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import JsBarcode from "jsbarcode";
-import { useUser, useOrders, useProducts, useOrderStats } from "../hooks";
+import { useUser, useProducts } from "../hooks";
+import {
+  useOrdersClient,
+  useOrderClientMutations,
+} from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
@@ -295,7 +299,7 @@ export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [filterSelection, setFilterSelection] = useState("all"); // 사용자가 UI에서 선택한 값
+  const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
@@ -305,7 +309,7 @@ export default function OrdersPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
-  const [statsLoading, setStatsLoading] = useState(true);
+  // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
@@ -374,13 +378,13 @@ export default function OrdersPage() {
     error: userError,
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
-  // useOrders 훅 호출 부분 수정
+  // useOrdersClient 훅 호출 부분 수정
   const {
     data: ordersData,
     error: ordersError,
     isLoading: isOrdersLoading,
     mutate: mutateOrders,
-  } = useOrders(
+  } = useOrdersClient(
     userData?.userId,
     currentPage,
     {
@@ -440,59 +444,23 @@ export default function OrdersPage() {
     data: productsData,
     error: productsError,
     mutate: mutateProducts,
-  } = useProducts(userData?.userId, 1, { limit: 1000 }, swrOptions);
-  const {
-    data: orderStatsData,
-    error: orderStatsError,
-    isLoading: isOrderStatsLoading,
-    mutate: mutateOrderStats,
-  } = useOrderStats(
+  } = useProducts(
     userData?.userId,
-    // --- 현재 필터 상태를 기반으로 파라미터 객체 생성 ---
+    1,
+    { limit: 1000 },
     {
-      // 날짜 범위 파라미터 (기존과 동일)
-      dateRange: filterDateRange,
-      startDate:
-        filterDateRange === "custom"
-          ? customStartDate?.toISOString()
-          : undefined,
-      endDate:
-        filterDateRange === "custom" ? customEndDate?.toISOString() : undefined,
-
-      // <<< 추가된 필터 파라미터 >>>
-      // filterSelection 값을 기반으로 status 또는 subStatus 결정
-      status: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none" ||
-          filterSelection === "all"
-        ) {
-          return undefined; // 부가 상태 필터 또는 전체 시에는 status 전달 안 함
-        }
-        return filterSelection; // 주 상태 필터 값 전달
-      })(),
-      subStatus: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection; // 부가 상태 필터 값 전달
-        }
-        return undefined; // 전체 또는 주 상태 필터 시 subStatus 전달 안 함
-      })(),
-      search: searchTerm.trim() || undefined, // 검색어 전달
-    },
-    null,
-    null,
-    swrOptions
+      ...swrOptions,
+      revalidateOnFocus: true, // 페이지 포커스 시 상품 데이터 새로고침
+      refreshInterval: 300000, // 상품 데이터는 5분마다 업데이트 (주문보다 자주)
+    }
   );
+  // useOrderStatsClient 제거 - 클라이언트에서 직접 계산
 
-  const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // 클라이언트 사이드 mutation 함수들
+  const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
+    useOrderClientMutations();
 
-  const isDataLoading = isUserLoading || isOrdersLoading || isOrderStatsLoading;
+  const isDataLoading = isUserLoading || isOrdersLoading;
   const displayedOrderIds = displayOrders.map((o) => o.order_id);
   const isAllDisplayedSelected =
     displayedOrderIds.length > 0 &&
@@ -546,10 +514,11 @@ export default function OrdersPage() {
 
     const ordersToUpdateFilter = orders.filter(
       (order) =>
-        selectedOrderIds.includes(order.order_id) &&
-        order.status !== newStatus
+        selectedOrderIds.includes(order.order_id) && order.status !== newStatus
     );
-    const orderIdsToProcess = ordersToUpdateFilter.map((order) => order.order_id);
+    const orderIdsToProcess = ordersToUpdateFilter.map(
+      (order) => order.order_id
+    );
     const skippedCount = selectedOrderIds.length - orderIdsToProcess.length;
 
     if (orderIdsToProcess.length === 0) {
@@ -562,7 +531,9 @@ export default function OrdersPage() {
     if (
       !window.confirm(
         `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
-          (skippedCount > 0 ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)` : "")
+          (skippedCount > 0
+            ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
+            : "")
       )
     ) {
       setBulkUpdateLoading(false);
@@ -570,78 +541,24 @@ export default function OrdersPage() {
     }
 
     console.log(
-      `Attempting to bulk update ${orderIdsToProcess.length} orders to ${newStatus}`
+      `Attempting to bulk update ${orderIdsToProcess.length} orders to ${newStatus} via client-side`
     );
-
-    // --- 낙관적 업데이트 (SWR 사용 시) ---
-    const nowISO = new Date().toISOString();
-    await mutateOrders(
-      (currentData) => {
-        if (!currentData || !currentData.data) return currentData;
-        const newOrdersList = currentData.data.map(order => {
-          if (orderIdsToProcess.includes(order.order_id)) {
-            let updatedFields = { status: newStatus };
-              if (newStatus === "수령완료") { updatedFields = { ...updatedFields, pickupTime: nowISO, completed_at: nowISO, canceled_at: null };}
-              else if (newStatus === "결제완료") { updatedFields = { ...updatedFields, paid_at: nowISO, completed_at: null, canceled_at: null };}
-              else if (newStatus === "주문취소") { updatedFields = { ...updatedFields, canceled_at: nowISO, completed_at: null };}
-              // 기타 상태 처리...
-            return { ...order, ...updatedFields };
-          }
-          return order;
-        });
-        return { ...currentData, data: newOrdersList };
-      },
-      { revalidate: false } // 재검증은 API 호출 후 결정
-    );
-    // --- 낙관적 업데이트 끝 ---
 
     let successCount = 0;
     let failCount = 0;
 
     try {
-      // 새로운 일괄 처리 함수 호출
-      const bulkUpdateUrl = `${functionsBaseUrl}/orders-bulk-update-status`; // 새 함수 경로
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      const response = await fetch(bulkUpdateUrl, {
-        method: "POST", // 메소드 변경
-        headers: {
-          Authorization: `Bearer ${anonKey}`, // 또는 supabase.auth.getSession()으로 얻은 토큰
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderIds: orderIdsToProcess, // 배열로 전달
-          status: newStatus,
-          // userId: userData.userId, // 함수 내부에서 인증/권한 처리를 한다면 필요 없을 수 있음
-                                    // Service Role Key를 사용하므로 userId 기반 RLS는 직접 적용 안됨.
-                                    // 함수 로직 내에서 user_id를 검증해야 함 (현재 코드에는 없음)
-          // 필요하다면 subStatus 등 추가 정보 전달
-          // subStatus: newStatus === "확인필요" ? "확인필요" : null,
-        }),
-      });
-
-      const resultData = await response.json();
-
-      if (!response.ok || !resultData.success) {
-        throw new Error(resultData.message || `일괄 업데이트 실패 (${response.status})`);
-      }
-
-      successCount = resultData.updatedCount || 0; // 서버에서 반환된 실제 성공 카운트
-      failCount = orderIdsToProcess.length - successCount; // 요청 수 - 성공 수
-
-      console.log("일괄 업데이트 성공:", resultData.message);
-
-      // 성공 시 데이터 재검증 (SWR 사용 시)
-      await mutateOrders(); // 전체 목록 재검증
-      await mutateOrderStats();
-
+      await bulkUpdateOrderStatus(
+        orderIdsToProcess,
+        newStatus,
+        userData.userId
+      );
+      successCount = orderIdsToProcess.length;
+      console.log("일괄 업데이트 성공 (client-side)");
     } catch (err) {
-      console.error("Failed to bulk update orders:", err);
-      failCount = orderIdsToProcess.length - successCount; // 에러 발생 시 나머지 실패 처리
+      console.error("Failed to bulk update orders (client-side):", err);
+      failCount = orderIdsToProcess.length;
       alert(`일괄 업데이트 중 오류 발생: ${err.message}`);
-      // 에러 발생 시 낙관적 업데이트 롤백 (강제 재검증)
-      await mutateOrders();
-      await mutateOrderStats();
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
@@ -650,10 +567,15 @@ export default function OrdersPage() {
       if (successCount > 0) message += `${successCount}건 성공. `;
       if (failCount > 0) message += `${failCount}건 실패. `;
       if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`;
-      if (!message && successCount === 0 && failCount === 0 && skippedCount === 0) message = "변경 대상 없음.";
+      if (
+        !message &&
+        successCount === 0 &&
+        failCount === 0 &&
+        skippedCount === 0
+      )
+        message = "변경 대상 없음.";
       else if (!message) message = "일괄 처리 완료.";
 
-      // alert(message); // 사용자에게 최종 결과 알림
       console.log("최종 일괄 처리 결과:", message);
     }
   };
@@ -752,6 +674,69 @@ export default function OrdersPage() {
     if (productsData?.data) setProducts(productsData.data);
     if (productsError) console.error("Product Error:", productsError);
   }, [productsData, productsError]);
+
+  // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && userData?.userId) {
+        console.log("Page became visible, refreshing products data...");
+        mutateProducts(); // 상품 데이터 새로고침
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (userData?.userId) {
+        console.log("Window focused, refreshing products data...");
+        mutateProducts(); // 윈도우 포커스 시에도 상품 데이터 새로고침
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [mutateProducts, userData?.userId]);
+
+  // 페이지 로드 시 상품 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
+  useEffect(() => {
+    if (userData?.userId) {
+      console.log("Orders page mounted, refreshing products data...");
+      mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
+    }
+  }, [userData?.userId]); // mutateProducts를 의존성에서 제거하여 무한 루프 방지
+
+  // localStorage 플래그 감지하여 바코드 옵션 업데이트 확인
+  useEffect(() => {
+    const checkBarcodeOptionsUpdate = () => {
+      const lastUpdated = localStorage.getItem("barcodeOptionsUpdated");
+      if (lastUpdated && userData?.userId) {
+        const updateTime = parseInt(lastUpdated);
+        const now = Date.now();
+        // 5분 이내의 업데이트만 유효하다고 간주
+        if (now - updateTime < 5 * 60 * 1000) {
+          console.log(
+            "Barcode options were updated, refreshing products data..."
+          );
+          mutateProducts();
+          // 플래그 제거하여 중복 업데이트 방지
+          localStorage.removeItem("barcodeOptionsUpdated");
+        }
+      }
+    };
+
+    // 컴포넌트 마운트 시 체크
+    checkBarcodeOptionsUpdate();
+
+    // storage 이벤트 리스너 (다른 탭에서 변경사항이 있을 때)
+    window.addEventListener("storage", checkBarcodeOptionsUpdate);
+
+    return () => {
+      window.removeEventListener("storage", checkBarcodeOptionsUpdate);
+    };
+  }, [mutateProducts, userData?.userId]);
   useEffect(() => {
     if (ordersData?.data) setOrders(ordersData.data);
     if (ordersError) {
@@ -764,9 +749,7 @@ export default function OrdersPage() {
     )
       setCurrentPage(1);
   }, [ordersData, ordersError, currentPage, searchTerm]);
-  useEffect(() => {
-    setStatsLoading(isOrderStatsLoading);
-  }, [isOrderStatsLoading]);
+  // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
   //   const timerId = setTimeout(() => {
@@ -796,6 +779,8 @@ export default function OrdersPage() {
     products.find((p) => p.product_id === id)?.title || "상품명 없음";
   const getProductBarcode = (id) =>
     products.find((p) => p.product_id === id)?.barcode || "";
+  const getProductById = (id) =>
+    products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
     products.find((p) => p.product_id === id)?.band_post_url || "";
   const formatCurrency = (amt) =>
@@ -833,8 +818,11 @@ export default function OrdersPage() {
     try {
       const allowed = ["주문완료", "주문취소", "수령완료", "확인필요"];
       if (!allowed.includes(newStatus)) return;
+
       const updateData = { status: newStatus };
       const nowISO = new Date().toISOString();
+
+      // 상태별 추가 필드 설정
       if (newStatus === "수령완료") {
         updateData.pickupTime = nowISO;
         updateData.completed_at = nowISO;
@@ -852,65 +840,19 @@ export default function OrdersPage() {
         updateData.completed_at = null;
         updateData.canceled_at = null;
       }
-      // fetch API를 사용하여 Supabase Function 호출
-      const functionUrl = `${functionsBaseUrl}/orders-update-status?orderId=${orderId}`; // orderId 파라미터 사용
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const requestBody = {
-        status: newStatus,
-        // 필요시 subStatus, cancelReason 등 추가
-      };
 
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // 또는 PUT (함수에서 둘 다 허용)
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey, // apikey 사용
-        },
-        body: JSON.stringify(requestBody),
+      console.log("Updating order status via client-side:", {
+        orderId,
+        updateData,
       });
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ message: response.statusText }));
-        throw new Error(
-          `주문 상태 업데이트 오류 (${response.status}): ${
-            errorData.message || "Unknown error"
-          }`
-        );
-      }
+      await updateOrderStatus(orderId, updateData, userData.userId);
 
-      const data = await response.json();
-
-      if (!data?.success) {
-        throw new Error(data?.message || "주문 상태 업데이트에 실패했습니다.");
-      }
-
-      // 성공 후 처리
-      // 옵티미스틱 업데이트: 기존 주문 상태를 클라이언트 측에서 즉시 업데이트
-      const updatedOrders = orders.map((order) => {
-        if (order.order_id === orderId) {
-          return {
-            ...order,
-            status: newStatus,
-            ...(newStatus === "수령완료" && {
-              pickupTime: nowISO,
-              completed_at: nowISO,
-            }),
-            ...(newStatus === "결제완료" && { paid_at: nowISO }),
-          };
-        }
-        return order;
-      });
-      setOrders(updatedOrders);
-
-      // SWR 데이터 업데이트
-      mutate();
-      setIsDetailModalOpen(false); // 모달 닫기 추가
+      console.log("Order status updated successfully via client-side");
+      setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      console.error("Status Change Error:", err);
-
-      mutate();
+      console.error("Status Change Error (client-side):", err);
+      alert(err.message || "주문 상태 업데이트에 실패했습니다.");
     }
   };
   const handleTabChange = (tab) => setActiveTab(tab);
@@ -980,7 +922,7 @@ export default function OrdersPage() {
     setSearchTerm("");
     setExactCustomerFilter(null); // <<< 정확 필터도 초기화
     setCurrentPage(1);
-    setFilterSelection("all");
+    setFilterSelection("주문완료");
     // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
   };
 
@@ -1068,70 +1010,66 @@ export default function OrdersPage() {
     const qty = Math.max(1, parseInt(tempQuantity, 10) || 1);
     const price = Math.max(0, parseFloat(tempPrice) || 0);
     const itemNum = Math.max(1, parseInt(tempItemNumber, 10) || 1);
+
     const updateData = {
       item_number: itemNum,
       quantity: qty,
       price: price,
       total_amount: price * qty,
     };
-    // setLoading(true); // 저장 로딩 상태 추가 필요 시
+
     try {
-      // fetch API를 사용하여 Supabase Function 호출
-      // 함수 URL 및 요청 데이터 준비
-      const functionUrl = `${functionsBaseUrl}/orders-update-details?orderId=${order_id}`;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      const updateData = {
-        item_number: itemNum,
-        order_quantity: qty, // 함수에서 받는 필드명 사용 (order_quantity)
-        order_price: price, // 함수에서 받는 필드명 사용 (order_price)
-        total_amount: totalAmount, // 계산된 총액
-        // 필요시 order_options, order_memo 등 추가
-      };
-
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // 또는 PUT
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey, // apikey 사용
-        },
-        body: JSON.stringify(updateData),
+      console.log("Updating order details via client-side:", {
+        order_id,
+        updateData,
       });
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ message: response.statusText }));
-        throw new Error(
-          `주문 정보 업데이트 오류 (${response.status}): ${
-            errorData.message || "Unknown error"
-          }`
-        );
-      }
+      await updateOrderDetails(order_id, updateData, userData.userId);
 
-      const data = await response.json();
-
-      if (!data?.success) {
-        throw new Error(data?.message || "주문 정보 업데이트에 실패했습니다.");
-      }
-
-      const updated = { ...selectedOrder, ...updateData };
-      setOrders((curr) =>
-        curr.map((o) => (o.order_id === order_id ? updated : o))
-      );
-      setSelectedOrder(updated);
+      console.log("Order details updated successfully via client-side");
       setIsEditingDetails(false); // 편집 모드 종료
-
-      mutateOrders();
-      mutateOrderStats();
-      setIsDetailModalOpen(false); // 모달 닫기 추가
+      setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      console.error("Update Error:", err);
+      console.error("Update Error (client-side):", err);
+      alert(err.message || "주문 정보 업데이트에 실패했습니다.");
+    }
+  };
 
+  // --- 바코드 옵션 변경 핸들러 ---
+  const handleBarcodeOptionChange = async (orderId, selectedOption) => {
+    if (!userData?.userId) {
+      console.error("User ID is missing");
+      return;
+    }
+
+    try {
+      // orders 테이블의 selected_barcode_option과 total_amount 업데이트
+      const updateData = {
+        selected_barcode_option: {
+          barcode: selectedOption.barcode,
+          name: selectedOption.name,
+          price: selectedOption.price,
+          field_reference: selectedOption.field_reference,
+        },
+        total_amount: selectedOption.price,
+        price_option_used: selectedOption.name,
+        price_option_description: `${selectedOption.name} (${
+          selectedOption.barcode
+        }) - ₩${selectedOption.price.toLocaleString()}`,
+      };
+
+      console.log("Updating order barcode option:", { orderId, updateData });
+
+      await updateOrderDetails(orderId, updateData, userData.userId);
+
+      console.log("Barcode option updated successfully");
+
+      // 주문 목록과 상품 목록 새로고침
       mutateOrders();
-      mutateOrderStats(); // 에러 시에도 원복 위해
-    } finally {
-      // setLoading(false);
+      mutateProducts(); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
+    } catch (error) {
+      console.error("Failed to update barcode option:", error);
+      alert("바코드 옵션 변경에 실패했습니다.");
     }
   };
 
@@ -1276,19 +1214,63 @@ export default function OrdersPage() {
     );
 
   // --- 데이터 준비 ---
-  const filteredTotalItems = ordersData?.pagination?.total ?? 0; // <<< 이 변수를 사용해야 합니다.
-  const totalItems = ordersData?.pagination?.total || 0;
+  const filteredTotalItems = ordersData?.pagination?.totalItems ?? 0;
+  const totalItems = ordersData?.pagination?.totalItems || 0;
   const totalPages = ordersData?.pagination?.totalPages || 1;
-  const stats = orderStatsData?.data || {
-    totalOrders: 0,
-    completedOrders: 0,
-    pendingOrders: 0,
+
+  // 현재 검색된 주문 데이터에서 직접 통계 계산
+  const currentOrders = ordersData?.data || [];
+
+  // 클라이언트 사이드에서 통계 계산 함수
+  const calculateClientStats = (orders) => {
+    const statusCounts = {};
+    const subStatusCounts = {};
+    let completedCount = 0;
+    let pendingCount = 0;
+
+    orders.forEach((order) => {
+      // Status 카운트
+      statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+
+      // Sub_status 카운트
+      if (order.sub_status) {
+        subStatusCounts[order.sub_status] =
+          (subStatusCounts[order.sub_status] || 0) + 1;
+      }
+
+      // 완료/미완료 카운트
+      if (order.status === "수령완료") {
+        completedCount++;
+      } else if (order.sub_status === "미수령") {
+        pendingCount++;
+      }
+    });
+
+    return {
+      totalOrders: orders.length,
+      completedOrders: completedCount,
+      pendingOrders: pendingCount,
+      statusCounts,
+      subStatusCounts,
+    };
   };
-  const {
-    totalOrders: totalStatsOrders,
-    completedOrders: totalCompletedOrders,
-    pendingOrders: totalPendingOrders,
-  } = stats;
+
+  const clientStats = calculateClientStats(currentOrders);
+  const totalStatsOrders = clientStats.totalOrders;
+  const totalCompletedOrders = clientStats.completedOrders;
+  const totalPendingOrders = clientStats.pendingOrders;
+
+  // 디버깅용 로그
+  console.log("Current search term:", searchTerm);
+  console.log("Current filter selection:", filterSelection);
+  console.log("Current orders data:", currentOrders);
+  console.log("Client calculated stats:", clientStats);
+  console.log("Calculated totals:", {
+    totalStatsOrders,
+    totalCompletedOrders,
+    totalPendingOrders,
+  });
+
   const completionRate =
     totalStatsOrders > 0
       ? Math.round((totalCompletedOrders / totalStatsOrders) * 100)
@@ -1360,11 +1342,7 @@ export default function OrdersPage() {
             </div>
           </div>
           <div className="w-full md:w-auto relative ">
-            {statsLoading && (
-              <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center rounded-lg z-10 -m-1">
-                <LoadingSpinner color="text-gray-500" />
-              </div>
-            )}
+            {/* statsLoading 제거 - 클라이언트 계산으로 즉시 반영 */}
             <div className="grid grid-cols-4 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm w-full md:w-auto">
               {/* --- 총 주문 --- */}
               <div
@@ -1657,131 +1635,165 @@ export default function OrdersPage() {
                 )}
                 {displayOrders.map((order) => {
                   const isSelected = selectedOrderIds.includes(order.order_id);
-                  return (
-                    <tr
-                      key={order.order_id}
-                      className={`${
-                        isSelected ? "bg-orange-50" : "hover:bg-gray-50"
-                      } transition-colors group cursor-pointer ${
-                        isOrdersLoading ? "opacity-70" : ""
-                      }`}
-                      onClick={() => openDetailModal(order)}
-                    >
-                      <td
-                        onClick={(e) => e.stopPropagation()}
-                        className="relative w-12 px-6 sm:w-16 sm:px-8"
-                      >
-                        <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
-                          <input
-                            type="checkbox"
-                            className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                            value={order.order_id}
-                            checked={isSelected}
-                            onChange={(e) =>
-                              handleCheckboxChange(e, order.order_id)
-                            }
-                          />
-                        </div>
-                      </td>
-                      <td
-                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
-                        title={getProductNameById(order.product_id)}
-                        onClick={(e) => {
-                          // 클릭 핸들러 추가
-                          e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
-                          handleCellClickToSearch(
-                            getProductNameById(order.product_id)
-                          ); // 검색 함수 호출
-                        }}
-                      >
-                        {getProductNameById(order.product_id)}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
-                        title={order.customer_name}
-                        onClick={(e) => {
-                          e.stopPropagation(); // 행 전체 onClick(모달) 방지
-                          handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
-                        }}
-                      >
-                        {order.customer_name || "-"}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-sm text-gray-600 max-w-[100px] truncate hidden md:table-cell"
-                        title={order.comment || ""}
-                      >
-                        {order.comment || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm text-gray-700 font-medium">
-                        {order.item_number || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
-                        {order.quantity || 0}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">
-                        {formatCurrency(order.total_amount)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {formatDate(order.ordered_at)}
-                      </td>
-                      <td className="px-4 py-3 text-center hidden md:table-cell">
-                        {getProductBarcode(order.product_id) ? (
-                          <Barcode
-                            value={getProductBarcode(order.product_id)}
-                            height={50}
-                            width={1.2}
-                            fontSize={12}
-                          />
-                        ) : (
-                          <span className="text-xs text-gray-400">없음</span>
-                        )}
-                      </td>
+                  const product = getProductById(order.product_id);
+                  const hasMultipleBarcodeOptions =
+                    product?.barcode_options?.options?.length > 1;
 
-                      <td className="px-4 py-3 text-center whitespace-nowrap">
-                        {(() => {
-                          // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
-                          const actualStatus = order.status;
-                          const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
-                          return (
-                            <div className="flex flex-col items-center">
-                              {" "}
-                              {/* 세로 정렬을 위해 div 추가 */}
-                              {/* 메인 상태 배지 (항상 order.status 기준) */}
-                              <StatusBadge status={actualStatus} />
-                              {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
-                              {actualStatus !== "수령완료" && actualSubStatus === "확인필요" && (
-                                <span
-                                  className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
-                                  title="부가 상태: 확인필요"
-                                >
-                                  <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                  확인 필요
-                                </span>
-                              )}
-                              {actualStatus !== "수령완료" && actualSubStatus === "미수령" && (
-                                <span
-                                  className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
-                                  title="부가 상태: 미수령"
-                                >
-                                  <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                  미수령
-                                </span>
-                              )}
-                              {actualStatus === "수령완료" && (
-                                <span
-                                  className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
-                                  title="부가 상태: 수령완료"
-                                >
-                                  {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
-                                  {formatDate(order.completed_at)}
-                                </span>
-                              )}
-                              {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
+                  return (
+                    <React.Fragment key={order.order_id}>
+                      <tr
+                        className={`${
+                          isSelected ? "bg-orange-50" : "hover:bg-gray-50"
+                        } transition-colors group cursor-pointer ${
+                          isOrdersLoading ? "opacity-70" : ""
+                        }`}
+                        onClick={() => openDetailModal(order)}
+                      >
+                        <td
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative w-12 px-6 sm:w-16 sm:px-8"
+                        >
+                          <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                              value={order.order_id}
+                              checked={isSelected}
+                              onChange={(e) =>
+                                handleCheckboxChange(e, order.order_id)
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td
+                          className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
+                          title={getProductNameById(order.product_id)}
+                          onClick={(e) => {
+                            // 클릭 핸들러 추가
+                            e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
+                            handleCellClickToSearch(
+                              getProductNameById(order.product_id)
+                            ); // 검색 함수 호출
+                            setFilterSelection("all");
+                          }}
+                        >
+                          {getProductNameById(order.product_id)}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
+                          title={order.customer_name}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 행 전체 onClick(모달) 방지
+                            handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
+                          }}
+                        >
+                          {order.customer_name || "-"}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-sm text-gray-600 max-w-[100px] truncate hidden md:table-cell"
+                          title={order.comment || ""}
+                        >
+                          {order.comment || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-700 font-medium">
+                          {order.item_number || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                          {order.quantity || 0}
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                          {formatCurrency(order.total_amount)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                          {formatDate(order.ordered_at)}
+                        </td>
+                        <td className="px-4 py-3 text-center hidden md:table-cell">
+                          {(() => {
+                            // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
+                            const selectedOption =
+                              order.selected_barcode_option;
+                            const displayBarcode =
+                              selectedOption?.barcode ||
+                              getProductBarcode(order.product_id);
+
+                            return displayBarcode ? (
+                              <Barcode
+                                value={displayBarcode}
+                                height={50}
+                                width={1.2}
+                                fontSize={12}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-400">
+                                없음
+                              </span>
+                            );
+                          })()}
+                        </td>
+
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          {(() => {
+                            // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
+                            const actualStatus = order.status;
+                            const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
+                            return (
+                              <div className="flex flex-col items-center">
+                                {" "}
+                                {/* 세로 정렬을 위해 div 추가 */}
+                                {/* 메인 상태 배지 (항상 order.status 기준) */}
+                                <StatusBadge status={actualStatus} />
+                                {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
+                                {actualStatus !== "수령완료" &&
+                                  actualSubStatus === "확인필요" && (
+                                    <span
+                                      className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
+                                      title="부가 상태: 확인필요"
+                                    >
+                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                      확인 필요
+                                    </span>
+                                  )}
+                                {actualStatus !== "수령완료" &&
+                                  actualSubStatus === "미수령" && (
+                                    <span
+                                      className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
+                                      title="부가 상태: 미수령"
+                                    >
+                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                      미수령
+                                    </span>
+                                  )}
+                                {actualStatus === "수령완료" && (
+                                  <span
+                                    className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
+                                    title="부가 상태: 수령완료"
+                                  >
+                                    {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
+                                    {formatDate(order.completed_at)}
+                                  </span>
+                                )}
+                                {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      </tr>
+
+                      {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
+                      {hasMultipleBarcodeOptions && (
+                        <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
+                          <td colSpan="11" className="px-4 py-2">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <BarcodeOptionSelector
+                                order={order}
+                                product={product}
+                                onOptionChange={handleBarcodeOptionChange}
+                              />
                             </div>
-                          );
-                        })()}
-                      </td>
-                    </tr>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -2318,6 +2330,79 @@ export default function OrdersPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// 바코드 옵션 선택 컴포넌트
+function BarcodeOptionSelector({ order, product, onOptionChange }) {
+  const [selectedOption, setSelectedOption] = useState(null);
+
+  // 바코드 옵션이 있는지 확인
+  const barcodeOptions = product?.barcode_options?.options || [];
+  const hasOptions = barcodeOptions.length > 1; // 기본 옵션 외에 다른 옵션이 있는지
+
+  // 초기 선택값 설정 (저장된 선택값 또는 메인 옵션)
+  useEffect(() => {
+    if (order.selected_barcode_option) {
+      // 이미 선택된 옵션이 있으면 해당 옵션 선택
+      const savedOption = barcodeOptions.find(
+        (opt) => opt.barcode === order.selected_barcode_option.barcode
+      );
+      setSelectedOption(
+        savedOption || barcodeOptions.find((opt) => opt.is_main)
+      );
+    } else {
+      // 기본값은 메인 옵션
+      const mainOption = barcodeOptions.find((opt) => opt.is_main);
+      setSelectedOption(mainOption || barcodeOptions[0]);
+    }
+  }, [order, barcodeOptions]);
+
+  const handleOptionSelect = (option) => {
+    setSelectedOption(option);
+    onOptionChange(order.order_id, option);
+  };
+
+  // 옵션이 없거나 1개만 있으면 선택 UI 표시 안함
+  if (!hasOptions) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 ml-6 pl-4 border-l-2 border-gray-300 bg-gray-50/30 rounded-r-lg">
+      <div className="py-2">
+        {/* 가로 배치 옵션들 - 간소화 */}
+        <div className="flex flex-wrap gap-2">
+          {barcodeOptions.map((option, index) => (
+            <label
+              key={index}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer transition-all text-sm ${
+                selectedOption?.barcode === option.barcode
+                  ? "border-blue-400 bg-blue-100 shadow-sm"
+                  : "border-gray-200 bg-white hover:border-gray-300"
+              }`}
+            >
+              <input
+                type="radio"
+                name={`barcode-option-${order.order_id}`}
+                checked={selectedOption?.barcode === option.barcode}
+                onChange={() => handleOptionSelect(option)}
+                className="h-3 w-3 text-gray-600 focus:ring-gray-500"
+              />
+              <span className="text-sm font-medium text-gray-900">
+                {option.name}
+                {option.is_main && (
+                  <span className="text-gray-500 ml-1">(기본)</span>
+                )}
+              </span>
+              <span className="text-xs text-gray-600">
+                ₩{option.price?.toLocaleString()}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

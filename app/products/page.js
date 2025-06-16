@@ -3,7 +3,12 @@
 import { useState, useEffect, useRef, forwardRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useUser, useProducts, useProduct } from "../hooks"; // 훅 경로 확인 필요
+import { useUser } from "../hooks"; // 훅 경로 확인 필요
+import {
+  useProductsClient,
+  useProductClient,
+  useProductClientMutations,
+} from "../hooks/useProductsClient";
 
 import JsBarcode from "jsbarcode";
 import { useSWRConfig } from "swr";
@@ -190,7 +195,9 @@ const Barcode = ({ value, width = 1.5, height = 40 }) => {
     }
   }, [value, width, height]);
   if (!value) return <div className="text-gray-500 text-xs italic">-</div>;
-  return <svg ref={barcodeRef} className="w-full h-auto block"></svg>;
+  return (
+    <svg ref={barcodeRef} className="w-full max-w-[120px] h-auto block"></svg>
+  );
 };
 
 // --- Custom Date Input Button ---
@@ -224,6 +231,255 @@ const CustomDateInputButton = forwardRef(
 );
 CustomDateInputButton.displayName = "CustomDateInputButton";
 
+// 바코드 옵션 관리 컴포넌트
+function BarcodeOptionsManager({
+  selectedProduct,
+  editedProduct,
+  setEditedProduct,
+  userData,
+}) {
+  const [barcodeOptions, setBarcodeOptions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { patchProduct } = useProductClientMutations();
+
+  // 초기값 설정
+  useEffect(() => {
+    if (
+      selectedProduct?.barcode_options?.options &&
+      selectedProduct.barcode_options.options.length > 0
+    ) {
+      // 데이터베이스에서 불러온 옵션들에 고유 ID 보장
+      const optionsWithId = selectedProduct.barcode_options.options.map(
+        (option, index) => ({
+          ...option,
+          id: option.id || `option_${Date.now()}_${index}`, // 고유 ID 보장
+        })
+      );
+      setBarcodeOptions(optionsWithId);
+    } else {
+      // 항상 기본 옵션 생성 (기존 상품 바코드 기반)
+      const mainOption = {
+        id: `main_${Date.now()}`,
+        name: "기본상품",
+        price: selectedProduct?.base_price || 0,
+        barcode: selectedProduct?.barcode || "",
+        is_main: true,
+      };
+      setBarcodeOptions([mainOption]);
+    }
+  }, [selectedProduct]);
+
+  // 바코드 추가 (최대 4개 제한)
+  const addOption = () => {
+    if (barcodeOptions.length >= 4) {
+      alert("바코드 옵션은 최대 4개까지 추가할 수 있습니다.");
+      return;
+    }
+
+    const barcodeNumber =
+      barcodeOptions.filter((opt) => !opt.is_main).length + 1;
+    const newOption = {
+      id: `option_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: `바코드${barcodeNumber}`,
+      price: selectedProduct?.base_price || 0,
+      barcode: "",
+      is_main: false,
+    };
+    setBarcodeOptions([...barcodeOptions, newOption]);
+  };
+
+  // 옵션 삭제
+  const removeOption = (optionId) => {
+    const optionToRemove = barcodeOptions.find((opt) => opt.id === optionId);
+    if (optionToRemove?.is_main) {
+      alert("기본 옵션은 삭제할 수 없습니다.");
+      return;
+    }
+    setBarcodeOptions(barcodeOptions.filter((opt) => opt.id !== optionId));
+  };
+
+  // 옵션 수정
+  const updateOption = (optionId, field, value) => {
+    console.log(`Updating option ${optionId}, field: ${field}, value:`, value); // 디버깅
+    setBarcodeOptions((prev) => {
+      const updated = prev.map((opt) => {
+        if (opt.id === optionId) {
+          const updatedOption = { ...opt, [field]: value };
+          console.log(`Updated option:`, updatedOption); // 디버깅
+          return updatedOption;
+        }
+        return opt;
+      });
+      console.log(`All options after update:`, updated); // 디버깅
+      return updated;
+    });
+  };
+
+  // 저장 함수
+  // 바코드 옵션 유효성 검사 함수 (외부에서 호출 가능)
+  const validateBarcodeOptions = () => {
+    // 유효성 검사
+    const hasEmptyFields = barcodeOptions.some(
+      (opt) => !opt.name.trim() || !opt.barcode.trim() || opt.price <= 0
+    );
+    if (hasEmptyFields) {
+      return "모든 바코드의 이름, 바코드, 가격을 입력해주세요.";
+    }
+
+    // 중복 바코드 검사
+    const barcodes = barcodeOptions.map((opt) => opt.barcode);
+    const duplicates = barcodes.filter(
+      (barcode, index) => barcodes.indexOf(barcode) !== index
+    );
+    if (duplicates.length > 0) {
+      return "중복된 바코드가 있습니다: " + duplicates.join(", ");
+    }
+
+    return null; // 오류 없음
+  };
+
+  // editedProduct 상태에 바코드 옵션 업데이트
+  useEffect(() => {
+    setEditedProduct((prev) => ({
+      ...prev,
+      barcode: barcodeOptions.find((opt) => opt.is_main)?.barcode || "",
+      barcode_options: {
+        options: barcodeOptions,
+        updated_at: new Date().toISOString(),
+      },
+    }));
+  }, [barcodeOptions, setEditedProduct]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-medium text-gray-900">바코드 상태 관리</h3>
+        <button
+          onClick={addOption}
+          disabled={barcodeOptions.length >= 4}
+          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+            barcodeOptions.length >= 4
+              ? "bg-gray-400 text-gray-200 cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          + 추가 바코드 ({barcodeOptions.length}/4)
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-100 border border-red-300 rounded-md text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {barcodeOptions.map((option, index) => (
+          <div
+            key={option.id}
+            className="p-4 border border-gray-200 rounded-lg bg-gray-50"
+          >
+            <div className="flex justify-between items-start mb-3">
+              <span className="text-sm font-medium text-gray-700">
+                {option.is_main ? "기본" : `바코드 ${index}`} - ID: {option.id}
+              </span>
+              {!option.is_main && (
+                <button
+                  onClick={() => removeOption(option.id)}
+                  className="text-red-600 hover:text-red-800 text-sm"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* 옵션명 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  바코드명 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={option.name}
+                  onChange={(e) =>
+                    updateOption(option.id, "name", e.target.value)
+                  }
+                  placeholder="예: 대용량, 프리미엄, 미니팩"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                  disabled={option.is_main} // 기본 옵션명은 수정 불가
+                />
+              </div>
+
+              {/* 가격 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  가격 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={option.price === 0 ? "" : option.price}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // 빈 문자열이거나 숫자만 허용
+                    if (value === "" || /^\d+$/.test(value)) {
+                      updateOption(
+                        option.id,
+                        "price",
+                        value === "" ? 0 : parseInt(value)
+                      );
+                    }
+                  }}
+                  onWheel={(e) => e.target.blur()} // 스크롤 방지
+                  placeholder="가격을 입력하세요"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              {/* 바코드 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  바코드 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={option.barcode}
+                  onChange={(e) => {
+                    // 영문, 숫자만 허용 (한글 및 특수문자 제외)
+                    const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                    updateOption(option.id, "barcode", value);
+                  }}
+                  onKeyDown={(e) => {
+                    // 한글 입력 방지
+                    if (e.key === "Process" || e.keyCode === 229) {
+                      e.preventDefault();
+                    }
+                  }}
+                  placeholder="바코드 번호 (영문, 숫자만)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+            </div>
+
+            {/* 바코드 미리보기 */}
+            {option.barcode && (
+              <div className="mt-3 p-3 bg-white border border-gray-200 rounded-md">
+                <div className="text-xs text-gray-500 mb-2">
+                  바코드 미리보기:
+                </div>
+                <div className="flex justify-center">
+                  <Barcode value={option.barcode} height={20} width={1} />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ProductsPage() {
   const router = useRouter();
   const topRef = useRef(null);
@@ -248,11 +504,19 @@ export default function ProductsPage() {
     quantity: 0,
     status: "판매중",
     barcode: "",
+    option_barcode_1: "",
+    option_barcode_2: "",
+    option_barcode_3: "",
     memo: "",
     pickup_info: "",
     pickup_date: "",
   });
   const [debouncedBarcodeValue, setDebouncedBarcodeValue] = useState("");
+  const [debouncedOptionBarcodes, setDebouncedOptionBarcodes] = useState({
+    option_barcode_1: "",
+    option_barcode_2: "",
+    option_barcode_3: "",
+  });
   const { mutate } = useSWRConfig();
   const checkbox = useRef(); // 사용되지 않는다면 제거 가능
 
@@ -282,13 +546,13 @@ export default function ProductsPage() {
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
 
-  // 상품 목록 데이터 훅 (페이지네이션 파라미터 전달)
+  // 상품 목록 데이터 훅 (클라이언트 사이드)
   const {
     data: productsData,
     error: productsError,
     isLoading: isProductsLoading,
     mutate: mutateProducts,
-  } = useProducts(
+  } = useProductsClient(
     userData?.userId,
     currentPage,
     {
@@ -301,12 +565,12 @@ export default function ProductsPage() {
     swrOptions
   );
 
-  // 상품 상세 데이터 훅
+  // 상품 상세 데이터 훅 (클라이언트 사이드)
   const {
     data: productDetailData,
     error: productDetailError,
     isValidating: isLoadingProductDetail,
-  } = useProduct(
+  } = useProductClient(
     selectedProductId && userData?.userId ? `${selectedProductId}` : null,
     {
       onSuccess: (data) => {
@@ -318,6 +582,9 @@ export default function ProductsPage() {
             quantity: data.data.quantity || 0,
             status: data.data.status || "판매중",
             barcode: data.data.barcode || "",
+            option_barcode_1: data.data.option_barcode_1 || "",
+            option_barcode_2: data.data.option_barcode_2 || "",
+            option_barcode_3: data.data.option_barcode_3 || "",
             memo: data.data.memo || "",
             pickup_info: data.data.pickup_info || "",
             pickup_date: data.data.pickup_date || "",
@@ -402,6 +669,22 @@ export default function ProductsPage() {
     }, 1000);
     return () => clearTimeout(handler);
   }, [editedProduct.barcode]);
+
+  // 옵션 바코드 디바운스 useEffect
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedOptionBarcodes({
+        option_barcode_1: editedProduct.option_barcode_1,
+        option_barcode_2: editedProduct.option_barcode_2,
+        option_barcode_3: editedProduct.option_barcode_3,
+      });
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [
+    editedProduct.option_barcode_1,
+    editedProduct.option_barcode_2,
+    editedProduct.option_barcode_3,
+  ]);
 
   // --- 핸들러 함수들 ---
   const handleLogout = () => {
@@ -504,8 +787,26 @@ export default function ProductsPage() {
     setIsModalOpen(false);
     setSelectedProductId(null);
     setSelectedProduct(null);
+    setEditedProduct({
+      title: "",
+      base_price: 0,
+      quantity: 0,
+      status: "판매중",
+      barcode: "",
+      option_barcode_1: "",
+      option_barcode_2: "",
+      option_barcode_3: "",
+      memo: "",
+      pickup_info: "",
+      pickup_date: "",
+    });
     setActiveTab("barcode");
     setDebouncedBarcodeValue("");
+    setDebouncedOptionBarcodes({
+      option_barcode_1: "",
+      option_barcode_2: "",
+      option_barcode_3: "",
+    });
   };
   const handleTabChange = (tab) => setActiveTab(tab);
   const handleInputChange = (e) => {
@@ -523,8 +824,9 @@ export default function ProductsPage() {
     }
   };
 
-  const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // 클라이언트 사이드 mutation 함수들
+  const { patchProduct, deleteProduct: deleteProductMutation } =
+    useProductClientMutations();
 
   const updateProduct = async () => {
     if (
@@ -537,64 +839,33 @@ export default function ProductsPage() {
       alert("상품명과 가격을 올바르게 입력해주세요.");
       return;
     }
-    const productIdToUpdate = selectedProduct.product_id;
-
-    // --- 수정: 함수 경로 및 userId 파라미터 확인 ---
-    // products-patch 함수는 productId와 userId를 쿼리 파라미터로 받습니다.
-    const functionUrl = `${functionsBaseUrl}/products-patch?productId=${productIdToUpdate}&userId=${userData.userId}`;
-    // -------------------------------------------
 
     try {
-      console.log("Sending data to update via fetch:", editedProduct);
-      console.log("Calling function URL:", functionUrl); // 호출 URL 확인용 로그
+      console.log("Updating product via client-side:", editedProduct);
 
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // PATCH 메서드 사용
-        headers: {
-          "Content-Type": "application/json",
-          // --- 수정: Authorization 대신 apikey 사용 ---
-          apikey: supabaseAnonKey,
-          // 'Authorization': `Bearer ${supabaseAnonKey}`, // 이 방식 대신 apikey 사용
-          // -------------------------------------------
-        },
-        body: JSON.stringify(editedProduct), // 수정할 필드 포함 객체 전송
-      });
+      await patchProduct(
+        selectedProduct.product_id,
+        editedProduct,
+        userData.userId
+      );
 
-      // 응답 상태 확인
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Supabase function error response:", errorData);
-        throw new Error(
-          errorData.message ||
-            errorData.error ||
-            `Failed to update product: ${response.statusText} (Status: ${response.status})`
-        );
+      console.log("Update successful via client-side");
+
+      // 바코드 옵션 업데이트 플래그 설정 (다른 페이지에서 감지할 수 있도록)
+      if (editedProduct.barcode_options) {
+        localStorage.setItem("barcodeOptionsUpdated", Date.now().toString());
+        console.log("Barcode options updated flag set");
       }
 
-      const data = await response.json();
-      console.log("Update successful via fetch:", data);
-
-      // SWR 캐시 갱신 (기존 로직 유지 - 필요시 키 확인)
-      mutateProducts(); // 목록 캐시 갱신
-      const productSWRKey = `${functionsBaseUrl}/products-get-by-id?productId=${productIdToUpdate}`;
-      // --- 수정: revalidate 옵션 추가 ---
-      mutate(
-        productSWRKey,
-        { success: true, data: data.data }, // 로컬 캐시를 업데이트된 데이터로 즉시 갱신
-        { revalidate: false } // 백그라운드 재검증 방지
-      );
-      // ---------------------------------
-
       handleCloseModal();
-      // 성공 알림은 선택사항
-      // alert("상품 정보가 업데이트되었습니다.");
+      alert("상품 정보가 저장되었습니다.");
     } catch (error) {
-      console.error("상품 정보 업데이트 오류 (fetch):", error);
+      console.error("상품 정보 업데이트 오류 (client-side):", error);
       alert(error.message || "상품 정보 업데이트에 실패했습니다.");
     }
   };
 
-  // deleteProduct 함수도 동일하게 수정 (apikey 헤더 사용)
+  // deleteProduct 함수 (클라이언트 사이드)
   const deleteProduct = async () => {
     if (!selectedProduct || !userData) return;
     if (
@@ -604,38 +875,19 @@ export default function ProductsPage() {
     )
       return;
 
-    const productIdToDelete = selectedProduct.product_id;
-    // 삭제 함수 경로 확인 (예: products-delete)
-    const functionUrl = `${functionsBaseUrl}/products-delete?productId=${productIdToDelete}&userId=${userData.userId}`;
-
     try {
-      const response = await fetch(functionUrl, {
-        method: "DELETE",
-        headers: {
-          // --- 수정: Authorization 대신 apikey 사용 ---
-          apikey: supabaseAnonKey,
-          // 'Authorization': `Bearer ${supabaseAnonKey}`,
-          // -------------------------------------------
-        },
-        // DELETE는 보통 body 없음
-      });
-
-      // 응답 처리 (204 No Content 확인 포함)
-      if (!response.ok && response.status !== 204) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Supabase function error response (delete):", errorData);
-        throw new Error(/* ... 에러 메시지 ... */);
-      }
-
       console.log(
-        "Delete successful via fetch (status: " + response.status + ")"
+        "Deleting product via client-side:",
+        selectedProduct.product_id
       );
 
-      mutateProducts();
+      await deleteProductMutation(selectedProduct.product_id, userData.userId);
+
+      console.log("Delete successful via client-side");
       handleCloseModal();
       alert("상품이 삭제되었습니다.");
     } catch (error) {
-      console.error("상품 삭제 오류 (fetch):", error);
+      console.error("상품 삭제 오류 (client-side):", error);
       alert(error.message || "상품 삭제에 실패했습니다.");
     }
   };
@@ -1165,12 +1417,27 @@ export default function ProductsPage() {
                             가격 <span className="text-red-500">*</span>
                           </label>
                           <input
-                            type="number"
+                            type="text"
                             name="base_price"
-                            value={editedProduct.base_price}
-                            onChange={handleInputChange}
+                            value={
+                              editedProduct.base_price === 0
+                                ? ""
+                                : editedProduct.base_price
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // 빈 문자열이거나 숫자만 허용
+                              if (value === "" || /^\d+$/.test(value)) {
+                                setEditedProduct((prev) => ({
+                                  ...prev,
+                                  base_price:
+                                    value === "" ? 0 : parseInt(value),
+                                }));
+                              }
+                            }}
+                            onWheel={(e) => e.target.blur()} // 스크롤 방지
                             required
-                            min="0"
+                            placeholder="가격을 입력하세요"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
                           />
                         </div>
@@ -1179,11 +1446,25 @@ export default function ProductsPage() {
                             수량
                           </label>
                           <input
-                            type="number"
+                            type="text"
                             name="quantity"
-                            value={editedProduct.quantity}
-                            onChange={handleInputChange}
-                            min="0"
+                            value={
+                              editedProduct.quantity === 0
+                                ? ""
+                                : editedProduct.quantity
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // 빈 문자열이거나 숫자만 허용
+                              if (value === "" || /^\d+$/.test(value)) {
+                                setEditedProduct((prev) => ({
+                                  ...prev,
+                                  quantity: value === "" ? 0 : parseInt(value),
+                                }));
+                              }
+                            }}
+                            onWheel={(e) => e.target.blur()} // 스크롤 방지
+                            placeholder="수량을 입력하세요"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
                           />
                         </div>
@@ -1238,66 +1519,12 @@ export default function ProductsPage() {
                   )}
                   {activeTab === "barcode" && (
                     <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          바코드 번호
-                        </label>
-                        <input
-                          type="number"
-                          name="barcode"
-                          value={editedProduct.barcode}
-                          onChange={handleInputChange}
-                          placeholder="바코드 번호 입력 (예: 880123456789)"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-                        />
-                      </div>
-                      {editedProduct.barcode ? (
-                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 flex justify-between items-center">
-                            <span className="text-xs font-medium text-gray-600">
-                              바코드 미리보기
-                            </span>
-                            <div className="flex space-x-2">
-                              <button
-                                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition"
-                                onClick={() => {
-                                  /* Print logic */ alert("인쇄 준비중");
-                                }}
-                              >
-                                <PrinterIcon className="w-3.5 h-3.5" /> 인쇄
-                              </button>
-                              <button
-                                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition"
-                                onClick={() =>
-                                  navigator.clipboard
-                                    .writeText(editedProduct.barcode)
-                                    .then(() => alert("복사됨!"))
-                                    .catch(() => alert("복사 실패"))
-                                }
-                              >
-                                <ClipboardDocumentIcon className="w-3.5 h-3.5" />
-                                복사
-                              </button>
-                            </div>
-                          </div>
-                          <div className="p-6 flex justify-center items-center min-h-[150px]">
-                            <div className="w-full max-w-xs">
-                              <Barcode
-                                value={debouncedBarcodeValue}
-                                height={60}
-                                width={1.5}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-500">
-                          <QrCodeIcon className="w-10 h-10 mx-auto mb-2 text-gray-400" />
-                          <p className="text-sm">
-                            바코드 번호를 입력하면 미리보기가 생성됩니다.
-                          </p>
-                        </div>
-                      )}
+                      <BarcodeOptionsManager
+                        selectedProduct={selectedProduct}
+                        editedProduct={editedProduct}
+                        setEditedProduct={setEditedProduct}
+                        userData={userData}
+                      />
                     </div>
                   )}
                 </div>

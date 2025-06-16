@@ -19,6 +19,9 @@ import {
   ArrowUpRightIcon,
   XCircleIcon as XCircleIconOutline,
   SparklesIcon,
+  CalendarDaysIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
 // --- 로딩 스피너 (라이트 테마) ---
@@ -114,8 +117,17 @@ export default function DashboardPage() {
   const [error, setError] = useState(null); // For component-specific errors, if needed
   const [dateRange, setDateRange] = useState("30days"); // Default range
   const [userData, setUserData] = useState(null); // Store user data from session
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: "",
+    endDate: "",
+    isActive: false,
+  }); // Custom date range state
+  const [showDatePicker, setShowDatePicker] = useState(false); // Show/hide date picker
+  const [showMoreFilters, setShowMoreFilters] = useState(false); // Show/hide more filters
+  const [selectedMonth, setSelectedMonth] = useState(0); // 0: 이번달, -1: 저번달, null: 직접입력
 
   // Initialize state with keys matching the FINAL API response (camelCase)
+  // aa
   const [stats, setStats] = useState({
     totalOrders: 0,
     completedOrders: 0,
@@ -136,6 +148,11 @@ export default function DashboardPage() {
     },
     keepPreviousData: true, // Show stale data while revalidating
   };
+
+  // 초기값을 이번달로 설정
+  useEffect(() => {
+    setMonthlyRange(0); // 컴포넌트 마운트 시 이번달로 설정
+  }, []);
 
   // Authentication check useEffect
   useEffect(() => {
@@ -205,7 +222,13 @@ export default function DashboardPage() {
     mutate: orderStatsMutate,
   } = useOrderStats(
     userId,
-    { dateRange: dateRange }, // <<<--- filterOptions 객체로 전달 (dateRange만 필요)
+    {
+      dateRange: customDateRange.isActive ? "custom" : dateRange,
+      startDate: customDateRange.isActive
+        ? customDateRange.startDate
+        : undefined,
+      endDate: customDateRange.isActive ? customDateRange.endDate : undefined,
+    }, // 커스텀 날짜 범위 지원
     swrOptions
   );
 
@@ -246,14 +269,14 @@ export default function DashboardPage() {
     }
   }, [orderStatsData, isOrderStatsLoading]); // Rerun when data or loading state changes
 
-  // Re-fetch stats data when dateRange or userId changes
+  // Re-fetch stats data when dateRange, customDateRange or userId changes
   useEffect(() => {
     if (userId && !initialLoading) {
       // Ensure userId is set and initial load is done
       // console.log(`Date range or userId changed, revalidating stats for ${userId}...`);
       orderStatsMutate(); // Tell SWR to re-fetch the stats
     }
-  }, [dateRange, userId, orderStatsMutate, initialLoading]);
+  }, [dateRange, customDateRange, userId, orderStatsMutate, initialLoading]);
 
   // Helper Functions
   const timeAgo = (dateString) => {
@@ -297,6 +320,83 @@ export default function DashboardPage() {
       maximumFractionDigits: 0, // No decimals
     };
     return new Intl.NumberFormat("ko-KR", options).format(num);
+  };
+
+  // 이번달, 저번달 버튼을 위한 함수
+  const getCurrentMonthLabel = () => {
+    const now = new Date();
+    return `${now.getMonth() + 1}월`;
+  };
+
+  const getPreviousMonthLabel = () => {
+    const now = new Date();
+    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${prevMonth.getMonth() + 1}월`;
+  };
+
+  // 월별 날짜 범위 설정 함수
+  const setMonthlyRange = (monthOffset = 0) => {
+    const now = new Date();
+    const targetDate = new Date(
+      now.getFullYear(),
+      now.getMonth() + monthOffset,
+      1
+    );
+
+    const startDate = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      1
+    );
+
+    const endDate = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth() + 1,
+      0
+    );
+
+    const formatDate = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    setCustomDateRange({
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+      isActive: true,
+    });
+    setDateRange("custom");
+    setSelectedMonth(monthOffset);
+    setShowDatePicker(false);
+  };
+
+  // 날짜 범위를 텍스트로 포맷하는 함수
+  const getDateRangeText = () => {
+    if (selectedMonth !== null && customDateRange.isActive) {
+      const start = new Date(customDateRange.startDate);
+      const end = new Date(customDateRange.endDate);
+      return `${start.getMonth() + 1}/${start.getDate()} ~ ${
+        end.getMonth() + 1
+      }/${end.getDate()}`;
+    }
+    return "직접입력";
+  };
+
+  // 직접 날짜 입력 처리 함수
+  const handleCustomDateSubmit = () => {
+    if (customDateRange.startDate && customDateRange.endDate) {
+      setCustomDateRange((prev) => ({ ...prev, isActive: true }));
+      setDateRange("custom");
+      setSelectedMonth(null); // 직접입력 모드
+      setShowDatePicker(false);
+    }
+  };
+
+  // 커스텀 날짜 범위 초기화 함수 - 이번달로 설정
+  const resetCustomDateRange = () => {
+    setMonthlyRange(0); // 이번달로 설정
   };
 
   // Event Handlers
@@ -391,26 +491,180 @@ export default function DashboardPage() {
         {/* Header and Date Filter */}
         <div className="mb-6 md:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-900">대시보드</h1>
-          <div className="flex items-center bg-white border border-gray-200 rounded-lg p-1 space-x-1 shadow-sm">
-            {[
-              { v: "90days", l: "3개월" },
-              { v: "30days", l: "1개월" },
-              { v: "7days", l: "1주" },
-              { v: "today", l: "오늘" },
-            ].map((opt) => (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 통합 날짜 필터 카드 */}
+            <div className="flex items-center bg-white border border-gray-200 rounded-lg p-1 space-x-1 shadow-sm">
+              {/* 저번달 버튼 */}
               <button
-                key={opt.v}
-                onClick={() => setDateRange(opt.v)}
+                onClick={() => {
+                  setMonthlyRange(-1);
+                  setShowMoreFilters(false);
+                }}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                  dateRange === opt.v
+                  selectedMonth === -1
                     ? "bg-orange-500 text-white shadow-sm"
                     : "text-gray-600 hover:bg-gray-100"
                 }`}
-                disabled={isOrderStatsLoading} // Disable while stats are loading
+                disabled={isOrderStatsLoading}
               >
-                {opt.l}
+                {getPreviousMonthLabel()}
               </button>
-            ))}
+
+              {/* 이번달 버튼 */}
+              <button
+                onClick={() => {
+                  setMonthlyRange(0);
+                  setShowMoreFilters(false);
+                }}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  selectedMonth === 0
+                    ? "bg-orange-500 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+                disabled={isOrderStatsLoading}
+              >
+                {getCurrentMonthLabel()}
+              </button>
+
+              {/* 직접 입력 버튼 */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowDatePicker(!showDatePicker);
+                    setShowMoreFilters(false);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                    selectedMonth === null && customDateRange.isActive
+                      ? "bg-orange-500 text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                  disabled={isOrderStatsLoading}
+                >
+                  <CalendarDaysIcon className="w-4 h-4" />
+                  {getDateRangeText()}
+                  <ChevronDownIcon
+                    className={`w-3 h-3 transition-transform ${
+                      showDatePicker ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* 날짜 선택 드롭다운 */}
+                {showDatePicker && (
+                  <div className="absolute top-full mt-2 right-0 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50 min-w-[280px]">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          시작일
+                        </label>
+                        <input
+                          type="date"
+                          value={customDateRange.startDate}
+                          onChange={(e) =>
+                            setCustomDateRange((prev) => ({
+                              ...prev,
+                              startDate: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          종료일
+                        </label>
+                        <input
+                          type="date"
+                          value={customDateRange.endDate}
+                          onChange={(e) =>
+                            setCustomDateRange((prev) => ({
+                              ...prev,
+                              endDate: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={handleCustomDateSubmit}
+                          disabled={
+                            !customDateRange.startDate ||
+                            !customDateRange.endDate
+                          }
+                          className="flex-1 px-3 py-2 bg-orange-500 text-white text-sm rounded-md hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                        >
+                          적용
+                        </button>
+                        <button
+                          onClick={() => setShowDatePicker(false)}
+                          className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* 초기화 버튼 */}
+              {customDateRange.isActive && (
+                <button
+                  onClick={resetCustomDateRange}
+                  className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition"
+                >
+                  ✕ 초기화
+                </button>
+              )}
+            </div>
+
+            {/* 더보기 필터 버튼 */}
+            <button
+              onClick={() => setShowMoreFilters(!showMoreFilters)}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+            >
+              더보기
+              <ChevronRightIcon
+                className={`w-3 h-3 transition-transform ${
+                  showMoreFilters ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {/* 더보기 필터들 */}
+            {showMoreFilters && (
+              <div className="flex items-center bg-white border border-gray-200 rounded-lg p-1 space-x-1 shadow-sm">
+                {[
+                  { v: "90days", l: "3개월" },
+                  { v: "30days", l: "1개월" },
+                  { v: "7days", l: "1주" },
+                  { v: "today", l: "오늘" },
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => {
+                      setDateRange(opt.v);
+                      setCustomDateRange({
+                        startDate: "",
+                        endDate: "",
+                        isActive: false,
+                      });
+                      setSelectedMonth(null);
+                      setShowDatePicker(false);
+                      // setShowMoreFilters(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                      dateRange === opt.v && !customDateRange.isActive
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                    disabled={isOrderStatsLoading}
+                  >
+                    {opt.l}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
