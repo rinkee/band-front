@@ -3,7 +3,12 @@
 import { useState, useEffect, useRef, forwardRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useUser, useProducts, useProduct } from "../hooks"; // 훅 경로 확인 필요
+import { useUser } from "../hooks"; // 훅 경로 확인 필요
+import {
+  useProductsClient,
+  useProductClient,
+  useProductClientMutations,
+} from "../hooks/useProductsClient";
 
 import JsBarcode from "jsbarcode";
 import { useSWRConfig } from "swr";
@@ -290,13 +295,13 @@ export default function ProductsPage() {
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
 
-  // 상품 목록 데이터 훅 (페이지네이션 파라미터 전달)
+  // 상품 목록 데이터 훅 (클라이언트 사이드)
   const {
     data: productsData,
     error: productsError,
     isLoading: isProductsLoading,
     mutate: mutateProducts,
-  } = useProducts(
+  } = useProductsClient(
     userData?.userId,
     currentPage,
     {
@@ -309,12 +314,12 @@ export default function ProductsPage() {
     swrOptions
   );
 
-  // 상품 상세 데이터 훅
+  // 상품 상세 데이터 훅 (클라이언트 사이드)
   const {
     data: productDetailData,
     error: productDetailError,
     isValidating: isLoadingProductDetail,
-  } = useProduct(
+  } = useProductClient(
     selectedProductId && userData?.userId ? `${selectedProductId}` : null,
     {
       onSuccess: (data) => {
@@ -568,8 +573,9 @@ export default function ProductsPage() {
     }
   };
 
-  const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // 클라이언트 사이드 mutation 함수들
+  const { patchProduct, deleteProduct: deleteProductMutation } =
+    useProductClientMutations();
 
   const updateProduct = async () => {
     if (
@@ -582,64 +588,27 @@ export default function ProductsPage() {
       alert("상품명과 가격을 올바르게 입력해주세요.");
       return;
     }
-    const productIdToUpdate = selectedProduct.product_id;
-
-    // --- 수정: 함수 경로 및 userId 파라미터 확인 ---
-    // products-patch 함수는 productId와 userId를 쿼리 파라미터로 받습니다.
-    const functionUrl = `${functionsBaseUrl}/products-patch?productId=${productIdToUpdate}&userId=${userData.userId}`;
-    // -------------------------------------------
 
     try {
-      console.log("Sending data to update via fetch:", editedProduct);
-      console.log("Calling function URL:", functionUrl); // 호출 URL 확인용 로그
+      console.log("Updating product via client-side:", editedProduct);
 
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // PATCH 메서드 사용
-        headers: {
-          "Content-Type": "application/json",
-          // --- 수정: Authorization 대신 apikey 사용 ---
-          apikey: supabaseAnonKey,
-          // 'Authorization': `Bearer ${supabaseAnonKey}`, // 이 방식 대신 apikey 사용
-          // -------------------------------------------
-        },
-        body: JSON.stringify(editedProduct), // 수정할 필드 포함 객체 전송
-      });
-
-      // 응답 상태 확인
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Supabase function error response:", errorData);
-        throw new Error(
-          errorData.message ||
-            errorData.error ||
-            `Failed to update product: ${response.statusText} (Status: ${response.status})`
-        );
-      }
-
-      const data = await response.json();
-      console.log("Update successful via fetch:", data);
-
-      // SWR 캐시 갱신 (기존 로직 유지 - 필요시 키 확인)
-      mutateProducts(); // 목록 캐시 갱신
-      const productSWRKey = `${functionsBaseUrl}/products-get-by-id?productId=${productIdToUpdate}`;
-      // --- 수정: revalidate 옵션 추가 ---
-      mutate(
-        productSWRKey,
-        { success: true, data: data.data }, // 로컬 캐시를 업데이트된 데이터로 즉시 갱신
-        { revalidate: false } // 백그라운드 재검증 방지
+      await patchProduct(
+        selectedProduct.product_id,
+        editedProduct,
+        userData.userId
       );
-      // ---------------------------------
 
+      console.log("Update successful via client-side");
       handleCloseModal();
       // 성공 알림은 선택사항
       // alert("상품 정보가 업데이트되었습니다.");
     } catch (error) {
-      console.error("상품 정보 업데이트 오류 (fetch):", error);
+      console.error("상품 정보 업데이트 오류 (client-side):", error);
       alert(error.message || "상품 정보 업데이트에 실패했습니다.");
     }
   };
 
-  // deleteProduct 함수도 동일하게 수정 (apikey 헤더 사용)
+  // deleteProduct 함수 (클라이언트 사이드)
   const deleteProduct = async () => {
     if (!selectedProduct || !userData) return;
     if (
@@ -649,38 +618,19 @@ export default function ProductsPage() {
     )
       return;
 
-    const productIdToDelete = selectedProduct.product_id;
-    // 삭제 함수 경로 확인 (예: products-delete)
-    const functionUrl = `${functionsBaseUrl}/products-delete?productId=${productIdToDelete}&userId=${userData.userId}`;
-
     try {
-      const response = await fetch(functionUrl, {
-        method: "DELETE",
-        headers: {
-          // --- 수정: Authorization 대신 apikey 사용 ---
-          apikey: supabaseAnonKey,
-          // 'Authorization': `Bearer ${supabaseAnonKey}`,
-          // -------------------------------------------
-        },
-        // DELETE는 보통 body 없음
-      });
-
-      // 응답 처리 (204 No Content 확인 포함)
-      if (!response.ok && response.status !== 204) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Supabase function error response (delete):", errorData);
-        throw new Error(/* ... 에러 메시지 ... */);
-      }
-
       console.log(
-        "Delete successful via fetch (status: " + response.status + ")"
+        "Deleting product via client-side:",
+        selectedProduct.product_id
       );
 
-      mutateProducts();
+      await deleteProductMutation(selectedProduct.product_id, userData.userId);
+
+      console.log("Delete successful via client-side");
       handleCloseModal();
       alert("상품이 삭제되었습니다.");
     } catch (error) {
-      console.error("상품 삭제 오류 (fetch):", error);
+      console.error("상품 삭제 오류 (client-side):", error);
       alert(error.message || "상품 삭제에 실패했습니다.");
     }
   };
