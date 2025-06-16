@@ -127,6 +127,7 @@ export default function DashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState(0); // 0: 이번달, -1: 저번달, null: 직접입력
 
   // Initialize state with keys matching the FINAL API response (camelCase)
+  // aa
   const [stats, setStats] = useState({
     totalOrders: 0,
     completedOrders: 0,
@@ -347,6 +348,7 @@ export default function DashboardPage() {
       targetDate.getMonth(),
       1
     );
+
     const endDate = new Date(
       targetDate.getFullYear(),
       targetDate.getMonth() + 1,
