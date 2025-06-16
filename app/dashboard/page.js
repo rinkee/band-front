@@ -244,7 +244,7 @@ export default function DashboardPage() {
 
   // Update local 'stats' state when 'orderStatsData' from SWR changes
   useEffect(() => {
-    const statsFromApi = orderStatsData?.data; // Access the stats object within the 'data' property
+    const statsFromApi = orderStatsData; // 클라이언트 버전은 직접 데이터 반환
 
     if (statsFromApi && typeof statsFromApi === "object") {
       // console.log("Updating stats from API:", statsFromApi); // Good for debugging
@@ -739,7 +739,7 @@ export default function DashboardPage() {
             <LightCard padding="p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <dt className="text-sm font-medium text-gray-500 truncate">
-                  주문 완료
+                  수령 완료
                 </dt>
                 <CheckCircleIcon className="w-5 h-5 text-green-500" />
               </div>

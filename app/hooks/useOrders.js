@@ -3,6 +3,11 @@ import useSWR, { useSWRConfig } from "swr";
 // import { axiosFetcher, api } from "../lib/fetcher"; // 기존 fetcher 제거 또는 수정 필요
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 (URL, Key 가져오기 위해 필요)
 import { supabaseFunctionFetcher } from "../lib/fetcher";
+import {
+  getOrderStats,
+  createOrderStatsKey,
+  createOrderStatsFetcher,
+} from "../lib/orderStats.js";
 
 // 환경 변수에서 Supabase 정보 가져오기
 const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
@@ -78,31 +83,18 @@ export function useOrder(orderId, options = {}) {
  * @returns {object} SWR 훅의 반환값 { data: { data: StatsData }, error, isLoading, mutate }
  */
 export function useOrderStats(userId, filterOptions = {}, swrOptions = {}) {
-  // SWR 키 생성 함수
-  const getKey = () => {
-    if (!userId) {
-      console.warn(
-        "useOrderStats: userId is required when not using JWT auth."
-      );
-      return null;
-    }
+  // 클라이언트 버전 사용
+  const key = createOrderStatsKey(userId, filterOptions);
+  const fetcher = createOrderStatsFetcher(userId);
 
-    const params = new URLSearchParams();
-    params.append("userId", userId);
-
-    // filterOptions 객체의 키-값을 파라미터로 추가
-    Object.entries(filterOptions).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== "") {
-        params.append(key, value.toString());
-      }
-    });
-
-    // 실제 stats 함수 경로로 변경 필요 (예: 'orders-stats')
-    return `${functionsBaseUrl}/orders-stats?${params.toString()}`;
-  };
-
-  // useSWR 훅 호출
-  return useSWR(getKey, supabaseFunctionFetcher, swrOptions);
+  return useSWR(key, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    refreshInterval: 0, // 자동 새로고침 비활성화
+    errorRetryCount: 3,
+    dedupingInterval: 5000, // 5초간 중복 요청 방지
+    ...swrOptions,
+  });
 }
 
 /**
