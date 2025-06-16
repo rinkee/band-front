@@ -12,7 +12,12 @@ import { ko } from "date-fns/locale"; // 한국어 로케일
 import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import JsBarcode from "jsbarcode";
-import { useUser, useOrders, useProducts, useOrderStats } from "../hooks";
+import { useUser, useProducts } from "../hooks";
+import {
+  useOrdersClient,
+  useOrderStatsClient,
+  useOrderClientMutations,
+} from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
@@ -374,13 +379,13 @@ export default function OrdersPage() {
     error: userError,
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
-  // useOrders 훅 호출 부분 수정
+  // useOrdersClient 훅 호출 부분 수정
   const {
     data: ordersData,
     error: ordersError,
     isLoading: isOrdersLoading,
     mutate: mutateOrders,
-  } = useOrders(
+  } = useOrdersClient(
     userData?.userId,
     currentPage,
     {
@@ -446,7 +451,7 @@ export default function OrdersPage() {
     error: orderStatsError,
     isLoading: isOrderStatsLoading,
     mutate: mutateOrderStats,
-  } = useOrderStats(
+  } = useOrderStatsClient(
     userData?.userId,
     // --- 현재 필터 상태를 기반으로 파라미터 객체 생성 ---
     {
@@ -489,8 +494,9 @@ export default function OrdersPage() {
     swrOptions
   );
 
-  const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // 클라이언트 사이드 mutation 함수들
+  const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
+    useOrderClientMutations();
 
   const isDataLoading = isUserLoading || isOrdersLoading || isOrderStatsLoading;
   const displayedOrderIds = displayOrders.map((o) => o.order_id);
@@ -573,97 +579,24 @@ export default function OrdersPage() {
     }
 
     console.log(
-      `Attempting to bulk update ${orderIdsToProcess.length} orders to ${newStatus}`
+      `Attempting to bulk update ${orderIdsToProcess.length} orders to ${newStatus} via client-side`
     );
-
-    // --- 낙관적 업데이트 (SWR 사용 시) ---
-    const nowISO = new Date().toISOString();
-    await mutateOrders(
-      (currentData) => {
-        if (!currentData || !currentData.data) return currentData;
-        const newOrdersList = currentData.data.map((order) => {
-          if (orderIdsToProcess.includes(order.order_id)) {
-            let updatedFields = { status: newStatus };
-            if (newStatus === "수령완료") {
-              updatedFields = {
-                ...updatedFields,
-                pickupTime: nowISO,
-                completed_at: nowISO,
-                canceled_at: null,
-              };
-            } else if (newStatus === "결제완료") {
-              updatedFields = {
-                ...updatedFields,
-                paid_at: nowISO,
-                completed_at: null,
-                canceled_at: null,
-              };
-            } else if (newStatus === "주문취소") {
-              updatedFields = {
-                ...updatedFields,
-                canceled_at: nowISO,
-                completed_at: null,
-              };
-            }
-            // 기타 상태 처리...
-            return { ...order, ...updatedFields };
-          }
-          return order;
-        });
-        return { ...currentData, data: newOrdersList };
-      },
-      { revalidate: false } // 재검증은 API 호출 후 결정
-    );
-    // --- 낙관적 업데이트 끝 ---
 
     let successCount = 0;
     let failCount = 0;
 
     try {
-      // 새로운 일괄 처리 함수 호출
-      const bulkUpdateUrl = `${functionsBaseUrl}/orders-bulk-update-status`; // 새 함수 경로
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      const response = await fetch(bulkUpdateUrl, {
-        method: "POST", // 메소드 변경
-        headers: {
-          Authorization: `Bearer ${anonKey}`, // 또는 supabase.auth.getSession()으로 얻은 토큰
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderIds: orderIdsToProcess, // 배열로 전달
-          status: newStatus,
-          // userId: userData.userId, // 함수 내부에서 인증/권한 처리를 한다면 필요 없을 수 있음
-          // Service Role Key를 사용하므로 userId 기반 RLS는 직접 적용 안됨.
-          // 함수 로직 내에서 user_id를 검증해야 함 (현재 코드에는 없음)
-          // 필요하다면 subStatus 등 추가 정보 전달
-          // subStatus: newStatus === "확인필요" ? "확인필요" : null,
-        }),
-      });
-
-      const resultData = await response.json();
-
-      if (!response.ok || !resultData.success) {
-        throw new Error(
-          resultData.message || `일괄 업데이트 실패 (${response.status})`
-        );
-      }
-
-      successCount = resultData.updatedCount || 0; // 서버에서 반환된 실제 성공 카운트
-      failCount = orderIdsToProcess.length - successCount; // 요청 수 - 성공 수
-
-      console.log("일괄 업데이트 성공:", resultData.message);
-
-      // 성공 시 데이터 재검증 (SWR 사용 시)
-      await mutateOrders(); // 전체 목록 재검증
-      await mutateOrderStats();
+      await bulkUpdateOrderStatus(
+        orderIdsToProcess,
+        newStatus,
+        userData.userId
+      );
+      successCount = orderIdsToProcess.length;
+      console.log("일괄 업데이트 성공 (client-side)");
     } catch (err) {
-      console.error("Failed to bulk update orders:", err);
-      failCount = orderIdsToProcess.length - successCount; // 에러 발생 시 나머지 실패 처리
+      console.error("Failed to bulk update orders (client-side):", err);
+      failCount = orderIdsToProcess.length;
       alert(`일괄 업데이트 중 오류 발생: ${err.message}`);
-      // 에러 발생 시 낙관적 업데이트 롤백 (강제 재검증)
-      await mutateOrders();
-      await mutateOrderStats();
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
@@ -681,7 +614,6 @@ export default function OrdersPage() {
         message = "변경 대상 없음.";
       else if (!message) message = "일괄 처리 완료.";
 
-      // alert(message); // 사용자에게 최종 결과 알림
       console.log("최종 일괄 처리 결과:", message);
     }
   };
@@ -861,8 +793,11 @@ export default function OrdersPage() {
     try {
       const allowed = ["주문완료", "주문취소", "수령완료", "확인필요"];
       if (!allowed.includes(newStatus)) return;
+
       const updateData = { status: newStatus };
       const nowISO = new Date().toISOString();
+
+      // 상태별 추가 필드 설정
       if (newStatus === "수령완료") {
         updateData.pickupTime = nowISO;
         updateData.completed_at = nowISO;
@@ -880,65 +815,19 @@ export default function OrdersPage() {
         updateData.completed_at = null;
         updateData.canceled_at = null;
       }
-      // fetch API를 사용하여 Supabase Function 호출
-      const functionUrl = `${functionsBaseUrl}/orders-update-status?orderId=${orderId}`; // orderId 파라미터 사용
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const requestBody = {
-        status: newStatus,
-        // 필요시 subStatus, cancelReason 등 추가
-      };
 
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // 또는 PUT (함수에서 둘 다 허용)
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey, // apikey 사용
-        },
-        body: JSON.stringify(requestBody),
+      console.log("Updating order status via client-side:", {
+        orderId,
+        updateData,
       });
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ message: response.statusText }));
-        throw new Error(
-          `주문 상태 업데이트 오류 (${response.status}): ${
-            errorData.message || "Unknown error"
-          }`
-        );
-      }
+      await updateOrderStatus(orderId, updateData, userData.userId);
 
-      const data = await response.json();
-
-      if (!data?.success) {
-        throw new Error(data?.message || "주문 상태 업데이트에 실패했습니다.");
-      }
-
-      // 성공 후 처리
-      // 옵티미스틱 업데이트: 기존 주문 상태를 클라이언트 측에서 즉시 업데이트
-      const updatedOrders = orders.map((order) => {
-        if (order.order_id === orderId) {
-          return {
-            ...order,
-            status: newStatus,
-            ...(newStatus === "수령완료" && {
-              pickupTime: nowISO,
-              completed_at: nowISO,
-            }),
-            ...(newStatus === "결제완료" && { paid_at: nowISO }),
-          };
-        }
-        return order;
-      });
-      setOrders(updatedOrders);
-
-      // SWR 데이터 업데이트
-      mutate();
-      setIsDetailModalOpen(false); // 모달 닫기 추가
+      console.log("Order status updated successfully via client-side");
+      setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      console.error("Status Change Error:", err);
-
-      mutate();
+      console.error("Status Change Error (client-side):", err);
+      alert(err.message || "주문 상태 업데이트에 실패했습니다.");
     }
   };
   const handleTabChange = (tab) => setActiveTab(tab);
@@ -1096,70 +985,28 @@ export default function OrdersPage() {
     const qty = Math.max(1, parseInt(tempQuantity, 10) || 1);
     const price = Math.max(0, parseFloat(tempPrice) || 0);
     const itemNum = Math.max(1, parseInt(tempItemNumber, 10) || 1);
+
     const updateData = {
       item_number: itemNum,
       quantity: qty,
       price: price,
       total_amount: price * qty,
     };
-    // setLoading(true); // 저장 로딩 상태 추가 필요 시
+
     try {
-      // fetch API를 사용하여 Supabase Function 호출
-      // 함수 URL 및 요청 데이터 준비
-      const functionUrl = `${functionsBaseUrl}/orders-update-details?orderId=${order_id}`;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      const updateData = {
-        item_number: itemNum,
-        order_quantity: qty, // 함수에서 받는 필드명 사용 (order_quantity)
-        order_price: price, // 함수에서 받는 필드명 사용 (order_price)
-        total_amount: totalAmount, // 계산된 총액
-        // 필요시 order_options, order_memo 등 추가
-      };
-
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // 또는 PUT
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey, // apikey 사용
-        },
-        body: JSON.stringify(updateData),
+      console.log("Updating order details via client-side:", {
+        order_id,
+        updateData,
       });
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ message: response.statusText }));
-        throw new Error(
-          `주문 정보 업데이트 오류 (${response.status}): ${
-            errorData.message || "Unknown error"
-          }`
-        );
-      }
+      await updateOrderDetails(order_id, updateData, userData.userId);
 
-      const data = await response.json();
-
-      if (!data?.success) {
-        throw new Error(data?.message || "주문 정보 업데이트에 실패했습니다.");
-      }
-
-      const updated = { ...selectedOrder, ...updateData };
-      setOrders((curr) =>
-        curr.map((o) => (o.order_id === order_id ? updated : o))
-      );
-      setSelectedOrder(updated);
+      console.log("Order details updated successfully via client-side");
       setIsEditingDetails(false); // 편집 모드 종료
-
-      mutateOrders();
-      mutateOrderStats();
-      setIsDetailModalOpen(false); // 모달 닫기 추가
+      setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      console.error("Update Error:", err);
-
-      mutateOrders();
-      mutateOrderStats(); // 에러 시에도 원복 위해
-    } finally {
-      // setLoading(false);
+      console.error("Update Error (client-side):", err);
+      alert(err.message || "주문 정보 업데이트에 실패했습니다.");
     }
   };
 
