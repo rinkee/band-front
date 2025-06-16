@@ -195,7 +195,9 @@ const Barcode = ({ value, width = 1.5, height = 40 }) => {
     }
   }, [value, width, height]);
   if (!value) return <div className="text-gray-500 text-xs italic">-</div>;
-  return <svg ref={barcodeRef} className="w-full h-auto block"></svg>;
+  return (
+    <svg ref={barcodeRef} className="w-full max-w-[120px] h-auto block"></svg>
+  );
 };
 
 // --- Custom Date Input Button ---
@@ -228,6 +230,255 @@ const CustomDateInputButton = forwardRef(
   )
 );
 CustomDateInputButton.displayName = "CustomDateInputButton";
+
+// 바코드 옵션 관리 컴포넌트
+function BarcodeOptionsManager({
+  selectedProduct,
+  editedProduct,
+  setEditedProduct,
+  userData,
+}) {
+  const [barcodeOptions, setBarcodeOptions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { patchProduct } = useProductClientMutations();
+
+  // 초기값 설정
+  useEffect(() => {
+    if (
+      selectedProduct?.barcode_options?.options &&
+      selectedProduct.barcode_options.options.length > 0
+    ) {
+      // 데이터베이스에서 불러온 옵션들에 고유 ID 보장
+      const optionsWithId = selectedProduct.barcode_options.options.map(
+        (option, index) => ({
+          ...option,
+          id: option.id || `option_${Date.now()}_${index}`, // 고유 ID 보장
+        })
+      );
+      setBarcodeOptions(optionsWithId);
+    } else {
+      // 항상 기본 옵션 생성 (기존 상품 바코드 기반)
+      const mainOption = {
+        id: `main_${Date.now()}`,
+        name: "기본상품",
+        price: selectedProduct?.base_price || 0,
+        barcode: selectedProduct?.barcode || "",
+        is_main: true,
+      };
+      setBarcodeOptions([mainOption]);
+    }
+  }, [selectedProduct]);
+
+  // 바코드 추가 (최대 4개 제한)
+  const addOption = () => {
+    if (barcodeOptions.length >= 4) {
+      alert("바코드 옵션은 최대 4개까지 추가할 수 있습니다.");
+      return;
+    }
+
+    const barcodeNumber =
+      barcodeOptions.filter((opt) => !opt.is_main).length + 1;
+    const newOption = {
+      id: `option_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: `바코드${barcodeNumber}`,
+      price: selectedProduct?.base_price || 0,
+      barcode: "",
+      is_main: false,
+    };
+    setBarcodeOptions([...barcodeOptions, newOption]);
+  };
+
+  // 옵션 삭제
+  const removeOption = (optionId) => {
+    const optionToRemove = barcodeOptions.find((opt) => opt.id === optionId);
+    if (optionToRemove?.is_main) {
+      alert("기본 옵션은 삭제할 수 없습니다.");
+      return;
+    }
+    setBarcodeOptions(barcodeOptions.filter((opt) => opt.id !== optionId));
+  };
+
+  // 옵션 수정
+  const updateOption = (optionId, field, value) => {
+    console.log(`Updating option ${optionId}, field: ${field}, value:`, value); // 디버깅
+    setBarcodeOptions((prev) => {
+      const updated = prev.map((opt) => {
+        if (opt.id === optionId) {
+          const updatedOption = { ...opt, [field]: value };
+          console.log(`Updated option:`, updatedOption); // 디버깅
+          return updatedOption;
+        }
+        return opt;
+      });
+      console.log(`All options after update:`, updated); // 디버깅
+      return updated;
+    });
+  };
+
+  // 저장 함수
+  // 바코드 옵션 유효성 검사 함수 (외부에서 호출 가능)
+  const validateBarcodeOptions = () => {
+    // 유효성 검사
+    const hasEmptyFields = barcodeOptions.some(
+      (opt) => !opt.name.trim() || !opt.barcode.trim() || opt.price <= 0
+    );
+    if (hasEmptyFields) {
+      return "모든 바코드의 이름, 바코드, 가격을 입력해주세요.";
+    }
+
+    // 중복 바코드 검사
+    const barcodes = barcodeOptions.map((opt) => opt.barcode);
+    const duplicates = barcodes.filter(
+      (barcode, index) => barcodes.indexOf(barcode) !== index
+    );
+    if (duplicates.length > 0) {
+      return "중복된 바코드가 있습니다: " + duplicates.join(", ");
+    }
+
+    return null; // 오류 없음
+  };
+
+  // editedProduct 상태에 바코드 옵션 업데이트
+  useEffect(() => {
+    setEditedProduct((prev) => ({
+      ...prev,
+      barcode: barcodeOptions.find((opt) => opt.is_main)?.barcode || "",
+      barcode_options: {
+        options: barcodeOptions,
+        updated_at: new Date().toISOString(),
+      },
+    }));
+  }, [barcodeOptions, setEditedProduct]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-medium text-gray-900">바코드 상태 관리</h3>
+        <button
+          onClick={addOption}
+          disabled={barcodeOptions.length >= 4}
+          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+            barcodeOptions.length >= 4
+              ? "bg-gray-400 text-gray-200 cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          + 추가 바코드 ({barcodeOptions.length}/4)
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-100 border border-red-300 rounded-md text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {barcodeOptions.map((option, index) => (
+          <div
+            key={option.id}
+            className="p-4 border border-gray-200 rounded-lg bg-gray-50"
+          >
+            <div className="flex justify-between items-start mb-3">
+              <span className="text-sm font-medium text-gray-700">
+                {option.is_main ? "기본" : `바코드 ${index}`} - ID: {option.id}
+              </span>
+              {!option.is_main && (
+                <button
+                  onClick={() => removeOption(option.id)}
+                  className="text-red-600 hover:text-red-800 text-sm"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* 옵션명 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  바코드명 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={option.name}
+                  onChange={(e) =>
+                    updateOption(option.id, "name", e.target.value)
+                  }
+                  placeholder="예: 대용량, 프리미엄, 미니팩"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                  disabled={option.is_main} // 기본 옵션명은 수정 불가
+                />
+              </div>
+
+              {/* 가격 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  가격 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={option.price === 0 ? "" : option.price}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // 빈 문자열이거나 숫자만 허용
+                    if (value === "" || /^\d+$/.test(value)) {
+                      updateOption(
+                        option.id,
+                        "price",
+                        value === "" ? 0 : parseInt(value)
+                      );
+                    }
+                  }}
+                  onWheel={(e) => e.target.blur()} // 스크롤 방지
+                  placeholder="가격을 입력하세요"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              {/* 바코드 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  바코드 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={option.barcode}
+                  onChange={(e) => {
+                    // 영문, 숫자만 허용 (한글 및 특수문자 제외)
+                    const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                    updateOption(option.id, "barcode", value);
+                  }}
+                  onKeyDown={(e) => {
+                    // 한글 입력 방지
+                    if (e.key === "Process" || e.keyCode === 229) {
+                      e.preventDefault();
+                    }
+                  }}
+                  placeholder="바코드 번호 (영문, 숫자만)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+            </div>
+
+            {/* 바코드 미리보기 */}
+            {option.barcode && (
+              <div className="mt-3 p-3 bg-white border border-gray-200 rounded-md">
+                <div className="text-xs text-gray-500 mb-2">
+                  바코드 미리보기:
+                </div>
+                <div className="flex justify-center">
+                  <Barcode value={option.barcode} height={20} width={1} />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ProductsPage() {
   const router = useRouter();
@@ -600,8 +851,7 @@ export default function ProductsPage() {
 
       console.log("Update successful via client-side");
       handleCloseModal();
-      // 성공 알림은 선택사항
-      // alert("상품 정보가 업데이트되었습니다.");
+      alert("상품 정보가 저장되었습니다.");
     } catch (error) {
       console.error("상품 정보 업데이트 오류 (client-side):", error);
       alert(error.message || "상품 정보 업데이트에 실패했습니다.");
@@ -1160,12 +1410,27 @@ export default function ProductsPage() {
                             가격 <span className="text-red-500">*</span>
                           </label>
                           <input
-                            type="number"
+                            type="text"
                             name="base_price"
-                            value={editedProduct.base_price}
-                            onChange={handleInputChange}
+                            value={
+                              editedProduct.base_price === 0
+                                ? ""
+                                : editedProduct.base_price
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // 빈 문자열이거나 숫자만 허용
+                              if (value === "" || /^\d+$/.test(value)) {
+                                setEditedProduct((prev) => ({
+                                  ...prev,
+                                  base_price:
+                                    value === "" ? 0 : parseInt(value),
+                                }));
+                              }
+                            }}
+                            onWheel={(e) => e.target.blur()} // 스크롤 방지
                             required
-                            min="0"
+                            placeholder="가격을 입력하세요"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
                           />
                         </div>
@@ -1174,11 +1439,25 @@ export default function ProductsPage() {
                             수량
                           </label>
                           <input
-                            type="number"
+                            type="text"
                             name="quantity"
-                            value={editedProduct.quantity}
-                            onChange={handleInputChange}
-                            min="0"
+                            value={
+                              editedProduct.quantity === 0
+                                ? ""
+                                : editedProduct.quantity
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // 빈 문자열이거나 숫자만 허용
+                              if (value === "" || /^\d+$/.test(value)) {
+                                setEditedProduct((prev) => ({
+                                  ...prev,
+                                  quantity: value === "" ? 0 : parseInt(value),
+                                }));
+                              }
+                            }}
+                            onWheel={(e) => e.target.blur()} // 스크롤 방지
+                            placeholder="수량을 입력하세요"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
                           />
                         </div>
@@ -1233,147 +1512,12 @@ export default function ProductsPage() {
                   )}
                   {activeTab === "barcode" && (
                     <div className="space-y-6">
-                      {/* 메인 바코드 */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          상품 바코드 (메인)
-                        </label>
-                        <input
-                          type="number"
-                          name="barcode"
-                          value={editedProduct.barcode}
-                          onChange={handleInputChange}
-                          placeholder="상품 바코드 번호 입력 (예: 880123456789)"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-                        />
-                      </div>
-
-                      {/* 옵션 바코드들 */}
-                      {[1, 2, 3].map((optionNum) => (
-                        <div key={`option_${optionNum}`}>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            옵션 바코드 {optionNum} (할인/이벤트용)
-                          </label>
-                          <input
-                            type="number"
-                            name={`option_barcode_${optionNum}`}
-                            value={editedProduct[`option_barcode_${optionNum}`]}
-                            onChange={handleInputChange}
-                            placeholder={`옵션 바코드 ${optionNum} 번호 입력`}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-                          />
-                        </div>
-                      ))}
-
-                      {/* 바코드 미리보기들 */}
-                      <div className="space-y-4">
-                        {/* 메인 바코드 미리보기 */}
-                        {editedProduct.barcode ? (
-                          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                            <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 flex justify-between items-center">
-                              <span className="text-xs font-medium text-gray-600">
-                                상품 바코드 미리보기
-                              </span>
-                              <div className="flex space-x-2">
-                                <button
-                                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition"
-                                  onClick={() => {
-                                    alert("인쇄 준비중");
-                                  }}
-                                >
-                                  <PrinterIcon className="w-3.5 h-3.5" /> 인쇄
-                                </button>
-                                <button
-                                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition"
-                                  onClick={() =>
-                                    navigator.clipboard
-                                      .writeText(editedProduct.barcode)
-                                      .then(() => alert("복사됨!"))
-                                      .catch(() => alert("복사 실패"))
-                                  }
-                                >
-                                  <ClipboardDocumentIcon className="w-3.5 h-3.5" />
-                                  복사
-                                </button>
-                              </div>
-                            </div>
-                            <div className="p-6 flex justify-center items-center min-h-[120px]">
-                              <div className="w-full max-w-xs">
-                                <Barcode
-                                  value={debouncedBarcodeValue}
-                                  height={50}
-                                  width={1.3}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {/* 옵션 바코드 미리보기들 */}
-                        {[1, 2, 3].map((optionNum) => {
-                          const optionFieldName = `option_barcode_${optionNum}`;
-                          const optionValue = editedProduct[optionFieldName];
-                          const debouncedOptionValue =
-                            debouncedOptionBarcodes[optionFieldName];
-
-                          return optionValue ? (
-                            <div
-                              key={`preview_${optionNum}`}
-                              className="bg-white border border-gray-200 rounded-lg overflow-hidden"
-                            >
-                              <div className="bg-blue-50 border-b border-gray-200 px-4 py-2 flex justify-between items-center">
-                                <span className="text-xs font-medium text-blue-700">
-                                  옵션 바코드 {optionNum} 미리보기
-                                </span>
-                                <div className="flex space-x-2">
-                                  <button
-                                    className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition"
-                                    onClick={() => {
-                                      alert("인쇄 준비중");
-                                    }}
-                                  >
-                                    <PrinterIcon className="w-3.5 h-3.5" /> 인쇄
-                                  </button>
-                                  <button
-                                    className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 transition"
-                                    onClick={() =>
-                                      navigator.clipboard
-                                        .writeText(optionValue)
-                                        .then(() => alert("복사됨!"))
-                                        .catch(() => alert("복사 실패"))
-                                    }
-                                  >
-                                    <ClipboardDocumentIcon className="w-3.5 h-3.5" />
-                                    복사
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="p-4 flex justify-center items-center min-h-[100px]">
-                                <div className="w-full max-w-xs">
-                                  <Barcode
-                                    value={debouncedOptionValue}
-                                    height={40}
-                                    width={1.2}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          ) : null;
-                        })}
-
-                        {/* 바코드가 하나도 없을 때 안내 */}
-                        {!editedProduct.barcode &&
-                          !editedProduct.option_barcode_1 &&
-                          !editedProduct.option_barcode_2 &&
-                          !editedProduct.option_barcode_3 && (
-                            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-500">
-                              <QrCodeIcon className="w-10 h-10 mx-auto mb-2 text-gray-400" />
-                              <p className="text-sm">
-                                바코드 번호를 입력하면 미리보기가 생성됩니다.
-                              </p>
-                            </div>
-                          )}
-                      </div>
+                      <BarcodeOptionsManager
+                        selectedProduct={selectedProduct}
+                        editedProduct={editedProduct}
+                        setEditedProduct={setEditedProduct}
+                        userData={userData}
+                      />
                     </div>
                   )}
                 </div>

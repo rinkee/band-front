@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, forwardRef } from "react"; // forwardRef 추가
+import React, { useState, useEffect, useRef, forwardRef } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -707,6 +707,8 @@ export default function OrdersPage() {
     products.find((p) => p.product_id === id)?.title || "상품명 없음";
   const getProductBarcode = (id) =>
     products.find((p) => p.product_id === id)?.barcode || "";
+  const getProductById = (id) =>
+    products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
     products.find((p) => p.product_id === id)?.band_post_url || "";
   const formatCurrency = (amt) =>
@@ -958,6 +960,43 @@ export default function OrdersPage() {
     } catch (err) {
       console.error("Update Error (client-side):", err);
       alert(err.message || "주문 정보 업데이트에 실패했습니다.");
+    }
+  };
+
+  // --- 바코드 옵션 변경 핸들러 ---
+  const handleBarcodeOptionChange = async (orderId, selectedOption) => {
+    if (!userData?.userId) {
+      console.error("User ID is missing");
+      return;
+    }
+
+    try {
+      // orders 테이블의 selected_barcode_option과 total_amount 업데이트
+      const updateData = {
+        selected_barcode_option: {
+          barcode: selectedOption.barcode,
+          name: selectedOption.name,
+          price: selectedOption.price,
+          field_reference: selectedOption.field_reference,
+        },
+        total_amount: selectedOption.price,
+        price_option_used: selectedOption.name,
+        price_option_description: `${selectedOption.name} (${
+          selectedOption.barcode
+        }) - ₩${selectedOption.price.toLocaleString()}`,
+      };
+
+      console.log("Updating order barcode option:", { orderId, updateData });
+
+      await updateOrderDetails(orderId, updateData, userData.userId);
+
+      console.log("Barcode option updated successfully");
+
+      // 주문 목록 새로고침
+      mutateOrders();
+    } catch (error) {
+      console.error("Failed to update barcode option:", error);
+      alert("바코드 옵션 변경에 실패했습니다.");
     }
   };
 
@@ -1523,134 +1562,165 @@ export default function OrdersPage() {
                 )}
                 {displayOrders.map((order) => {
                   const isSelected = selectedOrderIds.includes(order.order_id);
-                  return (
-                    <tr
-                      key={order.order_id}
-                      className={`${
-                        isSelected ? "bg-orange-50" : "hover:bg-gray-50"
-                      } transition-colors group cursor-pointer ${
-                        isOrdersLoading ? "opacity-70" : ""
-                      }`}
-                      onClick={() => openDetailModal(order)}
-                    >
-                      <td
-                        onClick={(e) => e.stopPropagation()}
-                        className="relative w-12 px-6 sm:w-16 sm:px-8"
-                      >
-                        <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
-                          <input
-                            type="checkbox"
-                            className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                            value={order.order_id}
-                            checked={isSelected}
-                            onChange={(e) =>
-                              handleCheckboxChange(e, order.order_id)
-                            }
-                          />
-                        </div>
-                      </td>
-                      <td
-                        className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
-                        title={getProductNameById(order.product_id)}
-                        onClick={(e) => {
-                          // 클릭 핸들러 추가
-                          e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
-                          handleCellClickToSearch(
-                            getProductNameById(order.product_id)
-                          ); // 검색 함수 호출
-                          setFilterSelection("all");
-                        }}
-                      >
-                        {getProductNameById(order.product_id)}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
-                        title={order.customer_name}
-                        onClick={(e) => {
-                          e.stopPropagation(); // 행 전체 onClick(모달) 방지
-                          handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
-                        }}
-                      >
-                        {order.customer_name || "-"}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-sm text-gray-600 max-w-[100px] truncate hidden md:table-cell"
-                        title={order.comment || ""}
-                      >
-                        {order.comment || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm text-gray-700 font-medium">
-                        {order.item_number || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
-                        {order.quantity || 0}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">
-                        {formatCurrency(order.total_amount)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {formatDate(order.ordered_at)}
-                      </td>
-                      <td className="px-4 py-3 text-center hidden md:table-cell">
-                        {getProductBarcode(order.product_id) ? (
-                          <Barcode
-                            value={getProductBarcode(order.product_id)}
-                            height={50}
-                            width={1.2}
-                            fontSize={12}
-                          />
-                        ) : (
-                          <span className="text-xs text-gray-400">없음</span>
-                        )}
-                      </td>
+                  const product = getProductById(order.product_id);
+                  const hasMultipleBarcodeOptions =
+                    product?.barcode_options?.options?.length > 1;
 
-                      <td className="px-4 py-3 text-center whitespace-nowrap">
-                        {(() => {
-                          // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
-                          const actualStatus = order.status;
-                          const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
-                          return (
-                            <div className="flex flex-col items-center">
-                              {" "}
-                              {/* 세로 정렬을 위해 div 추가 */}
-                              {/* 메인 상태 배지 (항상 order.status 기준) */}
-                              <StatusBadge status={actualStatus} />
-                              {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
-                              {actualStatus !== "수령완료" &&
-                                actualSubStatus === "확인필요" && (
+                  return (
+                    <React.Fragment key={order.order_id}>
+                      <tr
+                        className={`${
+                          isSelected ? "bg-orange-50" : "hover:bg-gray-50"
+                        } transition-colors group cursor-pointer ${
+                          isOrdersLoading ? "opacity-70" : ""
+                        }`}
+                        onClick={() => openDetailModal(order)}
+                      >
+                        <td
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative w-12 px-6 sm:w-16 sm:px-8"
+                        >
+                          <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                              value={order.order_id}
+                              checked={isSelected}
+                              onChange={(e) =>
+                                handleCheckboxChange(e, order.order_id)
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td
+                          className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
+                          title={getProductNameById(order.product_id)}
+                          onClick={(e) => {
+                            // 클릭 핸들러 추가
+                            e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
+                            handleCellClickToSearch(
+                              getProductNameById(order.product_id)
+                            ); // 검색 함수 호출
+                            setFilterSelection("all");
+                          }}
+                        >
+                          {getProductNameById(order.product_id)}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
+                          title={order.customer_name}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 행 전체 onClick(모달) 방지
+                            handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
+                          }}
+                        >
+                          {order.customer_name || "-"}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-sm text-gray-600 max-w-[100px] truncate hidden md:table-cell"
+                          title={order.comment || ""}
+                        >
+                          {order.comment || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-700 font-medium">
+                          {order.item_number || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                          {order.quantity || 0}
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                          {formatCurrency(order.total_amount)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                          {formatDate(order.ordered_at)}
+                        </td>
+                        <td className="px-4 py-3 text-center hidden md:table-cell">
+                          {(() => {
+                            // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
+                            const selectedOption =
+                              order.selected_barcode_option;
+                            const displayBarcode =
+                              selectedOption?.barcode ||
+                              getProductBarcode(order.product_id);
+
+                            return displayBarcode ? (
+                              <Barcode
+                                value={displayBarcode}
+                                height={50}
+                                width={1.2}
+                                fontSize={12}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-400">
+                                없음
+                              </span>
+                            );
+                          })()}
+                        </td>
+
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          {(() => {
+                            // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
+                            const actualStatus = order.status;
+                            const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
+                            return (
+                              <div className="flex flex-col items-center">
+                                {" "}
+                                {/* 세로 정렬을 위해 div 추가 */}
+                                {/* 메인 상태 배지 (항상 order.status 기준) */}
+                                <StatusBadge status={actualStatus} />
+                                {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
+                                {actualStatus !== "수령완료" &&
+                                  actualSubStatus === "확인필요" && (
+                                    <span
+                                      className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
+                                      title="부가 상태: 확인필요"
+                                    >
+                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                      확인 필요
+                                    </span>
+                                  )}
+                                {actualStatus !== "수령완료" &&
+                                  actualSubStatus === "미수령" && (
+                                    <span
+                                      className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
+                                      title="부가 상태: 미수령"
+                                    >
+                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
+                                      미수령
+                                    </span>
+                                  )}
+                                {actualStatus === "수령완료" && (
                                   <span
-                                    className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
-                                    title="부가 상태: 확인필요"
+                                    className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
+                                    title="부가 상태: 수령완료"
                                   >
-                                    <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                    확인 필요
+                                    {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
+                                    {formatDate(order.completed_at)}
                                   </span>
                                 )}
-                              {actualStatus !== "수령완료" &&
-                                actualSubStatus === "미수령" && (
-                                  <span
-                                    className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
-                                    title="부가 상태: 미수령"
-                                  >
-                                    <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                    미수령
-                                  </span>
-                                )}
-                              {actualStatus === "수령완료" && (
-                                <span
-                                  className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
-                                  title="부가 상태: 수령완료"
-                                >
-                                  {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
-                                  {formatDate(order.completed_at)}
-                                </span>
-                              )}
-                              {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
+                                {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      </tr>
+
+                      {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
+                      {hasMultipleBarcodeOptions && (
+                        <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
+                          <td colSpan="11" className="px-4 py-2">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <BarcodeOptionSelector
+                                order={order}
+                                product={product}
+                                onOptionChange={handleBarcodeOptionChange}
+                              />
                             </div>
-                          );
-                        })()}
-                      </td>
-                    </tr>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -2187,6 +2257,79 @@ export default function OrdersPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// 바코드 옵션 선택 컴포넌트
+function BarcodeOptionSelector({ order, product, onOptionChange }) {
+  const [selectedOption, setSelectedOption] = useState(null);
+
+  // 바코드 옵션이 있는지 확인
+  const barcodeOptions = product?.barcode_options?.options || [];
+  const hasOptions = barcodeOptions.length > 1; // 기본 옵션 외에 다른 옵션이 있는지
+
+  // 초기 선택값 설정 (저장된 선택값 또는 메인 옵션)
+  useEffect(() => {
+    if (order.selected_barcode_option) {
+      // 이미 선택된 옵션이 있으면 해당 옵션 선택
+      const savedOption = barcodeOptions.find(
+        (opt) => opt.barcode === order.selected_barcode_option.barcode
+      );
+      setSelectedOption(
+        savedOption || barcodeOptions.find((opt) => opt.is_main)
+      );
+    } else {
+      // 기본값은 메인 옵션
+      const mainOption = barcodeOptions.find((opt) => opt.is_main);
+      setSelectedOption(mainOption || barcodeOptions[0]);
+    }
+  }, [order, barcodeOptions]);
+
+  const handleOptionSelect = (option) => {
+    setSelectedOption(option);
+    onOptionChange(order.order_id, option);
+  };
+
+  // 옵션이 없거나 1개만 있으면 선택 UI 표시 안함
+  if (!hasOptions) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 ml-6 pl-4 border-l-2 border-gray-300 bg-gray-50/30 rounded-r-lg">
+      <div className="py-2">
+        {/* 가로 배치 옵션들 - 간소화 */}
+        <div className="flex flex-wrap gap-2">
+          {barcodeOptions.map((option, index) => (
+            <label
+              key={index}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer transition-all text-sm ${
+                selectedOption?.barcode === option.barcode
+                  ? "border-blue-400 bg-blue-100 shadow-sm"
+                  : "border-gray-200 bg-white hover:border-gray-300"
+              }`}
+            >
+              <input
+                type="radio"
+                name={`barcode-option-${order.order_id}`}
+                checked={selectedOption?.barcode === option.barcode}
+                onChange={() => handleOptionSelect(option)}
+                className="h-3 w-3 text-gray-600 focus:ring-gray-500"
+              />
+              <span className="text-sm font-medium text-gray-900">
+                {option.name}
+                {option.is_main && (
+                  <span className="text-gray-500 ml-1">(기본)</span>
+                )}
+              </span>
+              <span className="text-xs text-gray-600">
+                ₩{option.price?.toLocaleString()}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
