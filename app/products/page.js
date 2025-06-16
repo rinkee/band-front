@@ -850,6 +850,13 @@ export default function ProductsPage() {
       );
 
       console.log("Update successful via client-side");
+
+      // 바코드 옵션 업데이트 플래그 설정 (다른 페이지에서 감지할 수 있도록)
+      if (editedProduct.barcode_options) {
+        localStorage.setItem("barcodeOptionsUpdated", Date.now().toString());
+        console.log("Barcode options updated flag set");
+      }
+
       handleCloseModal();
       alert("상품 정보가 저장되었습니다.");
     } catch (error) {

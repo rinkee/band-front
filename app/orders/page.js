@@ -444,7 +444,16 @@ export default function OrdersPage() {
     data: productsData,
     error: productsError,
     mutate: mutateProducts,
-  } = useProducts(userData?.userId, 1, { limit: 1000 }, swrOptions);
+  } = useProducts(
+    userData?.userId,
+    1,
+    { limit: 1000 },
+    {
+      ...swrOptions,
+      revalidateOnFocus: true, // 페이지 포커스 시 상품 데이터 새로고침
+      refreshInterval: 300000, // 상품 데이터는 5분마다 업데이트 (주문보다 자주)
+    }
+  );
   // useOrderStatsClient 제거 - 클라이언트에서 직접 계산
 
   // 클라이언트 사이드 mutation 함수들
@@ -665,6 +674,69 @@ export default function OrdersPage() {
     if (productsData?.data) setProducts(productsData.data);
     if (productsError) console.error("Product Error:", productsError);
   }, [productsData, productsError]);
+
+  // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && userData?.userId) {
+        console.log("Page became visible, refreshing products data...");
+        mutateProducts(); // 상품 데이터 새로고침
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (userData?.userId) {
+        console.log("Window focused, refreshing products data...");
+        mutateProducts(); // 윈도우 포커스 시에도 상품 데이터 새로고침
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [mutateProducts, userData?.userId]);
+
+  // 페이지 로드 시 상품 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
+  useEffect(() => {
+    if (userData?.userId) {
+      console.log("Orders page mounted, refreshing products data...");
+      mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
+    }
+  }, [userData?.userId]); // mutateProducts를 의존성에서 제거하여 무한 루프 방지
+
+  // localStorage 플래그 감지하여 바코드 옵션 업데이트 확인
+  useEffect(() => {
+    const checkBarcodeOptionsUpdate = () => {
+      const lastUpdated = localStorage.getItem("barcodeOptionsUpdated");
+      if (lastUpdated && userData?.userId) {
+        const updateTime = parseInt(lastUpdated);
+        const now = Date.now();
+        // 5분 이내의 업데이트만 유효하다고 간주
+        if (now - updateTime < 5 * 60 * 1000) {
+          console.log(
+            "Barcode options were updated, refreshing products data..."
+          );
+          mutateProducts();
+          // 플래그 제거하여 중복 업데이트 방지
+          localStorage.removeItem("barcodeOptionsUpdated");
+        }
+      }
+    };
+
+    // 컴포넌트 마운트 시 체크
+    checkBarcodeOptionsUpdate();
+
+    // storage 이벤트 리스너 (다른 탭에서 변경사항이 있을 때)
+    window.addEventListener("storage", checkBarcodeOptionsUpdate);
+
+    return () => {
+      window.removeEventListener("storage", checkBarcodeOptionsUpdate);
+    };
+  }, [mutateProducts, userData?.userId]);
   useEffect(() => {
     if (ordersData?.data) setOrders(ordersData.data);
     if (ordersError) {
@@ -992,8 +1064,9 @@ export default function OrdersPage() {
 
       console.log("Barcode option updated successfully");
 
-      // 주문 목록 새로고침
+      // 주문 목록과 상품 목록 새로고침
       mutateOrders();
+      mutateProducts(); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
     } catch (error) {
       console.error("Failed to update barcode option:", error);
       alert("바코드 옵션 변경에 실패했습니다.");
