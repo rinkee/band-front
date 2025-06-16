@@ -163,55 +163,231 @@ export async function getOrderStats(userId, filters = {}) {
       toDate.toISOString()
     );
 
-    // 3. RPC 호출 파라미터 준비
-    const rpcParams = {
-      p_user_id: userId,
-      p_start_date: fromDate.toISOString(),
-      p_end_date: toDate.toISOString(),
-      p_status_filter:
+    console.log("🎯 [Client] Executing direct Supabase query");
+
+    // 4. 먼저 총 주문 수 계산 (count 쿼리)
+    let countQuery = supabase
+      .from("orders_with_products")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("ordered_at", fromDate.toISOString())
+      .lte("ordered_at", toDate.toISOString());
+
+    // 상태 필터 적용 (count 쿼리에도 동일하게)
+    if (
+      filters.status &&
+      filters.status !== "all" &&
+      filters.status !== "undefined"
+    ) {
+      countQuery = countQuery.eq("status", filters.status);
+    }
+
+    // 서브 상태 필터 적용 (count 쿼리에도 동일하게)
+    if (
+      filters.subStatus &&
+      filters.subStatus !== "all" &&
+      filters.subStatus !== "undefined"
+    ) {
+      if (filters.subStatus.toLowerCase() === "none") {
+        countQuery = countQuery.is("sub_status", null);
+      } else {
+        countQuery = countQuery.eq("sub_status", filters.subStatus);
+      }
+    }
+
+    // 검색어 필터 적용 (count 쿼리에도 동일하게)
+    if (filters.search) {
+      countQuery = countQuery.or(
+        `customer_name.ilike.%${filters.search}%,product_title.ilike.%${filters.search}%,product_barcode.ilike.%${filters.search}%`
+      );
+    }
+
+    // 제외고객 필터 적용 (count 쿼리에도 동일하게)
+    if (excludedCustomers.length > 0) {
+      countQuery = countQuery.not(
+        "customer_name",
+        "in",
+        `(${excludedCustomers.map((name) => `"${name}"`).join(",")})`
+      );
+    }
+
+    // 5. 실제 데이터 조회 (페이지네이션으로 모든 데이터 가져오기)
+    console.log("🔄 [Client] Fetching all orders with pagination...");
+
+    const allOrders = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      let dataQuery = supabase
+        .from("orders_with_products")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("ordered_at", fromDate.toISOString())
+        .lte("ordered_at", toDate.toISOString())
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+        .order("ordered_at", { ascending: false });
+
+      // 동일한 필터 적용
+      if (
         filters.status &&
         filters.status !== "all" &&
         filters.status !== "undefined"
-          ? filters.status
-          : null,
-      p_sub_status_filter:
+      ) {
+        dataQuery = dataQuery.eq("status", filters.status);
+      }
+
+      if (
         filters.subStatus &&
         filters.subStatus !== "all" &&
-        filters.subStatus !== "undefined" &&
-        filters.subStatus.toLowerCase() !== "none"
-          ? filters.subStatus
-          : filters.subStatus?.toLowerCase() === "none"
-          ? null
-          : null,
-      p_search_term: filters.search ? `%${filters.search}%` : null,
-      p_excluded_customer_names:
-        excludedCustomers.length > 0 ? excludedCustomers : null,
-    };
+        filters.subStatus !== "undefined"
+      ) {
+        if (filters.subStatus.toLowerCase() === "none") {
+          dataQuery = dataQuery.is("sub_status", null);
+        } else {
+          dataQuery = dataQuery.eq("sub_status", filters.subStatus);
+        }
+      }
 
-    console.log("🎯 [Client] RPC params:", rpcParams);
+      if (filters.search) {
+        dataQuery = dataQuery.or(
+          `customer_name.ilike.%${filters.search}%,product_title.ilike.%${filters.search}%,product_barcode.ilike.%${filters.search}%`
+        );
+      }
 
-    // 4. DB RPC 호출 및 최근 주문 조회 (병렬 실행)
-    const [rpcResult, recentOrdersResult] = await Promise.all([
-      supabase.rpc("get_order_stats_by_date_range", rpcParams),
+      if (excludedCustomers.length > 0) {
+        dataQuery = dataQuery.not(
+          "customer_name",
+          "in",
+          `(${excludedCustomers.map((name) => `"${name}"`).join(",")})`
+        );
+      }
+
+      const { data, error } = await dataQuery;
+
+      if (error) {
+        console.error("❌ [Client] Pagination query error:", error);
+        throw new Error(`주문 데이터 조회 오류: ${error.message}`);
+      }
+
+      if (data && data.length > 0) {
+        allOrders.push(...data);
+        console.log(
+          `📄 [Client] Page ${page + 1}: fetched ${data.length} orders`
+        );
+
+        // 가져온 데이터가 pageSize보다 적으면 더 이상 데이터가 없음
+        if (data.length < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      } else {
+        hasMore = false;
+      }
+
+      // 안전장치: 10페이지(10,000건) 이상은 가져오지 않음
+      if (page >= 10) {
+        console.warn("⚠️ [Client] Reached maximum pagination limit (10 pages)");
+        hasMore = false;
+      }
+    }
+
+    // 6. count 쿼리와 최근 주문 조회 병렬 실행
+    const [countResult, recentOrdersResult] = await Promise.all([
+      countQuery,
       getRecentOrders(userId, excludedCustomers, 10),
     ]);
 
-    // 5. RPC 결과 처리
-    if (rpcResult.error) {
-      console.error("❌ [Client] Supabase RPC error:", rpcResult.error);
-      throw new Error(`DB 통계 함수 호출 오류: ${rpcResult.error.message}`);
+    // 7. count 결과 처리
+    if (countResult.error) {
+      console.error("❌ [Client] Supabase count error:", countResult.error);
+      throw new Error(`주문 개수 조회 오류: ${countResult.error.message}`);
     }
 
-    const statsFromDB =
-      rpcResult.data &&
-      Array.isArray(rpcResult.data) &&
-      rpcResult.data.length > 0
-        ? rpcResult.data[0]
-        : {};
+    // 8. 주문 결과 처리
+    if (recentOrdersResult.error) {
+      console.error(
+        "❌ [Client] Supabase query error:",
+        recentOrdersResult.error
+      );
+      throw new Error(
+        `최근 주문 조회 오류: ${recentOrdersResult.error.message}`
+      );
+    }
 
-    console.log("📊 [Client] Stats from DB:", statsFromDB);
+    const totalOrdersActual = countResult.count || 0;
+    const orders = allOrders;
 
-    // 6. 최근 활동 데이터 가공
+    console.log("📊 [Client] Total orders (exact count):", totalOrdersActual);
+    console.log("📊 [Client] Orders fetched for calculation:", orders.length);
+
+    // 9. 통계 계산 (클라이언트 사이드)
+    const totalOrders = totalOrdersActual;
+    const completedOrders = orders.filter(
+      (order) => order.status === "수령완료"
+    ).length;
+    const pendingOrders = orders.filter(
+      (order) => order.status === "주문완료" && order.sub_status === "미수령"
+    ).length;
+
+    // 예상 매출: 주문취소 제외, 미수령은 includeUnreceived 설정에 따라 결정
+    const estimatedRevenueOrders = orders.filter((order) => {
+      // 주문취소는 항상 제외
+      if (order.status === "주문취소") return false;
+
+      // 미수령 포함 여부에 따라 결정
+      if (!filters.includeUnreceived && order.sub_status === "미수령") {
+        return false;
+      }
+
+      return true;
+    });
+
+    console.log(
+      "💰 [Client] Estimated revenue orders count:",
+      estimatedRevenueOrders.length
+    );
+    console.log(
+      "💰 [Client] Sample estimated revenue orders:",
+      estimatedRevenueOrders.slice(0, 5).map((o) => ({
+        total_amount: o.total_amount,
+        status: o.status,
+        sub_status: o.sub_status,
+        customer_name: o.customer_name,
+      }))
+    );
+
+    const estimatedRevenue = estimatedRevenueOrders.reduce((sum, order) => {
+      const amount = Number(order.total_amount) || 0;
+      return sum + amount;
+    }, 0);
+
+    // 확정 매출: 수령완료, 결제완료
+    const confirmedRevenueOrders = orders.filter((order) =>
+      ["수령완료", "결제완료"].includes(order.status)
+    );
+
+    console.log(
+      "✅ [Client] Confirmed revenue orders count:",
+      confirmedRevenueOrders.length
+    );
+
+    const confirmedRevenue = confirmedRevenueOrders.reduce((sum, order) => {
+      const amount = Number(order.total_amount) || 0;
+      return sum + amount;
+    }, 0);
+
+    console.log("📊 [Client] Stats calculated:", {
+      totalOrders,
+      completedOrders,
+      pendingOrders,
+      estimatedRevenue,
+      confirmedRevenue,
+    });
+
+    // 10. 최근 활동 데이터 가공
     const recentActivity = recentOrdersResult.map((order) => ({
       type: "order",
       orderId: order.order_id,
@@ -221,13 +397,13 @@ export async function getOrderStats(userId, filters = {}) {
       status: order.status,
     }));
 
-    // 7. 최종 응답 데이터 구성
+    // 11. 최종 응답 데이터 구성
     const result = {
-      totalOrders: statsFromDB?.total_orders_count ?? 0,
-      completedOrders: statsFromDB?.completed_orders_count ?? 0,
-      pendingOrders: statsFromDB?.pending_receipt_orders_count ?? 0,
-      estimatedRevenue: Number(statsFromDB?.total_estimated_revenue ?? 0),
-      confirmedRevenue: Number(statsFromDB?.total_confirmed_revenue ?? 0),
+      totalOrders,
+      completedOrders,
+      pendingOrders,
+      estimatedRevenue,
+      confirmedRevenue,
       recentActivity,
       dateRange: {
         from: fromDate.toISOString(),

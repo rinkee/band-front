@@ -125,6 +125,7 @@ export default function DashboardPage() {
   const [showDatePicker, setShowDatePicker] = useState(false); // Show/hide date picker
   const [showMoreFilters, setShowMoreFilters] = useState(false); // Show/hide more filters
   const [selectedMonth, setSelectedMonth] = useState(0); // 0: 이번달, -1: 저번달, null: 직접입력
+  const [includeUnreceived, setIncludeUnreceived] = useState(false); // 미수령 포함 여부
 
   // Initialize state with keys matching the FINAL API response (camelCase)
   // aa
@@ -228,6 +229,7 @@ export default function DashboardPage() {
         ? customDateRange.startDate
         : undefined,
       endDate: customDateRange.isActive ? customDateRange.endDate : undefined,
+      includeUnreceived, // 미수령 포함 여부 추가
     }, // 커스텀 날짜 범위 지원
     swrOptions
   );
@@ -276,7 +278,14 @@ export default function DashboardPage() {
       // console.log(`Date range or userId changed, revalidating stats for ${userId}...`);
       orderStatsMutate(); // Tell SWR to re-fetch the stats
     }
-  }, [dateRange, customDateRange, userId, orderStatsMutate, initialLoading]);
+  }, [
+    dateRange,
+    customDateRange,
+    userId,
+    includeUnreceived,
+    orderStatsMutate,
+    initialLoading,
+  ]);
 
   // Helper Functions
   const timeAgo = (dateString) => {
@@ -688,6 +697,19 @@ export default function DashboardPage() {
             <dd className="mt-1 text-3xl font-bold text-blue-600">
               {formatCurrency(stats.estimatedRevenue)}
             </dd>
+            {/* 미수령 포함/제외 스위치 */}
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-xs text-gray-500">미수령 포함</span>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeUnreceived}
+                  onChange={(e) => setIncludeUnreceived(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
           </LightCard>
 
           {/* Sub-grid for Total/Pending */}
