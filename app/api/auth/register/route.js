@@ -1,11 +1,9 @@
 // api/auth/register/route.js
 import { NextResponse } from "next/server";
 
-// API 기본 URL 설정
-const API_BASE_URL =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8080/api"
-    : process.env.BACKEND_API_URL;
+// Supabase Edge Function URL 설정
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
  * 회원가입 처리 API
@@ -20,6 +18,8 @@ export async function POST(request) {
       loginId,
       loginPassword = "0000", // 추가: 로그인 비밀번호
       bandUrl,
+      bandAccessToken,
+      bandKey,
       storeName,
       storeAddress,
       ownerName,
@@ -62,17 +62,21 @@ export async function POST(request) {
       loginId,
       naverId,
       bandUrl,
+      bandAccessToken: bandAccessToken ? "***제공됨***" : "없음",
+      bandKey: bandKey ? "***제공됨***" : "없음",
       storeName,
       storeAddress,
       ownerName,
       phoneNumber,
     });
 
-    // 서버 API 호출
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    // Supabase Edge Function 호출
+    const edgeFunctionUrl = `${SUPABASE_URL}/functions/v1/auth-register`;
+    const response = await fetch(edgeFunctionUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
         naverId,
@@ -80,6 +84,8 @@ export async function POST(request) {
         loginId,
         loginPassword,
         bandUrl,
+        bandAccessToken,
+        bandKey,
         storeName,
         storeAddress,
         ownerName: ownerName || loginId,

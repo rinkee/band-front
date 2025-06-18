@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, forwardRef } from "react"; // React Fragment 사용을 위해 React 추가
+import React, { useState, useEffect, useRef, forwardRef, useMemo } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -706,7 +706,7 @@ export default function OrdersPage() {
       console.log("Orders page mounted, refreshing products data...");
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
     }
-  }, [userData?.userId]); // mutateProducts를 의존성에서 제거하여 무한 루프 방지
+  }, [userData?.userId, mutateProducts]);
 
   // localStorage 플래그 감지하여 바코드 옵션 업데이트 확인
   useEffect(() => {
@@ -2339,7 +2339,10 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
   const [selectedOption, setSelectedOption] = useState(null);
 
   // 바코드 옵션이 있는지 확인
-  const barcodeOptions = product?.barcode_options?.options || [];
+  const barcodeOptions = useMemo(
+    () => product?.barcode_options?.options || [],
+    [product?.barcode_options?.options]
+  );
   const hasOptions = barcodeOptions.length > 1; // 기본 옵션 외에 다른 옵션이 있는지
 
   // 초기 선택값 설정 (저장된 선택값 또는 메인 옵션)

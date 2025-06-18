@@ -135,16 +135,32 @@ export default function BandPostUpdatePage() {
       const apiEndpoint = "/band/posts"; // 직접 /band/posts 를 호출한다고 가정
       // const apiEndpoint = "/api/admin/trigger-post-update"; // 트리거 API 예시
 
-      // --- 사용자별 limit 설정 로직 (PostUpdater 에서 가져옴 - 선택 사항) ---
+      // --- 사용자별 limit 설정 로직 (사용자 설정에서 가져오기) ---
       let currentLimit = 200; // 기본값
+
+      // 1. 세션에서 사용자 설정값 확인
       const storedLimit = sessionStorage.getItem("userPostLimit");
       if (storedLimit) {
         const parsedLimit = parseInt(storedLimit, 10);
         if (!isNaN(parsedLimit) && parsedLimit > 0) {
           currentLimit = parsedLimit;
         }
+      } else {
+        // 2. 세션에 없으면 userData에서 확인
+        if (userData?.post_fetch_limit) {
+          const userLimit = parseInt(userData.post_fetch_limit, 10);
+          if (!isNaN(userLimit) && userLimit > 0) {
+            currentLimit = userLimit;
+            // 세션에도 저장
+            sessionStorage.setItem("userPostLimit", userLimit.toString());
+          }
+        }
       }
-      console.log(`게시물 조회 한도: ${currentLimit}`);
+      console.log(
+        `게시물 조회 한도: ${currentLimit} (사용자 설정: ${
+          userData?.post_fetch_limit || "미설정"
+        })`
+      );
 
       console.log(`백엔드 호출 시작: ${apiEndpoint}`);
 

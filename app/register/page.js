@@ -11,6 +11,8 @@ export default function RegisterPage() {
     naverId: "",
     naverPassword: "",
     bandUrl: "",
+    bandAccessToken: "",
+    bandKey: "",
     storeName: "",
     storeAddress: "",
     ownerName: "",
@@ -199,6 +201,48 @@ export default function RegisterPage() {
             />
             <p className="mt-1 text-xs text-gray-500">
               band.us 또는 band.com 형식의 URL을 입력해주세요.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="bandAccessToken"
+              className="block text-sm font-medium text-gray-700"
+            >
+              밴드 액세스 토큰
+            </label>
+            <input
+              id="bandAccessToken"
+              name="bandAccessToken"
+              type="text"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              placeholder="밴드 API 액세스 토큰을 입력해주세요"
+              value={formData.bandAccessToken}
+              onChange={handleChange}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              밴드 API 연동을 위한 액세스 토큰입니다.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="bandKey"
+              className="block text-sm font-medium text-gray-700"
+            >
+              밴드 키
+            </label>
+            <input
+              id="bandKey"
+              name="bandKey"
+              type="text"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              placeholder="밴드 인증 키를 입력해주세요"
+              value={formData.bandKey}
+              onChange={handleChange}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              밴드 데이터 접근을 위한 인증 키입니다.
             </p>
           </div>
 
