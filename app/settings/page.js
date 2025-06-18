@@ -63,6 +63,214 @@ function LightCard({ children, className = "", padding = "p-6" }) {
   );
 }
 
+// --- Band API 테스트 컴포넌트 ---
+function BandApiTester({ userData }) {
+  const [bandApiLoading, setBandApiLoading] = useState(false);
+  const [bandsResult, setBandsResult] = useState(null);
+  const [postsResult, setPostsResult] = useState(null);
+  const [selectedBandKey, setSelectedBandKey] = useState("");
+  const [error, setError] = useState(null);
+
+  // 사용자 Band API 정보 표시
+  const bandAccessToken =
+    userData?.data?.band_access_token || userData?.band_access_token;
+  const bandKey = userData?.data?.band_key || userData?.band_key;
+
+  // Band 목록 가져오기 테스트
+  const testGetBands = async () => {
+    // userData에서 userId 가져오기
+    const userId = userData?.data?.user_id || userData?.user_id || userData?.id;
+
+    if (!userId) {
+      setError("사용자 ID를 찾을 수 없습니다.");
+      return;
+    }
+
+    setBandApiLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/band/bands?userId=${encodeURIComponent(userId)}`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      if (data.result_code === 1) {
+        setBandsResult(data.result_data);
+        // 첫 번째 밴드를 기본 선택
+        if (data.result_data?.bands?.length > 0) {
+          setSelectedBandKey(data.result_data.bands[0].band_key);
+        }
+      } else {
+        setError(
+          `Band API 오류: ${data.result_code} - ${
+            data.result_data?.error_description || "알 수 없는 오류"
+          }`
+        );
+      }
+    } catch (err) {
+      setError(`요청 실패: ${err.message}`);
+    } finally {
+      setBandApiLoading(false);
+    }
+  };
+
+  // 특정 밴드의 게시물 가져오기 테스트
+  const testGetPosts = async () => {
+    // userData에서 userId 가져오기
+    const userId = userData?.data?.user_id || userData?.user_id || userData?.id;
+
+    if (!userId || !selectedBandKey) {
+      setError("사용자 ID와 Band Key가 필요합니다.");
+      return;
+    }
+
+    setBandApiLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/band/posts-by-band?userId=${encodeURIComponent(
+          userId
+        )}&bandKey=${encodeURIComponent(selectedBandKey)}`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      if (data.result_code === 1) {
+        setPostsResult(data.result_data);
+      } else {
+        setError(
+          `Band API 오류: ${data.result_code} - ${
+            data.result_data?.error_description || "알 수 없는 오류"
+          }`
+        );
+      }
+    } catch (err) {
+      setError(`요청 실패: ${err.message}`);
+    } finally {
+      setBandApiLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* API 정보 표시 */}
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">
+          현재 Band API 설정
+        </h3>
+        <div className="grid grid-cols-1 gap-2 text-xs">
+          <div>
+            <span className="font-medium text-gray-600">Access Token:</span>
+            <span className="ml-2 font-mono text-gray-800 break-all">
+              {bandAccessToken
+                ? `${bandAccessToken.substring(0, 20)}...`
+                : "설정되지 않음"}
+            </span>
+          </div>
+          <div>
+            <span className="font-medium text-gray-600">Band Key:</span>
+            <span className="ml-2 font-mono text-gray-800">
+              {bandKey || "설정되지 않음"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 테스트 버튼들 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          onClick={testGetBands}
+          disabled={bandApiLoading || !userData}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {bandApiLoading ? (
+            <LoadingSpinner className="w-4 h-4" color="text-white" />
+          ) : (
+            <InformationCircleIcon className="w-4 h-4" />
+          )}
+          밴드 목록 테스트
+        </button>
+
+        <button
+          onClick={testGetPosts}
+          disabled={bandApiLoading || !userData || !selectedBandKey}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {bandApiLoading ? (
+            <LoadingSpinner className="w-4 h-4" color="text-white" />
+          ) : (
+            <InformationCircleIcon className="w-4 h-4" />
+          )}
+          게시물 목록 테스트
+        </button>
+      </div>
+
+      {/* 밴드 선택 */}
+      {bandsResult?.bands && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            테스트할 밴드 선택:
+          </label>
+          <select
+            value={selectedBandKey}
+            onChange={(e) => setSelectedBandKey(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          >
+            {bandsResult.bands.map((band) => (
+              <option key={band.band_key} value={band.band_key}>
+                {band.name} (멤버: {band.member_count}명)
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* 오류 표시 */}
+      {error && (
+        <div className="p-3 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* 결과 표시 */}
+      {bandsResult && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">
+            밴드 목록 결과:
+          </h4>
+          <div className="max-h-40 overflow-y-auto">
+            <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+              {JSON.stringify(bandsResult, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {postsResult && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">
+            게시물 목록 결과:
+          </h4>
+          <div className="max-h-40 overflow-y-auto">
+            <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+              {JSON.stringify(postsResult, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const topRef = useRef(null);
@@ -861,6 +1069,20 @@ export default function SettingsPage() {
                     {savingBarcodeSetting ? "저장 중..." : "바코드 설정 저장"}
                   </span>
                 </button>
+              </div>
+            </LightCard>
+
+            {/* Band API 테스트 카드 */}
+            <LightCard padding="p-0">
+              <div className="p-5 sm:p-6 border-b">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <InformationCircleIcon className="w-5 h-5 text-gray-500" />{" "}
+                  Band API 테스트
+                  {userLoading && <LoadingSpinner className="w-4 h-4 ml-2" />}
+                </h2>
+              </div>
+              <div className="p-5 sm:p-6">
+                <BandApiTester userData={swrUserData} />
               </div>
             </LightCard>
 

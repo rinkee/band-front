@@ -256,7 +256,37 @@ function BarcodeOptionsManager({
           id: option.id || `option_${Date.now()}_${index}`, // 고유 ID 보장
         })
       );
-      setBarcodeOptions(optionsWithId);
+
+      // 중복 바코드 검사 및 자동 수정
+      const fixedOptions = [];
+      const usedBarcodes = new Set();
+
+      optionsWithId.forEach((option, index) => {
+        let barcode = option.barcode;
+
+        // 바코드가 비어있거나 중복된 경우 새로 생성
+        if (!barcode || usedBarcodes.has(barcode)) {
+          const baseBarcode =
+            selectedProduct?.barcode || `BC${Date.now().toString().slice(-8)}`;
+          barcode = generateUniqueBarcode(
+            baseBarcode,
+            Array.from(usedBarcodes),
+            index === 0 ? "" : `OPT${index}`
+          );
+
+          console.warn(
+            `중복된 바코드 발견: "${option.barcode}" → "${barcode}"로 수정됨`
+          );
+        }
+
+        usedBarcodes.add(barcode);
+        fixedOptions.push({
+          ...option,
+          barcode: barcode,
+        });
+      });
+
+      setBarcodeOptions(fixedOptions);
     } else {
       // 항상 기본 옵션 생성 (기존 상품 바코드 기반)
       const mainOption = {
@@ -270,6 +300,33 @@ function BarcodeOptionsManager({
     }
   }, [selectedProduct]);
 
+  // 고유한 바코드 생성 함수
+  const generateUniqueBarcode = (
+    baseBarcode,
+    existingBarcodes,
+    suffix = ""
+  ) => {
+    if (!baseBarcode) {
+      // 기본 바코드가 없으면 랜덤 생성
+      baseBarcode = `BC${Date.now().toString().slice(-8)}`;
+    }
+
+    let newBarcode = suffix
+      ? `${baseBarcode}${suffix}`
+      : `${baseBarcode}OPT${Date.now().toString().slice(-4)}`;
+    let counter = 1;
+
+    // 중복 검사 및 고유 바코드 생성
+    while (existingBarcodes.includes(newBarcode)) {
+      newBarcode = `${baseBarcode}OPT${Date.now()
+        .toString()
+        .slice(-4)}${counter}`;
+      counter++;
+    }
+
+    return newBarcode;
+  };
+
   // 바코드 추가 (최대 4개 제한)
   const addOption = () => {
     if (barcodeOptions.length >= 4) {
@@ -279,11 +336,12 @@ function BarcodeOptionsManager({
 
     const barcodeNumber =
       barcodeOptions.filter((opt) => !opt.is_main).length + 1;
+
     const newOption = {
       id: `option_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: `바코드${barcodeNumber}`,
       price: selectedProduct?.base_price || 0,
-      barcode: "",
+      barcode: "", // 빈칸으로 시작
       is_main: false,
     };
     setBarcodeOptions([...barcodeOptions, newOption]);
@@ -302,9 +360,12 @@ function BarcodeOptionsManager({
   // 옵션 수정
   const updateOption = (optionId, field, value) => {
     console.log(`Updating option ${optionId}, field: ${field}, value:`, value); // 디버깅
+
     setBarcodeOptions((prev) => {
       const updated = prev.map((opt) => {
         if (opt.id === optionId) {
+          // 바코드 필드 수정 시 중복 검사 (alert 제거, UI에서만 표시)
+          // 중복된 경우에도 값은 업데이트하되, UI에서 경고 표시하여 사용자 경험 개선
           const updatedOption = { ...opt, [field]: value };
           console.log(`Updated option:`, updatedOption); // 디버깅
           return updatedOption;
@@ -327,13 +388,33 @@ function BarcodeOptionsManager({
       return "모든 바코드의 이름, 바코드, 가격을 입력해주세요.";
     }
 
-    // 중복 바코드 검사
-    const barcodes = barcodeOptions.map((opt) => opt.barcode);
-    const duplicates = barcodes.filter(
-      (barcode, index) => barcodes.indexOf(barcode) !== index
-    );
+    // 중복 바코드 검사 (더 정확한 검사)
+    const barcodeMap = new Map();
+    const duplicates = [];
+
+    barcodeOptions.forEach((opt, index) => {
+      const barcode = opt.barcode.trim();
+      if (barcodeMap.has(barcode)) {
+        if (!duplicates.includes(barcode)) {
+          duplicates.push(barcode);
+        }
+      } else {
+        barcodeMap.set(barcode, index);
+      }
+    });
+
     if (duplicates.length > 0) {
-      return "중복된 바코드가 있습니다: " + duplicates.join(", ");
+      return `중복된 바코드가 있습니다: ${duplicates.join(
+        ", "
+      )}. 각 바코드는 고유해야 합니다.`;
+    }
+
+    // 바코드 형식 검사 (영문, 숫자만 허용)
+    const invalidBarcodes = barcodeOptions.filter(
+      (opt) => !/^[a-zA-Z0-9]+$/.test(opt.barcode.trim())
+    );
+    if (invalidBarcodes.length > 0) {
+      return "바코드는 영문과 숫자만 포함할 수 있습니다.";
     }
 
     return null; // 오류 없음
@@ -351,10 +432,43 @@ function BarcodeOptionsManager({
     }));
   }, [barcodeOptions, setEditedProduct]);
 
+  // 중복 바코드 체크
+  const duplicateBarcodes = [];
+  const barcodeMap = new Map();
+  barcodeOptions.forEach((opt) => {
+    if (opt.barcode && barcodeMap.has(opt.barcode)) {
+      if (!duplicateBarcodes.includes(opt.barcode)) {
+        duplicateBarcodes.push(opt.barcode);
+      }
+    } else if (opt.barcode) {
+      barcodeMap.set(opt.barcode, true);
+    }
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-gray-900">바코드 상태 관리</h3>
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">
+            바코드 상태 관리
+          </h3>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-gray-600">
+              총 {barcodeOptions.length}개 바코드
+            </span>
+            {duplicateBarcodes.length > 0 ? (
+              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-red-100 text-red-700 rounded-full">
+                <ExclamationCircleIcon className="w-3 h-3" />
+                중복 {duplicateBarcodes.length}개
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+                <CheckCircleIcon className="w-3 h-3" />
+                모두 고유함
+              </span>
+            )}
+          </div>
+        </div>
         <button
           onClick={addOption}
           disabled={barcodeOptions.length >= 4}
@@ -442,23 +556,54 @@ function BarcodeOptionsManager({
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   바코드 <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={option.barcode}
-                  onChange={(e) => {
-                    // 영문, 숫자만 허용 (한글 및 특수문자 제외)
-                    const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
-                    updateOption(option.id, "barcode", value);
-                  }}
-                  onKeyDown={(e) => {
-                    // 한글 입력 방지
-                    if (e.key === "Process" || e.keyCode === 229) {
-                      e.preventDefault();
-                    }
-                  }}
-                  placeholder="바코드 번호 (영문, 숫자만)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={option.barcode}
+                    onChange={(e) => {
+                      // 영문, 숫자만 허용 (한글 및 특수문자 제외)
+                      const value = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                      updateOption(option.id, "barcode", value);
+                    }}
+                    onKeyDown={(e) => {
+                      // 한글 입력 방지
+                      if (e.key === "Process" || e.keyCode === 229) {
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder="바코드 번호 (영문, 숫자만)"
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-1 ${
+                      option.barcode &&
+                      barcodeOptions.filter(
+                        (opt) =>
+                          opt.id !== option.id && opt.barcode === option.barcode
+                      ).length > 0
+                        ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                        : "border-gray-300 focus:ring-orange-500 focus:border-orange-500"
+                    }`}
+                  />
+                  {/* 중복 경고 아이콘 */}
+                  {option.barcode &&
+                    barcodeOptions.filter(
+                      (opt) =>
+                        opt.id !== option.id && opt.barcode === option.barcode
+                    ).length > 0 && (
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <ExclamationCircleIcon className="h-4 w-4 text-red-500" />
+                      </div>
+                    )}
+                </div>
+
+                {/* 중복 경고 메시지 */}
+                {option.barcode &&
+                  barcodeOptions.filter(
+                    (opt) =>
+                      opt.id !== option.id && opt.barcode === option.barcode
+                  ).length > 0 && (
+                    <p className="mt-1 text-xs text-red-600">
+                      ⚠️ 이 바코드는 이미 사용 중입니다
+                    </p>
+                  )}
               </div>
             </div>
 
@@ -838,6 +983,48 @@ export default function ProductsPage() {
       console.log("Invalid data:", editedProduct);
       alert("상품명과 가격을 올바르게 입력해주세요.");
       return;
+    }
+
+    // 바코드 옵션 유효성 검사 (중복이 있으면 저장 중단)
+    if (editedProduct.barcode_options?.options) {
+      const barcodeOptions = editedProduct.barcode_options.options;
+
+      // 중복 바코드 검사
+      const barcodeMap = new Map();
+      const duplicates = [];
+
+      barcodeOptions.forEach((opt, index) => {
+        const barcode = opt.barcode?.trim();
+        if (barcode) {
+          if (barcodeMap.has(barcode)) {
+            if (!duplicates.includes(barcode)) {
+              duplicates.push(barcode);
+            }
+          } else {
+            barcodeMap.set(barcode, index);
+          }
+        }
+      });
+
+      if (duplicates.length > 0) {
+        alert(
+          `중복된 바코드가 있어 저장할 수 없습니다: ${duplicates.join(
+            ", "
+          )}\n각 바코드는 고유해야 합니다.`
+        );
+        return;
+      }
+
+      // 빈 바코드 검사
+      const hasEmptyBarcodes = barcodeOptions.some(
+        (opt) => !opt.barcode?.trim()
+      );
+      if (hasEmptyBarcodes) {
+        alert(
+          "모든 바코드를 입력해주세요. 빈 바코드가 있으면 저장할 수 없습니다."
+        );
+        return;
+      }
     }
 
     try {
