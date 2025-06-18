@@ -64,6 +64,259 @@ function LightCard({ children, className = "", padding = "p-6" }) {
 }
 
 // --- Band API 테스트 컴포넌트 ---
+// --- 프로덕션 테스트 패널 컴포넌트 ---
+function ProductionTestPanel({ userData }) {
+  const [testMode, setTestMode] = useState(false);
+  const [testResults, setTestResults] = useState(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [selectedTestType, setSelectedTestType] = useState("comment_parsing");
+
+  // 관리자 권한 확인
+  const isAdmin =
+    userData?.role === "admin" || userData?.data?.role === "admin";
+
+  if (!isAdmin) return null; // 관리자만 볼 수 있음
+
+  const runProductionTest = async () => {
+    setTestLoading(true);
+    setTestResults(null);
+
+    try {
+      const userId =
+        userData?.data?.user_id || userData?.user_id || userData?.id;
+
+      if (selectedTestType === "comment_parsing") {
+        // 댓글 파싱 테스트 - band-get-posts 함수 직접 호출
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/band-get-posts?userId=${userId}&testMode=true&limit=3&processAI=true`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        const result = await response.json();
+
+        // 댓글 파싱 결과 분석
+        const analysisResult = {
+          testType: "comment_parsing",
+          timestamp: new Date().toISOString(),
+          userId,
+          testMode: true,
+          apiCallSuccessful: response.ok,
+          rawResult: result,
+          analysis: {
+            postsProcessed: result.data?.length || 0,
+            commentsFound: 0,
+            ordersParsed: 0,
+            parsingExamples: [],
+            improvements: [],
+          },
+        };
+
+        // 결과에서 댓글과 주문 정보 추출
+        if (result.data) {
+          result.data.forEach((post) => {
+            if (post.aiAnalysisResult && post.aiAnalysisResult.products) {
+              analysisResult.analysis.commentsFound += post.commentCount || 0;
+
+              // AI 분석 결과에서 개선 사항 확인
+              post.aiAnalysisResult.products.forEach((product) => {
+                if (product.title && product.basePrice > 0) {
+                  analysisResult.analysis.ordersParsed++;
+                  analysisResult.analysis.parsingExamples.push({
+                    productTitle: product.title,
+                    basePrice: product.basePrice,
+                    priceOptions: product.priceOptions || [],
+                  });
+                }
+              });
+            }
+          });
+
+          analysisResult.analysis.improvements = [
+            `총 ${analysisResult.analysis.postsProcessed}개 게시물 처리`,
+            `${analysisResult.analysis.commentsFound}개 댓글 발견`,
+            `${analysisResult.analysis.ordersParsed}개 상품 파싱 성공`,
+            result.testMode
+              ? "✅ 테스트 모드로 실행 - 실제 저장 안함"
+              : "⚠️ 프로덕션 모드로 실행됨",
+          ];
+        }
+
+        setTestResults(analysisResult);
+      } else if (selectedTestType === "band_api") {
+        // Band API 제한 테스트
+        const response = await fetch(
+          `/api/band/bands?userId=${encodeURIComponent(userId)}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+
+        const result = await response.json();
+
+        const testResults = {
+          testType: "band_api_limit",
+          timestamp: new Date().toISOString(),
+          userId,
+          testMode: true,
+          apiCallSuccessful: response.ok,
+          rawResult: result,
+          analysis: {
+            currentApiStatus: response.ok ? "working" : "limited",
+            recommendations: [
+              response.ok
+                ? "현재 Band API가 정상 작동 중입니다."
+                : "Band API 제한 감지됨",
+              `응답 코드: ${response.status}`,
+              result.result_code === 1
+                ? "밴드 목록 조회 성공"
+                : `오류: ${
+                    result.result_data?.error_description || "알 수 없는 오류"
+                  }`,
+            ],
+          },
+        };
+
+        setTestResults(testResults);
+      }
+    } catch (error) {
+      setTestResults({
+        success: false,
+        error: error.message,
+        testType: selectedTestType,
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  return (
+    <LightCard>
+      <div className="border-b pb-4 mb-4">
+        <h3 className="text-lg font-semibold text-red-600 flex items-center gap-2">
+          <span>🔧</span> 프로덕션 테스트 모드 (관리자 전용)
+        </h3>
+        <p className="text-sm text-gray-600 mt-1">
+          고객에게 영향 없이 실제 데이터로 시스템을 테스트합니다
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {/* 테스트 타입 선택 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            테스트 타입 선택
+          </label>
+          <select
+            value={selectedTestType}
+            onChange={(e) => setSelectedTestType(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500"
+          >
+            <option value="comment_parsing">댓글 → 주문 변환 테스트</option>
+            <option value="band_api">Band API 제한 테스트</option>
+          </select>
+        </div>
+
+        {/* 테스트 실행 버튼 */}
+        <button
+          onClick={runProductionTest}
+          disabled={testLoading}
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50"
+        >
+          {testLoading ? (
+            <LoadingSpinner className="w-4 h-4" color="text-white" />
+          ) : (
+            <span>🧪</span>
+          )}
+          {testLoading ? "테스트 실행 중..." : "프로덕션 테스트 실행"}
+        </button>
+
+        {/* 테스트 결과 표시 */}
+        {testResults && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+              테스트 결과
+              {testResults.apiCallSuccessful ? (
+                <span className="text-green-600">✅</span>
+              ) : (
+                <span className="text-red-600">❌</span>
+              )}
+            </h4>
+
+            {testResults.analysis && (
+              <div className="space-y-2 mb-3">
+                <div className="text-sm">
+                  <strong>테스트 타입:</strong> {testResults.testType}
+                </div>
+                <div className="text-sm">
+                  <strong>실행 시간:</strong>{" "}
+                  {new Date(testResults.timestamp).toLocaleString()}
+                </div>
+
+                {testResults.analysis.recommendations && (
+                  <div className="text-sm">
+                    <strong>분석 결과:</strong>
+                    <ul className="list-disc list-inside ml-2 mt-1">
+                      {testResults.analysis.recommendations.map((rec, idx) => (
+                        <li key={idx} className="text-gray-600">
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {testResults.analysis.parsingExamples &&
+                  testResults.analysis.parsingExamples.length > 0 && (
+                    <div className="text-sm">
+                      <strong>파싱 예시:</strong>
+                      <div className="ml-2 mt-1 max-h-32 overflow-y-auto">
+                        {testResults.analysis.parsingExamples
+                          .slice(0, 3)
+                          .map((example, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs text-gray-600 border-l-2 border-gray-300 pl-2 mb-1"
+                            >
+                              <div>
+                                <strong>{example.productTitle}</strong>
+                              </div>
+                              <div>
+                                기본가: {example.basePrice?.toLocaleString()}원
+                              </div>
+                              <div>
+                                옵션: {example.priceOptions?.length || 0}개
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            )}
+
+            <details className="text-xs">
+              <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
+                상세 로그 보기
+              </summary>
+              <pre className="text-xs text-gray-600 overflow-auto max-h-64 mt-2 p-2 bg-white rounded border">
+                {JSON.stringify(testResults, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
+      </div>
+    </LightCard>
+  );
+}
+
 function BandApiTester({ userData }) {
   const [bandApiLoading, setBandApiLoading] = useState(false);
   const [bandsResult, setBandsResult] = useState(null);
@@ -893,6 +1146,9 @@ export default function SettingsPage() {
         {userId ? (
           <div className="space-y-6">
             {/* mb-6 제거하고 하단 버튼 영역에 mt-6 추가 */}
+            {/* 프로덕션 테스트 패널 (관리자만) */}
+            <ProductionTestPanel userData={swrUserData} />
+
             {/* 프로필 정보 카드 */}
             <LightCard padding="p-0">
               {/* 패딩 제거 */}
