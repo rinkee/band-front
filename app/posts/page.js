@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, forwardRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useUserClient, usePostsClient } from "../hooks"; // 클라이언트 사이드 훅 사용
@@ -191,6 +191,12 @@ export default function PostsPage() {
   };
 
   // 사용자 인증 상태 확인
+  const handleLogout = useCallback(() => {
+    sessionStorage.clear();
+    localStorage.removeItem("userId");
+    router.replace("/login");
+  }, [router]);
+
   useEffect(() => {
     /* 로직 동일 */
     const checkAuth = async () => {
@@ -211,7 +217,7 @@ export default function PostsPage() {
       }
     };
     checkAuth();
-  }, [router]);
+  }, [router, handleLogout]);
 
   // 사용자 정보 훅 (로딩 상태 확인용)
   const {
@@ -271,11 +277,6 @@ export default function PostsPage() {
   }, [inputValue, searchTerm]);
 
   // --- 핸들러 함수들 ---
-  const handleLogout = () => {
-    sessionStorage.clear();
-    localStorage.removeItem("userId");
-    router.replace("/login");
-  };
   const handleSearchChange = (e) => {
     setInputValue(e.target.value);
   }; // inputValue 업데이트

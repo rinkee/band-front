@@ -90,7 +90,7 @@ function ProductionTestPanel({ userData }) {
   const [keysLoading, setKeysLoading] = useState(false);
 
   // 현재 키 정보 불러오기 - userData에서 직접 가져오기
-  const loadCurrentKeys = async () => {
+  const loadCurrentKeys = useCallback(async () => {
     if (!userData) return;
     setKeysLoading(true);
     try {
@@ -119,14 +119,14 @@ function ProductionTestPanel({ userData }) {
     } finally {
       setKeysLoading(false);
     }
-  };
+  }, [userData, localBackupKeys.accessToken, localBackupKeys.bandKey]);
 
   // useCustomKeys가 켜질 때 현재 키 정보 불러오기
   useEffect(() => {
     if (useCustomKeys) {
       loadCurrentKeys();
     }
-  }, [useCustomKeys]);
+  }, [useCustomKeys, loadCurrentKeys]);
 
   // 관리자 권한 확인
   const isAdmin =
@@ -656,7 +656,7 @@ function ProductionTestPanel({ userData }) {
                             >
                               <div className="flex justify-between items-start mb-1">
                                 <span className="font-medium text-gray-700">
-                                  "{test.originalComment}"
+                                  &quot;{test.originalComment}&quot;
                                   {test.isRealComment && (
                                     <span className="text-blue-600 text-xs ml-1 font-bold">
                                       📝 실제댓글
@@ -1228,7 +1228,25 @@ export default function SettingsPage() {
         if (localStorageUserId) {
           sessionUserId = localStorageUserId;
           // localStorage에서 가져온 userId로 세션 데이터 복구
-          saveUserToSession({ id: localStorageUserId });
+          try {
+            const existingSessionDataString =
+              sessionStorage.getItem("userData");
+            let existingSessionData = {};
+            if (existingSessionDataString) {
+              existingSessionData = JSON.parse(existingSessionDataString);
+            }
+            const updatedSessionData = {
+              ...existingSessionData,
+              userId: localStorageUserId,
+              id: localStorageUserId,
+            };
+            sessionStorage.setItem(
+              "userData",
+              JSON.stringify(updatedSessionData)
+            );
+          } catch (e) {
+            console.error("세션 복구 오류:", e);
+          }
         }
       }
       if (!sessionUserId) {
@@ -1284,7 +1302,24 @@ export default function SettingsPage() {
         ); // 서버 값 우선, 없으면 기존 값 유지
 
         // 세션 스토리지도 최신 서버 데이터로 업데이트
-        saveUserToSession(userDataFromServer);
+        try {
+          const existingSessionDataString = sessionStorage.getItem("userData");
+          let existingSessionData = {};
+          if (existingSessionDataString) {
+            existingSessionData = JSON.parse(existingSessionDataString);
+          }
+          const updatedSessionData = {
+            ...existingSessionData,
+            ...userDataFromServer,
+            userId: userDataFromServer.id || userId,
+          };
+          sessionStorage.setItem(
+            "userData",
+            JSON.stringify(updatedSessionData)
+          );
+        } catch (e) {
+          console.error("세션 저장 오류:", e);
+        }
       } else {
         console.warn(
           "[SWR Effect] swrUserData.data가 유효한 객체가 아님:",
@@ -1313,7 +1348,6 @@ export default function SettingsPage() {
     swrUserData,
     userLoading,
     userId,
-    saveUserToSession,
     userSWRError,
     postLimit,
   ]);

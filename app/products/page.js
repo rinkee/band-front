@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, forwardRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useUser } from "../hooks"; // 훅 경로 확인 필요
@@ -755,6 +755,12 @@ export default function ProductsPage() {
   const isDataLoading = initialLoading || isUserLoading || isProductsLoading;
 
   // 사용자 인증 확인 useEffect
+  const handleLogout = useCallback(() => {
+    sessionStorage.clear();
+    localStorage.removeItem("userId");
+    router.replace("/login");
+  }, [router]);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -773,7 +779,7 @@ export default function ProductsPage() {
       }
     };
     checkAuth();
-  }, [router]);
+  }, [router, handleLogout]);
 
   // 상품 목록 상태 업데이트 useEffect
   useEffect(() => {
@@ -832,11 +838,6 @@ export default function ProductsPage() {
   ]);
 
   // --- 핸들러 함수들 ---
-  const handleLogout = () => {
-    sessionStorage.clear();
-    localStorage.removeItem("userId");
-    router.replace("/login");
-  };
   const handleSearchChange = (e) => {
     setInputValue(e.target.value);
   };
