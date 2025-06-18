@@ -51,12 +51,33 @@ const PostUpdater = ({ bandNumber = null }) => {
       return;
     }
 
+    // 사용자 설정에서 게시물 제한 가져오기
     let currentLimit = 200; // 기본값
+
+    // 1. 세션에서 사용자 설정값 확인
     const storedLimit = sessionStorage.getItem("userPostLimit");
     if (storedLimit) {
       const parsedLimit = parseInt(storedLimit, 10);
       if (!isNaN(parsedLimit) && parsedLimit > 0) {
         currentLimit = parsedLimit;
+      }
+    } else {
+      // 2. 세션에 없으면 세션 데이터에서 확인
+      try {
+        const sessionData = sessionStorage.getItem("sessionUserData");
+        if (sessionData) {
+          const userData = JSON.parse(sessionData);
+          if (userData?.post_fetch_limit) {
+            const userLimit = parseInt(userData.post_fetch_limit, 10);
+            if (!isNaN(userLimit) && userLimit > 0) {
+              currentLimit = userLimit;
+              // 다음 번을 위해 세션에 저장
+              sessionStorage.setItem("userPostLimit", userLimit.toString());
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("세션 데이터 파싱 실패:", error);
       }
     }
     console.log(`Using limit: ${currentLimit} for post updates.`);
