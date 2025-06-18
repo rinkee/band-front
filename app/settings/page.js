@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  forwardRef,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useUserClient, useUserClientMutations } from "../hooks";
 import { useSWRConfig } from "swr";
@@ -70,6 +76,57 @@ function ProductionTestPanel({ userData }) {
   const [testResults, setTestResults] = useState(null);
   const [testLoading, setTestLoading] = useState(false);
   const [selectedTestType, setSelectedTestType] = useState("comment_parsing");
+  const [useCustomKeys, setUseCustomKeys] = useState(false);
+  const [tempAccessToken, setTempAccessToken] = useState("");
+  const [tempBandKey, setTempBandKey] = useState("");
+  const [originalKeys, setOriginalKeys] = useState({
+    accessToken: "",
+    bandKey: "",
+  });
+  const [localBackupKeys, setLocalBackupKeys] = useState({
+    accessToken: "",
+    bandKey: "",
+  });
+  const [keysLoading, setKeysLoading] = useState(false);
+
+  // 현재 키 정보 불러오기 - userData에서 직접 가져오기
+  const loadCurrentKeys = async () => {
+    if (!userData) return;
+    setKeysLoading(true);
+    try {
+      // Band API 테스트 섹션과 동일한 방식으로 userData에서 직접 키 추출
+      const currentKeys = {
+        accessToken:
+          userData?.data?.band_access_token ||
+          userData?.band_access_token ||
+          "",
+        bandKey: userData?.data?.band_key || userData?.band_key || "",
+      };
+
+      console.log("키 정보 로드 완료:", currentKeys);
+
+      setOriginalKeys(currentKeys);
+      setTempAccessToken(currentKeys.accessToken);
+      setTempBandKey(currentKeys.bandKey);
+
+      // 로컬 백업도 현재 키로 설정 (처음 로드할 때만)
+      if (!localBackupKeys.accessToken && !localBackupKeys.bandKey) {
+        setLocalBackupKeys(currentKeys);
+      }
+    } catch (error) {
+      console.error("키 정보 불러오기 오류:", error);
+      alert("키 정보 불러오기 중 오류가 발생했습니다: " + error.message);
+    } finally {
+      setKeysLoading(false);
+    }
+  };
+
+  // useCustomKeys가 켜질 때 현재 키 정보 불러오기
+  useEffect(() => {
+    if (useCustomKeys) {
+      loadCurrentKeys();
+    }
+  }, [useCustomKeys]);
 
   // 관리자 권한 확인
   const isAdmin =
@@ -88,7 +145,7 @@ function ProductionTestPanel({ userData }) {
       if (selectedTestType === "comment_parsing") {
         // 댓글 파싱 테스트 - band-get-posts 함수 직접 호출 (댓글 있는 게시물 포함하도록 limit 증가)
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/band-get-posts?userId=${userId}&testMode=true&limit=5&processAI=true`,
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/band-get-posts?userId=${userId}&testMode=true&limit=6&processAI=true`,
           {
             method: "GET",
             headers: {
@@ -117,97 +174,76 @@ function ProductionTestPanel({ userData }) {
           },
         };
 
-        // 결과에서 댓글과 주문 정보 추출
+        // 백엔드에서 제공한 실제 댓글 파싱 테스트 결과 활용
         if (result.data) {
-          const postsWithComments = [];
-          const commentParsingTests = [];
+          // 백엔드에서 testAnalysis 정보 활용
+          if (result.testAnalysis) {
+            analysisResult.analysis.commentsFound =
+              result.testAnalysis.totalComments;
+            analysisResult.analysis.postsWithComments =
+              result.testAnalysis.postsWithComments;
+            analysisResult.analysis.postsWithProducts =
+              result.testAnalysis.postsWithProducts;
 
-          result.data.forEach((post) => {
-            analysisResult.analysis.commentsFound += post.commentCount || 0;
+            // 백엔드에서 실제 댓글로 테스트한 결과 활용
+            if (result.testAnalysis.commentParsingTests) {
+              analysisResult.analysis.commentParsingTests =
+                result.testAnalysis.commentParsingTests.map((test) => ({
+                  postKey: test.postKey,
+                  productTitle: test.productTitle,
+                  originalComment: test.originalComment,
+                  commentAuthor: test.commentAuthor,
+                  extractedOrders: test.extractedOrders,
+                  parsedSuccessfully: test.parsedSuccessfully,
+                  totalQuantity: test.totalQuantity,
+                  hasPhoneOrYear: test.hasPhoneOrYear,
+                  productPrice: test.productPrice,
+                  isRealComment: true, // 실제 댓글임을 표시
+                }));
+            }
 
-            // 댓글이 있는 게시물 추적
-            if (post.commentCount > 0) {
-              postsWithComments.push({
-                postKey: post.postKey,
-                productTitle:
-                  post.aiAnalysisResult?.products?.[0]?.title || "상품명 없음",
-                commentCount: post.commentCount,
-                hasProductInfo: !!(
-                  post.aiAnalysisResult &&
-                  post.aiAnalysisResult.products &&
-                  post.aiAnalysisResult.products.length > 0
-                ),
-              });
+            // 댓글 상세 정보
+            if (result.testAnalysis.commentDetails) {
+              analysisResult.analysis.commentDetails =
+                result.testAnalysis.commentDetails;
+            }
+          } else {
+            // 백엔드 testAnalysis가 없는 경우 기존 방식으로 분석
+            result.data.forEach((post) => {
+              analysisResult.analysis.commentsFound += post.commentCount || 0;
 
-              // 댓글 파싱 테스트 시뮬레이션
-              const testComments = [
-                "1번 2개요",
-                "2번 3개 주문합니다",
-                "김은희/1985/상무점/떡갈비 4개",
-                "010-1234-5678 해장국 5개요",
-                "두부 2팩요",
-              ];
-
-              testComments.forEach((comment, idx) => {
-                // 간단한 댓글 파싱 시뮬레이션
-                const numberMatch = comment.match(/(\d+)(?:번|개|팩)/);
-                const quantity = numberMatch ? parseInt(numberMatch[1]) : 1;
-                const hasPhoneOrYear = /(\d{4}|010-\d{4}-\d{4})/.test(comment);
-
-                commentParsingTests.push({
-                  postKey: post.postKey,
-                  originalComment: comment,
-                  extractedQuantity: quantity,
-                  filteredPhoneYear: hasPhoneOrYear,
-                  productTitle:
-                    post.aiAnalysisResult?.products?.[0]?.title ||
-                    "상품명 없음",
-                  productPrice:
-                    post.aiAnalysisResult?.products?.[0]?.basePrice || 0,
+              if (post.aiAnalysisResult && post.aiAnalysisResult.products) {
+                // AI 분석 결과에서 개선 사항 확인
+                post.aiAnalysisResult.products.forEach((product) => {
+                  if (product.title && product.basePrice > 0) {
+                    analysisResult.analysis.ordersParsed++;
+                    analysisResult.analysis.parsingExamples.push({
+                      postKey: post.postKey,
+                      productTitle: product.title,
+                      basePrice: product.basePrice,
+                      priceOptions: product.priceOptions || [],
+                      pickupInfo: product.pickupInfo,
+                      pickupDate: product.pickupDate,
+                      hasComments: post.commentCount > 0,
+                      commentCount: post.commentCount || 0,
+                    });
+                  }
                 });
-              });
-            }
-
-            if (post.aiAnalysisResult && post.aiAnalysisResult.products) {
-              // AI 분석 결과에서 개선 사항 확인
-              post.aiAnalysisResult.products.forEach((product) => {
-                if (product.title && product.basePrice > 0) {
-                  analysisResult.analysis.ordersParsed++;
-                  analysisResult.analysis.parsingExamples.push({
-                    postKey: post.postKey,
-                    productTitle: product.title,
-                    basePrice: product.basePrice,
-                    priceOptions: product.priceOptions || [],
-                    pickupInfo: product.pickupInfo,
-                    pickupDate: product.pickupDate,
-                    hasComments: post.commentCount > 0,
-                    commentCount: post.commentCount || 0,
-                  });
-                }
-              });
-            }
-          });
+              }
+            });
+          }
 
           analysisResult.analysis.improvements = [
             `총 ${analysisResult.analysis.postsProcessed}개 게시물 처리`,
             `${analysisResult.analysis.commentsFound}개 댓글 발견`,
             `${analysisResult.analysis.ordersParsed}개 상품 파싱 성공`,
-            `${postsWithComments.length}개 게시물에 댓글 있음`,
+            `댓글 있는 게시물: ${
+              analysisResult.analysis.postsWithComments || 0
+            }개`,
             result.testMode
               ? "✅ 테스트 모드로 실행 - 실제 저장 안함"
               : "⚠️ 프로덕션 모드로 실행됨",
           ];
-
-          // 댓글이 있는 게시물 상세 정보
-          if (postsWithComments.length > 0) {
-            analysisResult.analysis.commentDetails = postsWithComments;
-          }
-
-          // 댓글 파싱 테스트 결과
-          if (commentParsingTests.length > 0) {
-            analysisResult.analysis.commentParsingTests =
-              commentParsingTests.slice(0, 8); // 최대 8개만 표시
-          }
         }
 
         setTestResults(analysisResult);
@@ -260,6 +296,109 @@ function ProductionTestPanel({ userData }) {
     }
   };
 
+  const updateBandKeys = async () => {
+    if (!userData || !tempAccessToken || !tempBandKey) return;
+
+    // 변경 전 키를 로컬 백업에 저장
+    setLocalBackupKeys({
+      accessToken: originalKeys.accessToken,
+      bandKey: originalKeys.bandKey,
+    });
+
+    try {
+      const userId = userData.data?.user_id || userData.user_id || userData.id;
+
+      // Supabase 클라이언트로 직접 업데이트
+      const { error } = await supabase
+        .from("users")
+        .update({
+          band_access_token: tempAccessToken,
+          band_key: tempBandKey,
+        })
+        .eq("user_id", userId);
+
+      if (error) {
+        throw new Error(`데이터베이스 업데이트 오류: ${error.message}`);
+      }
+
+      // 키 업데이트 성공 - originalKeys도 업데이트
+      setOriginalKeys({
+        accessToken: tempAccessToken,
+        bandKey: tempBandKey,
+      });
+      alert(
+        "밴드 키가 성공적으로 업데이트되었습니다. 이제 테스트를 실행해보세요."
+      );
+    } catch (error) {
+      console.error("밴드 키 업데이트 중 오류 발생:", error);
+      alert("밴드 키 업데이트 중 오류가 발생했습니다: " + error.message);
+    }
+  };
+
+  const resetBandKeys = async () => {
+    if (!userData || !originalKeys.accessToken || !originalKeys.bandKey) {
+      alert("원래 키 정보를 찾을 수 없습니다.");
+      return;
+    }
+
+    try {
+      const userId = userData.data?.user_id || userData.user_id || userData.id;
+
+      // Supabase 클라이언트로 직접 업데이트
+      const { error } = await supabase
+        .from("users")
+        .update({
+          band_access_token: originalKeys.accessToken,
+          band_key: originalKeys.bandKey,
+        })
+        .eq("user_id", userId);
+
+      if (error) {
+        throw new Error(`데이터베이스 업데이트 오류: ${error.message}`);
+      }
+
+      setTempAccessToken(originalKeys.accessToken);
+      setTempBandKey(originalKeys.bandKey);
+      setUseCustomKeys(false);
+      alert("원래 키로 성공적으로 복원되었습니다.");
+    } catch (error) {
+      console.error("키 복원 중 오류 발생:", error);
+      alert("키 복원 중 오류가 발생했습니다: " + error.message);
+    }
+  };
+
+  const restoreLocalBackup = async () => {
+    if (!userData || !localBackupKeys.accessToken || !localBackupKeys.bandKey) {
+      alert("로컬 백업 키 정보를 찾을 수 없습니다.");
+      return;
+    }
+
+    try {
+      const userId = userData.data?.user_id || userData.user_id || userData.id;
+
+      // Supabase 클라이언트로 직접 업데이트
+      const { error } = await supabase
+        .from("users")
+        .update({
+          band_access_token: localBackupKeys.accessToken,
+          band_key: localBackupKeys.bandKey,
+        })
+        .eq("user_id", userId);
+
+      if (error) {
+        throw new Error(`데이터베이스 업데이트 오류: ${error.message}`);
+      }
+
+      setOriginalKeys(localBackupKeys);
+      setTempAccessToken(localBackupKeys.accessToken);
+      setTempBandKey(localBackupKeys.bandKey);
+      alert("로컬 백업 키로 성공적으로 복원되었습니다.");
+    } catch (error) {
+      console.error("로컬 백업 복원 중 오류 발생:", error);
+      alert("로컬 백업 복원 중 오류가 발생했습니다: " + error.message);
+    }
+  };
+
   return (
     <LightCard>
       <div className="border-b pb-4 mb-4">
@@ -286,6 +425,130 @@ function ProductionTestPanel({ userData }) {
             <option value="band_api">Band API 제한 테스트</option>
           </select>
         </div>
+
+        {/* Band 키 수정 패널 (댓글 파싱 테스트일 때만) */}
+        {selectedTestType === "comment_parsing" && (
+          <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-medium text-gray-900">
+                🔑 다른 밴드 테스트용 키 변경
+              </h4>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={useCustomKeys}
+                  onChange={(e) => setUseCustomKeys(e.target.checked)}
+                  className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                />
+                <span className="ml-2 text-sm text-gray-700">키 변경 모드</span>
+              </label>
+            </div>
+
+            {useCustomKeys && (
+              <div className="space-y-3">
+                {keysLoading ? (
+                  <div className="text-center p-4">
+                    <LoadingSpinner className="w-5 h-5 mx-auto" />
+                    <p className="text-sm text-gray-500 mt-2">
+                      키 정보를 불러오는 중...
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-xs text-blue-600 bg-blue-50 p-3 rounded border border-blue-200">
+                      <div className="font-medium mb-2">
+                        🔑 현재 DB에 저장된 키:
+                      </div>
+                      <div className="font-mono text-xs space-y-1">
+                        <div>
+                          토큰:{" "}
+                          {originalKeys.accessToken
+                            ? `${originalKeys.accessToken.substring(0, 25)}...`
+                            : "❌ 없음"}
+                        </div>
+                        <div>밴드키: {originalKeys.bandKey || "❌ 없음"}</div>
+                      </div>
+                    </div>
+
+                    {localBackupKeys.accessToken && localBackupKeys.bandKey && (
+                      <div className="text-xs text-green-600 bg-green-50 p-3 rounded border border-green-200">
+                        <div className="font-medium mb-2">
+                          💾 로컬 백업된 키:
+                        </div>
+                        <div className="font-mono text-xs space-y-1">
+                          <div>
+                            토큰: {localBackupKeys.accessToken.substring(0, 25)}
+                            ...
+                          </div>
+                          <div>밴드키: {localBackupKeys.bandKey}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        새로운 Band Access Token
+                      </label>
+                      <input
+                        type="text"
+                        value={tempAccessToken}
+                        onChange={(e) => setTempAccessToken(e.target.value)}
+                        placeholder="다른 사용자의 액세스 토큰을 입력하세요"
+                        className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        새로운 Band Key
+                      </label>
+                      <input
+                        type="text"
+                        value={tempBandKey}
+                        onChange={(e) => setTempBandKey(e.target.value)}
+                        placeholder="테스트할 밴드 키를 입력하세요"
+                        className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={updateBandKeys}
+                        disabled={
+                          testLoading || !tempAccessToken || !tempBandKey
+                        }
+                        className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      >
+                        DB에 키 저장
+                      </button>
+                      <button
+                        onClick={resetBandKeys}
+                        disabled={testLoading || !originalKeys.accessToken}
+                        className="px-3 py-2 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50"
+                      >
+                        최초 키로 복원
+                      </button>
+                    </div>
+                    {localBackupKeys.accessToken && localBackupKeys.bandKey && (
+                      <button
+                        onClick={restoreLocalBackup}
+                        disabled={testLoading}
+                        className="w-full px-3 py-2 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+                      >
+                        💾 로컬 백업 키로 복원
+                      </button>
+                    )}
+                    <div className="text-xs text-gray-500 bg-orange-50 p-2 rounded border border-orange-200">
+                      ⚠️ <strong>주의:</strong> 키를 변경하면 실제 DB에
+                      저장됩니다.
+                      <br />
+                      💾 <strong>로컬 백업:</strong> 키 변경 시 이전 키가
+                      자동으로 로컬에 백업됩니다.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 테스트 실행 버튼 */}
         <button
@@ -374,18 +637,19 @@ function ProductionTestPanel({ userData }) {
                 {testResults.analysis.commentParsingTests &&
                   testResults.analysis.commentParsingTests.length > 0 && (
                     <div className="text-sm">
-                      <strong>댓글 → 주문 변환 테스트:</strong>
+                      <strong>실제 댓글 파싱 테스트 결과:</strong>
                       <p className="text-xs text-gray-500 ml-2 mb-1">
-                        실제 댓글이 어떻게 주문으로 변환되는지 시뮬레이션
+                        실제 밴드에서 가져온 댓글이 어떻게 주문으로 변환되는지
+                        테스트
                       </p>
-                      <div className="ml-2 mt-1 max-h-40 overflow-y-auto space-y-1">
+                      <div className="ml-2 mt-1 max-h-48 overflow-y-auto space-y-1">
                         {testResults.analysis.commentParsingTests
-                          .slice(0, 6)
+                          .slice(0, 8)
                           .map((test, idx) => (
                             <div
                               key={idx}
                               className={`text-xs border rounded p-2 ${
-                                test.hasRealComments
+                                test.isRealComment
                                   ? "bg-blue-50 border-blue-200"
                                   : "bg-white border-gray-200"
                               }`}
@@ -393,36 +657,65 @@ function ProductionTestPanel({ userData }) {
                               <div className="flex justify-between items-start mb-1">
                                 <span className="font-medium text-gray-700">
                                   "{test.originalComment}"
-                                  {test.hasRealComments && (
-                                    <span className="text-blue-500 text-xs ml-1">
+                                  {test.isRealComment && (
+                                    <span className="text-blue-600 text-xs ml-1 font-bold">
                                       📝 실제댓글
                                     </span>
                                   )}
+                                  {test.commentAuthor && (
+                                    <span className="text-gray-500 text-xs ml-1">
+                                      by {test.commentAuthor}
+                                    </span>
+                                  )}
                                 </span>
-                                {test.filteredPhoneYear && (
+                                {test.hasPhoneOrYear && (
                                   <span className="text-orange-500 text-xs">
-                                    ⚠️ 번호/년도 필터됨
+                                    ⚠️ 4자리숫자 포함
                                   </span>
                                 )}
                               </div>
                               <div className="text-gray-600">
-                                <span className="text-blue-600">
-                                  → {test.productTitle}
-                                </span>
-                                <span className="ml-2">
-                                  수량: {test.extractedQuantity}개
-                                </span>
-                                <span className="ml-2">
-                                  가격: {test.productPrice?.toLocaleString()}원
+                                <span className="text-blue-600 font-medium">
+                                  상품: {test.productTitle}
                                 </span>
                               </div>
-                              {test.filteredPhoneYear && (
-                                <div className="text-xs text-orange-600 mt-1">
-                                  ✓ 4자리 숫자/전화번호가 수량에서 제외됨
+                              <div className="text-gray-600 mt-1">
+                                {test.extractedOrders &&
+                                test.extractedOrders.length > 0 ? (
+                                  <div>
+                                    <span className="text-green-600 font-medium">
+                                      ✅ 파싱 성공:
+                                    </span>
+                                    {test.extractedOrders.map(
+                                      (order, orderIdx) => (
+                                        <span key={orderIdx} className="ml-2">
+                                          {order.itemNumber}번 {order.quantity}
+                                          개
+                                        </span>
+                                      )
+                                    )}
+                                    <span className="ml-2 text-gray-500">
+                                      (총 {test.totalQuantity}개)
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-500">
+                                    ❌ 주문 정보 없음
+                                  </span>
+                                )}
+                              </div>
+                              {test.hasPhoneOrYear && (
+                                <div className="text-xs text-orange-600 mt-1 bg-orange-50 p-1 rounded">
+                                  ✓ 4자리 숫자 감지됨 - 년도나 전화번호로
+                                  추정하여 주문에서 제외
                                 </div>
                               )}
                             </div>
                           ))}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2 p-2 bg-gray-50 rounded">
+                        💡 파란색 배경: 실제 밴드 댓글 데이터 • 주황색 경고:
+                        4자리 숫자 필터링 적용됨
                       </div>
                     </div>
                   )}
