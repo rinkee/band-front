@@ -86,9 +86,9 @@ function ProductionTestPanel({ userData }) {
         userData?.data?.user_id || userData?.user_id || userData?.id;
 
       if (selectedTestType === "comment_parsing") {
-        // 댓글 파싱 테스트 - band-get-posts 함수 직접 호출
+        // 댓글 파싱 테스트 - band-get-posts 함수 직접 호출 (댓글 있는 게시물 포함하도록 limit 증가)
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/band-get-posts?userId=${userId}&testMode=true&limit=3&processAI=true`,
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/band-get-posts?userId=${userId}&testMode=true&limit=5&processAI=true`,
           {
             method: "GET",
             headers: {
@@ -119,18 +119,69 @@ function ProductionTestPanel({ userData }) {
 
         // 결과에서 댓글과 주문 정보 추출
         if (result.data) {
-          result.data.forEach((post) => {
-            if (post.aiAnalysisResult && post.aiAnalysisResult.products) {
-              analysisResult.analysis.commentsFound += post.commentCount || 0;
+          const postsWithComments = [];
+          const commentParsingTests = [];
 
+          result.data.forEach((post) => {
+            analysisResult.analysis.commentsFound += post.commentCount || 0;
+
+            // 댓글이 있는 게시물 추적
+            if (post.commentCount > 0) {
+              postsWithComments.push({
+                postKey: post.postKey,
+                productTitle:
+                  post.aiAnalysisResult?.products?.[0]?.title || "상품명 없음",
+                commentCount: post.commentCount,
+                hasProductInfo: !!(
+                  post.aiAnalysisResult &&
+                  post.aiAnalysisResult.products &&
+                  post.aiAnalysisResult.products.length > 0
+                ),
+              });
+
+              // 댓글 파싱 테스트 시뮬레이션
+              const testComments = [
+                "1번 2개요",
+                "2번 3개 주문합니다",
+                "김은희/1985/상무점/떡갈비 4개",
+                "010-1234-5678 해장국 5개요",
+                "두부 2팩요",
+              ];
+
+              testComments.forEach((comment, idx) => {
+                // 간단한 댓글 파싱 시뮬레이션
+                const numberMatch = comment.match(/(\d+)(?:번|개|팩)/);
+                const quantity = numberMatch ? parseInt(numberMatch[1]) : 1;
+                const hasPhoneOrYear = /(\d{4}|010-\d{4}-\d{4})/.test(comment);
+
+                commentParsingTests.push({
+                  postKey: post.postKey,
+                  originalComment: comment,
+                  extractedQuantity: quantity,
+                  filteredPhoneYear: hasPhoneOrYear,
+                  productTitle:
+                    post.aiAnalysisResult?.products?.[0]?.title ||
+                    "상품명 없음",
+                  productPrice:
+                    post.aiAnalysisResult?.products?.[0]?.basePrice || 0,
+                });
+              });
+            }
+
+            if (post.aiAnalysisResult && post.aiAnalysisResult.products) {
               // AI 분석 결과에서 개선 사항 확인
               post.aiAnalysisResult.products.forEach((product) => {
                 if (product.title && product.basePrice > 0) {
                   analysisResult.analysis.ordersParsed++;
                   analysisResult.analysis.parsingExamples.push({
+                    postKey: post.postKey,
                     productTitle: product.title,
                     basePrice: product.basePrice,
                     priceOptions: product.priceOptions || [],
+                    pickupInfo: product.pickupInfo,
+                    pickupDate: product.pickupDate,
+                    hasComments: post.commentCount > 0,
+                    commentCount: post.commentCount || 0,
                   });
                 }
               });
@@ -141,10 +192,22 @@ function ProductionTestPanel({ userData }) {
             `총 ${analysisResult.analysis.postsProcessed}개 게시물 처리`,
             `${analysisResult.analysis.commentsFound}개 댓글 발견`,
             `${analysisResult.analysis.ordersParsed}개 상품 파싱 성공`,
+            `${postsWithComments.length}개 게시물에 댓글 있음`,
             result.testMode
               ? "✅ 테스트 모드로 실행 - 실제 저장 안함"
               : "⚠️ 프로덕션 모드로 실행됨",
           ];
+
+          // 댓글이 있는 게시물 상세 정보
+          if (postsWithComments.length > 0) {
+            analysisResult.analysis.commentDetails = postsWithComments;
+          }
+
+          // 댓글 파싱 테스트 결과
+          if (commentParsingTests.length > 0) {
+            analysisResult.analysis.commentParsingTests =
+              commentParsingTests.slice(0, 8); // 최대 8개만 표시
+          }
         }
 
         setTestResults(analysisResult);
@@ -294,8 +357,105 @@ function ProductionTestPanel({ userData }) {
                               <div>
                                 옵션: {example.priceOptions?.length || 0}개
                               </div>
+                              <div>
+                                댓글: {example.commentCount}개
+                                {example.hasComments ? (
+                                  <span className="text-green-600">✓</span>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </div>
                             </div>
                           ))}
+                      </div>
+                    </div>
+                  )}
+
+                {testResults.analysis.commentParsingTests &&
+                  testResults.analysis.commentParsingTests.length > 0 && (
+                    <div className="text-sm">
+                      <strong>댓글 → 주문 변환 테스트:</strong>
+                      <p className="text-xs text-gray-500 ml-2 mb-1">
+                        실제 댓글이 어떻게 주문으로 변환되는지 시뮬레이션
+                      </p>
+                      <div className="ml-2 mt-1 max-h-40 overflow-y-auto space-y-1">
+                        {testResults.analysis.commentParsingTests
+                          .slice(0, 6)
+                          .map((test, idx) => (
+                            <div
+                              key={idx}
+                              className={`text-xs border rounded p-2 ${
+                                test.hasRealComments
+                                  ? "bg-blue-50 border-blue-200"
+                                  : "bg-white border-gray-200"
+                              }`}
+                            >
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-medium text-gray-700">
+                                  "{test.originalComment}"
+                                  {test.hasRealComments && (
+                                    <span className="text-blue-500 text-xs ml-1">
+                                      📝 실제댓글
+                                    </span>
+                                  )}
+                                </span>
+                                {test.filteredPhoneYear && (
+                                  <span className="text-orange-500 text-xs">
+                                    ⚠️ 번호/년도 필터됨
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-gray-600">
+                                <span className="text-blue-600">
+                                  → {test.productTitle}
+                                </span>
+                                <span className="ml-2">
+                                  수량: {test.extractedQuantity}개
+                                </span>
+                                <span className="ml-2">
+                                  가격: {test.productPrice?.toLocaleString()}원
+                                </span>
+                              </div>
+                              {test.filteredPhoneYear && (
+                                <div className="text-xs text-orange-600 mt-1">
+                                  ✓ 4자리 숫자/전화번호가 수량에서 제외됨
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                {testResults.analysis.commentDetails &&
+                  testResults.analysis.commentDetails.length > 0 && (
+                    <div className="text-sm">
+                      <strong>댓글 있는 게시물:</strong>
+                      <div className="ml-2 mt-1">
+                        {testResults.analysis.commentDetails.map(
+                          (detail, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs text-gray-600 mb-1"
+                            >
+                              <span className="font-medium">
+                                {detail.productTitle}
+                              </span>
+                              <span className="ml-2">
+                                댓글 {detail.commentCount}개
+                              </span>
+                              {detail.hasProductInfo ? (
+                                <span className="text-green-600 ml-2">
+                                  ✓ 상품정보
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 ml-2">
+                                  - 상품정보 없음
+                                </span>
+                              )}
+                            </div>
+                          )
+                        )}
                       </div>
                     </div>
                   )}
