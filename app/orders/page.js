@@ -21,6 +21,9 @@ import { StatusButton } from "../components/StatusButton"; // StatusButton 다�
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
+import CommentsModal from "../components/Comments"; // 댓글 모달 import
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/ToastContainer";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -157,49 +160,42 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 
 // --- 상태 배지 ---
 function StatusBadge({ status }) {
-  let bgColor, textColor, Icon;
+  let bgColor, textColor;
   switch (status) {
     case "수령완료":
       bgColor = "bg-green-100";
       textColor = "text-green-700";
-      Icon = CheckCircleIcon;
       break;
     case "주문취소":
       bgColor = "bg-red-100";
       textColor = "text-red-700";
-      Icon = XCircleIcon;
       break;
     case "주문완료":
       bgColor = "bg-blue-100";
       textColor = "text-blue-700";
-      Icon = SparklesIcon;
       break;
     case "확인필요":
       bgColor = "bg-gray-800";
       textColor = "text-gray-100";
-      Icon = ExclamationCircleIcon;
       break;
     case "결제완료":
       bgColor = "bg-yellow-100";
       textColor = "text-yellow-700";
-      Icon = CurrencyDollarIcon;
       break;
     case "미수령":
       bgColor = "bg-red-200";
       textColor = "text-red-700";
-      Icon = CurrencyDollarIcon;
       break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-600";
-      Icon = ExclamationCircleIcon;
       break;
   }
   return (
     <span
-      className={`inline-flex items-center gap-x-1 rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
     >
-      <Icon className="h-5 w-5" /> {status}
+      {status}
     </span>
   );
 }
@@ -324,6 +320,13 @@ export default function OrdersPage() {
   // --- 바코드 저장 관련 상태 및 함수 ---
   const [newBarcodeValue, setNewBarcodeValue] = useState("");
   const [isSavingBarcode, setIsSavingBarcode] = useState(false);
+
+  // --- 댓글 관련 상태 ---
+  const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
+  const [selectedPostForComments, setSelectedPostForComments] = useState(null);
+
+  // 토스트 알림 훅
+  const { toasts, showSuccess, showError, hideToast } = useToast();
 
   const displayOrders = orders || [];
 
@@ -777,12 +780,46 @@ export default function OrdersPage() {
   };
   const getProductNameById = (id) =>
     products.find((p) => p.product_id === id)?.title || "상품명 없음";
+
+  // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
+  const parseProductName = (productName) => {
+    if (!productName || productName === "상품명 없음") {
+      return { name: productName, date: null };
+    }
+
+    // [날짜] 패턴 찾기 (예: [12/25], [2024-12-25], [25일] 등)
+    const datePattern = /^\[([^\]]+)\]\s*(.*)$/;
+    const match = productName.match(datePattern);
+
+    if (match) {
+      return {
+        date: match[1], // 대괄호 안의 날짜 부분
+        name: match[2].trim() || productName, // 나머지 상품명 부분
+      };
+    }
+
+    // 패턴이 없으면 전체를 상품명으로 처리
+    return { name: productName, date: null };
+  };
   const getProductBarcode = (id) =>
     products.find((p) => p.product_id === id)?.barcode || "";
   const getProductById = (id) =>
     products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
     products.find((p) => p.product_id === id)?.band_post_url || "";
+
+  // 주문 ID에서 게시물 키를 추출하는 함수
+  const extractPostKeyFromOrderId = (orderId) => {
+    if (!orderId || typeof orderId !== "string") return null;
+
+    // order_AADlR1ebdBcadJk0v-It9wZj_AAAUM7DZve7GrqtKaCpxuUoX_AAC6BX4X4vfcxrBGtomcNcIf_item1
+    // 패턴: order_{bandKey}_{postKey}_{commentKey}_{itemNumber}
+    const parts = orderId.split("_");
+    if (parts.length >= 4 && parts[0] === "order") {
+      return parts[2]; // 세 번째 부분이 게시물 키
+    }
+    return null;
+  };
   const formatCurrency = (amt) =>
     new Intl.NumberFormat("ko-KR", {
       style: "currency",
@@ -1074,6 +1111,119 @@ export default function OrdersPage() {
   };
 
   // --- 바코드 저장 함수 ---
+  // 댓글 모달 열기 함수
+  const openCommentsModal = async (order) => {
+    const extractedPostKey = extractPostKeyFromOrderId(order.order_id);
+    const postKey = order.post_key || order.post_number || extractedPostKey;
+
+    console.log("댓글 모달 열기 시도:", {
+      order_id: order.order_id,
+      post_key: order.post_key,
+      post_number: order.post_number,
+      extractedPostKey: extractedPostKey,
+      finalPostKey: postKey,
+      bandNumber: userData?.bandNumber,
+      accessToken: userData?.accessToken
+        ? "accessToken 있음"
+        : "accessToken 없음",
+      band_access_token: userData?.band_access_token
+        ? "band_access_token 있음"
+        : "band_access_token 없음",
+    });
+
+    if (!postKey) {
+      showError("게시물 정보가 없어 댓글을 불러올 수 없습니다.");
+      return;
+    }
+
+    // 밴드 키는 userData 또는 주문 데이터에서 가져오기 (band_key 사용)
+    const bandKey = userData?.band_key || order.band_key;
+
+    if (!bandKey) {
+      showError("밴드 정보가 없습니다.");
+      return;
+    }
+
+    if (!userData?.band_access_token) {
+      // 세션에 band_access_token이 없을 때 DB에서 가져와서 세션에 저장
+      try {
+        showInfo("BAND 토큰을 가져오는 중...");
+        const response = await fetch(
+          `/api/band/get-keys?userId=${userData.userId}`
+        );
+        const keysData = await response.json();
+
+        if (keysData.success && keysData.data.access_token) {
+          // 세션에 토큰 정보 업데이트
+          const updatedUserData = {
+            ...userData,
+            band_access_token: keysData.data.access_token,
+            band_key: keysData.data.band_key,
+          };
+          sessionStorage.setItem("userData", JSON.stringify(updatedUserData));
+
+          // 댓글 모달 열기 재시도
+          openCommentsModal(order);
+          return;
+        } else {
+          showError(
+            "BAND 토큰을 가져올 수 없습니다. 설정에서 BAND 연동을 확인해주세요."
+          );
+        }
+      } catch (error) {
+        console.error("BAND 토큰 가져오기 오류:", error);
+        showError("BAND 토큰을 가져오는 중 오류가 발생했습니다.");
+      }
+      return;
+    }
+
+    // 게시물 내용 가져오기
+    const product = getProductById(order.product_id);
+    const postContent =
+      product?.description ||
+      product?.content ||
+      `📢무거우시면 말씀하세요  배달 한번 갈게요📢
+
+        💥초초초 특가 😋
+
+
+🍉하우스 흑수박🍉
+.
+.
+.
+수박 시즌이 돌아왔습니다!!
+하우스수박은 비와 눈을 피해 자라면서 
+귀하디 귀하게 키운답니당!!
+맛도 좋구 식감도 좋으네요👍
+
+수박 과일이 결코 쉽진 않습니다
+1~2통을 맛보고 전체를 선택 매입하기 때문에
+간혹 않좋은게 있을수 있답니다
+문제가 있을땐 언제든 개인톡 남겨주세요🙏
+
+😋 초.특.가 
+하우스 흑수박 1통 9키로내외
+        👉👉  21,900원‼️
+
+오늘 오후 12시에 도착합니다 
+주문은 댓글로 시작할께요`;
+
+    setSelectedPostForComments({
+      postKey: postKey,
+      bandKey: bandKey,
+      productName: getProductNameById(order.product_id),
+      accessToken: userData.band_access_token,
+      postContent: postContent,
+    });
+    setIsCommentsModalOpen(true);
+  };
+
+  // 댓글 모달 닫기 함수
+  const closeCommentsModal = () => {
+    setIsCommentsModalOpen(false);
+    setSelectedPostForComments(null);
+  };
+
   const handleSaveBarcode = async (productId, barcodeValue) => {
     // <<< --- 디버깅 로그 추가 --- >>>
     console.log("handleSaveBarcode called with:", { productId, barcodeValue });
@@ -1559,10 +1709,10 @@ export default function OrdersPage() {
                       disabled={isDataLoading || displayOrders.length === 0}
                     />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40">
                     상품명
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     <button
                       onClick={() => handleSortChange("customer_name")} // 정렬 함수
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -1571,16 +1721,14 @@ export default function OrdersPage() {
                       고객명 {getSortIcon("customer_name")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-60">
                     고객 댓글
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    상품번호
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
                     수량
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     <button
                       onClick={() => handleSortChange("total_amount")}
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -1589,7 +1737,7 @@ export default function OrdersPage() {
                       금액 {getSortIcon("total_amount")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">
                     <button
                       onClick={() => handleSortChange("ordered_at")}
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -1598,18 +1746,24 @@ export default function OrdersPage() {
                       주문일시 {getSortIcon("ordered_at")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-32">
                     바코드
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     상태
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    서브상태
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                    게시물
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {isOrdersLoading && !ordersData && (
                   <tr>
-                    <td colSpan="11" className="px-6 py-10 text-center">
+                    <td colSpan="12" className="px-6 py-10 text-center">
                       <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                       <span className="text-sm text-gray-500 mt-2 block">
                         주문 목록 로딩 중...
@@ -1620,7 +1774,7 @@ export default function OrdersPage() {
                 {!isOrdersLoading && displayOrders.length === 0 && (
                   <tr>
                     <td
-                      colSpan="11"
+                      colSpan="12"
                       className="px-6 py-10 text-center text-sm text-gray-500"
                     >
                       {searchTerm ||
@@ -1666,7 +1820,7 @@ export default function OrdersPage() {
                           </div>
                         </td>
                         <td
-                          className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
+                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44 hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가, truncate 제거
                           title={getProductNameById(order.product_id)}
                           onClick={(e) => {
                             // 클릭 핸들러 추가
@@ -1677,10 +1831,27 @@ export default function OrdersPage() {
                             setFilterSelection("all");
                           }}
                         >
-                          {getProductNameById(order.product_id)}
+                          {(() => {
+                            const productName = getProductNameById(
+                              order.product_id
+                            );
+                            const { name, date } =
+                              parseProductName(productName);
+
+                            return (
+                              <div className="flex flex-col">
+                                <div className="font-medium">{name}</div>
+                                {date && (
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    [{date}]
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td
-                          className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
+                          className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
                           title={order.customer_name}
                           onClick={(e) => {
                             e.stopPropagation(); // 행 전체 onClick(모달) 방지
@@ -1690,24 +1861,22 @@ export default function OrdersPage() {
                           {order.customer_name || "-"}
                         </td>
                         <td
-                          className="px-4 py-3 text-sm text-gray-600 max-w-[100px] truncate hidden md:table-cell"
+                          className="py-2 pr-2 text-sm text-gray-600 w-60 truncate hidden md:table-cell"
                           title={order.comment || ""}
                         >
                           {order.comment || "-"}
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-700 font-medium">
-                          {order.item_number || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+
+                        <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
                           {order.quantity || 0}
                         </td>
-                        <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                        <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
                           {formatCurrency(order.total_amount)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
                           {formatDate(order.ordered_at)}
                         </td>
-                        <td className="px-4 py-3 text-center hidden md:table-cell">
+                        <td className="py-2 pr-2 text-center hidden md:table-cell w-32">
                           {(() => {
                             // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
                             const selectedOption =
@@ -1731,58 +1900,133 @@ export default function OrdersPage() {
                           })()}
                         </td>
 
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
+                          <StatusBadge status={order.status} />
+                        </td>
+
+                        {/* 서브상태 셀 */}
+                        <td className="py-2 pr-2 text-center w-24">
                           {(() => {
-                            // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
                             const actualStatus = order.status;
-                            const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
-                            return (
-                              <div className="flex flex-col items-center">
-                                {" "}
-                                {/* 세로 정렬을 위해 div 추가 */}
-                                {/* 메인 상태 배지 (항상 order.status 기준) */}
-                                <StatusBadge status={actualStatus} />
-                                {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
-                                {actualStatus !== "수령완료" &&
-                                  actualSubStatus === "확인필요" && (
-                                    <span
-                                      className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
-                                      title="부가 상태: 확인필요"
-                                    >
-                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                      확인 필요
-                                    </span>
-                                  )}
-                                {actualStatus !== "수령완료" &&
-                                  actualSubStatus === "미수령" && (
-                                    <span
-                                      className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
-                                      title="부가 상태: 미수령"
-                                    >
-                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                      미수령
-                                    </span>
-                                  )}
-                                {actualStatus === "수령완료" && (
-                                  <span
-                                    className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
-                                    title="부가 상태: 수령완료"
-                                  >
-                                    {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
-                                    {formatDate(order.completed_at)}
-                                  </span>
-                                )}
-                                {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
-                              </div>
-                            );
+                            const actualSubStatus = order.sub_status;
+
+                            if (
+                              actualStatus !== "수령완료" &&
+                              actualSubStatus === "확인필요"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white">
+                                  확인필요
+                                </span>
+                              );
+                            }
+
+                            if (
+                              actualStatus !== "수령완료" &&
+                              actualSubStatus === "미수령"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                                  미수령
+                                </span>
+                              );
+                            }
+
+                            if (
+                              actualStatus === "수령완료" &&
+                              order.completed_at
+                            ) {
+                              return (
+                                <span className="text-xs text-gray-600">
+                                  {formatDate(order.completed_at)}
+                                </span>
+                              );
+                            }
+
+                            return "-";
                           })()}
+                        </td>
+
+                        {/* 게시물 버튼 셀 */}
+                        <td className="py-2 pr-2 text-center w-20">
+                          {(() => {
+                            // 디버깅: 첫 번째 주문의 모든 필드 확인
+                            if (order.order_id === displayOrders[0]?.order_id) {
+                              console.log("=== 주문 데이터 전체 확인 ===");
+                              console.log("전체 order 객체:", order);
+                              console.log("post 관련 필드들:");
+                              console.log("- post_key:", order.post_key);
+                              console.log("- post_number:", order.post_number);
+                              console.log(
+                                "- band_post_url:",
+                                order.band_post_url
+                              );
+
+                              // 모든 필드 이름 출력
+                              console.log(
+                                "모든 필드 이름들:",
+                                Object.keys(order)
+                              );
+
+                              // post가 포함된 모든 필드 찾기
+                              const postFields = Object.keys(order).filter(
+                                (key) => key.toLowerCase().includes("post")
+                              );
+                              console.log("post가 포함된 필드들:", postFields);
+                              postFields.forEach((field) => {
+                                console.log(`- ${field}:`, order[field]);
+                              });
+                            }
+
+                            // 주문 ID에서 게시물 키 추출 시도
+                            const extractedPostKey = extractPostKeyFromOrderId(
+                              order.order_id
+                            );
+                            const hasPostInfo =
+                              order.post_key ||
+                              order.post_number ||
+                              extractedPostKey;
+
+                            if (order.order_id === displayOrders[0]?.order_id) {
+                              console.log(
+                                "추출된 게시물 키:",
+                                extractedPostKey
+                              );
+                              console.log("최종 게시물 정보:", hasPostInfo);
+                            }
+
+                            // console.log(
+                            //   `주문 ${order.order_id} 댓글 버튼 표시:`,
+                            //   !!hasPostInfo
+                            // );
+                            return hasPostInfo;
+                          })() ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation(); // 행 클릭 이벤트 방지
+                                openCommentsModal(order);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                              title="게시물 보기"
+                            >
+                              <span className="text-xs">보기</span>
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-400 cursor-not-allowed"
+                              title="게시물 정보 없음"
+                            >
+                              <span className="text-xs">-</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
 
                       {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
                       {hasMultipleBarcodeOptions && (
                         <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                          <td colSpan="11" className="px-4 py-2">
+                          <td colSpan="13" className="py-2 pr-2">
                             <div onClick={(e) => e.stopPropagation()}>
                               <BarcodeOptionSelector
                                 order={order}
@@ -2007,6 +2251,17 @@ export default function OrdersPage() {
                         <ArrowTopRightOnSquareIcon className="w-5 h-5 mr-1.5" />
                         주문 보러가기
                       </a>
+                    )}
+
+                    {/* 댓글 보기 탭 */}
+                    {selectedOrder.post_number && (
+                      <button
+                        onClick={() => openCommentsModal(selectedOrder)}
+                        className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
+                      >
+                        <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-1.5" />
+                        댓글 보기
+                      </button>
                     )}
                   </div>
                 </div>
@@ -2329,6 +2584,20 @@ export default function OrdersPage() {
             </div>
           </div>
         )}
+
+        {/* 댓글 모달 */}
+        <CommentsModal
+          isOpen={isCommentsModalOpen}
+          onClose={closeCommentsModal}
+          postKey={selectedPostForComments?.postKey}
+          bandKey={selectedPostForComments?.bandKey}
+          postTitle={selectedPostForComments?.productName}
+          accessToken={selectedPostForComments?.accessToken}
+          postContent={selectedPostForComments?.postContent}
+        />
+
+        {/* 토스트 알림 컨테이너 */}
+        <ToastContainer toasts={toasts} hideToast={hideToast} />
       </main>
     </div>
   );

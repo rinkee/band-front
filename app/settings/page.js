@@ -1005,7 +1005,8 @@ export default function SettingsPage() {
   const [initialAutoBarcodeGeneration, setInitialAutoBarcodeGeneration] =
     useState(null); // <<<--- 바코드 초기 상태 추가
   const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
-  const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가
+  const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가 (기본값: 200, 최대값: 200)
+  const [isEditingPostLimit, setIsEditingPostLimit] = useState(false); // 사용자가 postLimit을 편집 중인지 추적
 
   const { mutate: globalMutate } = useSWRConfig();
   const swrOptions = {
@@ -1163,6 +1164,10 @@ export default function SettingsPage() {
             userDataToSave.band_number || existingSessionData.band_number,
           bandNumber:
             userDataToSave.band_number || existingSessionData.bandNumber, // 두 형식 모두 유지
+          band_access_token:
+            userDataToSave.band_access_token ||
+            existingSessionData.band_access_token, // BAND 액세스 토큰 추가
+          band_key: userDataToSave.band_key || existingSessionData.band_key, // BAND 키 추가
           excluded_customers:
             userDataToSave.excluded_customers ||
             existingSessionData.excluded_customers,
@@ -1297,9 +1302,12 @@ export default function SettingsPage() {
         setInitialAutoBarcodeGeneration(
           userDataFromServer.auto_barcode_generation ?? false
         ); // 서버 값을 최종 초기값으로
-        setPostLimit(
-          parseInt(userDataFromServer.post_fetch_limit, 10) || postLimit
-        ); // 서버 값 우선, 없으면 기존 값 유지
+        // postLimit은 사용자가 편집 중이 아닐 때만 업데이트
+        if (!isEditingPostLimit) {
+          setPostLimit(
+            parseInt(userDataFromServer.post_fetch_limit, 10) || postLimit
+          ); // 서버 값 우선, 없으면 기존 값 유지
+        }
 
         // 세션 스토리지도 최신 서버 데이터로 업데이트
         try {
@@ -1466,11 +1474,10 @@ export default function SettingsPage() {
 
     // postLimit 유효성 검사 추가
     const newLimit = parseInt(postLimit, 10);
-    if (isNaN(newLimit) || newLimit < 1 || newLimit > 1000) {
+    if (isNaN(newLimit) || newLimit < 1 || newLimit > 200) {
       setError(
-        "게시물 가져오기 개수는 1에서 1000 사이의 유효한 숫자여야 합니다."
+        "게시물 가져오기 개수는 1에서 200 사이의 유효한 숫자여야 합니다."
       );
-      // alert('게시물 가져오기 개수는 1에서 1000 사이의 유효한 숫자여야 합니다.'); // alert 대신 setError 사용
       return;
     }
 
@@ -1482,39 +1489,55 @@ export default function SettingsPage() {
       post_fetch_limit: newLimit, // postLimit 추가
     };
 
-    try {
-      // Optimistic UI 업데이트 데이터 준비 (선택적이지만 권장)
-      const optimisticProfileUpdate = {
-        profile: { ...swrUserData?.profile, ...profileData },
-      };
-      const optimisticUserData = {
-        ...(swrUserData || {}),
-        ...optimisticProfileUpdate,
-      };
+    console.log("Saving profile data:", profileData);
+    console.log("User ID:", userId);
+    console.log("Post limit value:", postLimit, "-> Parsed:", newLimit);
+    console.log(
+      "Current SWR data post_fetch_limit:",
+      swrUserData?.post_fetch_limit
+    );
 
+    try {
       // Supabase 업데이트 호출
       const { data, error } = await supabase
         .from("users")
         .update(profileData)
-        .eq("id", userId);
+        .eq("user_id", userId)
+        .select()
+        .single();
 
+      console.log("Supabase update result:", { data, error });
       if (error) throw error;
-
-      // sessionStorage 업데이트 추가
-      sessionStorage.setItem("userPostLimit", newLimit.toString());
 
       alert("프로필 및 설정 정보가 저장되었습니다."); // 메시지 변경
 
-      // SWR 캐시 갱신
-      await userMutate(optimisticUserData, {
-        optimisticData: optimisticUserData,
-        revalidate: false, // 서버에서 다시 가져올 필요 없이 optimistic 데이터 사용
-        rollbackOnError: true,
-        populateCache: true,
-      });
+      // 편집 상태 해제
+      setIsEditingPostLimit(false);
+
+      // 서버에서 반환된 데이터로 SWR 캐시 즉시 업데이트
+      if (data) {
+        // sessionStorage도 업데이트된 데이터로 갱신
+        sessionStorage.setItem(
+          "userPostLimit",
+          data.post_fetch_limit?.toString() || newLimit.toString()
+        );
+        saveUserToSession(data);
+
+        await userMutate(data, {
+          optimisticData: data,
+          revalidate: false,
+          populateCache: true,
+        });
+      } else {
+        // 데이터가 없으면 서버에서 다시 가져오기
+        sessionStorage.setItem("userPostLimit", newLimit.toString());
+        await userMutate();
+      }
     } catch (err) {
       console.error("Error saving profile info:", err);
       setError(`프로필 및 설정 저장 오류: ${err.message}`);
+      // 에러 시에도 편집 상태 해제
+      setIsEditingPostLimit(false);
     } finally {
       setSavingProfile(false);
     }
@@ -1681,10 +1704,10 @@ export default function SettingsPage() {
                     setter: setPostLimit,
                     type: "number",
                     min: 1,
-                    max: 1000,
+                    max: 200,
                     placeholder: "게시물 가져오기 개수",
                     description:
-                      "한 번에 가져올 게시물 수를 설정합니다. (1 ~ 1000, 기본값: 200)",
+                      "한 번에 가져올 게시물 수를 설정합니다. (1 ~ 200, 기본값: 200)",
                   },
                 ].map((field) => (
                   <div key={field.id}>
@@ -1698,9 +1721,45 @@ export default function SettingsPage() {
                       type={field.type || "text"}
                       id={field.id}
                       value={field.value || ""} // 값이 null/undefined일 경우 빈 문자열로
-                      onChange={(e) =>
-                        !field.readOnly && field.setter(e.target.value)
-                      }
+                      onChange={(e) => {
+                        if (!field.readOnly && field.setter) {
+                          // postLimit의 경우 숫자로 변환하여 설정
+                          if (field.id === "postLimit") {
+                            setIsEditingPostLimit(true); // 편집 시작
+                            const numValue = parseInt(e.target.value, 10);
+                            if (!isNaN(numValue)) {
+                              // 1-200 범위 내에서만 허용
+                              if (numValue >= 1 && numValue <= 200) {
+                                field.setter(numValue);
+                              }
+                            } else if (e.target.value === "") {
+                              field.setter("");
+                            }
+                          } else {
+                            field.setter(e.target.value);
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // postLimit 필드에서 특정 키 입력 제한
+                        if (field.id === "postLimit") {
+                          // 숫자, 백스페이스, 삭제, 탭, 화살표 키만 허용
+                          if (
+                            !(
+                              (e.key >= "0" && e.key <= "9") ||
+                              [
+                                "Backspace",
+                                "Delete",
+                                "Tab",
+                                "ArrowLeft",
+                                "ArrowRight",
+                              ].includes(e.key)
+                            )
+                          ) {
+                            e.preventDefault();
+                          }
+                        }
+                      }}
                       readOnly={field.readOnly} // <<< readOnly 속성 적용
                       placeholder={field.placeholder || ""}
                       min={field.min}
@@ -1729,8 +1788,16 @@ export default function SettingsPage() {
                 {/* 푸터 영역 */}
                 <button
                   onClick={handleSaveProfileInfo}
-                  disabled={savingProfile || isDataLoading}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={
+                    savingProfile ||
+                    isDataLoading ||
+                    // 변경사항이 없으면 비활성화
+                    (ownerName === (swrUserData?.owner_name || "") &&
+                      storeName === (swrUserData?.store_name || "") &&
+                      parseInt(postLimit, 10) ===
+                        (parseInt(swrUserData?.post_fetch_limit, 10) || 200))
+                  }
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingProfile ? (
                     <LoadingSpinner className="w-4 h-4" color="text-white" />

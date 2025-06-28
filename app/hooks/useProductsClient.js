@@ -3,6 +3,23 @@ import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 
 /**
+ * 안전한 데이터 정제 - 빈 문자열을 null로 변환하여 timestamp 에러 방지
+ */
+const sanitizeProductData = (data) => {
+  const sanitized = { ...data };
+
+  // 날짜/시간 필드들에 대해 빈 문자열을 null로 변환
+  const dateFields = ["pickup_date", "expire_date", "created_at", "updated_at"];
+  dateFields.forEach((field) => {
+    if (sanitized[field] === "") {
+      sanitized[field] = null;
+    }
+  });
+
+  return sanitized;
+};
+
+/**
  * 클라이언트 사이드 상품 목록 fetcher
  */
 const fetchProducts = async (key) => {
@@ -14,7 +31,7 @@ const fetchProducts = async (key) => {
 
   const limit = filters.limit || 10;
   const startIndex = (page - 1) * limit;
-  const sortBy = filters.sortBy || "created_at";
+  const sortBy = filters.sortBy || "posted_at";
   const ascending = filters.sortOrder === "asc";
 
   // Supabase 쿼리 시작
@@ -40,9 +57,11 @@ const fetchProducts = async (key) => {
     );
   }
 
-  // 정렬 및 페이지네이션
+  // 다중 정렬: 1차 정렬 기준 + 2차 정렬(같은 게시물 내에서 item_number 순)
   query = query
     .order(sortBy, { ascending })
+    .order("post_key", { ascending: false }) // 같은 날짜 내에서 최신 게시물 먼저
+    .order("item_number", { ascending: true }) // 같은 게시물 내에서 item_number 순
     .range(startIndex, startIndex + limit - 1);
 
   const { data, error, count } = await query;
@@ -150,7 +169,7 @@ export function useProductClientMutations() {
 
     const { data, error } = await supabase
       .from("products")
-      .insert([productData])
+      .insert([sanitizeProductData(productData)])
       .select()
       .single();
 
@@ -181,10 +200,10 @@ export function useProductClientMutations() {
     }
 
     // updated_at 자동 설정
-    const updateData = {
+    const updateData = sanitizeProductData({
       ...patchData,
       updated_at: new Date().toISOString(),
-    };
+    });
 
     const { data, error } = await supabase
       .from("products")

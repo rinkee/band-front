@@ -9,6 +9,8 @@ import {
   useProductClient,
   useProductClientMutations,
 } from "../hooks/useProductsClient";
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/ToastContainer";
 
 import JsBarcode from "jsbarcode";
 import { useSWRConfig } from "swr";
@@ -665,6 +667,9 @@ export default function ProductsPage() {
   const { mutate } = useSWRConfig();
   const checkbox = useRef(); // 사용되지 않는다면 제거 가능
 
+  // 토스트 알림 훅
+  const { toasts, showSuccess, showError, hideToast } = useToast();
+
   // 판매 상태 필터 옵션 정의
   const statusFilterOptions = [
     { value: "all", label: "전체" },
@@ -738,13 +743,13 @@ export default function ProductsPage() {
           setIsModalOpen(true);
         } else {
           console.error("상품 상세 데이터 구조 이상:", data);
-          alert("상품 상세 정보를 가져오는 데 실패했습니다.");
+          showError("상품 상세 정보를 가져오는 데 실패했습니다.");
           handleCloseModal();
         }
       },
       onError: (error) => {
         console.error("상품 상세 조회 오류:", error);
-        alert("상품 정보를 불러오는데 실패했습니다.");
+        showError("상품 정보를 불러오는데 실패했습니다.");
         handleCloseModal();
       },
       revalidateOnFocus: false,
@@ -959,11 +964,11 @@ export default function ProductsPage() {
     const { name, value } = e.target;
     if (name === "base_price" || name === "quantity") {
       setEditedProduct((prev) => ({ ...prev, [name]: parseInt(value) || 0 }));
-    } else if (name === "pickup_date") {
-      // Explicitly handle empty string for pickup_date
+    } else if (name === "pickup_date" || name === "expire_date") {
+      // Explicitly handle empty string for date fields to prevent timestamp errors
       setEditedProduct((prev) => ({
         ...prev,
-        [name]: value === "" ? null : new Date(value),
+        [name]: value === "" ? null : value,
       }));
     } else {
       setEditedProduct((prev) => ({ ...prev, [name]: value }));
@@ -982,7 +987,7 @@ export default function ProductsPage() {
       editedProduct.base_price < 0
     ) {
       console.log("Invalid data:", editedProduct);
-      alert("상품명과 가격을 올바르게 입력해주세요.");
+      showError("상품명과 가격을 올바르게 입력해주세요.");
       return;
     }
 
@@ -1008,10 +1013,10 @@ export default function ProductsPage() {
       });
 
       if (duplicates.length > 0) {
-        alert(
+        showError(
           `중복된 바코드가 있어 저장할 수 없습니다: ${duplicates.join(
             ", "
-          )}\n각 바코드는 고유해야 합니다.`
+          )}. 각 바코드는 고유해야 합니다.`
         );
         return;
       }
@@ -1021,7 +1026,7 @@ export default function ProductsPage() {
         (opt) => !opt.barcode?.trim()
       );
       if (hasEmptyBarcodes) {
-        alert(
+        showError(
           "모든 바코드를 입력해주세요. 빈 바코드가 있으면 저장할 수 없습니다."
         );
         return;
@@ -1046,10 +1051,10 @@ export default function ProductsPage() {
       }
 
       handleCloseModal();
-      alert("상품 정보가 저장되었습니다.");
+      showSuccess("상품 정보가 저장되었습니다.");
     } catch (error) {
       console.error("상품 정보 업데이트 오류 (client-side):", error);
-      alert(error.message || "상품 정보 업데이트에 실패했습니다.");
+      showError(error.message || "상품 정보 업데이트에 실패했습니다.");
     }
   };
 
@@ -1073,10 +1078,10 @@ export default function ProductsPage() {
 
       console.log("Delete successful via client-side");
       handleCloseModal();
-      alert("상품이 삭제되었습니다.");
+      showSuccess("상품이 삭제되었습니다.");
     } catch (error) {
       console.error("상품 삭제 오류 (client-side):", error);
-      alert(error.message || "상품 삭제에 실패했습니다.");
+      showError(error.message || "상품 삭제에 실패했습니다.");
     }
   };
 
@@ -1271,6 +1276,19 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
                     #
                   </th>
+                  {/* Item Number 정렬 컬럼 추가 */}
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                    <button
+                      onClick={() => handleSortChange("item_number")}
+                      className="flex items-center justify-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      disabled={isDataLoading}
+                    >
+                      번호
+                      <span className="inline-block">
+                        {getSortIcon("item_number")}
+                      </span>
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sm:pl-6">
                     <button
                       onClick={() => handleSortChange("title")}
@@ -1340,7 +1358,7 @@ export default function ProductsPage() {
                 {isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="8"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
@@ -1351,7 +1369,7 @@ export default function ProductsPage() {
                 {!isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="8"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
@@ -1380,6 +1398,10 @@ export default function ProductsPage() {
                       {/* Index 표시 셀 추가 */}
                       <td className="px-4 py-3 text-center text-sm text-gray-500">
                         {rowNum}
+                      </td>
+                      {/* Item Number 표시 셀 추가 */}
+                      <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                        {product.item_number || "-"}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap sm:pl-6">
                         <span className="text-sm font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
@@ -1751,6 +1773,9 @@ export default function ProductsPage() {
           </div>
         )}
       </div>
+
+      {/* 토스트 알림 컨테이너 */}
+      <ToastContainer toasts={toasts} hideToast={hideToast} />
     </div>
   );
 }
