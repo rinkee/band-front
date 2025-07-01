@@ -2236,6 +2236,17 @@ export default function OrdersPage() {
                     >
                       <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
                     </button>
+                    {/* 주문 처리 탭 */}
+                    <button
+                      onClick={() => handleTabChange("processing")}
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
+                        activeTab === "processing"
+                          ? "border-orange-500 text-orange-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
+                    </button>
                     {/* 주문 보러가기 탭 */}
                     {getPostUrlByProductId(selectedOrder.product_id) && (
                       <a
@@ -2554,6 +2565,387 @@ export default function OrdersPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* 주문 처리 탭 내용 */}
+                  {activeTab === "processing" && (
+                    <div className="space-y-5">
+                      {/* 처리 방법 카드 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          주문 처리 방법
+                        </label>
+                        <div className="flex items-center space-x-3">
+                          {selectedOrder.processing_method === "pattern" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-green-700">
+                                  패턴 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  숫자나 수량 단위가 감지되어 자동
+                                  처리되었습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {selectedOrder.processing_method === "ai" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <SparklesIcon className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-blue-700">
+                                  AI 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  AI가 댓글을 분석하여 주문을 추출했습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {selectedOrder.processing_method === "fallback" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                <ExclamationCircleIcon className="w-5 h-5 text-yellow-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-yellow-700">
+                                  Fallback 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  패턴이나 AI로 처리되지 않아 기본값으로
+                                  처리되었습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {!selectedOrder.processing_method && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                                <XCircleIcon className="w-5 h-5 text-gray-400" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-500">
+                                  처리 방법 없음
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  처리 방법이 기록되지 않았습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </LightCard>
+
+                      {/* 패턴 처리 상세 정보 */}
+                      {selectedOrder.processing_method === "pattern" && (
+                        <LightCard padding="p-4">
+                          <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                            패턴 처리 상세
+                          </label>
+                          <div className="space-y-3">
+                            {/* 감지된 패턴 */}
+                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <span className="text-sm font-medium text-gray-700">
+                                감지된 패턴
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                {(() => {
+                                  const comment = selectedOrder.comment || "";
+                                  const quantity = selectedOrder.quantity || 1;
+
+                                  // 숫자만 있는 경우 (패턴 1)
+                                  if (/^\s*\d+\s*$/.test(comment)) {
+                                    return (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                                          숫자 패턴
+                                        </span>
+                                        <span className="text-sm text-gray-600">
+                                          "{comment.trim()}"
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  // 숫자 + 단위가 있는 경우 (패턴 2)
+                                  if (/\d+\s*[가-힣]+/.test(comment)) {
+                                    return (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                                          수량 단위
+                                        </span>
+                                        <span className="text-sm text-gray-600">
+                                          "{comment.trim()}"
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="flex items-center space-x-1">
+                                      <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                        기타 패턴
+                                      </span>
+                                      <span className="text-sm text-gray-600">
+                                        "{comment.trim()}"
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* 추출된 수량 */}
+                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <span className="text-sm font-medium text-gray-700">
+                                추출된 수량
+                              </span>
+                              <span className="text-sm text-gray-900 font-semibold">
+                                {selectedOrder.quantity}개
+                              </span>
+                            </div>
+
+                            {/* 처리 속도 */}
+                            <div className="flex items-center justify-between py-2">
+                              <span className="text-sm font-medium text-gray-700">
+                                처리 속도
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-sm text-green-600 font-medium">
+                                  즉시 처리
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </LightCard>
+                      )}
+
+                      {/* AI 추출 결과 카드 */}
+                      {selectedOrder.processing_method === "ai" &&
+                        selectedOrder.ai_extraction_result && (
+                          <LightCard padding="p-4">
+                            <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                              AI 추출 결과
+                            </label>
+
+                            {(() => {
+                              try {
+                                const aiResult =
+                                  typeof selectedOrder.ai_extraction_result ===
+                                  "string"
+                                    ? JSON.parse(
+                                        selectedOrder.ai_extraction_result
+                                      )
+                                    : selectedOrder.ai_extraction_result;
+
+                                return (
+                                  <div className="space-y-4">
+                                    {/* 추출된 수량 */}
+                                    {aiResult.quantity !== undefined && (
+                                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          추출된 수량
+                                        </span>
+                                        <span className="text-sm text-gray-900 font-semibold">
+                                          {aiResult.quantity}개
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* AI 추론 과정 */}
+                                    {aiResult.reason && (
+                                      <div>
+                                        <span className="text-sm font-medium text-gray-700 block mb-2">
+                                          AI 추론 과정
+                                        </span>
+                                        <div className="bg-gray-50 rounded-md p-3">
+                                          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                            {aiResult.reason}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* 상품 매칭 정보 */}
+                                    {aiResult.productItemNumber && (
+                                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          매칭된 상품 번호
+                                        </span>
+                                        <span className="text-sm text-gray-900 font-semibold">
+                                          #{aiResult.productItemNumber}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* 가격 정보 */}
+                                    {aiResult.actualUnitPrice && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between py-1">
+                                          <span className="text-sm text-gray-600">
+                                            단가
+                                          </span>
+                                          <span className="text-sm text-gray-900">
+                                            {formatCurrency(
+                                              aiResult.actualUnitPrice
+                                            )}
+                                          </span>
+                                        </div>
+                                        {aiResult.actualTotalPrice && (
+                                          <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-2">
+                                            <span className="text-sm font-medium text-gray-700">
+                                              총 금액
+                                            </span>
+                                            <span className="text-sm text-gray-900 font-semibold">
+                                              {formatCurrency(
+                                                aiResult.actualTotalPrice
+                                              )}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* 처리 상태 */}
+                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                      <span className="text-sm font-medium text-gray-700">
+                                        처리 상태
+                                      </span>
+                                      <div className="flex items-center space-x-2">
+                                        {aiResult.isOrder ? (
+                                          <>
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span className="text-sm text-green-600 font-medium">
+                                              주문 확인
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                            <span className="text-sm text-red-600 font-medium">
+                                              주문 아님
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* 모호성 여부 */}
+                                    {aiResult.isAmbiguous !== undefined && (
+                                      <div className="flex items-center justify-between py-2">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          모호성 여부
+                                        </span>
+                                        <div className="flex items-center space-x-2">
+                                          {aiResult.isAmbiguous ? (
+                                            <>
+                                              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                              <span className="text-sm text-yellow-600 font-medium">
+                                                모호함
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                              <span className="text-sm text-green-600 font-medium">
+                                                명확함
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } catch (error) {
+                                return (
+                                  <div className="bg-red-50 rounded-md p-3">
+                                    <p className="text-xs text-red-700">
+                                      AI 결과 파싱 오류: {error.message}
+                                    </p>
+                                    <details className="mt-2">
+                                      <summary className="text-xs text-red-600 cursor-pointer">
+                                        원본 데이터 보기
+                                      </summary>
+                                      <pre className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-all">
+                                        {JSON.stringify(
+                                          selectedOrder.ai_extraction_result,
+                                          null,
+                                          2
+                                        )}
+                                      </pre>
+                                    </details>
+                                  </div>
+                                );
+                              }
+                            })()}
+                          </LightCard>
+                        )}
+
+                      {/* 원본 댓글 카드 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          원본 고객 댓글
+                        </label>
+                        <div className="bg-gray-50 rounded-md p-3">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                            {selectedOrder.comment || (
+                              <span className="italic text-gray-400">
+                                댓글 없음
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </LightCard>
+
+                      {/* 처리 시간 정보 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          처리 시간 정보
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">
+                              주문 생성
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {formatDate(selectedOrder.ordered_at)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">
+                              처리 소요시간
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {selectedOrder.ordered_at
+                                ? (() => {
+                                    const minutes = getTimeDifferenceInMinutes(
+                                      selectedOrder.ordered_at
+                                    );
+                                    if (minutes < 60) {
+                                      return `${minutes}분 전`;
+                                    } else if (minutes < 1440) {
+                                      return `${Math.floor(
+                                        minutes / 60
+                                      )}시간 전`;
+                                    } else {
+                                      return `${Math.floor(
+                                        minutes / 1440
+                                      )}일 전`;
+                                    }
+                                  })()
+                                : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      </LightCard>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* 모달 푸터 */}
@@ -2578,8 +2970,10 @@ export default function OrdersPage() {
                     {getStatusIcon("수령완료")} 수령완료 처리
                   </button>
                 )}
-                {/* info 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
-                {activeTab === "info" && <div className="w-[130px]"></div>}
+                {/* info, processing 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
+                {(activeTab === "info" || activeTab === "processing") && (
+                  <div className="w-[130px]"></div>
+                )}
               </div>
             </div>
           </div>
