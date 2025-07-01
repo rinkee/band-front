@@ -1,0 +1,96 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "10");
+    const offset = (page - 1) * limit;
+
+    if (!userId) {
+      return Response.json({ error: "userId is required" }, { status: 400 });
+    }
+
+    // 전체 개수 조회
+    const { count, error: countError } = await supabase
+      .from("posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    if (countError) {
+      console.error("Count query error:", countError);
+      return Response.json({ error: "Failed to count posts" }, { status: 500 });
+    }
+
+    // 게시물 목록 조회 (연관 상품 정보 포함)
+    const { data: posts, error: postsError } = await supabase
+      .from("posts")
+      .select(
+        `
+        post_id,
+        post_key,
+        band_key,
+        title,
+        content,
+        posted_at,
+        crawled_at,
+        comment_count,
+        emotion_count,
+        view_count,
+        like_count,
+        is_product,
+        ai_extraction_status,
+        ai_classification_result,
+        band_post_url,
+        products_data,
+        image_urls,
+        photos_data,
+        latest_comments,
+        author_name,
+        author_profile,
+        author_description,
+        author_user_key,
+        products:products(
+          product_id,
+          title,
+          base_price,
+          status,
+          created_at
+        )
+      `
+      )
+      .eq("user_id", userId)
+      .order("posted_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (postsError) {
+      console.error("Posts query error:", postsError);
+      return Response.json({ error: "Failed to fetch posts" }, { status: 500 });
+    }
+
+    // 각 게시물에 상품 개수 추가
+    const postsWithProductCount = posts.map((post) => ({
+      ...post,
+      product_count: post.products ? post.products.length : 0,
+    }));
+
+    const totalPages = Math.ceil(count / limit);
+
+    return Response.json({
+      posts: postsWithProductCount,
+      totalCount: count,
+      totalPages,
+      currentPage: page,
+      limit,
+    });
+  } catch (error) {
+    console.error("API error:", error);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

@@ -235,7 +235,7 @@ function LayoutContent({ children }) {
                     >
                       상품 관리
                     </Link>
-                    {/* <Link
+                    <Link
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/posts"
@@ -244,7 +244,7 @@ function LayoutContent({ children }) {
                       }`}
                     >
                       게시물 관리
-                    </Link> */}
+                    </Link>
                     <Link
                       href="/orders"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -366,7 +366,7 @@ function LayoutContent({ children }) {
                     </svg>
                     상품 관리
                   </Link>
-                  {/* <Link
+                  <Link
                     href="/posts"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/posts"
@@ -388,7 +388,7 @@ function LayoutContent({ children }) {
                       />
                     </svg>
                     게시물 관리
-                  </Link> */}
+                  </Link>
                   <Link
                     href="/orders"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
