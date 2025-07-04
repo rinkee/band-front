@@ -1004,6 +1004,11 @@ export default function SettingsPage() {
   const [autoBarcodeGeneration, setAutoBarcodeGeneration] = useState(false); // <<<--- 바코드 생성 상태 추가
   const [initialAutoBarcodeGeneration, setInitialAutoBarcodeGeneration] =
     useState(null); // <<<--- 바코드 초기 상태 추가
+  const [forceAiProcessing, setForceAiProcessing] = useState(false); // <<<--- AI 강제 처리 상태 추가
+  const [initialForceAiProcessing, setInitialForceAiProcessing] =
+    useState(null); // <<<--- AI 강제 처리 초기 상태 추가
+  const [savingAiProcessingSetting, setSavingAiProcessingSetting] =
+    useState(false); // <<<--- AI 설정 저장 상태 추가
   const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
   const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가 (기본값: 200, 최대값: 200)
   const [isEditingPostLimit, setIsEditingPostLimit] = useState(false); // 사용자가 postLimit을 편집 중인지 추적
@@ -1102,12 +1107,18 @@ export default function SettingsPage() {
             ? sessionUserData.excluded_customers
             : []
         );
+        console.log("[세션 로드] 바코드/AI 설정 로드:", {
+          session_auto_barcode_generation:
+            sessionUserData.auto_barcode_generation,
+          session_force_ai_processing: sessionUserData.force_ai_processing,
+        });
+
+        // 바코드와 AI 설정은 SWR 데이터가 로드되기 전까지 임시로만 설정
+        // (SWR 데이터가 우선되므로 초기값은 설정하지 않음)
         setAutoBarcodeGeneration(
           sessionUserData.auto_barcode_generation ?? false
         );
-        setInitialAutoBarcodeGeneration(
-          sessionUserData.auto_barcode_generation ?? false
-        ); // 세션값을 초기값으로
+        setForceAiProcessing(sessionUserData.force_ai_processing ?? false);
 
         // postLimit도 세션에서 가져오기
         const sessionPostLimit = sessionStorage.getItem("userPostLimit");
@@ -1177,6 +1188,9 @@ export default function SettingsPage() {
           auto_barcode_generation:
             userDataToSave.auto_barcode_generation ??
             existingSessionData.auto_barcode_generation,
+          force_ai_processing:
+            userDataToSave.force_ai_processing ??
+            existingSessionData.force_ai_processing,
           post_fetch_limit:
             userDataToSave.post_fetch_limit ??
             existingSessionData.post_fetch_limit,
@@ -1296,11 +1310,23 @@ export default function SettingsPage() {
             ? userDataFromServer.excluded_customers
             : []
         );
+        console.log("[SWR Effect] 바코드 설정 동기화:", {
+          server_auto_barcode_generation:
+            userDataFromServer.auto_barcode_generation,
+          current_autoBarcodeGeneration: autoBarcodeGeneration,
+          server_force_ai_processing: userDataFromServer.force_ai_processing,
+          current_forceAiProcessing: forceAiProcessing,
+        });
+
         setAutoBarcodeGeneration(
           userDataFromServer.auto_barcode_generation ?? false
         );
         setInitialAutoBarcodeGeneration(
           userDataFromServer.auto_barcode_generation ?? false
+        ); // 서버 값을 최종 초기값으로
+        setForceAiProcessing(userDataFromServer.force_ai_processing ?? false);
+        setInitialForceAiProcessing(
+          userDataFromServer.force_ai_processing ?? false
         ); // 서버 값을 최종 초기값으로
         // postLimit은 사용자가 편집 중이 아닐 때만 업데이트
         if (!isEditingPostLimit) {
@@ -1357,13 +1383,18 @@ export default function SettingsPage() {
     userLoading,
     userId,
     userSWRError,
-    postLimit,
+    isEditingPostLimit,
   ]);
 
   // --- 바코드 설정 저장 함수 ---
   const handleSaveBarcodeSetting = async () => {
-    if (!userId || userLoading || initialAutoBarcodeGeneration === null) return;
-    if (autoBarcodeGeneration === initialAutoBarcodeGeneration) {
+    if (!userId || userLoading) return;
+
+    // 초기값이 아직 로드되지 않은 경우 현재 값과 비교할 수 없으므로 저장 진행
+    if (
+      initialAutoBarcodeGeneration !== null &&
+      autoBarcodeGeneration === initialAutoBarcodeGeneration
+    ) {
       alert("변경된 내용이 없습니다.");
       return;
     }
@@ -1400,6 +1431,53 @@ export default function SettingsPage() {
       alert(`바코드 설정 저장 중 오류가 발생했습니다: ${err.message}`);
     } finally {
       setSavingBarcodeSetting(false);
+    }
+  };
+
+  // --- AI 강제 처리 설정 저장 함수 ---
+  const handleSaveAiProcessingSetting = async () => {
+    if (!userId || userLoading) return;
+
+    // 초기값이 아직 로드되지 않은 경우 현재 값과 비교할 수 없으므로 저장 진행
+    if (
+      initialForceAiProcessing !== null &&
+      forceAiProcessing === initialForceAiProcessing
+    ) {
+      alert("변경된 내용이 없습니다.");
+      return;
+    }
+
+    setSavingAiProcessingSetting(true);
+    setError(null);
+    const aiProcessingPayload = { force_ai_processing: forceAiProcessing };
+
+    try {
+      const { data: updatedUser, error: updateError } = await supabase
+        .from("users")
+        .update(aiProcessingPayload)
+        .eq("user_id", userId) // PK 컬럼명 확인!
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      alert("AI 강제 처리 설정이 저장되었습니다.");
+
+      setInitialForceAiProcessing(forceAiProcessing); // 성공 시 UI의 현재 값을 새 초기값으로
+
+      if (updatedUser) {
+        await userMutate(updatedUser, {
+          optimisticData: updatedUser,
+          revalidate: false,
+        });
+      } else {
+        userMutate();
+      }
+    } catch (err) {
+      setError(`AI 처리 설정 저장 오류: ${err.message}`);
+      alert(`AI 처리 설정 저장 중 오류가 발생했습니다: ${err.message}`);
+    } finally {
+      setSavingAiProcessingSetting(false);
     }
   };
 
@@ -1857,9 +1935,44 @@ export default function SettingsPage() {
                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
                   </label>
                 </div>
+
+                {/* AI 강제 처리 설정 */}
+                <div className="flex items-center justify-between">
+                  {/* 설정 설명 */}
+                  <div>
+                    <label
+                      htmlFor="forceAiProcessingToggle"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      다중 상품 게시물 AI 강제 처리
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      활성화 시, 한 게시물에 상품이 2개 이상인 경우 댓글 주문을
+                      무조건 AI로 처리합니다.
+                    </p>
+                  </div>
+                  {/* 토글 스위치 */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="forceAiProcessingToggle"
+                      checked={forceAiProcessing} // 현재 상태값 바인딩
+                      onChange={() => setForceAiProcessing((prev) => !prev)} // 클릭 시 상태 변경
+                      disabled={
+                        savingAiProcessingSetting ||
+                        isDataLoading ||
+                        initialForceAiProcessing === null
+                      } // 저장 중이거나 로딩 중이거나 초기값이 없으면 비활성화
+                      className="sr-only peer"
+                    />
+                    {/* 스위치 디자인 (Tailwind CSS) */}
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </label>
+                </div>
               </div>
-              {/* 카드 푸터 (저장 버튼) */}
-              <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end rounded-b-xl">
+              {/* 카드 푸터 (저장 버튼들) */}
+              <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end gap-3 rounded-b-xl">
+                {/* 바코드 설정 저장 버튼 */}
                 <button
                   onClick={handleSaveBarcodeSetting} // 저장 함수 연결
                   disabled={
@@ -1877,6 +1990,27 @@ export default function SettingsPage() {
                   )}
                   <span>
                     {savingBarcodeSetting ? "저장 중..." : "바코드 설정 저장"}
+                  </span>
+                </button>
+
+                {/* AI 처리 설정 저장 버튼 */}
+                <button
+                  onClick={handleSaveAiProcessingSetting} // 저장 함수 연결
+                  disabled={
+                    savingAiProcessingSetting ||
+                    isDataLoading ||
+                    forceAiProcessing === initialForceAiProcessing
+                  } // 저장 중, 로딩 중, 또는 변경사항 없으면 비활성화
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {/* 저장 중일 때 로딩 스피너 표시 */}
+                  {savingAiProcessingSetting ? (
+                    <LoadingSpinner className="w-4 h-4" color="text-white" />
+                  ) : (
+                    <CheckIcon className="w-5 h-5" />
+                  )}
+                  <span>
+                    {savingAiProcessingSetting ? "저장 중..." : "AI 설정 저장"}
                   </span>
                 </button>
               </div>

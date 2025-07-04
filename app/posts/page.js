@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
+import PostDetailModal from "../components/PostDetailModal";
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -12,6 +13,8 @@ export default function PostsPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(18); // 3x6 = 18개씩
   const [isUpdating, setIsUpdating] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // 사용자 데이터 가져오기
   useEffect(() => {
@@ -103,6 +106,23 @@ export default function PostsPage() {
       console.error("게시물 처리 중 오류:", error);
       alert("처리 중 오류가 발생했습니다.");
     }
+  };
+
+  const handlePostClick = (postId) => {
+    setSelectedPostId(postId);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedPostId(null);
+  };
+
+  const handleViewOrders = (postKey) => {
+    if (!postKey) return;
+
+    // 주문 관리 페이지로 이동하면서 post_key로 검색
+    router.push(`/orders?search=${encodeURIComponent(postKey)}`);
   };
 
   if (!userData) {
@@ -262,6 +282,8 @@ export default function PostsPage() {
                 key={post.post_key}
                 post={post}
                 onProcess={handleProcessPost}
+                onClick={handlePostClick}
+                onViewOrders={handleViewOrders}
               />
             ))}
           </div>
@@ -278,12 +300,20 @@ export default function PostsPage() {
           </div>
         )}
       </div>
+
+      {/* 게시물 상세 정보 모달 */}
+      <PostDetailModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        postId={selectedPostId}
+        userId={userData?.userId}
+      />
     </div>
   );
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onProcess }) {
+function PostCard({ post, onProcess, onClick, onViewOrders }) {
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -349,7 +379,10 @@ function PostCard({ post, onProcess }) {
   const hasImages = imageUrls.length > 0;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+    <div
+      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+      onClick={() => onClick(post.post_id)}
+    >
       {/* 내용 섹션 */}
       <div className="p-4">
         {/* 작성자 정보 */}
@@ -387,7 +420,11 @@ function PostCard({ post, onProcess }) {
           </div>
           {/* 액션 버튼 */}
           <div>
-            <PostActions post={post} onProcess={onProcess} />
+            <PostActions
+              post={post}
+              onProcess={onProcess}
+              onViewOrders={onViewOrders}
+            />
           </div>
         </div>
 
@@ -560,13 +597,16 @@ function PostCard({ post, onProcess }) {
 }
 
 // 게시물 액션 메뉴 컴포넌트 (간소화)
-function PostActions({ post, onProcess }) {
+function PostActions({ post, onProcess, onViewOrders }) {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
     <div className="relative">
       <button
-        onClick={() => setShowMenu(!showMenu)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowMenu(!showMenu);
+        }}
         className="w-8 h-8 rounded-full bg-white bg-opacity-80 hover:bg-opacity-100 flex items-center justify-center transition-all shadow-sm"
       >
         <svg
@@ -584,9 +624,35 @@ function PostActions({ post, onProcess }) {
             className="fixed inset-0 z-10"
             onClick={() => setShowMenu(false)}
           />
-          <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+            {post.is_product && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewOrders(post.post_key);
+                  setShowMenu(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs text-blue-700 hover:bg-blue-50 flex items-center space-x-2"
+              >
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                  />
+                </svg>
+                <span>주문보기</span>
+              </button>
+            )}
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 onProcess(post.post_key);
                 setShowMenu(false);
               }}
@@ -600,7 +666,10 @@ function PostActions({ post, onProcess }) {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                onClick={() => setShowMenu(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(false);
+                }}
               >
                 원본보기
               </a>

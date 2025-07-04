@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, forwardRef, useMemo } from "react"; // React Fragment 사용을 위해 React 추가
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 // Date Picker 라이브러리 및 CSS 임포트
@@ -53,6 +53,7 @@ import {
   FunnelIcon,
   TagIcon,
   CheckIcon,
+  CodeBracketIcon,
 } from "@heroicons/react/24/outline";
 
 function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
@@ -159,7 +160,7 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 }
 
 // --- 상태 배지 ---
-function StatusBadge({ status }) {
+function StatusBadge({ status, processingMethod }) {
   let bgColor, textColor;
   switch (status) {
     case "수령완료":
@@ -191,10 +192,27 @@ function StatusBadge({ status }) {
       textColor = "text-gray-600";
       break;
   }
+
+  const getProcessingIcon = () => {
+    if (!processingMethod) return null;
+
+    switch (processingMethod) {
+      case "ai":
+        return <SparklesIcon className="h-2.5 w-2.5 mr-1" />;
+      case "pattern":
+        return <FunnelIcon className="h-2.5 w-2.5 mr-1" />;
+      case "manual":
+        return <PencilSquareIcon className="h-2.5 w-2.5 mr-1" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <span
       className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
     >
+      {getProcessingIcon()}
       {status}
     </span>
   );
@@ -286,6 +304,7 @@ const getStatusIcon = (status) => {
 // --- 메인 페이지 컴포넌트 ---
 export default function OrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { scrollToTop } = useScroll();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -678,6 +697,24 @@ export default function OrdersPage() {
     if (productsError) console.error("Product Error:", productsError);
   }, [productsData, productsError]);
 
+  // URL 파라미터에서 검색어 처리하는 useEffect 추가
+  useEffect(() => {
+    const searchParam = searchParams.get("search");
+    if (searchParam) {
+      console.log(`[URL Search] Auto-searching for: "${searchParam}"`);
+      setInputValue(searchParam);
+      setSearchTerm(searchParam);
+      setCurrentPage(1);
+      setExactCustomerFilter(null);
+      setSelectedOrderIds([]);
+
+      // URL에서 검색 파라미터 제거 (한 번만 실행되도록)
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("search");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams]);
+
   // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -913,37 +950,28 @@ export default function OrdersPage() {
     localStorage.removeItem("userId");
     router.replace("/login");
   };
-  const handleSearchChange = (e) => {
-    setInputValue(e.target.value);
-  }; // inputValue 업데이트만
 
-  // <<< 추가: 검색창 내용 지우기 함수 >>>
   const clearInputValue = () => {
     setInputValue("");
-    // 선택: 내용을 지울 때 바로 검색을 실행할지, 아니면 사용자가 다시 검색 버튼을 누르도록 할지 결정
-    // setSearchTerm(""); // 만약 바로 검색 결과도 초기화하고 싶다면 이 줄의 주석을 해제
-    // setCurrentPage(1); // 첫 페이지로 이동
   };
 
-  // 검색 버튼 클릭 이벤트 핸들러
+  // 검색 입력 시 inputValue 상태만 업데이트
+  const handleSearchChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
+  // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = () => {
-    setSearchTerm(inputValue.trim());
-    setCurrentPage(1);
-    setExactCustomerFilter(null); // <<< 일반 검색 시 정확 필터 초기화
+    const trimmedInput = inputValue.trim();
+    // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
+    if (trimmedInput !== searchTerm) {
+      console.log(`[Search] New search triggered: "${trimmedInput}"`);
+      setSearchTerm(trimmedInput);
+      setCurrentPage(1); // 검색 시 항상 1페이지로
+      setExactCustomerFilter(null); // 일반 검색 시 정확 고객명 필터 초기화
+      setSelectedOrderIds([]); // 선택 초기화
+    }
   };
-
-  // --- 👇 [추가] 테이블 셀 클릭 시 정확 필터 적용 함수 👇 ---
-  const handleExactCustomerSearch = (customerName) => {
-    if (!customerName || customerName === "-") return; // 이름 없거나 '-' 이면 무시
-    const trimmedName = customerName.trim();
-    console.log(`Exact customer search triggered for: "${trimmedName}"`); // 디버깅 로그
-    setInputValue(trimmedName); // 검색창에도 표시 (선택적)
-    setSearchTerm(""); // <<< 정확 필터 시 일반 검색어 초기화
-    setExactCustomerFilter(trimmedName); // <<< 정확 필터 설정
-    setCurrentPage(1);
-    setSelectedOrderIds([]); // 선택 항목 초기화
-  };
-  // --- 👆 [추가] 테이블 셀 클릭 시 정확 필터 적용 함수 👆 ---
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -952,16 +980,33 @@ export default function OrdersPage() {
     }
   };
 
-  // --- 검색 초기화 함수 ---
+  // 검색 초기화 함수
   const handleClearSearch = () => {
-    setInputValue(""); // 검색 입력 필드 클리어
-    setFilterDateRange("30days");
+    console.log("[Search] Clearing search and filters.");
+    setInputValue("");
     setSearchTerm("");
-    setExactCustomerFilter(null); // <<< 정확 필터도 초기화
+    setExactCustomerFilter(null);
     setCurrentPage(1);
-    setFilterSelection("주문완료");
-    // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
+    setFilterSelection("주문완료"); // 기본 필터로 복귀
+    setFilterDateRange("30days"); // 기본 날짜로 복귀
+    setCustomStartDate(null);
+    setCustomEndDate(null);
+    setSelectedOrderIds([]);
   };
+
+  // 정확한 고객명 검색
+  const handleExactCustomerSearch = (customerName) => {
+    if (!customerName || customerName === "-") return;
+    const trimmedName = customerName.trim();
+    console.log(`[Search] Exact customer search: "${trimmedName}"`);
+    setInputValue(trimmedName);
+    setSearchTerm(""); // 일반 검색어는 비움
+    setExactCustomerFilter(trimmedName); // 정확 검색어 설정
+    setCurrentPage(1);
+    setSelectedOrderIds([]);
+  };
+
+  // --- 기존 검색 관련 useEffect 및 핸들러들은 위 함수들로 대체/통합 ---
 
   const handleSortChange = (field) => {
     if (sortBy === field)
@@ -1641,7 +1686,7 @@ export default function OrdersPage() {
                   {/* order-1 */}
                   <input
                     type="text"
-                    placeholder="고객명, 상품명, 바코드..."
+                    placeholder="고객명, 상품명, 바코드, post_key..."
                     value={inputValue}
                     onChange={handleSearchChange}
                     onKeyDown={handleKeyDown}
@@ -1763,7 +1808,7 @@ export default function OrdersPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {isOrdersLoading && !ordersData && (
                   <tr>
-                    <td colSpan="12" className="px-6 py-10 text-center">
+                    <td colSpan="13" className="px-6 py-10 text-center">
                       <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                       <span className="text-sm text-gray-500 mt-2 block">
                         주문 목록 로딩 중...
@@ -1774,7 +1819,7 @@ export default function OrdersPage() {
                 {!isOrdersLoading && displayOrders.length === 0 && (
                   <tr>
                     <td
-                      colSpan="12"
+                      colSpan="13"
                       className="px-6 py-10 text-center text-sm text-gray-500"
                     >
                       {searchTerm ||
@@ -1901,7 +1946,10 @@ export default function OrdersPage() {
                         </td>
 
                         <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
-                          <StatusBadge status={order.status} />
+                          <StatusBadge
+                            status={order.status}
+                            processingMethod={order.processing_method}
+                          />
                         </td>
 
                         {/* 서브상태 셀 */}
@@ -2026,7 +2074,7 @@ export default function OrdersPage() {
                       {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
                       {hasMultipleBarcodeOptions && (
                         <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                          <td colSpan="13" className="py-2 pr-2">
+                          <td colSpan="12" className="py-2 pr-2">
                             <div onClick={(e) => e.stopPropagation()}>
                               <BarcodeOptionSelector
                                 order={order}
@@ -2364,7 +2412,10 @@ export default function OrdersPage() {
                             <span className="text-sm font-medium text-gray-500 mr-2">
                               현재:
                             </span>
-                            <StatusBadge status={selectedOrder.status} />
+                            <StatusBadge
+                              status={selectedOrder.status}
+                              processingMethod={selectedOrder.processing_method}
+                            />
                           </div>
                           <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">
                             {["주문완료", "주문취소", "확인필요"].map(
@@ -2372,19 +2423,59 @@ export default function OrdersPage() {
                                 const isCurrent =
                                   selectedOrder.status === status;
                                 return (
-                                  <button
+                                  <div
                                     key={status}
-                                    onClick={() =>
-                                      handleStatusChange(
-                                        selectedOrder.order_id,
-                                        status
-                                      )
-                                    }
-                                    disabled={isCurrent}
-                                    className={getStatusButtonStyle(status)}
+                                    className="flex items-center gap-1"
                                   >
-                                    {getStatusIcon(status)} {status} 처리
-                                  </button>
+                                    <button
+                                      onClick={() =>
+                                        handleStatusChange(
+                                          selectedOrder.order_id,
+                                          status
+                                        )
+                                      }
+                                      disabled={isCurrent}
+                                      className={getStatusButtonStyle(status)}
+                                    >
+                                      {getStatusIcon(status)} {status} 처리
+                                    </button>
+                                    {/* AI/패턴 처리 아이콘 - 주문완료 버튼 옆에만 표시 */}
+                                    {status === "주문완료" &&
+                                      selectedOrder.processing_method && (
+                                        <div className="flex items-center">
+                                          {selectedOrder.processing_method ===
+                                            "ai" && (
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
+                                              title="AI 처리된 주문"
+                                            >
+                                              <SparklesIcon className="w-3 h-3" />
+                                              <span>AI</span>
+                                            </div>
+                                          )}
+                                          {selectedOrder.processing_method ===
+                                            "pattern" && (
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
+                                              title="패턴 처리된 주문"
+                                            >
+                                              <FunnelIcon className="w-3 h-3" />
+                                              <span>패턴</span>
+                                            </div>
+                                          )}
+                                          {selectedOrder.processing_method ===
+                                            "manual" && (
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
+                                              title="수동 처리된 주문"
+                                            >
+                                              <PencilSquareIcon className="w-3 h-3" />
+                                              <span>수동</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                  </div>
                                 );
                               }
                             )}
