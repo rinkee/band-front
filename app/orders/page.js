@@ -1906,10 +1906,12 @@ export default function OrdersPage() {
                           {order.customer_name || "-"}
                         </td>
                         <td
-                          className="py-2 pr-2 text-sm text-gray-600 w-60 truncate hidden md:table-cell"
+                          className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
                           title={order.comment || ""}
                         >
-                          {order.comment || "-"}
+                          <div className="line-clamp-3 break-words leading-tight">
+                            {order.comment || "-"}
+                          </div>
                         </td>
 
                         <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
@@ -3099,7 +3101,73 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
   );
   const hasOptions = barcodeOptions.length > 1; // 기본 옵션 외에 다른 옵션이 있는지
 
-  // 초기 선택값 설정 (저장된 선택값 또는 메인 옵션)
+  // AI가 매칭한 옵션과 바코드 옵션을 매칭하는 함수
+  const findMatchingBarcodeOption = (aiSelectedOption, customerComment) => {
+    if (!aiSelectedOption && !customerComment) return null;
+
+    // 매칭 키워드 정의
+    const matchingKeywords = {
+      반통: ["반통", "반"],
+      "1통": ["1통", "한통", "일통", "1개", "한개"],
+      "2통": ["2통", "두통", "이통", "2개", "두개"],
+      "3통": ["3통", "세통", "삼통", "3개", "세개"],
+      "4통": ["4통", "네통", "사통", "4개", "네개"],
+      "5통": ["5통", "다섯통", "오통", "5개", "다섯개"],
+      "1개": ["1개", "한개", "일개"],
+      "2개": ["2개", "두개", "이개"],
+      "3개": ["3개", "세개", "삼개"],
+      "1팩": ["1팩", "한팩", "일팩"],
+      "2팩": ["2팩", "두팩", "이팩"],
+      "1박스": ["1박스", "한박스", "일박스"],
+      "2박스": ["2박스", "두박스", "이박스"],
+      "1세트": ["1세트", "한세트", "일세트"],
+      "2세트": ["2세트", "두세트", "이세트"],
+    };
+
+    // 1. AI가 선택한 옵션과 바코드 옵션 직접 매칭
+    if (aiSelectedOption) {
+      const aiOption = aiSelectedOption.toLowerCase();
+      const matchedOption = barcodeOptions.find((option) => {
+        const optionName = option.name.toLowerCase();
+        return optionName.includes(aiOption) || aiOption.includes(optionName);
+      });
+      if (matchedOption) {
+        console.log(
+          `[바코드 옵션] AI 매칭: "${aiSelectedOption}" → "${matchedOption.name}"`
+        );
+        return matchedOption;
+      }
+    }
+
+    // 2. 고객 댓글과 바코드 옵션 키워드 매칭
+    if (customerComment) {
+      const comment = customerComment.toLowerCase();
+
+      for (const [optionKey, keywords] of Object.entries(matchingKeywords)) {
+        // 댓글에 해당 키워드가 포함되어 있는지 확인
+        const hasKeyword = keywords.some((keyword) =>
+          comment.includes(keyword)
+        );
+        if (hasKeyword) {
+          // 바코드 옵션에서 해당 키워드를 포함한 옵션 찾기
+          const matchedOption = barcodeOptions.find((option) => {
+            const optionName = option.name.toLowerCase();
+            return keywords.some((keyword) => optionName.includes(keyword));
+          });
+          if (matchedOption) {
+            console.log(
+              `[바코드 옵션] 댓글 매칭: "${customerComment}" → "${matchedOption.name}"`
+            );
+            return matchedOption;
+          }
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // 초기 선택값 설정 (우선순위: 저장된 선택값 > AI 매칭 > 메인 옵션)
   useEffect(() => {
     if (order.selected_barcode_option) {
       // 이미 선택된 옵션이 있으면 해당 옵션 선택
@@ -3110,9 +3178,19 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
         savedOption || barcodeOptions.find((opt) => opt.is_main)
       );
     } else {
-      // 기본값은 메인 옵션
-      const mainOption = barcodeOptions.find((opt) => opt.is_main);
-      setSelectedOption(mainOption || barcodeOptions[0]);
+      // 🔥 AI가 매칭한 옵션을 기본값으로 설정
+      const aiMatchedOption = findMatchingBarcodeOption(
+        order.ai_extraction_result?.selectedOption,
+        order.comment
+      );
+
+      if (aiMatchedOption) {
+        setSelectedOption(aiMatchedOption);
+      } else {
+        // AI 매칭 실패 시 기본값은 메인 옵션
+        const mainOption = barcodeOptions.find((opt) => opt.is_main);
+        setSelectedOption(mainOption || barcodeOptions[0]);
+      }
     }
   }, [order, barcodeOptions]);
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import PostDetailModal from "../components/PostDetailModal";
+import ProductBarcodeModal from "../components/ProductBarcodeModal";
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -12,7 +12,7 @@ export default function PostsPage() {
   const [userData, setUserData] = useState(null);
   const [page, setPage] = useState(1);
   const [limit] = useState(18); // 3x6 = 18개씩
-  const [isUpdating, setIsUpdating] = useState(false);
+
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -39,75 +39,6 @@ export default function PostsPage() {
     fetcher
   );
 
-  // 게시물 업데이트 함수
-  const handleUpdatePosts = async () => {
-    if (!userData?.userId || isUpdating) return;
-
-    setIsUpdating(true);
-    try {
-      const response = await fetch("/api/posts/update", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: userData.userId,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const { newPosts, totalPosts } = result.data;
-
-        if (newPosts > 0) {
-          alert(
-            `${newPosts}개의 새로운 게시물을 가져왔습니다! (전체: ${totalPosts}개)`
-          );
-          mutate(); // 데이터 새로고침
-        } else {
-          alert("새로운 게시물이 없습니다.");
-        }
-      } else {
-        alert(`업데이트 실패: ${result.message}`);
-      }
-    } catch (error) {
-      console.error("게시물 업데이트 중 오류:", error);
-      alert("업데이트 중 오류가 발생했습니다.");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleProcessPost = async (postKey) => {
-    if (!postKey) return;
-
-    try {
-      const response = await fetch("/api/posts/process", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: userData.userId,
-          postKey: postKey,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        alert("게시물 처리가 완료되었습니다.");
-        mutate(); // 데이터 새로고침
-      } else {
-        alert(`처리 실패: ${result.message}`);
-      }
-    } catch (error) {
-      console.error("게시물 처리 중 오류:", error);
-      alert("처리 중 오류가 발생했습니다.");
-    }
-  };
-
   const handlePostClick = (postId) => {
     setSelectedPostId(postId);
     setIsModalOpen(true);
@@ -116,6 +47,11 @@ export default function PostsPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedPostId(null);
+  };
+
+  const handleProductUpdate = () => {
+    // 바코드 업데이트 후 posts 데이터 새로고침
+    mutate();
   };
 
   const handleViewOrders = (postKey) => {
@@ -152,7 +88,16 @@ export default function PostsPage() {
     );
   }
 
-  const { posts = [], totalCount = 0, totalPages = 0 } = postsData;
+  const {
+    posts = [],
+    totalCount = 0,
+    totalPages = 0,
+    totalStats = {
+      totalPosts: 0,
+      totalProductPosts: 0,
+      totalCompletedPosts: 0,
+    },
+  } = postsData;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -163,103 +108,29 @@ export default function PostsPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">게시물 관리</h1>
               <p className="text-gray-600 mt-1">
-                총 {totalCount}개의 게시물 • 상품 게시물{" "}
-                {posts.filter((post) => post.is_product).length}개
+                총 {totalStats.totalPosts}개의 게시물 • 상품 게시물{" "}
+                {totalStats.totalProductPosts}개
               </p>
             </div>
 
-            {/* 통계 요약과 버튼들 */}
+            {/* 통계 요약 */}
             <div className="flex items-center space-x-6">
-              {/* 업데이트 버튼 */}
-              <button
-                onClick={handleUpdatePosts}
-                disabled={isUpdating}
-                className={`${
-                  isUpdating
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-green-600 hover:bg-green-700"
-                } text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2`}
-              >
-                {isUpdating ? (
-                  <svg
-                    className="w-5 h-5 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                )}
-                <span>{isUpdating ? "업데이트 중..." : "업데이트"}</span>
-              </button>
-
-              {/* 글쓰기 버튼 */}
-              <button
-                onClick={() => router.push("/posts/write")}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                <span>글쓰기</span>
-              </button>
-
-              {/* 통계 요약 */}
-              <div className="hidden md:flex items-center space-x-6 text-sm">
+              <div className="flex items-center space-x-6 text-sm">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-900">
-                    {totalCount}
+                    {totalStats.totalPosts}
                   </div>
                   <div className="text-gray-500">전체</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">
-                    {posts.filter((post) => post.is_product).length}
+                    {totalStats.totalProductPosts}
                   </div>
                   <div className="text-gray-500">상품</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    {
-                      posts.filter(
-                        (post) => post.ai_extraction_status === "completed"
-                      ).length
-                    }
+                    {totalStats.totalCompletedPosts}
                   </div>
                   <div className="text-gray-500">처리완료</div>
                 </div>
@@ -281,7 +152,6 @@ export default function PostsPage() {
               <PostCard
                 key={post.post_key}
                 post={post}
-                onProcess={handleProcessPost}
                 onClick={handlePostClick}
                 onViewOrders={handleViewOrders}
               />
@@ -301,19 +171,20 @@ export default function PostsPage() {
         )}
       </div>
 
-      {/* 게시물 상세 정보 모달 */}
-      <PostDetailModal
+      {/* 게시물 상품 바코드 모달 */}
+      <ProductBarcodeModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         postId={selectedPostId}
         userId={userData?.userId}
+        onProductUpdate={handleProductUpdate}
       />
     </div>
   );
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onProcess, onClick, onViewOrders }) {
+function PostCard({ post, onClick, onViewOrders }) {
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -420,11 +291,7 @@ function PostCard({ post, onProcess, onClick, onViewOrders }) {
           </div>
           {/* 액션 버튼 */}
           <div>
-            <PostActions
-              post={post}
-              onProcess={onProcess}
-              onViewOrders={onViewOrders}
-            />
+            <PostActions post={post} onViewOrders={onViewOrders} />
           </div>
         </div>
 
@@ -534,14 +401,42 @@ function PostCard({ post, onProcess, onClick, onViewOrders }) {
               <span>좋아요 {post.emotion_count}개</span>
             )}
           </div>
+          {/* 주문보기 버튼 */}
+          {post.is_product && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewOrders(post.post_key);
+              }}
+              className="px-2 py-1 text-xs text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-md transition-colors flex items-center space-x-1"
+            >
+              <svg
+                className="w-3 h-3"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                />
+              </svg>
+              <span>주문보기</span>
+            </button>
+          )}
         </div>
 
         {/* 최근 댓글 */}
         {post.latest_comments && post.latest_comments.length > 0 && (
           <div className="mt-3">
-            <div className="space-y-2">
+            <div className="space-y-2 max-w-full overflow-hidden">
               {post.latest_comments.slice(0, 3).map((comment, index) => (
-                <div key={index} className="flex items-start space-x-2">
+                <div
+                  key={index}
+                  className="flex items-start space-x-2 w-full overflow-hidden"
+                >
                   {/* 댓글 작성자 프로필 이미지 */}
                   <div className="w-5 h-5 rounded-full overflow-hidden bg-gray-200 flex-shrink-0 mt-0.5">
                     {comment.author?.profile_image_url ? (
@@ -569,20 +464,20 @@ function PostCard({ post, onProcess, onClick, onViewOrders }) {
                   </div>
 
                   {/* 댓글 내용 */}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 max-w-full">
                     <div className="flex items-baseline space-x-1">
-                      <span className="text-xs font-medium text-gray-800">
+                      <span className="text-xs font-medium text-gray-800 truncate">
                         {comment.author?.name || "익명"}
                       </span>
                       {comment.created_at && (
-                        <span className="text-[10px] text-gray-400">
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap">
                           {formatDate(
                             new Date(comment.created_at).toISOString()
                           )}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-2 break-words overflow-hidden">
                       {comment.body}
                     </p>
                   </div>
@@ -597,7 +492,7 @@ function PostCard({ post, onProcess, onClick, onViewOrders }) {
 }
 
 // 게시물 액션 메뉴 컴포넌트 (간소화)
-function PostActions({ post, onProcess, onViewOrders }) {
+function PostActions({ post, onViewOrders }) {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
@@ -625,41 +520,6 @@ function PostActions({ post, onProcess, onViewOrders }) {
             onClick={() => setShowMenu(false)}
           />
           <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-            {post.is_product && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewOrders(post.post_key);
-                  setShowMenu(false);
-                }}
-                className="w-full px-3 py-2 text-left text-xs text-blue-700 hover:bg-blue-50 flex items-center space-x-2"
-              >
-                <svg
-                  className="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                  />
-                </svg>
-                <span>주문보기</span>
-              </button>
-            )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onProcess(post.post_key);
-                setShowMenu(false);
-              }}
-              className="w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-            >
-              재처리
-            </button>
             {post.band_post_url && (
               <a
                 href={post.band_post_url}

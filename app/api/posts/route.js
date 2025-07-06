@@ -28,6 +28,26 @@ export async function GET(request) {
       return Response.json({ error: "Failed to count posts" }, { status: 500 });
     }
 
+    // 전체 통계 조회 (상품 게시물 수, 처리 완료 수)
+    const { data: allPosts, error: allPostsError } = await supabase
+      .from("posts")
+      .select("is_product, ai_extraction_status")
+      .eq("user_id", userId);
+
+    if (allPostsError) {
+      console.error("All posts query error:", allPostsError);
+      return Response.json(
+        { error: "Failed to fetch all posts stats" },
+        { status: 500 }
+      );
+    }
+
+    // 전체 통계 계산
+    const totalProductPosts = allPosts.filter((post) => post.is_product).length;
+    const totalCompletedPosts = allPosts.filter(
+      (post) => post.ai_extraction_status === "completed"
+    ).length;
+
     // 게시물 목록 조회 (연관 상품 정보 포함)
     const { data: posts, error: postsError } = await supabase
       .from("posts")
@@ -88,6 +108,12 @@ export async function GET(request) {
       totalPages,
       currentPage: page,
       limit,
+      // 전체 통계 추가
+      totalStats: {
+        totalPosts: count,
+        totalProductPosts,
+        totalCompletedPosts,
+      },
     });
   } catch (error) {
     console.error("API error:", error);

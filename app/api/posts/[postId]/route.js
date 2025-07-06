@@ -71,6 +71,8 @@ export async function GET(request, { params }) {
         pickup_date,
         quantity_text,
         price_options,
+        barcode,
+        barcode_options,
         created_at,
         updated_at
       `

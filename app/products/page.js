@@ -42,6 +42,8 @@ import {
   ArrowUturnLeftIcon,
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
+  ClipboardDocumentListIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 
 // --- 커스텀 라디오 버튼 그룹 컴포넌트 ---
@@ -842,6 +844,47 @@ export default function ProductsPage() {
     editedProduct.option_barcode_3,
   ]);
 
+  // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
+  const parseProductName = (productName) => {
+    if (!productName) {
+      return { name: productName, date: null };
+    }
+
+    // [날짜] 패턴 찾기 (예: [12/25], [2024-12-25], [25일] 등)
+    const datePattern = /^\[([^\]]+)\]\s*(.*)$/;
+    const match = productName.match(datePattern);
+
+    if (match) {
+      return {
+        date: match[1], // 대괄호 안의 날짜 부분
+        name: match[2].trim() || productName, // 나머지 상품명 부분
+      };
+    }
+
+    // 패턴이 없으면 전체를 상품명으로 처리
+    return { name: productName, date: null };
+  };
+
+  // 상품 주문보기 핸들러 (상품명으로 검색)
+  const handleViewProductOrders = (productTitle) => {
+    if (!productTitle) return;
+
+    // 상품명에서 날짜 부분을 제거하고 순수 상품명만 추출
+    const parsed = parseProductName(productTitle);
+    const searchTerm = parsed.name || productTitle;
+
+    // 주문 관리 페이지로 이동하면서 상품명으로 검색
+    router.push(`/orders?search=${encodeURIComponent(searchTerm)}`);
+  };
+
+  // 게시물 주문보기 핸들러 (post_key로 검색)
+  const handleViewPostOrders = (postKey) => {
+    if (!postKey) return;
+
+    // 주문 관리 페이지로 이동하면서 post_key로 검색
+    router.push(`/orders?search=${encodeURIComponent(postKey)}`);
+  };
+
   // --- 핸들러 함수들 ---
   const handleSearchChange = (e) => {
     setInputValue(e.target.value);
@@ -1352,13 +1395,16 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    작업
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
                 {isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="8"
+                      colSpan="9"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
@@ -1369,7 +1415,7 @@ export default function ProductsPage() {
                 {!isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="8"
+                      colSpan="9"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
@@ -1404,9 +1450,13 @@ export default function ProductsPage() {
                         {product.item_number || "-"}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap sm:pl-6">
-                        <span className="text-sm font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                          {product.title || "-"}
-                        </span>
+                        <div className="text-sm font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
+                          {(() => {
+                            const parsed = parseProductName(product.title);
+                            // 날짜 부분을 제거하고 순수 상품명만 표시
+                            return parsed.name || product.title || "-";
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800">
                         {formatCurrency(product.base_price)}
@@ -1442,6 +1492,37 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={product.status} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          {/* 상품 주문보기 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewProductOrders(product.title);
+                            }}
+                            className="inline-flex items-center px-2 py-1 border border-blue-300 shadow-sm text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            title="상품명으로 주문 검색"
+                          >
+                            <ClipboardDocumentListIcon className="w-3 h-3 mr-1" />
+                            상품주문
+                          </button>
+
+                          {/* 게시물 주문보기 버튼 */}
+                          {product.post_key && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewPostOrders(product.post_key);
+                              }}
+                              className="inline-flex items-center px-2 py-1 border border-green-300 shadow-sm text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                              title="게시물로 주문 검색"
+                            >
+                              <DocumentTextIcon className="w-3 h-3 mr-1" />
+                              게시물주문
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
