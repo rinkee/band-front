@@ -2907,7 +2907,7 @@ export default function OrdersPage() {
                                           숫자 패턴
                                         </span>
                                         <span className="text-sm text-gray-600">
-                                          "{comment.trim()}"
+                                          &quot;{comment.trim()}&quot;
                                         </span>
                                       </div>
                                     );
@@ -2921,7 +2921,7 @@ export default function OrdersPage() {
                                           수량 단위
                                         </span>
                                         <span className="text-sm text-gray-600">
-                                          "{comment.trim()}"
+                                          &quot;{comment.trim()}&quot;
                                         </span>
                                       </div>
                                     );
@@ -2933,7 +2933,7 @@ export default function OrdersPage() {
                                         기타 패턴
                                       </span>
                                       <span className="text-sm text-gray-600">
-                                        "{comment.trim()}"
+                                        &quot;{comment.trim()}&quot;
                                       </span>
                                     </div>
                                   );

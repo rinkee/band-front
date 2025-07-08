@@ -165,7 +165,7 @@ export default function PostsPage() {
                 {totalStats.totalProductPosts}개
                 {searchQuery && (
                   <span className="text-blue-600 ml-2">
-                    • "{searchQuery}" 검색 결과
+                    • &quot;{searchQuery}&quot; 검색 결과
                   </span>
                 )}
               </p>
@@ -279,7 +279,7 @@ export default function PostsPage() {
                   />
                 </svg>
                 <div className="text-gray-500 text-lg mb-2">
-                  "{searchQuery}"에 대한 검색 결과가 없습니다.
+                  &quot;{searchQuery}&quot;에 대한 검색 결과가 없습니다.
                 </div>
                 <div className="text-gray-400 text-sm mb-4">
                   다른 검색어를 시도해보세요.
