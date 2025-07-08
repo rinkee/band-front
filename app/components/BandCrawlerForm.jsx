@@ -9,6 +9,36 @@ import {
   crawlPostComments, // 추가된 함수 임포트
 } from "@/app/utils/app";
 
+// 밴드 특수 태그 처리 함수
+const processBandTags = (text) => {
+  if (!text) return text;
+
+  let processedText = text;
+
+  // <band:refer user_key="...">사용자명</band:refer> → @사용자명
+  processedText = processedText.replace(
+    /<band:refer\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:refer>/g,
+    "@$1"
+  );
+
+  // <band:mention user_key="...">사용자명</band:mention> → @사용자명 (혹시 있다면)
+  processedText = processedText.replace(
+    /<band:mention\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:mention>/g,
+    "@$1"
+  );
+
+  // 기타 밴드 태그들도 내용만 남기기
+  processedText = processedText.replace(
+    /<band:[^>]*>([^<]+)<\/band:[^>]*>/g,
+    "$1"
+  );
+
+  // 자동 닫힘 밴드 태그 제거 (예: <band:something />)
+  processedText = processedText.replace(/<band:[^>]*\/>/g, "");
+
+  return processedText;
+};
+
 export default function BandCrawlerForm() {
   // 크롤링 폼 상태
   const [naverId, setNaverId] = useState("");
@@ -425,7 +455,7 @@ export default function BandCrawlerForm() {
                     )}
                     <br />
                     <strong>내용:</strong>{" "}
-                    {comment.content || comment.text || "없음"}
+                    {processBandTags(comment.content || comment.text) || "없음"}
                     <br />
                     <strong>시간:</strong>{" "}
                     {comment.timestamp || comment.time || "없음"}
