@@ -75,6 +75,7 @@ export default function PostsPage() {
 
   const handleProductUpdate = () => {
     // 바코드 업데이트 후 posts 데이터 새로고침
+    console.log("Posts 페이지: 바코드 업데이트 후 데이터 새로고침");
     mutate();
   };
 
