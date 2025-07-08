@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
+import CommentsModal from "../components/Comments";
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -13,8 +14,16 @@ export default function PostsPage() {
   const [page, setPage] = useState(1);
   const [limit] = useState(18); // 3x6 = 18개씩
 
+  // 검색 관련 상태
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // 댓글 모달 관련 상태
+  const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
+  const [selectedPostForComments, setSelectedPostForComments] = useState(null);
 
   // 사용자 데이터 가져오기
   useEffect(() => {
@@ -34,10 +43,25 @@ export default function PostsPage() {
     mutate,
   } = useSWR(
     userData?.userId
-      ? `/api/posts?userId=${userData.userId}&page=${page}&limit=${limit}`
+      ? `/api/posts?userId=${userData.userId}&page=${page}&limit=${limit}${
+          searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""
+        }`
       : null,
     fetcher
   );
+
+  // 검색 기능
+  const handleSearch = (e) => {
+    e.preventDefault();
+    setSearchQuery(searchTerm);
+    setPage(1); // 검색 시 첫 페이지로 이동
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm("");
+    setSearchQuery("");
+    setPage(1);
+  };
 
   const handlePostClick = (postId) => {
     setSelectedPostId(postId);
@@ -59,6 +83,35 @@ export default function PostsPage() {
 
     // 주문 관리 페이지로 이동하면서 post_key로 검색
     router.push(`/orders?search=${encodeURIComponent(postKey)}`);
+  };
+
+  // 댓글 모달 열기 함수
+  const handleViewComments = (post) => {
+    if (!userData?.band_access_token) {
+      alert("BAND 토큰이 없습니다. 설정에서 BAND 연동을 확인해주세요.");
+      return;
+    }
+
+    const bandKey = userData?.band_key || post.band_key;
+    if (!bandKey) {
+      alert("밴드 정보가 없습니다.");
+      return;
+    }
+
+    setSelectedPostForComments({
+      postKey: post.post_key,
+      bandKey: bandKey,
+      productName: post.title || "게시물",
+      accessToken: userData.band_access_token,
+      postContent: post.content || "",
+    });
+    setIsCommentsModalOpen(true);
+  };
+
+  // 댓글 모달 닫기 함수
+  const handleCloseCommentsModal = () => {
+    setIsCommentsModalOpen(false);
+    setSelectedPostForComments(null);
   };
 
   if (!userData) {
@@ -110,6 +163,11 @@ export default function PostsPage() {
               <p className="text-gray-600 mt-1">
                 총 {totalStats.totalPosts}개의 게시물 • 상품 게시물{" "}
                 {totalStats.totalProductPosts}개
+                {searchQuery && (
+                  <span className="text-blue-600 ml-2">
+                    • "{searchQuery}" 검색 결과
+                  </span>
+                )}
               </p>
             </div>
 
@@ -137,6 +195,67 @@ export default function PostsPage() {
               </div>
             </div>
           </div>
+
+          {/* 검색 바 */}
+          <div className="mt-6 flex items-center justify-between">
+            <form
+              onSubmit={handleSearch}
+              className="flex items-center space-x-3"
+            >
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg
+                    className="h-5 w-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="게시물 제목, 내용, 작성자로 검색..."
+                  className="block w-96 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                검색
+              </button>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <svg
+                    className="h-4 w-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                  검색 초기화
+                </button>
+              )}
+            </form>
+          </div>
         </div>
       </div>
 
@@ -144,7 +263,37 @@ export default function PostsPage() {
       <div className="max-w-7xl mx-auto p-6">
         {posts.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-            <div className="text-gray-500 text-lg">게시물이 없습니다.</div>
+            {searchQuery ? (
+              <div>
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <div className="text-gray-500 text-lg mb-2">
+                  "{searchQuery}"에 대한 검색 결과가 없습니다.
+                </div>
+                <div className="text-gray-400 text-sm mb-4">
+                  다른 검색어를 시도해보세요.
+                </div>
+                <button
+                  onClick={handleClearSearch}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  모든 게시물 보기
+                </button>
+              </div>
+            ) : (
+              <div className="text-gray-500 text-lg">게시물이 없습니다.</div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -154,6 +303,7 @@ export default function PostsPage() {
                 post={post}
                 onClick={handlePostClick}
                 onViewOrders={handleViewOrders}
+                onViewComments={handleViewComments}
               />
             ))}
           </div>
@@ -179,12 +329,23 @@ export default function PostsPage() {
         userId={userData?.userId}
         onProductUpdate={handleProductUpdate}
       />
+
+      {/* 댓글 모달 */}
+      <CommentsModal
+        isOpen={isCommentsModalOpen}
+        onClose={handleCloseCommentsModal}
+        postKey={selectedPostForComments?.postKey}
+        bandKey={selectedPostForComments?.bandKey}
+        postTitle={selectedPostForComments?.productName}
+        accessToken={selectedPostForComments?.accessToken}
+        postContent={selectedPostForComments?.postContent}
+      />
     </div>
   );
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments }) {
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -289,10 +450,6 @@ function PostCard({ post, onClick, onViewOrders }) {
               {formatDate(post.posted_at)}
             </div>
           </div>
-          {/* 액션 버튼 */}
-          <div>
-            <PostActions post={post} onViewOrders={onViewOrders} />
-          </div>
         </div>
 
         {/* 게시물 제목 */}
@@ -359,212 +516,189 @@ function PostCard({ post, onClick, onViewOrders }) {
               e.target.src = "/default-avatar.png"; // fallback 이미지
             }}
           />
-
-          {/* 이미지 개수 표시 */}
-          {imageUrls.length > 1 && (
-            <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-              1/{imageUrls.length}
-            </div>
-          )}
-
-          {/* 상태 태그 */}
-          <div className="absolute top-2 left-2 flex flex-col space-y-1">
-            {post.is_product && (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                상품
-              </span>
-            )}
-            {post.ai_extraction_status && (
-              <span
-                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  post.ai_extraction_status === "completed"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-yellow-100 text-yellow-800"
-                }`}
-              >
-                {post.ai_extraction_status === "completed"
-                  ? "AI완료"
-                  : "AI처리중"}
-              </span>
-            )}
-          </div>
         </div>
       )}
 
-      {/* 하단 섹션 */}
+      {/* 하단 섹션 - 3개 버튼 */}
       <div className="p-4">
-        {/* 댓글바 (통계) */}
-        <div className="flex items-center justify-between text-xs text-gray-500 pb-3 border-b border-gray-100">
-          <div className="flex items-center space-x-3">
-            <span>댓글 {post.comment_count || 0}개</span>
-            {post.emotion_count > 0 && (
-              <span>좋아요 {post.emotion_count}개</span>
-            )}
-          </div>
-          {/* 주문보기 버튼 */}
-          {post.is_product && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewOrders(post.post_key);
-              }}
-              className="px-2 py-1 text-xs text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-md transition-colors flex items-center space-x-1"
+        {/* 액션 버튼들 */}
+        <div className="grid grid-cols-3 gap-2">
+          {/* 바코드 등록 버튼 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick(post.post_id);
+            }}
+            className="flex flex-col items-center justify-center py-3 px-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+          >
+            <svg
+              className="w-5 h-5 text-gray-600 mb-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg
-                className="w-3 h-3"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-              <span>주문보기</span>
-            </button>
-          )}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            <span className="text-xs font-medium text-gray-700">
+              바코드 등록
+            </span>
+          </button>
+
+          {/* 주문보기 버튼 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewOrders(post.post_key);
+            }}
+            className="flex flex-col items-center justify-center py-3 px-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+          >
+            <svg
+              className="w-5 h-5 text-gray-600 mb-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              />
+            </svg>
+            <span className="text-xs font-medium text-gray-700">주문보기</span>
+          </button>
+
+          {/* 댓글보기 버튼 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewComments(post);
+            }}
+            className="flex flex-col items-center justify-center py-3 px-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+          >
+            <svg
+              className="w-5 h-5 text-gray-600 mb-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
+            </svg>
+            <span className="text-xs font-medium text-gray-700">댓글보기</span>
+          </button>
         </div>
-
-        {/* 최근 댓글 */}
-        {post.latest_comments && post.latest_comments.length > 0 && (
-          <div className="mt-3">
-            <div className="space-y-2 max-w-full overflow-hidden">
-              {post.latest_comments.slice(0, 3).map((comment, index) => (
-                <div
-                  key={index}
-                  className="flex items-start space-x-2 w-full overflow-hidden"
-                >
-                  {/* 댓글 작성자 프로필 이미지 */}
-                  <div className="w-5 h-5 rounded-full overflow-hidden bg-gray-200 flex-shrink-0 mt-0.5">
-                    {comment.author?.profile_image_url ? (
-                      <img
-                        src={comment.author.profile_image_url}
-                        alt={comment.author?.name || "프로필"}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                          e.target.nextElementSibling.style.display = "flex";
-                        }}
-                      />
-                    ) : null}
-                    <div
-                      className={`w-full h-full bg-gray-400 flex items-center justify-center ${
-                        comment.author?.profile_image_url ? "hidden" : ""
-                      }`}
-                    >
-                      <span className="text-white font-medium text-[8px]">
-                        {comment.author?.name
-                          ? comment.author.name.charAt(0)
-                          : "?"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 댓글 내용 */}
-                  <div className="flex-1 min-w-0 max-w-full">
-                    <div className="flex items-baseline space-x-1">
-                      <span className="text-xs font-medium text-gray-800 truncate">
-                        {comment.author?.name || "익명"}
-                      </span>
-                      {comment.created_at && (
-                        <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                          {formatDate(
-                            new Date(comment.created_at).toISOString()
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-2 break-words overflow-hidden">
-                      {comment.body}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-// 게시물 액션 메뉴 컴포넌트 (간소화)
-function PostActions({ post, onViewOrders }) {
-  const [showMenu, setShowMenu] = useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowMenu(!showMenu);
-        }}
-        className="w-8 h-8 rounded-full bg-white bg-opacity-80 hover:bg-opacity-100 flex items-center justify-center transition-all shadow-sm"
-      >
-        <svg
-          className="w-4 h-4 text-gray-600"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-        </svg>
-      </button>
-
-      {showMenu && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setShowMenu(false)}
-          />
-          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-            {post.band_post_url && (
-              <a
-                href={post.band_post_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                }}
-              >
-                원본보기
-              </a>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// 페이지네이션 컴포넌트
+// 페이지네이션 컴포넌트 (10페이지씩 표시)
 function Pagination({ currentPage, totalPages, onPageChange }) {
+  // 현재 페이지를 기준으로 표시할 페이지 범위 계산
+  const getPageNumbers = () => {
+    const maxVisiblePages = 10;
+    const halfVisible = Math.floor(maxVisiblePages / 2);
+
+    let startPage = Math.max(1, currentPage - halfVisible);
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    // 끝 페이지가 조정된 경우 시작 페이지도 재조정
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    const pages = [];
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+
+    return { pages, startPage, endPage };
+  };
+
+  const { pages, startPage, endPage } = getPageNumbers();
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-center space-x-4">
+      <div className="flex items-center justify-center space-x-2">
+        {/* 첫 페이지로 이동 */}
+        {startPage > 1 && (
+          <>
+            <button
+              onClick={() => onPageChange(1)}
+              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+            >
+              1
+            </button>
+            {startPage > 2 && (
+              <span className="px-2 py-2 text-sm text-gray-400">...</span>
+            )}
+          </>
+        )}
+
+        {/* 이전 페이지 */}
         <button
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
-          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
         >
           ← 이전
         </button>
 
-        <span className="px-4 py-2 text-sm text-gray-700 font-medium">
-          {currentPage} / {totalPages}
-        </span>
+        {/* 페이지 번호들 */}
+        {pages.map((page) => (
+          <button
+            key={page}
+            onClick={() => onPageChange(page)}
+            className={`px-3 py-2 text-sm rounded-md transition-colors ${
+              page === currentPage
+                ? "bg-blue-600 text-white font-medium"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+            }`}
+          >
+            {page}
+          </button>
+        ))}
 
+        {/* 다음 페이지 */}
         <button
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
-          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
         >
           다음 →
         </button>
+
+        {/* 마지막 페이지로 이동 */}
+        {endPage < totalPages && (
+          <>
+            {endPage < totalPages - 1 && (
+              <span className="px-2 py-2 text-sm text-gray-400">...</span>
+            )}
+            <button
+              onClick={() => onPageChange(totalPages)}
+              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+            >
+              {totalPages}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 페이지 정보 */}
+      <div className="mt-3 text-center">
+        <span className="text-xs text-gray-500">
+          {currentPage} / {totalPages} 페이지
+        </span>
       </div>
     </div>
   );

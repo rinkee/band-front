@@ -347,6 +347,14 @@ export default function OrdersPage() {
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
 
+  // 클라이언트 사이드 렌더링 확인 상태
+  const [isClient, setIsClient] = useState(false);
+
+  // 클라이언트 사이드 렌더링 확인
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const displayOrders = orders || [];
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
@@ -837,6 +845,49 @@ export default function OrdersPage() {
 
     // 패턴이 없으면 전체를 상품명으로 처리
     return { name: productName, date: null };
+  };
+
+  // 수령일 날짜를 Date 객체로 변환하는 함수
+  const parsePickupDate = (dateString) => {
+    if (!dateString) return null;
+
+    try {
+      const currentYear = new Date().getFullYear();
+
+      // [7월11일] 형태 파싱
+      const monthDayPattern = /^(\d{1,2})월(\d{1,2})일?$/;
+      const match = dateString.match(monthDayPattern);
+
+      if (match) {
+        const month = parseInt(match[1], 10) - 1; // 월은 0부터 시작
+        const day = parseInt(match[2], 10);
+        return new Date(currentYear, month, day);
+      }
+
+      // 다른 형태의 날짜도 처리 가능하도록 확장 가능
+      // [12/25], [2024-12-25] 등
+
+      return null;
+    } catch (error) {
+      console.error("날짜 파싱 오류:", error);
+      return null;
+    }
+  };
+
+  // 수령 가능한 상품인지 판단하는 함수 (클라이언트 사이드에서만 실행)
+  const isPickupAvailable = (dateString) => {
+    // 클라이언트 사이드 렌더링이 완료되지 않았으면 false 반환
+    if (!isClient) return false;
+
+    const pickupDate = parsePickupDate(dateString);
+    if (!pickupDate) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // 시간 부분을 제거하여 날짜만 비교
+    pickupDate.setHours(0, 0, 0, 0);
+
+    // 오늘 날짜 이전이거나 당일이면 수령 가능
+    return pickupDate <= today;
   };
   const getProductBarcode = (id) =>
     products.find((p) => p.product_id === id)?.barcode || "";
@@ -1882,13 +1933,36 @@ export default function OrdersPage() {
                             );
                             const { name, date } =
                               parseProductName(productName);
+                            const isAvailable =
+                              isClient && date
+                                ? isPickupAvailable(date)
+                                : false;
 
                             return (
                               <div className="flex flex-col">
-                                <div className="font-medium">{name}</div>
+                                <div
+                                  className={`font-medium ${
+                                    isAvailable
+                                      ? "text-orange-600 font-bold"
+                                      : ""
+                                  }`}
+                                >
+                                  {name}
+                                </div>
                                 {date && (
-                                  <div className="text-xs text-gray-500 mt-0.5">
+                                  <div
+                                    className={`text-xs mt-0.5 ${
+                                      isAvailable
+                                        ? "text-orange-500 font-medium"
+                                        : "text-gray-500"
+                                    }`}
+                                  >
                                     [{date}]
+                                    {isAvailable && (
+                                      <span className="ml-1 text-orange-600 font-bold">
+                                        ✓ 수령가능
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2249,7 +2323,42 @@ export default function OrdersPage() {
               {/* 모달 헤더 */}
               <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {getProductNameById(selectedOrder.product_id)}
+                  {(() => {
+                    const productName = getProductNameById(
+                      selectedOrder.product_id
+                    );
+                    const { name, date } = parseProductName(productName);
+                    const isAvailable =
+                      isClient && date ? isPickupAvailable(date) : false;
+
+                    return (
+                      <div className="flex flex-col">
+                        <div
+                          className={`${
+                            isAvailable ? "text-orange-600 font-bold" : ""
+                          }`}
+                        >
+                          {name}
+                        </div>
+                        {date && (
+                          <div
+                            className={`text-sm mt-1 ${
+                              isAvailable
+                                ? "text-orange-500 font-medium"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            [{date}]
+                            {isAvailable && (
+                              <span className="ml-1 text-orange-600 font-bold">
+                                ✓ 수령가능
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </h3>
                 <button
                   onClick={closeDetailModal}
@@ -2492,7 +2601,47 @@ export default function OrdersPage() {
                       {[
                         {
                           label: "상품명",
-                          value: getProductNameById(selectedOrder.product_id),
+                          value: (() => {
+                            const productName = getProductNameById(
+                              selectedOrder.product_id
+                            );
+                            const { name, date } =
+                              parseProductName(productName);
+                            const isAvailable =
+                              isClient && date
+                                ? isPickupAvailable(date)
+                                : false;
+
+                            return (
+                              <div className="flex flex-col">
+                                <div
+                                  className={`${
+                                    isAvailable
+                                      ? "text-orange-600 font-bold"
+                                      : ""
+                                  }`}
+                                >
+                                  {name}
+                                </div>
+                                {date && (
+                                  <div
+                                    className={`text-sm mt-1 ${
+                                      isAvailable
+                                        ? "text-orange-500 font-medium"
+                                        : "text-gray-500"
+                                    }`}
+                                  >
+                                    [{date}]
+                                    {isAvailable && (
+                                      <span className="ml-1 text-orange-600 font-bold">
+                                        ✓ 수령가능
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })(),
                           readOnly: true,
                         },
                         // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
@@ -3093,6 +3242,7 @@ export default function OrdersPage() {
 // 바코드 옵션 선택 컴포넌트
 function BarcodeOptionSelector({ order, product, onOptionChange }) {
   const [selectedOption, setSelectedOption] = useState(null);
+  const isCompleted = order.status === "수령완료";
 
   // 바코드 옵션이 있는지 확인
   const barcodeOptions = useMemo(
@@ -3212,7 +3362,9 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
           {barcodeOptions.map((option, index) => (
             <label
               key={index}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer transition-all text-sm ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
+                isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              } transition-all text-sm ${
                 selectedOption?.barcode === option.barcode
                   ? "border-blue-400 bg-blue-100 shadow-sm"
                   : "border-gray-200 bg-white hover:border-gray-300"
@@ -3222,6 +3374,7 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
                 type="radio"
                 name={`barcode-option-${order.order_id}`}
                 checked={selectedOption?.barcode === option.barcode}
+                disabled={isCompleted}
                 onChange={() => handleOptionSelect(option)}
                 className="h-3 w-3 text-gray-600 focus:ring-gray-500"
               />

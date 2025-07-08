@@ -1067,7 +1067,30 @@ export default function SettingsPage() {
         .eq("user_id", currentUserId)
         .single();
 
-      if (error) throw error;
+      // 테이블이 존재하지 않거나 레코드가 없는 경우 기본값 설정
+      if (error && error.code === "PGRST116") {
+        // No rows found - 기본값으로 설정
+        const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
+        setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
+        setCrawlInterval(defaultSettings.interval);
+        setCrawlingJobId(defaultSettings.jobId);
+        setInitialCrawlSettings(defaultSettings);
+        return;
+      }
+
+      if (error) {
+        // 테이블이 존재하지 않는 경우 등 다른 에러도 기본값으로 처리
+        console.warn(
+          "Auto crawl settings table not accessible, using defaults:",
+          error.message
+        );
+        const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
+        setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
+        setCrawlInterval(defaultSettings.interval);
+        setCrawlingJobId(defaultSettings.jobId);
+        setInitialCrawlSettings(defaultSettings);
+        return;
+      }
 
       if (data) {
         const settings = {
@@ -1087,7 +1110,15 @@ export default function SettingsPage() {
         setInitialCrawlSettings(defaultSettings);
       }
     } catch (error) {
-      console.error("Error fetching auto crawl settings:", error);
+      console.warn(
+        "Error fetching auto crawl settings, using defaults:",
+        error.message || error
+      );
+      const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
+      setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
+      setCrawlInterval(defaultSettings.interval);
+      setCrawlingJobId(defaultSettings.jobId);
+      setInitialCrawlSettings(defaultSettings);
     }
   }, []);
 
