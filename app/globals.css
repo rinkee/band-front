@@ -1,17 +1,217 @@
 @import "tailwindcss";
 
 body {
-  /* <<< 여기가 중요: var(--font-pretendard)가 맨 앞에 오는지 확인! >>> */
-  font-family: var(--font-pretendard), ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
-    sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
-    "Noto Color Emoji";
-  color: theme("colors.black");
-  @apply bg-gray-100;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-input,
-button,
-textarea,
-select {
-  font-family: inherit; /* body의 폰트를 상속받도록 설정 */
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 밴드 스타일 에디터 */
+.band-editor {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  min-height: 200px;
+  padding: 12px;
+  font-family: inherit;
+  outline: none;
+  background: white;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.band-editor:focus {
+  border-color: #0084ff;
+  box-shadow: 0 0 0 1px rgba(0, 132, 255, 0.2);
+}
+
+.band-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #999;
+  font-style: normal;
+}
+
+.band-toolbar {
+  border: 1px solid #e0e0e0;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  padding: 8px;
+  background: #fafafa;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.band-toolbar + .band-editor {
+  border-radius: 0 0 4px 4px;
+}
+
+.band-toolbar-button {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  padding: 0 6px;
+}
+
+.band-toolbar-button:hover {
+  background: #e8e8e8;
+  border-color: #d0d0d0;
+}
+
+.band-toolbar-button.active {
+  background: #0084ff;
+  color: white;
+  border-color: #0084ff;
+}
+
+.band-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: #d0d0d0;
+  margin: 0 4px;
+}
+
+/* 색상 선택기 */
+.band-color-picker {
+  position: relative;
+}
+
+.band-color-palette {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  padding: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+.band-color-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  width: 156px; /* 6 * 22px + 5 * 6px gap */
+}
+
+.band-color-button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.band-color-button:hover {
+  border-color: #666;
+  transform: scale(1.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 텍스트 크기 선택기 */
+.band-font-size-picker {
+  position: relative;
+}
+
+.band-font-size-palette {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  padding: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 160px;
+}
+
+.band-font-size-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: #333;
+  transition: background-color 0.1s;
+  border-radius: 2px;
+}
+
+.band-font-size-item:hover {
+  background: #f0f0f0;
+}
+
+/* 색상 박스 버튼 */
+.band-color-main-button {
+  min-width: 40px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  gap: 4px;
+}
+
+.band-color-main-button:hover {
+  background: #e8e8e8;
+  border-color: #d0d0d0;
+}
+
+.band-color-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  background: white;
+}
+
+.band-color-sample {
+  width: 14px;
+  height: 14px;
+  border-radius: 1px;
 }

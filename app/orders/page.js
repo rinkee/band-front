@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, forwardRef, useMemo } from "react"; // React Fragment 사용을 위해 React 추가
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 // Date Picker 라이브러리 및 CSS 임포트
@@ -21,6 +21,9 @@ import { StatusButton } from "../components/StatusButton"; // StatusButton 다�
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
+import CommentsModal from "../components/Comments"; // 댓글 모달 import
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/ToastContainer";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -50,6 +53,7 @@ import {
   FunnelIcon,
   TagIcon,
   CheckIcon,
+  CodeBracketIcon,
 } from "@heroicons/react/24/outline";
 
 function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
@@ -156,50 +160,60 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 }
 
 // --- 상태 배지 ---
-function StatusBadge({ status }) {
-  let bgColor, textColor, Icon;
+function StatusBadge({ status, processingMethod }) {
+  let bgColor, textColor;
   switch (status) {
     case "수령완료":
       bgColor = "bg-green-100";
       textColor = "text-green-700";
-      Icon = CheckCircleIcon;
       break;
     case "주문취소":
       bgColor = "bg-red-100";
       textColor = "text-red-700";
-      Icon = XCircleIcon;
       break;
     case "주문완료":
       bgColor = "bg-blue-100";
       textColor = "text-blue-700";
-      Icon = SparklesIcon;
       break;
     case "확인필요":
       bgColor = "bg-gray-800";
       textColor = "text-gray-100";
-      Icon = ExclamationCircleIcon;
       break;
     case "결제완료":
       bgColor = "bg-yellow-100";
       textColor = "text-yellow-700";
-      Icon = CurrencyDollarIcon;
       break;
     case "미수령":
       bgColor = "bg-red-200";
       textColor = "text-red-700";
-      Icon = CurrencyDollarIcon;
       break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-600";
-      Icon = ExclamationCircleIcon;
       break;
   }
+
+  const getProcessingIcon = () => {
+    if (!processingMethod) return null;
+
+    switch (processingMethod) {
+      case "ai":
+        return <SparklesIcon className="h-2.5 w-2.5 mr-1" />;
+      case "pattern":
+        return <FunnelIcon className="h-2.5 w-2.5 mr-1" />;
+      case "manual":
+        return <PencilSquareIcon className="h-2.5 w-2.5 mr-1" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <span
-      className={`inline-flex items-center gap-x-1 rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
     >
-      <Icon className="h-5 w-5" /> {status}
+      {getProcessingIcon()}
+      {status}
     </span>
   );
 }
@@ -290,6 +304,7 @@ const getStatusIcon = (status) => {
 // --- 메인 페이지 컴포넌트 ---
 export default function OrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { scrollToTop } = useScroll();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -324,6 +339,21 @@ export default function OrdersPage() {
   // --- 바코드 저장 관련 상태 및 함수 ---
   const [newBarcodeValue, setNewBarcodeValue] = useState("");
   const [isSavingBarcode, setIsSavingBarcode] = useState(false);
+
+  // --- 댓글 관련 상태 ---
+  const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
+  const [selectedPostForComments, setSelectedPostForComments] = useState(null);
+
+  // 토스트 알림 훅
+  const { toasts, showSuccess, showError, hideToast } = useToast();
+
+  // 클라이언트 사이드 렌더링 확인 상태
+  const [isClient, setIsClient] = useState(false);
+
+  // 클라이언트 사이드 렌더링 확인
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const displayOrders = orders || [];
 
@@ -675,6 +705,24 @@ export default function OrdersPage() {
     if (productsError) console.error("Product Error:", productsError);
   }, [productsData, productsError]);
 
+  // URL 파라미터에서 검색어 처리하는 useEffect 추가
+  useEffect(() => {
+    const searchParam = searchParams.get("search");
+    if (searchParam) {
+      console.log(`[URL Search] Auto-searching for: "${searchParam}"`);
+      setInputValue(searchParam);
+      setSearchTerm(searchParam);
+      setCurrentPage(1);
+      setExactCustomerFilter(null);
+      setSelectedOrderIds([]);
+
+      // URL에서 검색 파라미터 제거 (한 번만 실행되도록)
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("search");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams]);
+
   // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -777,12 +825,89 @@ export default function OrdersPage() {
   };
   const getProductNameById = (id) =>
     products.find((p) => p.product_id === id)?.title || "상품명 없음";
+
+  // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
+  const parseProductName = (productName) => {
+    if (!productName || productName === "상품명 없음") {
+      return { name: productName, date: null };
+    }
+
+    // [날짜] 패턴 찾기 (예: [12/25], [2024-12-25], [25일] 등)
+    const datePattern = /^\[([^\]]+)\]\s*(.*)$/;
+    const match = productName.match(datePattern);
+
+    if (match) {
+      return {
+        date: match[1], // 대괄호 안의 날짜 부분
+        name: match[2].trim() || productName, // 나머지 상품명 부분
+      };
+    }
+
+    // 패턴이 없으면 전체를 상품명으로 처리
+    return { name: productName, date: null };
+  };
+
+  // 수령일 날짜를 Date 객체로 변환하는 함수
+  const parsePickupDate = (dateString) => {
+    if (!dateString) return null;
+
+    try {
+      const currentYear = new Date().getFullYear();
+
+      // [7월11일] 형태 파싱
+      const monthDayPattern = /^(\d{1,2})월(\d{1,2})일?$/;
+      const match = dateString.match(monthDayPattern);
+
+      if (match) {
+        const month = parseInt(match[1], 10) - 1; // 월은 0부터 시작
+        const day = parseInt(match[2], 10);
+        return new Date(currentYear, month, day);
+      }
+
+      // 다른 형태의 날짜도 처리 가능하도록 확장 가능
+      // [12/25], [2024-12-25] 등
+
+      return null;
+    } catch (error) {
+      console.error("날짜 파싱 오류:", error);
+      return null;
+    }
+  };
+
+  // 수령 가능한 상품인지 판단하는 함수 (클라이언트 사이드에서만 실행)
+  const isPickupAvailable = (dateString) => {
+    // 클라이언트 사이드 렌더링이 완료되지 않았으면 false 반환
+    if (!isClient) return false;
+
+    const pickupDate = parsePickupDate(dateString);
+    if (!pickupDate) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // 시간 부분을 제거하여 날짜만 비교
+    pickupDate.setHours(0, 0, 0, 0);
+
+    // 오늘 날짜 이전이거나 당일이면 수령 가능
+    return pickupDate <= today;
+  };
   const getProductBarcode = (id) =>
     products.find((p) => p.product_id === id)?.barcode || "";
   const getProductById = (id) =>
     products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
     products.find((p) => p.product_id === id)?.band_post_url || "";
+
+  // 주문 ID에서 게시물 키를 추출하는 함수
+  const extractPostKeyFromOrderId = (orderId) => {
+    if (!orderId || typeof orderId !== "string") return null;
+
+    // order_AADlR1ebdBcadJk0v-It9wZj_AAAUM7DZve7GrqtKaCpxuUoX_AAC6BX4X4vfcxrBGtomcNcIf_item1
+    // 패턴: order_{bandKey}_{postKey}_{commentKey}_{itemNumber}
+    const parts = orderId.split("_");
+    if (parts.length >= 4 && parts[0] === "order") {
+      return parts[2]; // 세 번째 부분이 게시물 키
+    }
+    return null;
+  };
   const formatCurrency = (amt) =>
     new Intl.NumberFormat("ko-KR", {
       style: "currency",
@@ -876,37 +1001,28 @@ export default function OrdersPage() {
     localStorage.removeItem("userId");
     router.replace("/login");
   };
-  const handleSearchChange = (e) => {
-    setInputValue(e.target.value);
-  }; // inputValue 업데이트만
 
-  // <<< 추가: 검색창 내용 지우기 함수 >>>
   const clearInputValue = () => {
     setInputValue("");
-    // 선택: 내용을 지울 때 바로 검색을 실행할지, 아니면 사용자가 다시 검색 버튼을 누르도록 할지 결정
-    // setSearchTerm(""); // 만약 바로 검색 결과도 초기화하고 싶다면 이 줄의 주석을 해제
-    // setCurrentPage(1); // 첫 페이지로 이동
   };
 
-  // 검색 버튼 클릭 이벤트 핸들러
+  // 검색 입력 시 inputValue 상태만 업데이트
+  const handleSearchChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
+  // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = () => {
-    setSearchTerm(inputValue.trim());
-    setCurrentPage(1);
-    setExactCustomerFilter(null); // <<< 일반 검색 시 정확 필터 초기화
+    const trimmedInput = inputValue.trim();
+    // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
+    if (trimmedInput !== searchTerm) {
+      console.log(`[Search] New search triggered: "${trimmedInput}"`);
+      setSearchTerm(trimmedInput);
+      setCurrentPage(1); // 검색 시 항상 1페이지로
+      setExactCustomerFilter(null); // 일반 검색 시 정확 고객명 필터 초기화
+      setSelectedOrderIds([]); // 선택 초기화
+    }
   };
-
-  // --- 👇 [추가] 테이블 셀 클릭 시 정확 필터 적용 함수 👇 ---
-  const handleExactCustomerSearch = (customerName) => {
-    if (!customerName || customerName === "-") return; // 이름 없거나 '-' 이면 무시
-    const trimmedName = customerName.trim();
-    console.log(`Exact customer search triggered for: "${trimmedName}"`); // 디버깅 로그
-    setInputValue(trimmedName); // 검색창에도 표시 (선택적)
-    setSearchTerm(""); // <<< 정확 필터 시 일반 검색어 초기화
-    setExactCustomerFilter(trimmedName); // <<< 정확 필터 설정
-    setCurrentPage(1);
-    setSelectedOrderIds([]); // 선택 항목 초기화
-  };
-  // --- 👆 [추가] 테이블 셀 클릭 시 정확 필터 적용 함수 👆 ---
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -915,16 +1031,33 @@ export default function OrdersPage() {
     }
   };
 
-  // --- 검색 초기화 함수 ---
+  // 검색 초기화 함수
   const handleClearSearch = () => {
-    setInputValue(""); // 검색 입력 필드 클리어
-    setFilterDateRange("30days");
+    console.log("[Search] Clearing search and filters.");
+    setInputValue("");
     setSearchTerm("");
-    setExactCustomerFilter(null); // <<< 정확 필터도 초기화
+    setExactCustomerFilter(null);
     setCurrentPage(1);
-    setFilterSelection("주문완료");
-    // useEffect 디바운스에 의해 searchTerm이 자동으로 빈 문자열로 업데이트됨
+    setFilterSelection("주문완료"); // 기본 필터로 복귀
+    setFilterDateRange("30days"); // 기본 날짜로 복귀
+    setCustomStartDate(null);
+    setCustomEndDate(null);
+    setSelectedOrderIds([]);
   };
+
+  // 정확한 고객명 검색
+  const handleExactCustomerSearch = (customerName) => {
+    if (!customerName || customerName === "-") return;
+    const trimmedName = customerName.trim();
+    console.log(`[Search] Exact customer search: "${trimmedName}"`);
+    setInputValue(trimmedName);
+    setSearchTerm(""); // 일반 검색어는 비움
+    setExactCustomerFilter(trimmedName); // 정확 검색어 설정
+    setCurrentPage(1);
+    setSelectedOrderIds([]);
+  };
+
+  // --- 기존 검색 관련 useEffect 및 핸들러들은 위 함수들로 대체/통합 ---
 
   const handleSortChange = (field) => {
     if (sortBy === field)
@@ -1074,6 +1207,119 @@ export default function OrdersPage() {
   };
 
   // --- 바코드 저장 함수 ---
+  // 댓글 모달 열기 함수
+  const openCommentsModal = async (order) => {
+    const extractedPostKey = extractPostKeyFromOrderId(order.order_id);
+    const postKey = order.post_key || order.post_number || extractedPostKey;
+
+    console.log("댓글 모달 열기 시도:", {
+      order_id: order.order_id,
+      post_key: order.post_key,
+      post_number: order.post_number,
+      extractedPostKey: extractedPostKey,
+      finalPostKey: postKey,
+      bandNumber: userData?.bandNumber,
+      accessToken: userData?.accessToken
+        ? "accessToken 있음"
+        : "accessToken 없음",
+      band_access_token: userData?.band_access_token
+        ? "band_access_token 있음"
+        : "band_access_token 없음",
+    });
+
+    if (!postKey) {
+      showError("게시물 정보가 없어 댓글을 불러올 수 없습니다.");
+      return;
+    }
+
+    // 밴드 키는 userData 또는 주문 데이터에서 가져오기 (band_key 사용)
+    const bandKey = userData?.band_key || order.band_key;
+
+    if (!bandKey) {
+      showError("밴드 정보가 없습니다.");
+      return;
+    }
+
+    if (!userData?.band_access_token) {
+      // 세션에 band_access_token이 없을 때 DB에서 가져와서 세션에 저장
+      try {
+        showInfo("BAND 토큰을 가져오는 중...");
+        const response = await fetch(
+          `/api/band/get-keys?userId=${userData.userId}`
+        );
+        const keysData = await response.json();
+
+        if (keysData.success && keysData.data.access_token) {
+          // 세션에 토큰 정보 업데이트
+          const updatedUserData = {
+            ...userData,
+            band_access_token: keysData.data.access_token,
+            band_key: keysData.data.band_key,
+          };
+          sessionStorage.setItem("userData", JSON.stringify(updatedUserData));
+
+          // 댓글 모달 열기 재시도
+          openCommentsModal(order);
+          return;
+        } else {
+          showError(
+            "BAND 토큰을 가져올 수 없습니다. 설정에서 BAND 연동을 확인해주세요."
+          );
+        }
+      } catch (error) {
+        console.error("BAND 토큰 가져오기 오류:", error);
+        showError("BAND 토큰을 가져오는 중 오류가 발생했습니다.");
+      }
+      return;
+    }
+
+    // 게시물 내용 가져오기
+    const product = getProductById(order.product_id);
+    const postContent =
+      product?.description ||
+      product?.content ||
+      `📢무거우시면 말씀하세요  배달 한번 갈게요📢
+
+        💥초초초 특가 😋
+
+
+🍉하우스 흑수박🍉
+.
+.
+.
+수박 시즌이 돌아왔습니다!!
+하우스수박은 비와 눈을 피해 자라면서 
+귀하디 귀하게 키운답니당!!
+맛도 좋구 식감도 좋으네요👍
+
+수박 과일이 결코 쉽진 않습니다
+1~2통을 맛보고 전체를 선택 매입하기 때문에
+간혹 않좋은게 있을수 있답니다
+문제가 있을땐 언제든 개인톡 남겨주세요🙏
+
+😋 초.특.가 
+하우스 흑수박 1통 9키로내외
+        👉👉  21,900원‼️
+
+오늘 오후 12시에 도착합니다 
+주문은 댓글로 시작할께요`;
+
+    setSelectedPostForComments({
+      postKey: postKey,
+      bandKey: bandKey,
+      productName: getProductNameById(order.product_id),
+      accessToken: userData.band_access_token,
+      postContent: postContent,
+    });
+    setIsCommentsModalOpen(true);
+  };
+
+  // 댓글 모달 닫기 함수
+  const closeCommentsModal = () => {
+    setIsCommentsModalOpen(false);
+    setSelectedPostForComments(null);
+  };
+
   const handleSaveBarcode = async (productId, barcodeValue) => {
     // <<< --- 디버깅 로그 추가 --- >>>
     console.log("handleSaveBarcode called with:", { productId, barcodeValue });
@@ -1491,7 +1737,7 @@ export default function OrdersPage() {
                   {/* order-1 */}
                   <input
                     type="text"
-                    placeholder="고객명, 상품명, 바코드..."
+                    placeholder="고객명, 상품명, 바코드, post_key..."
                     value={inputValue}
                     onChange={handleSearchChange}
                     onKeyDown={handleKeyDown}
@@ -1559,10 +1805,10 @@ export default function OrdersPage() {
                       disabled={isDataLoading || displayOrders.length === 0}
                     />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40">
                     상품명
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     <button
                       onClick={() => handleSortChange("customer_name")} // 정렬 함수
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -1571,16 +1817,14 @@ export default function OrdersPage() {
                       고객명 {getSortIcon("customer_name")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-60">
                     고객 댓글
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    상품번호
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
                     수량
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     <button
                       onClick={() => handleSortChange("total_amount")}
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -1589,7 +1833,7 @@ export default function OrdersPage() {
                       금액 {getSortIcon("total_amount")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">
                     <button
                       onClick={() => handleSortChange("ordered_at")}
                       className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -1598,18 +1842,24 @@ export default function OrdersPage() {
                       주문일시 {getSortIcon("ordered_at")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-32">
                     바코드
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     상태
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    서브상태
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                    게시물
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {isOrdersLoading && !ordersData && (
                   <tr>
-                    <td colSpan="11" className="px-6 py-10 text-center">
+                    <td colSpan="13" className="px-6 py-10 text-center">
                       <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                       <span className="text-sm text-gray-500 mt-2 block">
                         주문 목록 로딩 중...
@@ -1620,7 +1870,7 @@ export default function OrdersPage() {
                 {!isOrdersLoading && displayOrders.length === 0 && (
                   <tr>
                     <td
-                      colSpan="11"
+                      colSpan="13"
                       className="px-6 py-10 text-center text-sm text-gray-500"
                     >
                       {searchTerm ||
@@ -1666,7 +1916,7 @@ export default function OrdersPage() {
                           </div>
                         </td>
                         <td
-                          className="px-4 py-10 text-sm text-gray-700 font-medium max-w-[200px] truncate hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가
+                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44 hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가, truncate 제거
                           title={getProductNameById(order.product_id)}
                           onClick={(e) => {
                             // 클릭 핸들러 추가
@@ -1677,10 +1927,50 @@ export default function OrdersPage() {
                             setFilterSelection("all");
                           }}
                         >
-                          {getProductNameById(order.product_id)}
+                          {(() => {
+                            const productName = getProductNameById(
+                              order.product_id
+                            );
+                            const { name, date } =
+                              parseProductName(productName);
+                            const isAvailable =
+                              isClient && date
+                                ? isPickupAvailable(date)
+                                : false;
+
+                            return (
+                              <div className="flex flex-col">
+                                <div
+                                  className={`font-medium ${
+                                    isAvailable
+                                      ? "text-orange-600 font-bold"
+                                      : ""
+                                  }`}
+                                >
+                                  {name}
+                                </div>
+                                {date && (
+                                  <div
+                                    className={`text-xs mt-0.5 ${
+                                      isAvailable
+                                        ? "text-orange-500 font-medium"
+                                        : "text-gray-500"
+                                    }`}
+                                  >
+                                    [{date}]
+                                    {isAvailable && (
+                                      <span className="ml-1 text-orange-600 font-bold">
+                                        ✓ 수령가능
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td
-                          className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap max-w-[100px] truncate hover:text-orange-600 hover:underline cursor-pointer"
+                          className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
                           title={order.customer_name}
                           onClick={(e) => {
                             e.stopPropagation(); // 행 전체 onClick(모달) 방지
@@ -1690,24 +1980,24 @@ export default function OrdersPage() {
                           {order.customer_name || "-"}
                         </td>
                         <td
-                          className="px-4 py-3 text-sm text-gray-600 max-w-[100px] truncate hidden md:table-cell"
+                          className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
                           title={order.comment || ""}
                         >
-                          {order.comment || "-"}
+                          <div className="line-clamp-3 break-words leading-tight">
+                            {order.comment || "-"}
+                          </div>
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-700 font-medium">
-                          {order.item_number || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+
+                        <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
                           {order.quantity || 0}
                         </td>
-                        <td className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                        <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
                           {formatCurrency(order.total_amount)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
                           {formatDate(order.ordered_at)}
                         </td>
-                        <td className="px-4 py-3 text-center hidden md:table-cell">
+                        <td className="py-2 pr-2 text-center hidden md:table-cell w-32">
                           {(() => {
                             // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
                             const selectedOption =
@@ -1731,58 +2021,136 @@ export default function OrdersPage() {
                           })()}
                         </td>
 
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
+                          <StatusBadge
+                            status={order.status}
+                            processingMethod={order.processing_method}
+                          />
+                        </td>
+
+                        {/* 서브상태 셀 */}
+                        <td className="py-2 pr-2 text-center w-24">
                           {(() => {
-                            // 즉시 실행 함수 표현식(IIFE) 또는 별도 헬퍼 함수 사용 가능
                             const actualStatus = order.status;
-                            const actualSubStatus = order.sub_status; // sub_status 값도 가져옴
-                            return (
-                              <div className="flex flex-col items-center">
-                                {" "}
-                                {/* 세로 정렬을 위해 div 추가 */}
-                                {/* 메인 상태 배지 (항상 order.status 기준) */}
-                                <StatusBadge status={actualStatus} />
-                                {/* 부가 상태가 있으면 추가 배지 표시 (수령완료일 때는 표시하지 않음) */}
-                                {actualStatus !== "수령완료" &&
-                                  actualSubStatus === "확인필요" && (
-                                    <span
-                                      className="mt-2 inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white"
-                                      title="부가 상태: 확인필요"
-                                    >
-                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                      확인 필요
-                                    </span>
-                                  )}
-                                {actualStatus !== "수령완료" &&
-                                  actualSubStatus === "미수령" && (
-                                    <span
-                                      className="mt-2 inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white"
-                                      title="부가 상태: 미수령"
-                                    >
-                                      <ExclamationCircleIcon className="w-3 h-3 mr-1" />{" "}
-                                      미수령
-                                    </span>
-                                  )}
-                                {actualStatus === "수령완료" && (
-                                  <span
-                                    className="mt-1 inline-flex items-center  px-2 py-0.5 text-xs font-medium text-gray-700"
-                                    title="부가 상태: 수령완료"
-                                  >
-                                    {/* <CheckCircleIcon className="w-3 h-3 mr-1" />{" "} */}
-                                    {formatDate(order.completed_at)}
-                                  </span>
-                                )}
-                                {/* 다른 sub_status 값에 대한 처리 추가 가능 */}
-                              </div>
-                            );
+                            const actualSubStatus = order.sub_status;
+
+                            if (
+                              actualStatus !== "수령완료" &&
+                              actualSubStatus === "확인필요"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white">
+                                  확인필요
+                                </span>
+                              );
+                            }
+
+                            if (
+                              actualStatus !== "수령완료" &&
+                              actualSubStatus === "미수령"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                                  미수령
+                                </span>
+                              );
+                            }
+
+                            if (
+                              actualStatus === "수령완료" &&
+                              order.completed_at
+                            ) {
+                              return (
+                                <span className="text-xs text-gray-600">
+                                  {formatDate(order.completed_at)}
+                                </span>
+                              );
+                            }
+
+                            return "-";
                           })()}
+                        </td>
+
+                        {/* 게시물 버튼 셀 */}
+                        <td className="py-2 pr-2 text-center w-20">
+                          {(() => {
+                            // 디버깅: 첫 번째 주문의 모든 필드 확인
+                            if (order.order_id === displayOrders[0]?.order_id) {
+                              console.log("=== 주문 데이터 전체 확인 ===");
+                              console.log("전체 order 객체:", order);
+                              console.log("post 관련 필드들:");
+                              console.log("- post_key:", order.post_key);
+                              console.log("- post_number:", order.post_number);
+                              console.log(
+                                "- band_post_url:",
+                                order.band_post_url
+                              );
+
+                              // 모든 필드 이름 출력
+                              console.log(
+                                "모든 필드 이름들:",
+                                Object.keys(order)
+                              );
+
+                              // post가 포함된 모든 필드 찾기
+                              const postFields = Object.keys(order).filter(
+                                (key) => key.toLowerCase().includes("post")
+                              );
+                              console.log("post가 포함된 필드들:", postFields);
+                              postFields.forEach((field) => {
+                                console.log(`- ${field}:`, order[field]);
+                              });
+                            }
+
+                            // 주문 ID에서 게시물 키 추출 시도
+                            const extractedPostKey = extractPostKeyFromOrderId(
+                              order.order_id
+                            );
+                            const hasPostInfo =
+                              order.post_key ||
+                              order.post_number ||
+                              extractedPostKey;
+
+                            if (order.order_id === displayOrders[0]?.order_id) {
+                              console.log(
+                                "추출된 게시물 키:",
+                                extractedPostKey
+                              );
+                              console.log("최종 게시물 정보:", hasPostInfo);
+                            }
+
+                            // console.log(
+                            //   `주문 ${order.order_id} 댓글 버튼 표시:`,
+                            //   !!hasPostInfo
+                            // );
+                            return hasPostInfo;
+                          })() ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation(); // 행 클릭 이벤트 방지
+                                openCommentsModal(order);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                              title="게시물 보기"
+                            >
+                              <span className="text-xs">보기</span>
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-400 cursor-not-allowed"
+                              title="게시물 정보 없음"
+                            >
+                              <span className="text-xs">-</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
 
                       {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
                       {hasMultipleBarcodeOptions && (
                         <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                          <td colSpan="11" className="px-4 py-2">
+                          <td colSpan="12" className="py-2 pr-2">
                             <div onClick={(e) => e.stopPropagation()}>
                               <BarcodeOptionSelector
                                 order={order}
@@ -1955,7 +2323,42 @@ export default function OrdersPage() {
               {/* 모달 헤더 */}
               <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {getProductNameById(selectedOrder.product_id)}
+                  {(() => {
+                    const productName = getProductNameById(
+                      selectedOrder.product_id
+                    );
+                    const { name, date } = parseProductName(productName);
+                    const isAvailable =
+                      isClient && date ? isPickupAvailable(date) : false;
+
+                    return (
+                      <div className="flex flex-col">
+                        <div
+                          className={`${
+                            isAvailable ? "text-orange-600 font-bold" : ""
+                          }`}
+                        >
+                          {name}
+                        </div>
+                        {date && (
+                          <div
+                            className={`text-sm mt-1 ${
+                              isAvailable
+                                ? "text-orange-500 font-medium"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            [{date}]
+                            {isAvailable && (
+                              <span className="ml-1 text-orange-600 font-bold">
+                                ✓ 수령가능
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </h3>
                 <button
                   onClick={closeDetailModal}
@@ -1992,6 +2395,17 @@ export default function OrdersPage() {
                     >
                       <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
                     </button>
+                    {/* 주문 처리 탭 */}
+                    <button
+                      onClick={() => handleTabChange("processing")}
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
+                        activeTab === "processing"
+                          ? "border-orange-500 text-orange-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
+                    </button>
                     {/* 주문 보러가기 탭 */}
                     {getPostUrlByProductId(selectedOrder.product_id) && (
                       <a
@@ -2007,6 +2421,17 @@ export default function OrdersPage() {
                         <ArrowTopRightOnSquareIcon className="w-5 h-5 mr-1.5" />
                         주문 보러가기
                       </a>
+                    )}
+
+                    {/* 댓글 보기 탭 */}
+                    {selectedOrder.post_number && (
+                      <button
+                        onClick={() => openCommentsModal(selectedOrder)}
+                        className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
+                      >
+                        <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-1.5" />
+                        댓글 보기
+                      </button>
                     )}
                   </div>
                 </div>
@@ -2098,7 +2523,10 @@ export default function OrdersPage() {
                             <span className="text-sm font-medium text-gray-500 mr-2">
                               현재:
                             </span>
-                            <StatusBadge status={selectedOrder.status} />
+                            <StatusBadge
+                              status={selectedOrder.status}
+                              processingMethod={selectedOrder.processing_method}
+                            />
                           </div>
                           <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">
                             {["주문완료", "주문취소", "확인필요"].map(
@@ -2106,19 +2534,59 @@ export default function OrdersPage() {
                                 const isCurrent =
                                   selectedOrder.status === status;
                                 return (
-                                  <button
+                                  <div
                                     key={status}
-                                    onClick={() =>
-                                      handleStatusChange(
-                                        selectedOrder.order_id,
-                                        status
-                                      )
-                                    }
-                                    disabled={isCurrent}
-                                    className={getStatusButtonStyle(status)}
+                                    className="flex items-center gap-1"
                                   >
-                                    {getStatusIcon(status)} {status} 처리
-                                  </button>
+                                    <button
+                                      onClick={() =>
+                                        handleStatusChange(
+                                          selectedOrder.order_id,
+                                          status
+                                        )
+                                      }
+                                      disabled={isCurrent}
+                                      className={getStatusButtonStyle(status)}
+                                    >
+                                      {getStatusIcon(status)} {status} 처리
+                                    </button>
+                                    {/* AI/패턴 처리 아이콘 - 주문완료 버튼 옆에만 표시 */}
+                                    {status === "주문완료" &&
+                                      selectedOrder.processing_method && (
+                                        <div className="flex items-center">
+                                          {selectedOrder.processing_method ===
+                                            "ai" && (
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
+                                              title="AI 처리된 주문"
+                                            >
+                                              <SparklesIcon className="w-3 h-3" />
+                                              <span>AI</span>
+                                            </div>
+                                          )}
+                                          {selectedOrder.processing_method ===
+                                            "pattern" && (
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
+                                              title="패턴 처리된 주문"
+                                            >
+                                              <FunnelIcon className="w-3 h-3" />
+                                              <span>패턴</span>
+                                            </div>
+                                          )}
+                                          {selectedOrder.processing_method ===
+                                            "manual" && (
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
+                                              title="수동 처리된 주문"
+                                            >
+                                              <PencilSquareIcon className="w-3 h-3" />
+                                              <span>수동</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                  </div>
                                 );
                               }
                             )}
@@ -2133,7 +2601,47 @@ export default function OrdersPage() {
                       {[
                         {
                           label: "상품명",
-                          value: getProductNameById(selectedOrder.product_id),
+                          value: (() => {
+                            const productName = getProductNameById(
+                              selectedOrder.product_id
+                            );
+                            const { name, date } =
+                              parseProductName(productName);
+                            const isAvailable =
+                              isClient && date
+                                ? isPickupAvailable(date)
+                                : false;
+
+                            return (
+                              <div className="flex flex-col">
+                                <div
+                                  className={`${
+                                    isAvailable
+                                      ? "text-orange-600 font-bold"
+                                      : ""
+                                  }`}
+                                >
+                                  {name}
+                                </div>
+                                {date && (
+                                  <div
+                                    className={`text-sm mt-1 ${
+                                      isAvailable
+                                        ? "text-orange-500 font-medium"
+                                        : "text-gray-500"
+                                    }`}
+                                  >
+                                    [{date}]
+                                    {isAvailable && (
+                                      <span className="ml-1 text-orange-600 font-bold">
+                                        ✓ 수령가능
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })(),
                           readOnly: true,
                         },
                         // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
@@ -2299,6 +2807,387 @@ export default function OrdersPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* 주문 처리 탭 내용 */}
+                  {activeTab === "processing" && (
+                    <div className="space-y-5">
+                      {/* 처리 방법 카드 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          주문 처리 방법
+                        </label>
+                        <div className="flex items-center space-x-3">
+                          {selectedOrder.processing_method === "pattern" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-green-700">
+                                  패턴 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  숫자나 수량 단위가 감지되어 자동
+                                  처리되었습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {selectedOrder.processing_method === "ai" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <SparklesIcon className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-blue-700">
+                                  AI 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  AI가 댓글을 분석하여 주문을 추출했습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {selectedOrder.processing_method === "fallback" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                <ExclamationCircleIcon className="w-5 h-5 text-yellow-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-yellow-700">
+                                  Fallback 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  패턴이나 AI로 처리되지 않아 기본값으로
+                                  처리되었습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {!selectedOrder.processing_method && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                                <XCircleIcon className="w-5 h-5 text-gray-400" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-500">
+                                  처리 방법 없음
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  처리 방법이 기록되지 않았습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </LightCard>
+
+                      {/* 패턴 처리 상세 정보 */}
+                      {selectedOrder.processing_method === "pattern" && (
+                        <LightCard padding="p-4">
+                          <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                            패턴 처리 상세
+                          </label>
+                          <div className="space-y-3">
+                            {/* 감지된 패턴 */}
+                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <span className="text-sm font-medium text-gray-700">
+                                감지된 패턴
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                {(() => {
+                                  const comment = selectedOrder.comment || "";
+                                  const quantity = selectedOrder.quantity || 1;
+
+                                  // 숫자만 있는 경우 (패턴 1)
+                                  if (/^\s*\d+\s*$/.test(comment)) {
+                                    return (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                                          숫자 패턴
+                                        </span>
+                                        <span className="text-sm text-gray-600">
+                                          &quot;{comment.trim()}&quot;
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  // 숫자 + 단위가 있는 경우 (패턴 2)
+                                  if (/\d+\s*[가-힣]+/.test(comment)) {
+                                    return (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                                          수량 단위
+                                        </span>
+                                        <span className="text-sm text-gray-600">
+                                          &quot;{comment.trim()}&quot;
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="flex items-center space-x-1">
+                                      <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                        기타 패턴
+                                      </span>
+                                      <span className="text-sm text-gray-600">
+                                        &quot;{comment.trim()}&quot;
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* 추출된 수량 */}
+                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <span className="text-sm font-medium text-gray-700">
+                                추출된 수량
+                              </span>
+                              <span className="text-sm text-gray-900 font-semibold">
+                                {selectedOrder.quantity}개
+                              </span>
+                            </div>
+
+                            {/* 처리 속도 */}
+                            <div className="flex items-center justify-between py-2">
+                              <span className="text-sm font-medium text-gray-700">
+                                처리 속도
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-sm text-green-600 font-medium">
+                                  즉시 처리
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </LightCard>
+                      )}
+
+                      {/* AI 추출 결과 카드 */}
+                      {selectedOrder.processing_method === "ai" &&
+                        selectedOrder.ai_extraction_result && (
+                          <LightCard padding="p-4">
+                            <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                              AI 추출 결과
+                            </label>
+
+                            {(() => {
+                              try {
+                                const aiResult =
+                                  typeof selectedOrder.ai_extraction_result ===
+                                  "string"
+                                    ? JSON.parse(
+                                        selectedOrder.ai_extraction_result
+                                      )
+                                    : selectedOrder.ai_extraction_result;
+
+                                return (
+                                  <div className="space-y-4">
+                                    {/* 추출된 수량 */}
+                                    {aiResult.quantity !== undefined && (
+                                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          추출된 수량
+                                        </span>
+                                        <span className="text-sm text-gray-900 font-semibold">
+                                          {aiResult.quantity}개
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* AI 추론 과정 */}
+                                    {aiResult.reason && (
+                                      <div>
+                                        <span className="text-sm font-medium text-gray-700 block mb-2">
+                                          AI 추론 과정
+                                        </span>
+                                        <div className="bg-gray-50 rounded-md p-3">
+                                          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                            {aiResult.reason}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* 상품 매칭 정보 */}
+                                    {aiResult.productItemNumber && (
+                                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          매칭된 상품 번호
+                                        </span>
+                                        <span className="text-sm text-gray-900 font-semibold">
+                                          #{aiResult.productItemNumber}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* 가격 정보 */}
+                                    {aiResult.actualUnitPrice && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between py-1">
+                                          <span className="text-sm text-gray-600">
+                                            단가
+                                          </span>
+                                          <span className="text-sm text-gray-900">
+                                            {formatCurrency(
+                                              aiResult.actualUnitPrice
+                                            )}
+                                          </span>
+                                        </div>
+                                        {aiResult.actualTotalPrice && (
+                                          <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-2">
+                                            <span className="text-sm font-medium text-gray-700">
+                                              총 금액
+                                            </span>
+                                            <span className="text-sm text-gray-900 font-semibold">
+                                              {formatCurrency(
+                                                aiResult.actualTotalPrice
+                                              )}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* 처리 상태 */}
+                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                      <span className="text-sm font-medium text-gray-700">
+                                        처리 상태
+                                      </span>
+                                      <div className="flex items-center space-x-2">
+                                        {aiResult.isOrder ? (
+                                          <>
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span className="text-sm text-green-600 font-medium">
+                                              주문 확인
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                            <span className="text-sm text-red-600 font-medium">
+                                              주문 아님
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* 모호성 여부 */}
+                                    {aiResult.isAmbiguous !== undefined && (
+                                      <div className="flex items-center justify-between py-2">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          모호성 여부
+                                        </span>
+                                        <div className="flex items-center space-x-2">
+                                          {aiResult.isAmbiguous ? (
+                                            <>
+                                              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                              <span className="text-sm text-yellow-600 font-medium">
+                                                모호함
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                              <span className="text-sm text-green-600 font-medium">
+                                                명확함
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } catch (error) {
+                                return (
+                                  <div className="bg-red-50 rounded-md p-3">
+                                    <p className="text-xs text-red-700">
+                                      AI 결과 파싱 오류: {error.message}
+                                    </p>
+                                    <details className="mt-2">
+                                      <summary className="text-xs text-red-600 cursor-pointer">
+                                        원본 데이터 보기
+                                      </summary>
+                                      <pre className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-all">
+                                        {JSON.stringify(
+                                          selectedOrder.ai_extraction_result,
+                                          null,
+                                          2
+                                        )}
+                                      </pre>
+                                    </details>
+                                  </div>
+                                );
+                              }
+                            })()}
+                          </LightCard>
+                        )}
+
+                      {/* 원본 댓글 카드 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          원본 고객 댓글
+                        </label>
+                        <div className="bg-gray-50 rounded-md p-3">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                            {selectedOrder.comment || (
+                              <span className="italic text-gray-400">
+                                댓글 없음
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </LightCard>
+
+                      {/* 처리 시간 정보 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          처리 시간 정보
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">
+                              주문 생성
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {formatDate(selectedOrder.ordered_at)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">
+                              처리 소요시간
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              {selectedOrder.ordered_at
+                                ? (() => {
+                                    const minutes = getTimeDifferenceInMinutes(
+                                      selectedOrder.ordered_at
+                                    );
+                                    if (minutes < 60) {
+                                      return `${minutes}분 전`;
+                                    } else if (minutes < 1440) {
+                                      return `${Math.floor(
+                                        minutes / 60
+                                      )}시간 전`;
+                                    } else {
+                                      return `${Math.floor(
+                                        minutes / 1440
+                                      )}일 전`;
+                                    }
+                                  })()
+                                : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      </LightCard>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* 모달 푸터 */}
@@ -2323,12 +3212,28 @@ export default function OrdersPage() {
                     {getStatusIcon("수령완료")} 수령완료 처리
                   </button>
                 )}
-                {/* info 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
-                {activeTab === "info" && <div className="w-[130px]"></div>}
+                {/* info, processing 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
+                {(activeTab === "info" || activeTab === "processing") && (
+                  <div className="w-[130px]"></div>
+                )}
               </div>
             </div>
           </div>
         )}
+
+        {/* 댓글 모달 */}
+        <CommentsModal
+          isOpen={isCommentsModalOpen}
+          onClose={closeCommentsModal}
+          postKey={selectedPostForComments?.postKey}
+          bandKey={selectedPostForComments?.bandKey}
+          postTitle={selectedPostForComments?.productName}
+          accessToken={selectedPostForComments?.accessToken}
+          postContent={selectedPostForComments?.postContent}
+        />
+
+        {/* 토스트 알림 컨테이너 */}
+        <ToastContainer toasts={toasts} hideToast={hideToast} />
       </main>
     </div>
   );
@@ -2337,6 +3242,7 @@ export default function OrdersPage() {
 // 바코드 옵션 선택 컴포넌트
 function BarcodeOptionSelector({ order, product, onOptionChange }) {
   const [selectedOption, setSelectedOption] = useState(null);
+  const isCompleted = order.status === "수령완료";
 
   // 바코드 옵션이 있는지 확인
   const barcodeOptions = useMemo(
@@ -2345,7 +3251,73 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
   );
   const hasOptions = barcodeOptions.length > 1; // 기본 옵션 외에 다른 옵션이 있는지
 
-  // 초기 선택값 설정 (저장된 선택값 또는 메인 옵션)
+  // AI가 매칭한 옵션과 바코드 옵션을 매칭하는 함수
+  const findMatchingBarcodeOption = (aiSelectedOption, customerComment) => {
+    if (!aiSelectedOption && !customerComment) return null;
+
+    // 매칭 키워드 정의
+    const matchingKeywords = {
+      반통: ["반통", "반"],
+      "1통": ["1통", "한통", "일통", "1개", "한개"],
+      "2통": ["2통", "두통", "이통", "2개", "두개"],
+      "3통": ["3통", "세통", "삼통", "3개", "세개"],
+      "4통": ["4통", "네통", "사통", "4개", "네개"],
+      "5통": ["5통", "다섯통", "오통", "5개", "다섯개"],
+      "1개": ["1개", "한개", "일개"],
+      "2개": ["2개", "두개", "이개"],
+      "3개": ["3개", "세개", "삼개"],
+      "1팩": ["1팩", "한팩", "일팩"],
+      "2팩": ["2팩", "두팩", "이팩"],
+      "1박스": ["1박스", "한박스", "일박스"],
+      "2박스": ["2박스", "두박스", "이박스"],
+      "1세트": ["1세트", "한세트", "일세트"],
+      "2세트": ["2세트", "두세트", "이세트"],
+    };
+
+    // 1. AI가 선택한 옵션과 바코드 옵션 직접 매칭
+    if (aiSelectedOption) {
+      const aiOption = aiSelectedOption.toLowerCase();
+      const matchedOption = barcodeOptions.find((option) => {
+        const optionName = option.name.toLowerCase();
+        return optionName.includes(aiOption) || aiOption.includes(optionName);
+      });
+      if (matchedOption) {
+        console.log(
+          `[바코드 옵션] AI 매칭: "${aiSelectedOption}" → "${matchedOption.name}"`
+        );
+        return matchedOption;
+      }
+    }
+
+    // 2. 고객 댓글과 바코드 옵션 키워드 매칭
+    if (customerComment) {
+      const comment = customerComment.toLowerCase();
+
+      for (const [optionKey, keywords] of Object.entries(matchingKeywords)) {
+        // 댓글에 해당 키워드가 포함되어 있는지 확인
+        const hasKeyword = keywords.some((keyword) =>
+          comment.includes(keyword)
+        );
+        if (hasKeyword) {
+          // 바코드 옵션에서 해당 키워드를 포함한 옵션 찾기
+          const matchedOption = barcodeOptions.find((option) => {
+            const optionName = option.name.toLowerCase();
+            return keywords.some((keyword) => optionName.includes(keyword));
+          });
+          if (matchedOption) {
+            console.log(
+              `[바코드 옵션] 댓글 매칭: "${customerComment}" → "${matchedOption.name}"`
+            );
+            return matchedOption;
+          }
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // 초기 선택값 설정 (우선순위: 저장된 선택값 > AI 매칭 > 메인 옵션)
   useEffect(() => {
     if (order.selected_barcode_option) {
       // 이미 선택된 옵션이 있으면 해당 옵션 선택
@@ -2356,9 +3328,19 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
         savedOption || barcodeOptions.find((opt) => opt.is_main)
       );
     } else {
-      // 기본값은 메인 옵션
-      const mainOption = barcodeOptions.find((opt) => opt.is_main);
-      setSelectedOption(mainOption || barcodeOptions[0]);
+      // 🔥 AI가 매칭한 옵션을 기본값으로 설정
+      const aiMatchedOption = findMatchingBarcodeOption(
+        order.ai_extraction_result?.selectedOption,
+        order.comment
+      );
+
+      if (aiMatchedOption) {
+        setSelectedOption(aiMatchedOption);
+      } else {
+        // AI 매칭 실패 시 기본값은 메인 옵션
+        const mainOption = barcodeOptions.find((opt) => opt.is_main);
+        setSelectedOption(mainOption || barcodeOptions[0]);
+      }
     }
   }, [order, barcodeOptions]);
 
@@ -2380,7 +3362,9 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
           {barcodeOptions.map((option, index) => (
             <label
               key={index}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer transition-all text-sm ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
+                isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              } transition-all text-sm ${
                 selectedOption?.barcode === option.barcode
                   ? "border-blue-400 bg-blue-100 shadow-sm"
                   : "border-gray-200 bg-white hover:border-gray-300"
@@ -2390,6 +3374,7 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
                 type="radio"
                 name={`barcode-option-${order.order_id}`}
                 checked={selectedOption?.barcode === option.barcode}
+                disabled={isCompleted}
                 onChange={() => handleOptionSelect(option)}
                 className="h-3 w-3 text-gray-600 focus:ring-gray-500"
               />

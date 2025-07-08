@@ -60,21 +60,36 @@ const fetchOrders = async (key) => {
     }
   }
 
-  // 검색 필터링 - 한글 안전 처리
+  // 검색 필터링 - post_key 우선 처리
   if (filters.search && filters.search !== "undefined") {
     const searchTerm = filters.search;
-    // 한글 문자열 처리를 위해 URL 인코딩하지 않고 직접 처리
-    try {
-      query = query.or(
-        `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%`
-      );
-    } catch (error) {
-      console.warn(
-        "Search filter error, falling back to simple filtering:",
-        error
-      );
-      // 에러 발생시 고객명만으로 필터링
-      query = query.ilike("customer_name", `%${searchTerm}%`);
+
+    // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
+    const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
+
+    console.log(`[useOrdersClient DEBUG] Search term: "${searchTerm}"`);
+    console.log(
+      `[useOrdersClient DEBUG] Is post_key search: ${isPostKeySearch}`
+    );
+
+    if (isPostKeySearch) {
+      // post_key 정확 매칭
+      console.log(`[useOrdersClient DEBUG] Applying post_key exact match`);
+      query = query.eq("post_key", searchTerm);
+    } else {
+      // 일반 검색 - 한글 안전 처리
+      try {
+        query = query.or(
+          `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
+        );
+      } catch (error) {
+        console.warn(
+          "Search filter error, falling back to simple filtering:",
+          error
+        );
+        // 에러 발생시 고객명만으로 필터링
+        query = query.ilike("customer_name", `%${searchTerm}%`);
+      }
     }
   }
 

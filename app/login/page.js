@@ -169,13 +169,13 @@ export default function LoginPage() {
         method: "POST",
         headers: {
           apikey: supabaseAnonKey, // 필수!
-          // Authorization: "Bearer INVALID_TOKEN_FOR_TEST", // 임시 헤더 추가
           "Content-Type": "application/json",
         },
         body: JSON.stringify(credentials), // 요청 본문
       });
 
       const result = await response.json(); // 응답 본문을 JSON으로 파싱
+      console.log("Login response:", result); // 전체 응답 로깅
 
       if (!response.ok) {
         // HTTP 상태 코드가 2xx가 아닌 경우
@@ -194,6 +194,7 @@ export default function LoginPage() {
         const userDetails = result.user;
         const token = result.token;
 
+        // 아이디/비밀번호 저장 처리
         if (rememberId) {
           localStorage.setItem(REMEMBERED_LOGIN_ID_KEY, loginId);
           localStorage.setItem(REMEMBER_ID_CHECKBOX_KEY, "true");
@@ -210,33 +211,74 @@ export default function LoginPage() {
           localStorage.removeItem(REMEMBER_PASSWORD_CHECKBOX_KEY);
         }
 
+        // 서버에서 받은 데이터 구조에 맞게 수정
         const userDataToStore = {
+          // 기본 정보
           userId: userDetails.userId,
           loginId: userDetails.loginId,
+
+          // 상점 정보 (서버에서 받은 필드명 그대로 사용하면서 camelCase도 함께 저장)
           storeName: userDetails.storeName,
+          store_name: userDetails.storeName,
+          storeAddress: userDetails.storeAddress,
+          store_address: userDetails.storeAddress,
           ownerName: userDetails.ownerName,
+          owner_name: userDetails.ownerName,
+          phoneNumber: userDetails.phoneNumber,
+          phone_number: userDetails.phoneNumber,
+
+          // BAND 관련 정보
+          bandUrl: userDetails.bandUrl,
+          band_url: userDetails.bandUrl,
           bandNumber: userDetails.bandNumber,
+          band_number: userDetails.bandNumber,
+          band_access_token: userDetails.band_access_token,
+          band_key: userDetails.band_key,
+
+          // 기타 정보
           naverId: userDetails.naverId,
+          naver_id: userDetails.naverId,
           excludedCustomers: userDetails.excludedCustomers || [],
+          excluded_customers: userDetails.excludedCustomers || [],
+          isActive: userDetails.isActive,
+          is_active: userDetails.isActive,
+          subscription: userDetails.subscription,
+          role: userDetails.role,
+          createdAt: userDetails.createdAt,
+          created_at: userDetails.createdAt,
+          updatedAt: userDetails.updatedAt,
+          updated_at: userDetails.updatedAt,
+
+          // JWT 토큰
           token: token,
         };
+
         console.log("SessionStorage에 저장할 데이터:", userDataToStore);
+
+        // 세션 스토리지에 사용자 데이터 저장
         sessionStorage.setItem("userData", JSON.stringify(userDataToStore));
 
+        // localStorage에도 userId 저장 (다른 페이지와 일관성)
+        localStorage.setItem("userId", userDetails.userId);
+
         setSuccess(
-          `${userDetails.storeName} ${userDetails.ownerName}님, 환영합니다!`
+          `${userDetails.storeName || userDetails.store_name || "고객님"} ${
+            userDetails.ownerName || userDetails.owner_name || ""
+          }님, 환영합니다!`
         );
+
+        // 대시보드로 이동
         setTimeout(() => {
           router.replace("/dashboard");
         }, 500);
       } else {
         // 성공 응답(200)이지만 백엔드 로직상 실패 처리된 경우 (예: success: false)
+        console.error("Login response structure invalid:", result);
         setError(result.message || "로그인에 실패했습니다. (응답 형식 오류)");
       }
     } catch (err) {
       // 네트워크 오류 또는 JSON 파싱 오류 등
       console.error("Login fetch exception:", err);
-      // === 오류 메시지를 상태에 저장 ===
       setError("로그인 요청 중 네트워크 오류가 발생했습니다.");
     } finally {
       setLoading(false);

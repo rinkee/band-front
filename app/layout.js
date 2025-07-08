@@ -3,7 +3,7 @@
 
 import localFont from "next/font/local";
 import "./globals.css"; // 전역 CSS 파일을 임포트합니다.
-import { useState, useEffect } from "react"; // React 훅을 임포트합니다.
+import { useState, useEffect, Suspense } from "react"; // React 훅과 Suspense를 임포트합니다.
 import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 Next.js 훅을 임포트합니다.
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
@@ -235,7 +235,7 @@ function LayoutContent({ children }) {
                     >
                       상품 관리
                     </Link>
-                    {/* <Link
+                    <Link
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/posts"
@@ -244,7 +244,7 @@ function LayoutContent({ children }) {
                       }`}
                     >
                       게시물 관리
-                    </Link> */}
+                    </Link>
                     <Link
                       href="/orders"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -366,7 +366,7 @@ function LayoutContent({ children }) {
                     </svg>
                     상품 관리
                   </Link>
-                  {/* <Link
+                  <Link
                     href="/posts"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/posts"
@@ -388,7 +388,7 @@ function LayoutContent({ children }) {
                       />
                     </svg>
                     게시물 관리
-                  </Link> */}
+                  </Link>
                   <Link
                     href="/orders"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
@@ -502,7 +502,9 @@ function LayoutContent({ children }) {
             className="flex-1 overflow-y-auto w-full"
           >
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
-            <main className="  mx-auto">{children}</main>
+            <main className="mx-auto">
+              <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+            </main>
           </div>
         </div>
       </body>

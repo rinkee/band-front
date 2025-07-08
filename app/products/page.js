@@ -9,6 +9,8 @@ import {
   useProductClient,
   useProductClientMutations,
 } from "../hooks/useProductsClient";
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/ToastContainer";
 
 import JsBarcode from "jsbarcode";
 import { useSWRConfig } from "swr";
@@ -40,6 +42,8 @@ import {
   ArrowUturnLeftIcon,
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
+  ClipboardDocumentListIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 
 // --- 커스텀 라디오 버튼 그룹 컴포넌트 ---
@@ -665,6 +669,9 @@ export default function ProductsPage() {
   const { mutate } = useSWRConfig();
   const checkbox = useRef(); // 사용되지 않는다면 제거 가능
 
+  // 토스트 알림 훅
+  const { toasts, showSuccess, showError, hideToast } = useToast();
+
   // 판매 상태 필터 옵션 정의
   const statusFilterOptions = [
     { value: "all", label: "전체" },
@@ -738,13 +745,13 @@ export default function ProductsPage() {
           setIsModalOpen(true);
         } else {
           console.error("상품 상세 데이터 구조 이상:", data);
-          alert("상품 상세 정보를 가져오는 데 실패했습니다.");
+          showError("상품 상세 정보를 가져오는 데 실패했습니다.");
           handleCloseModal();
         }
       },
       onError: (error) => {
         console.error("상품 상세 조회 오류:", error);
-        alert("상품 정보를 불러오는데 실패했습니다.");
+        showError("상품 정보를 불러오는데 실패했습니다.");
         handleCloseModal();
       },
       revalidateOnFocus: false,
@@ -836,6 +843,47 @@ export default function ProductsPage() {
     editedProduct.option_barcode_2,
     editedProduct.option_barcode_3,
   ]);
+
+  // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
+  const parseProductName = (productName) => {
+    if (!productName) {
+      return { name: productName, date: null };
+    }
+
+    // [날짜] 패턴 찾기 (예: [12/25], [2024-12-25], [25일] 등)
+    const datePattern = /^\[([^\]]+)\]\s*(.*)$/;
+    const match = productName.match(datePattern);
+
+    if (match) {
+      return {
+        date: match[1], // 대괄호 안의 날짜 부분
+        name: match[2].trim() || productName, // 나머지 상품명 부분
+      };
+    }
+
+    // 패턴이 없으면 전체를 상품명으로 처리
+    return { name: productName, date: null };
+  };
+
+  // 상품 주문보기 핸들러 (상품명으로 검색)
+  const handleViewProductOrders = (productTitle) => {
+    if (!productTitle) return;
+
+    // 상품명에서 날짜 부분을 제거하고 순수 상품명만 추출
+    const parsed = parseProductName(productTitle);
+    const searchTerm = parsed.name || productTitle;
+
+    // 주문 관리 페이지로 이동하면서 상품명으로 검색
+    router.push(`/orders?search=${encodeURIComponent(searchTerm)}`);
+  };
+
+  // 게시물 주문보기 핸들러 (post_key로 검색)
+  const handleViewPostOrders = (postKey) => {
+    if (!postKey) return;
+
+    // 주문 관리 페이지로 이동하면서 post_key로 검색
+    router.push(`/orders?search=${encodeURIComponent(postKey)}`);
+  };
 
   // --- 핸들러 함수들 ---
   const handleSearchChange = (e) => {
@@ -959,11 +1007,11 @@ export default function ProductsPage() {
     const { name, value } = e.target;
     if (name === "base_price" || name === "quantity") {
       setEditedProduct((prev) => ({ ...prev, [name]: parseInt(value) || 0 }));
-    } else if (name === "pickup_date") {
-      // Explicitly handle empty string for pickup_date
+    } else if (name === "pickup_date" || name === "expire_date") {
+      // Explicitly handle empty string for date fields to prevent timestamp errors
       setEditedProduct((prev) => ({
         ...prev,
-        [name]: value === "" ? null : new Date(value),
+        [name]: value === "" ? null : value,
       }));
     } else {
       setEditedProduct((prev) => ({ ...prev, [name]: value }));
@@ -982,7 +1030,7 @@ export default function ProductsPage() {
       editedProduct.base_price < 0
     ) {
       console.log("Invalid data:", editedProduct);
-      alert("상품명과 가격을 올바르게 입력해주세요.");
+      showError("상품명과 가격을 올바르게 입력해주세요.");
       return;
     }
 
@@ -1008,10 +1056,10 @@ export default function ProductsPage() {
       });
 
       if (duplicates.length > 0) {
-        alert(
+        showError(
           `중복된 바코드가 있어 저장할 수 없습니다: ${duplicates.join(
             ", "
-          )}\n각 바코드는 고유해야 합니다.`
+          )}. 각 바코드는 고유해야 합니다.`
         );
         return;
       }
@@ -1021,7 +1069,7 @@ export default function ProductsPage() {
         (opt) => !opt.barcode?.trim()
       );
       if (hasEmptyBarcodes) {
-        alert(
+        showError(
           "모든 바코드를 입력해주세요. 빈 바코드가 있으면 저장할 수 없습니다."
         );
         return;
@@ -1046,10 +1094,10 @@ export default function ProductsPage() {
       }
 
       handleCloseModal();
-      alert("상품 정보가 저장되었습니다.");
+      showSuccess("상품 정보가 저장되었습니다.");
     } catch (error) {
       console.error("상품 정보 업데이트 오류 (client-side):", error);
-      alert(error.message || "상품 정보 업데이트에 실패했습니다.");
+      showError(error.message || "상품 정보 업데이트에 실패했습니다.");
     }
   };
 
@@ -1073,10 +1121,10 @@ export default function ProductsPage() {
 
       console.log("Delete successful via client-side");
       handleCloseModal();
-      alert("상품이 삭제되었습니다.");
+      showSuccess("상품이 삭제되었습니다.");
     } catch (error) {
       console.error("상품 삭제 오류 (client-side):", error);
-      alert(error.message || "상품 삭제에 실패했습니다.");
+      showError(error.message || "상품 삭제에 실패했습니다.");
     }
   };
 
@@ -1271,6 +1319,19 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
                     #
                   </th>
+                  {/* Item Number 정렬 컬럼 추가 */}
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                    <button
+                      onClick={() => handleSortChange("item_number")}
+                      className="flex items-center justify-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      disabled={isDataLoading}
+                    >
+                      번호
+                      <span className="inline-block">
+                        {getSortIcon("item_number")}
+                      </span>
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sm:pl-6">
                     <button
                       onClick={() => handleSortChange("title")}
@@ -1334,13 +1395,16 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    작업
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
                 {isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="9"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
@@ -1351,7 +1415,7 @@ export default function ProductsPage() {
                 {!isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="9"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
@@ -1381,10 +1445,18 @@ export default function ProductsPage() {
                       <td className="px-4 py-3 text-center text-sm text-gray-500">
                         {rowNum}
                       </td>
+                      {/* Item Number 표시 셀 추가 */}
+                      <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                        {product.item_number || "-"}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap sm:pl-6">
-                        <span className="text-sm font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                          {product.title || "-"}
-                        </span>
+                        <div className="text-sm font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
+                          {(() => {
+                            const parsed = parseProductName(product.title);
+                            // 날짜 부분을 제거하고 순수 상품명만 표시
+                            return parsed.name || product.title || "-";
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800">
                         {formatCurrency(product.base_price)}
@@ -1420,6 +1492,37 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={product.status} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          {/* 상품 주문보기 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewProductOrders(product.title);
+                            }}
+                            className="inline-flex items-center px-2 py-1 border border-blue-300 shadow-sm text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            title="상품명으로 주문 검색"
+                          >
+                            <ClipboardDocumentListIcon className="w-3 h-3 mr-1" />
+                            상품주문
+                          </button>
+
+                          {/* 게시물 주문보기 버튼 */}
+                          {product.post_key && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewPostOrders(product.post_key);
+                              }}
+                              className="inline-flex items-center px-2 py-1 border border-green-300 shadow-sm text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                              title="게시물로 주문 검색"
+                            >
+                              <DocumentTextIcon className="w-3 h-3 mr-1" />
+                              게시물주문
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1751,6 +1854,9 @@ export default function ProductsPage() {
           </div>
         )}
       </div>
+
+      {/* 토스트 알림 컨테이너 */}
+      <ToastContainer toasts={toasts} hideToast={hideToast} />
     </div>
   );
 }
