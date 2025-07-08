@@ -56,6 +56,36 @@ import {
   CodeBracketIcon,
 } from "@heroicons/react/24/outline";
 
+// 밴드 특수 태그 처리 함수
+const processBandTags = (text) => {
+  if (!text) return text;
+
+  let processedText = text;
+
+  // <band:refer user_key="...">사용자명</band:refer> → @사용자명
+  processedText = processedText.replace(
+    /<band:refer\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:refer>/g,
+    "@$1"
+  );
+
+  // <band:mention user_key="...">사용자명</band:mention> → @사용자명 (혹시 있다면)
+  processedText = processedText.replace(
+    /<band:mention\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:mention>/g,
+    "@$1"
+  );
+
+  // 기타 밴드 태그들도 내용만 남기기
+  processedText = processedText.replace(
+    /<band:[^>]*>([^<]+)<\/band:[^>]*>/g,
+    "$1"
+  );
+
+  // 자동 닫힘 밴드 태그 제거 (예: <band:something />)
+  processedText = processedText.replace(/<band:[^>]*\/>/g, "");
+
+  return processedText;
+};
+
 function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
   if (!Array.isArray(priceOptions) || priceOptions.length === 0) {
     return fallbackPrice * qty;
@@ -2045,10 +2075,10 @@ export default function OrdersPage() {
                         </td>
                         <td
                           className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
-                          title={order.comment || ""}
+                          title={processBandTags(order.comment) || ""}
                         >
                           <div className="line-clamp-3 break-words leading-tight">
-                            {order.comment || "-"}
+                            {processBandTags(order.comment) || "-"}
                           </div>
                         </td>
 
@@ -2569,7 +2599,7 @@ export default function OrdersPage() {
                               {selectedOrder.customer_name || "이름 없음"}
                             </p>
                             <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap break-words">
-                              {selectedOrder.comment || (
+                              {processBandTags(selectedOrder.comment) || (
                                 <span className="italic text-gray-400">
                                   댓글 없음
                                 </span>
@@ -2758,7 +2788,7 @@ export default function OrdersPage() {
                         },
                         {
                           label: "고객 댓글",
-                          value: selectedOrder.comment || (
+                          value: processBandTags(selectedOrder.comment) || (
                             <span className="italic text-gray-400">
                               댓글 없음
                             </span>
@@ -2960,7 +2990,9 @@ export default function OrdersPage() {
                               </span>
                               <div className="flex items-center space-x-2">
                                 {(() => {
-                                  const comment = selectedOrder.comment || "";
+                                  const comment =
+                                    processBandTags(selectedOrder.comment) ||
+                                    "";
                                   const quantity = selectedOrder.quantity || 1;
 
                                   // 숫자만 있는 경우 (패턴 1)
@@ -3200,7 +3232,7 @@ export default function OrdersPage() {
                         </label>
                         <div className="bg-gray-50 rounded-md p-3">
                           <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                            {selectedOrder.comment || (
+                            {processBandTags(selectedOrder.comment) || (
                               <span className="italic text-gray-400">
                                 댓글 없음
                               </span>

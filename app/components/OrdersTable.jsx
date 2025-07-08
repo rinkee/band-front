@@ -1,5 +1,35 @@
 "use client";
 
+// 밴드 특수 태그 처리 함수
+const processBandTags = (text) => {
+  if (!text) return text;
+
+  let processedText = text;
+
+  // <band:refer user_key="...">사용자명</band:refer> → @사용자명
+  processedText = processedText.replace(
+    /<band:refer\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:refer>/g,
+    "@$1"
+  );
+
+  // <band:mention user_key="...">사용자명</band:mention> → @사용자명 (혹시 있다면)
+  processedText = processedText.replace(
+    /<band:mention\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:mention>/g,
+    "@$1"
+  );
+
+  // 기타 밴드 태그들도 내용만 남기기
+  processedText = processedText.replace(
+    /<band:[^>]*>([^<]+)<\/band:[^>]*>/g,
+    "$1"
+  );
+
+  // 자동 닫힘 밴드 태그 제거 (예: <band:something />)
+  processedText = processedText.replace(/<band:[^>]*\/>/g, "");
+
+  return processedText;
+};
+
 export default function OrdersTable({ orders = [] }) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("ko-KR", {
@@ -66,7 +96,7 @@ export default function OrdersTable({ orders = [] }) {
                   {order.customer_name}
                 </td>
                 <td className="px-4 py-4 text-sm text-gray-500 max-w-xs truncate">
-                  {order.comment}
+                  {processBandTags(order.comment)}
                 </td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                   {order.quantity}개

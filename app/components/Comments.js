@@ -6,6 +6,36 @@ import {
 } from "@heroicons/react/24/outline";
 import { UserIcon } from "@heroicons/react/24/solid";
 
+// 밴드 특수 태그 처리 함수
+const processBandTags = (text) => {
+  if (!text) return text;
+
+  let processedText = text;
+
+  // <band:refer user_key="...">사용자명</band:refer> → @사용자명
+  processedText = processedText.replace(
+    /<band:refer\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:refer>/g,
+    "@$1"
+  );
+
+  // <band:mention user_key="...">사용자명</band:mention> → @사용자명 (혹시 있다면)
+  processedText = processedText.replace(
+    /<band:mention\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:mention>/g,
+    "@$1"
+  );
+
+  // 기타 밴드 태그들도 내용만 남기기
+  processedText = processedText.replace(
+    /<band:[^>]*>([^<]+)<\/band:[^>]*>/g,
+    "$1"
+  );
+
+  // 자동 닫힘 밴드 태그 제거 (예: <band:something />)
+  processedText = processedText.replace(/<band:[^>]*\/>/g, "");
+
+  return processedText;
+};
+
 // HTML 엔티티 디코딩 함수
 const decodeHtmlEntities = (text) => {
   if (!text) return text;
@@ -31,18 +61,21 @@ const decodeHtmlEntities = (text) => {
 
   let decodedText = text;
 
-  // HTML 엔티티 치환
+  // 1. 먼저 밴드 태그 처리
+  decodedText = processBandTags(decodedText);
+
+  // 2. HTML 엔티티 치환
   Object.keys(entityMap).forEach((entity) => {
     const regex = new RegExp(entity, "g");
     decodedText = decodedText.replace(regex, entityMap[entity]);
   });
 
-  // 숫자 형태의 HTML 엔티티 처리 (&#123; 형태)
+  // 3. 숫자 형태의 HTML 엔티티 처리 (&#123; 형태)
   decodedText = decodedText.replace(/&#(\d+);/g, (match, dec) => {
     return String.fromCharCode(dec);
   });
 
-  // 16진수 형태의 HTML 엔티티 처리 (&#x1A; 형태)
+  // 4. 16진수 형태의 HTML 엔티티 처리 (&#x1A; 형태)
   decodedText = decodedText.replace(/&#x([0-9A-Fa-f]+);/g, (match, hex) => {
     return String.fromCharCode(parseInt(hex, 16));
   });
