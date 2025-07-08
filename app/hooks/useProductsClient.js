@@ -232,6 +232,15 @@ export function useProductClientMutations() {
       undefined,
       { revalidate: true }
     );
+    // posts 캐시도 갱신 (posts 페이지에서 바코드 업데이트 반영을 위해)
+    globalMutate(
+      (key) =>
+        typeof key === "string" &&
+        key.includes("/api/posts") &&
+        key.includes(`userId=${userId}`),
+      undefined,
+      { revalidate: true }
+    );
 
     return data;
   };

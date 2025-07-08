@@ -94,7 +94,9 @@ export async function GET(request) {
             title,
             base_price,
             status,
-            created_at
+            created_at,
+            barcode,
+            barcode_options
           )
         `
         )

@@ -777,6 +777,12 @@ function BandApiTester({ userData }) {
   const [selectedBandKey, setSelectedBandKey] = useState("");
   const [error, setError] = useState(null);
 
+  // 관리자 권한 확인
+  const isAdmin =
+    userData?.role === "admin" || userData?.data?.role === "admin";
+
+  if (!isAdmin) return null; // 관리자만 볼 수 있음
+
   // 사용자 Band API 정보 표시
   const bandAccessToken =
     userData?.data?.band_access_token || userData?.band_access_token;

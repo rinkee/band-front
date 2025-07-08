@@ -376,7 +376,7 @@ export default function OrdersPage() {
   // --- 총 수량 및 총 금액 계산 끝 ---
   const checkbox = useRef();
 
-  const { mutate } = useSWRConfig(); //
+  const { mutate: globalMutate } = useSWRConfig(); //
 
   const dateRangeOptions = [
     { value: "90days", label: "3개월" },
@@ -585,6 +585,20 @@ export default function OrdersPage() {
       );
       successCount = orderIdsToProcess.length;
       console.log("일괄 업데이트 성공 (client-side)");
+
+      // 즉시 주문 리스트 새로고침
+      console.log("🔄 일괄 상태 변경 후 리스트 새로고침 중...");
+      await mutateOrders(undefined, { revalidate: true });
+
+      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orders" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
     } catch (err) {
       console.error("Failed to bulk update orders (client-side):", err);
       failCount = orderIdsToProcess.length;
@@ -974,6 +988,21 @@ export default function OrdersPage() {
       await updateOrderStatus(orderId, updateData, userData.userId);
 
       console.log("Order status updated successfully via client-side");
+
+      // 즉시 주문 리스트 새로고침
+      console.log("🔄 주문 상태 변경 후 리스트 새로고침 중...");
+      await mutateOrders(undefined, { revalidate: true });
+
+      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orders" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
+
       setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
       console.error("Status Change Error (client-side):", err);
@@ -1160,6 +1189,21 @@ export default function OrdersPage() {
       await updateOrderDetails(order_id, updateData, userData.userId);
 
       console.log("Order details updated successfully via client-side");
+
+      // 즉시 주문 리스트 새로고침
+      console.log("🔄 주문 정보 수정 후 리스트 새로고침 중...");
+      await mutateOrders(undefined, { revalidate: true });
+
+      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orders" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
+
       setIsEditingDetails(false); // 편집 모드 종료
       setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
@@ -1198,8 +1242,27 @@ export default function OrdersPage() {
       console.log("Barcode option updated successfully");
 
       // 주문 목록과 상품 목록 새로고침
-      mutateOrders();
-      mutateProducts(); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
+      console.log("🔄 바코드 옵션 변경 후 리스트 새로고침 중...");
+      await mutateOrders(undefined, { revalidate: true });
+      await mutateProducts(undefined, { revalidate: true }); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
+
+      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orders" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "products" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
     } catch (error) {
       console.error("Failed to update barcode option:", error);
       alert("바코드 옵션 변경에 실패했습니다.");
@@ -1548,9 +1611,10 @@ export default function OrdersPage() {
                 등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.
               </p>
               <UpdateButton
-                onClick={() => {
-                  mutateOrders();
-                  mutateProducts();
+                onClick={async () => {
+                  console.log("🔄 수동 업데이트 버튼 클릭");
+                  await mutateOrders(undefined, { revalidate: true });
+                  await mutateProducts(undefined, { revalidate: true });
                 }}
                 loading={isDataLoading}
                 disabled={isDataLoading}
@@ -2009,7 +2073,7 @@ export default function OrdersPage() {
                             return displayBarcode ? (
                               <Barcode
                                 value={displayBarcode}
-                                height={50}
+                                height={30}
                                 width={1.2}
                                 fontSize={12}
                               />
