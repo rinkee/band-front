@@ -229,6 +229,8 @@ function StatusBadge({ status, processingMethod }) {
     switch (processingMethod) {
       case "ai":
         return <SparklesIcon className="h-2.5 w-2.5 mr-1" />;
+      case "ai-fallback":
+        return <SparklesIcon className="h-2.5 w-2.5 mr-1 opacity-60" />;
       case "pattern":
         return <FunnelIcon className="h-2.5 w-2.5 mr-1" />;
       case "manual":
@@ -1301,108 +1303,41 @@ export default function OrdersPage() {
 
   // --- 바코드 저장 함수 ---
   // 댓글 모달 열기 함수
-  const openCommentsModal = async (order) => {
+  const openCommentsModal = async (order, tryKeyIndex = 0) => {
     const extractedPostKey = extractPostKeyFromOrderId(order.order_id);
     const postKey = order.post_key || order.post_number || extractedPostKey;
-
-    console.log("댓글 모달 열기 시도:", {
-      order_id: order.order_id,
-      post_key: order.post_key,
-      post_number: order.post_number,
-      extractedPostKey: extractedPostKey,
-      finalPostKey: postKey,
-      bandNumber: userData?.bandNumber,
-      accessToken: userData?.accessToken
-        ? "accessToken 있음"
-        : "accessToken 없음",
-      band_access_token: userData?.band_access_token
-        ? "band_access_token 있음"
-        : "band_access_token 없음",
-    });
-
-    if (!postKey) {
-      showError("게시물 정보가 없어 댓글을 불러올 수 없습니다.");
-      return;
-    }
-
-    // 밴드 키는 userData 또는 주문 데이터에서 가져오기 (band_key 사용)
     const bandKey = userData?.band_key || order.band_key;
 
-    if (!bandKey) {
-      showError("밴드 정보가 없습니다.");
+    if (!postKey || !bandKey) {
+      showError("게시물/밴드 정보가 없어 댓글을 불러올 수 없습니다.");
       return;
     }
 
-    if (!userData?.band_access_token) {
-      // 세션에 band_access_token이 없을 때 DB에서 가져와서 세션에 저장
-      try {
-        showInfo("BAND 토큰을 가져오는 중...");
-        const response = await fetch(
-          `/api/band/get-keys?userId=${userData.userId}`
-        );
-        const keysData = await response.json();
+    // 메인 + 백업키 배열
+    const allAccessTokens = [
+      userData.band_access_token,
+      ...(userData.backup_band_keys || []),
+    ];
 
-        if (keysData.success && keysData.data.access_token) {
-          // 세션에 토큰 정보 업데이트
-          const updatedUserData = {
-            ...userData,
-            band_access_token: keysData.data.access_token,
-            band_key: keysData.data.band_key,
-          };
-          sessionStorage.setItem("userData", JSON.stringify(updatedUserData));
-
-          // 댓글 모달 열기 재시도
-          openCommentsModal(order);
-          return;
-        } else {
-          showError(
-            "BAND 토큰을 가져올 수 없습니다. 설정에서 BAND 연동을 확인해주세요."
-          );
-        }
-      } catch (error) {
-        console.error("BAND 토큰 가져오기 오류:", error);
-        showError("BAND 토큰을 가져오는 중 오류가 발생했습니다.");
-      }
+    if (!allAccessTokens[tryKeyIndex]) {
+      showError("모든 BAND API 키가 할당량 초과 또는 오류입니다.");
       return;
     }
 
-    // 게시물 내용 가져오기
     const product = getProductById(order.product_id);
     const postContent =
       product?.description ||
       product?.content ||
-      `📢무거우시면 말씀하세요  배달 한번 갈게요📢
-
-        💥초초초 특가 😋
-
-
-🍉하우스 흑수박🍉
-.
-.
-.
-수박 시즌이 돌아왔습니다!!
-하우스수박은 비와 눈을 피해 자라면서 
-귀하디 귀하게 키운답니당!!
-맛도 좋구 식감도 좋으네요👍
-
-수박 과일이 결코 쉽진 않습니다
-1~2통을 맛보고 전체를 선택 매입하기 때문에
-간혹 않좋은게 있을수 있답니다
-문제가 있을땐 언제든 개인톡 남겨주세요🙏
-
-😋 초.특.가 
-하우스 흑수박 1통 9키로내외
-        👉👉  21,900원‼️
-
-오늘 오후 12시에 도착합니다 
-주문은 댓글로 시작할께요`;
+      `📢무거우시면 말씀하세요  배달 한번 갈게요📢\n\n        💥초초초 특가 😋\n\n\n🍉하우스 흑수박🍉\n.\n.\n.\n수박 시즌이 돌아왔습니다!!\n하우스수박은 비와 눈을 피해 자라면서 \n귀하디 귀하게 키운답니당!!\n맛도 좋구 식감도 좋으네요👍\n\n수박 과일이 결코 쉽진 않습니다\n1~2통을 맛보고 전체를 선택 매입하기 때문에\n간혹 않좋은게 있을수 있답니다\n문제가 있을땐 언제든 개인톡 남겨주세요🙏\n\n😋 초.특.가 \n하우스 흑수박 1통 9키로내외\n        👉👉  21,900원‼️\n\n오늘 오후 12시에 도착합니다 \n주문은 댓글로 시작할께요`;
 
     setSelectedPostForComments({
-      postKey: postKey,
-      bandKey: bandKey,
+      postKey,
+      bandKey,
       productName: getProductNameById(order.product_id),
-      accessToken: userData.band_access_token,
-      postContent: postContent,
+      accessToken: allAccessTokens[tryKeyIndex],
+      postContent,
+      tryKeyIndex, // 현재 시도 중인 키 인덱스
+      order, // 원본 order도 넘김
     });
     setIsCommentsModalOpen(true);
   };
@@ -1411,6 +1346,14 @@ export default function OrdersPage() {
   const closeCommentsModal = () => {
     setIsCommentsModalOpen(false);
     setSelectedPostForComments(null);
+  };
+
+  // 댓글 모달에서 failover 요청 시 다음 키로 재시도
+  const handleCommentsFailover = (order, prevTryKeyIndex = 0) => {
+    setIsCommentsModalOpen(false);
+    setTimeout(() => {
+      openCommentsModal(order, prevTryKeyIndex + 1);
+    }, 100);
   };
 
   const handleSaveBarcode = async (productId, barcodeValue) => {
@@ -3326,6 +3269,9 @@ export default function OrdersPage() {
           postTitle={selectedPostForComments?.productName}
           accessToken={selectedPostForComments?.accessToken}
           postContent={selectedPostForComments?.postContent}
+          tryKeyIndex={selectedPostForComments?.tryKeyIndex || 0}
+          order={selectedPostForComments?.order}
+          onFailover={handleCommentsFailover}
         />
 
         {/* 토스트 알림 컨테이너 */}
