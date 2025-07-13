@@ -275,6 +275,9 @@ const CommentsModal = ({
   postTitle,
   accessToken,
   postContent, // 게시물 내용 추가
+  tryKeyIndex = 0,
+  order,
+  onFailover,
 }) => {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -318,6 +321,14 @@ const CommentsModal = ({
       const response = await fetch(`/api/band/comments?${params}`);
 
       if (!response.ok) {
+        // 400/401/403/429 등 에러 시 failover 콜백 호출
+        if (
+          [400, 401, 403, 429].includes(response.status) &&
+          typeof onFailover === "function"
+        ) {
+          onFailover(order, tryKeyIndex);
+          return;
+        }
         throw new Error(`댓글 조회 실패: ${response.status}`);
       }
 

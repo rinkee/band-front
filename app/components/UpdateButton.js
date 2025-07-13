@@ -114,9 +114,18 @@ const PostUpdater = ({ bandNumber = null }) => {
 
       if (responseData.success) {
         const processedCount = responseData.data?.length || 0;
-        setSuccessMessage(
-          `${processedCount}개의 게시물 정보를 성공적으로 동기화했습니다.`
-        );
+
+        // failover 정보 확인
+        const failoverInfo = responseData.failoverInfo;
+        let successMessage = `${processedCount}개의 게시물 정보를 성공적으로 동기화했습니다.`;
+
+        if (failoverInfo && failoverInfo.keysUsed > 1) {
+          successMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
+        } else if (failoverInfo && failoverInfo.finalKeyIndex > 0) {
+          successMessage += `\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
+        }
+
+        setSuccessMessage(successMessage);
 
         if (userId) {
           // userId가 있을 때만 mutate 실행

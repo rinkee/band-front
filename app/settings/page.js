@@ -12,6 +12,8 @@ import { useUserClient, useUserClientMutations } from "../hooks";
 import { useSWRConfig } from "swr";
 import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴포넌트 import
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 추가
+import BandApiKeyManager from "../components/BandApiKeyManager";
+import BandApiUsageStats from "../components/BandApiUsageStats";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -2064,6 +2066,49 @@ export default function SettingsPage() {
               </div>
               <div className="p-5 sm:p-6">
                 <BandApiTester userData={swrUserData} />
+              </div>
+            </LightCard>
+
+            {/* Band API 키 관리 카드 */}
+            <LightCard padding="p-0">
+              <div className="p-5 sm:p-6 border-b">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <Cog6ToothIcon className="w-5 h-5 text-gray-500" /> Band API
+                  키 관리
+                  {userLoading && <LoadingSpinner className="w-4 h-4 ml-2" />}
+                </h2>
+                <p className="text-sm text-gray-600 mt-2">
+                  메인 API 키와 백업 키를 관리하여 사용량 초과 시 자동 전환이
+                  가능합니다.
+                </p>
+              </div>
+              <div className="p-5 sm:p-6">
+                {userId && <BandApiKeyManager userId={userId} />}
+                {!userId && (
+                  <div className="text-center py-8 text-gray-500">
+                    사용자 정보를 불러오는 중...
+                  </div>
+                )}
+              </div>
+            </LightCard>
+
+            {/* Band API 사용량 통계 */}
+            <LightCard>
+              <div className="border-b border-gray-200 pb-4 mb-6">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Band API 사용량 통계
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  API 호출 현황과 할당량 사용 내역을 확인할 수 있습니다.
+                </p>
+              </div>
+              <div className="p-5 sm:p-6">
+                {userId && <BandApiUsageStats userId={userId} />}
+                {!userId && (
+                  <div className="text-center py-8 text-gray-500">
+                    사용자 정보를 불러오는 중...
+                  </div>
+                )}
               </div>
             </LightCard>
 
