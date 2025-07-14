@@ -123,7 +123,7 @@ export default function BandApiUsageStats({ userId }) {
       });
 
       setUsageStats(stats);
-      setRecentSessions(sessionData?.slice(0, 10) || []);
+      setRecentSessions(sessionData?.slice(0, 30) || []);
 
       // 에러 통계 조회
       const { data: errorData, error: errorError } = await supabase
