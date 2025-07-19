@@ -1,21 +1,12 @@
 "use client"; // 이 컴포넌트가 클라이언트 컴포넌트임을 명시합니다.
 // app/layout.js (또는 해당 레이아웃 파일)
 
-import localFont from "next/font/local";
 import "./globals.css"; // 전역 CSS 파일을 임포트합니다.
 import { useState, useEffect, Suspense } from "react"; // React 훅과 Suspense를 임포트합니다.
 import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 Next.js 훅을 임포트합니다.
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
 import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< ScrollContext 임포트
-
-// Pretendard 폰트 설정 (가변 폰트 사용 예시)
-const pretendard = localFont({
-  src: "../fonts/PretendardVariable.woff2", // layout.js 파일 기준 상대 경로
-  display: "swap", // 폰트 로딩 전략 (swap 권장)
-  weight: "45 920", // 가변 폰트의 지원 범위 (옵션)
-  variable: "--font-pretendard", // 사용할 CSS 변수 이름 지정
-});
 
 export default function RootLayoutWrapper({ children }) {
   // Provider를 사용하기 위해 래퍼 컴포넌트
@@ -180,6 +171,13 @@ function LayoutContent({ children }) {
         <head>
           <title>PODER - 인증</title>
           <meta name="description" content="PODER 인증 페이지" />
+          {/* Pretendard 웹폰트 CDN */}
+          <link 
+            rel="stylesheet" 
+            as="style" 
+            crossOrigin="anonymous"
+            href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+          />
         </head>
         <body className="text-black">
           <main>{children}</main>
@@ -191,16 +189,22 @@ function LayoutContent({ children }) {
   // 인증 페이지가 아닌 경우, 전체 레이아웃 렌더링
   return (
     <html lang="ko">
-      <head className={pretendard.variable}>
+      <head>
         <title>PODER</title>
-
         <meta name="description" content="PODER" />
         <meta
           httpEquiv="Content-Security-Policy"
           content="upgrade-insecure-requests"
         ></meta>
+        {/* Pretendard 웹폰트 CDN */}
+        <link 
+          rel="stylesheet" 
+          as="style" 
+          crossOrigin="anonymous"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        />
       </head>
-      <body className={pretendard.variable}>
+      <body>
         <div className="flex flex-col h-screen overflow-hidden bg-gray-100 ">
           {/* 로그인 상태일 때만 헤더 표시 */}
           {isLoggedIn && (
