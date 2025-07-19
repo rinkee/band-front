@@ -110,22 +110,44 @@ const PostUpdater = ({ bandNumber = null }) => {
       });
 
       console.log("API Response Data:", response.data);
+      console.log("HTTP Status:", response.status);
       const responseData = response.data;
 
-      if (responseData.success) {
+      // 🔥 성공 또는 부분 성공 처리 (200 또는 207)
+      if (response.status === 200 || response.status === 207) {
         const processedCount = responseData.data?.length || 0;
 
         // failover 정보 확인
         const failoverInfo = responseData.failoverInfo;
-        let successMessage = `${processedCount}개의 게시물 정보를 성공적으로 동기화했습니다.`;
-
-        if (failoverInfo && failoverInfo.keysUsed > 1) {
-          successMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
-        } else if (failoverInfo && failoverInfo.finalKeyIndex > 0) {
-          successMessage += `\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
+        let baseMessage = `${processedCount}개의 게시물 정보를 동기화했습니다.`;
+        
+        // 🔥 에러 요약 정보 확인
+        if (responseData.errorSummary) {
+          const { totalErrors, errorRate } = responseData.errorSummary;
+          baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
+          
+          // 에러 상세 정보 로깅 (개발용)
+          console.warn("처리 실패한 게시물들:", responseData.errors);
+          
+          // 사용자에게 재시도 안내
+          baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
+          
+          // 부분 실패이므로 경고 스타일로 표시
+          setError(baseMessage);
+          setSuccessMessage(""); // 성공 메시지는 비움
+        } else {
+          // 완전 성공
+          let successMessage = baseMessage;
+          
+          if (failoverInfo && failoverInfo.keysUsed > 1) {
+            successMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
+          } else if (failoverInfo && failoverInfo.finalKeyIndex > 0) {
+            successMessage += `\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
+          }
+          
+          setSuccessMessage(successMessage);
+          setError(""); // 에러 메시지는 비움
         }
-
-        setSuccessMessage(successMessage);
 
         if (userId) {
           // userId가 있을 때만 mutate 실행
@@ -163,10 +185,17 @@ const PostUpdater = ({ bandNumber = null }) => {
         }
         // --- SWR 캐시 갱신 끝 ---
       } else {
-        setError(
-          responseData.message ||
-            "게시물 동기화 중 서버에서 명시적 오류가 발생했습니다."
-        );
+        // 🔥 완전 실패 처리 (500 등)
+        let errorMessage = responseData.message || "게시물 동기화 중 서버에서 오류가 발생했습니다.";
+        
+        // 에러 상세 정보가 있으면 추가
+        if (responseData.errors && responseData.errors.length > 0) {
+          errorMessage += `\n실패한 게시물: ${responseData.errors.length}개`;
+          console.error("상세 에러 정보:", responseData.errors);
+        }
+        
+        setError(errorMessage);
+        setSuccessMessage("");
       }
     } catch (err) {
       console.error("!!! API Call CATCH block !!!");
@@ -215,7 +244,7 @@ const PostUpdater = ({ bandNumber = null }) => {
       {/* 컴포넌트 주변 여백 추가 */}
       <button
         onClick={handleUpdatePosts}
-        disabled={isLoading || !!error} // 로딩 중이거나 에러 메시지가 있으면 비활성화
+        disabled={isLoading} // 🔥 로딩 중에만 비활성화 (에러 시에도 재시도 가능하게)
         className={`
           px-8 py-2 text-white font-medium rounded-md transition-colors duration-300 ease-in-out
           focus:outline-none focus:ring-2 focus:ring-offset-2
@@ -224,6 +253,8 @@ const PostUpdater = ({ bandNumber = null }) => {
           ${
             isLoading
               ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-wait" // 로딩 중 스타일
+              : error && !successMessage
+              ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400" // 🔥 부분 실패/에러 스타일 (경고색)
               : successMessage
               ? "bg-green-600 hover:bg-green-700 focus:ring-green-500" // 성공 스타일
               : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500" // 기본 활성 스타일
@@ -254,12 +285,18 @@ const PostUpdater = ({ bandNumber = null }) => {
         )}
         {isLoading
           ? "동기화 중..."
+          : error && !successMessage
+          ? "재시도"  // 🔥 에러 시 재시도 버튼으로 표시
           : successMessage
           ? "동기화 완료!"
           : "업데이트"}
       </button>
       {error && (
-        <p className="mt-2 text-sm text-red-600 text-center">
+        <p className={`mt-2 text-sm text-center ${
+          error.includes("자동으로 재시도") 
+            ? "text-amber-600"  // 🔥 부분 실패 시 경고색 (재시도 안내 포함)
+            : "text-red-600"    // 완전 실패 시 빨간색
+        }`}>
           {" "}
           {/* 가운데 정렬 추가 */}
           {error}
