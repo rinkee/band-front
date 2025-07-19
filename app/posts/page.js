@@ -419,38 +419,60 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
       {/* 내용 섹션 */}
       <div className="p-4">
         {/* 작성자 정보 */}
-        <div className="flex items-center space-x-2 mb-3">
-          {/* 작성자 프로필 이미지 */}
-          <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
-            {post.author_profile ? (
-              <img
-                src={post.author_profile}
-                alt={post.author_name || "프로필"}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.style.display = "none";
-                  e.target.nextElementSibling.style.display = "flex";
-                }}
-              />
-            ) : null}
-            <div
-              className={`w-full h-full bg-blue-500 flex items-center justify-center ${
-                post.author_profile ? "hidden" : ""
-              }`}
-            >
-              <span className="text-white font-medium text-xs">
-                {post.author_name ? post.author_name.charAt(0) : "?"}
-              </span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            {/* 작성자 프로필 이미지 */}
+            <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
+              {post.author_profile ? (
+                <img
+                  src={post.author_profile}
+                  alt={post.author_name || "프로필"}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = "none";
+                    e.target.nextElementSibling.style.display = "flex";
+                  }}
+                />
+              ) : null}
+              <div
+                className={`w-full h-full bg-blue-500 flex items-center justify-center ${
+                  post.author_profile ? "hidden" : ""
+                }`}
+              >
+                <span className="text-white font-medium text-xs">
+                  {post.author_name ? post.author_name.charAt(0) : "?"}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 truncate">
+                {post.author_name || "알 수 없음"}
+              </div>
+              <div className="text-xs text-gray-500">
+                {formatDate(post.posted_at)}
+              </div>
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-gray-900 truncate">
-              {post.author_name || "알 수 없음"}
+          
+          {/* 댓글 AI 처리 뱃지 */}
+          {post.order_needs_ai && (
+            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+              <svg
+                className="w-3 h-3 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+              댓글 AI 처리
             </div>
-            <div className="text-xs text-gray-500">
-              {formatDate(post.posted_at)}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* 게시물 제목 */}
