@@ -1,16 +1,56 @@
-// PostUpdater.js
+// UpdateButtonBeta.js - orders-test 페이지용 커스텀 업데이트 버튼
 "use client";
 import React, { useState, useCallback, useEffect } from "react";
-import { api } from "../lib/fetcher"; // fetcher가 axios 인스턴스라고 가정
-import { useSWRConfig } from "swr"; // <<< SWRConfig 훅 임포트
+import ReactDOM from "react-dom";
+import { api } from "../lib/fetcher";
+import { useSWRConfig } from "swr";
+import { CheckIcon, XMarkIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 
-const PostUpdater = ({ bandNumber = null }) => {
+// 토스트 메시지 컴포넌트 (Portal 사용)
+const Toast = ({ message, type, onClose }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const timer = setTimeout(onClose, 3000);
+    return () => {
+      clearTimeout(timer);
+      setMounted(false);
+    };
+  }, [onClose]);
+
+  if (!mounted) return null;
+
+  return ReactDOM.createPortal(
+    <div className={`
+      fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999]
+      animate-slide-down
+    `}>
+      <div className={`
+        flex items-center gap-3 px-6 py-4 rounded-lg shadow-lg
+        ${type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}
+      `}>
+        {type === 'success' ? (
+          <CheckIcon className="w-5 h-5" />
+        ) : (
+          <XMarkIcon className="w-5 h-5" />
+        )}
+        <span className="font-medium">{message}</span>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+const UpdateButtonBeta = ({ bandNumber = null }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  // const [postsResponse, setPostsResponse] = useState(null); // 응답 데이터 직접 사용 안 하면 제거 가능
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("success");
 
-  const { mutate } = useSWRConfig(); // <<< mutate 함수 가져오기
+  const { mutate } = useSWRConfig();
 
   // 세션에서 userId 가져오는 헬퍼 함수
   const getUserIdFromSession = () => {
@@ -34,7 +74,6 @@ const PostUpdater = ({ bandNumber = null }) => {
   };
 
   useEffect(() => {
-    // 초기 로드 시 로그인 상태 확인 (버튼 활성화 여부 등에 사용 가능)
     if (!getUserIdFromSession()) {
       // 필요시 초기 에러 설정 또는 버튼 비활성화 로직
     }
@@ -71,7 +110,6 @@ const PostUpdater = ({ bandNumber = null }) => {
             const userLimit = parseInt(userData.post_fetch_limit, 10);
             if (!isNaN(userLimit) && userLimit > 0) {
               currentLimit = userLimit;
-              // 다음 번을 위해 세션에 저장
               sessionStorage.setItem("userPostLimit", userLimit.toString());
             }
           }
@@ -83,7 +121,6 @@ const PostUpdater = ({ bandNumber = null }) => {
 
     const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
     if (!functionsBaseUrl || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      // 환경 변수 존재 확인
       setError(
         "Supabase 함수 URL이 설정되지 않았습니다. 환경 변수를 확인해주세요."
       );
@@ -98,8 +135,6 @@ const PostUpdater = ({ bandNumber = null }) => {
       if (bandNumber) {
         params.append("bandNumber", bandNumber.toString());
       }
-      // AI 처리 여부 파라미터 (기본값 true, 필요시 false로 설정 가능하게)
-      // 예: params.append("processAI", "true");
 
       const functionUrl = `${functionsBaseUrl}/band-get-posts?${params.toString()}`;
 
@@ -109,7 +144,7 @@ const PostUpdater = ({ bandNumber = null }) => {
 
       const responseData = response.data;
 
-      // 🔥 성공 또는 부분 성공 처리 (200 또는 207)
+      // 성공 또는 부분 성공 처리 (200 또는 207)
       if (response.status === 200 || response.status === 207) {
         const processedCount = responseData.data?.length || 0;
 
@@ -117,15 +152,11 @@ const PostUpdater = ({ bandNumber = null }) => {
         const failoverInfo = responseData.failoverInfo;
         let baseMessage = `${processedCount}개의 게시물 정보를 동기화했습니다.`;
 
-        // 🔥 에러 요약 정보 확인
+        // 에러 요약 정보 확인
         if (responseData.errorSummary) {
           const { totalErrors, errorRate } = responseData.errorSummary;
           baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
 
-          // 에러 상세 정보 (개발 시 필요하면 주석 해제)
-          // console.warn("처리 실패한 게시물들:", responseData.errors);
-
-          // 사용자에게 재시도 안내
           baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
 
           // 부분 실패이므로 경고 스타일로 표시
@@ -143,13 +174,18 @@ const PostUpdater = ({ bandNumber = null }) => {
 
           setSuccessMessage(successMessage);
           setError(""); // 에러 메시지는 비움
+          
+          // 토스트 메시지 표시
+          setToastMessage("업데이트 완료!");
+          setToastType("success");
+          setShowToast(true);
         }
 
         if (userId) {
-          // userId가 있을 때만 mutate 실행
-          const functionsBaseUrlForMutate = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`; // 키 패턴에 필요
+          // SWR 캐시 갱신
+          const functionsBaseUrlForMutate = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 
-          // 1. useOrders 훅의 데이터 갱신 (hooks/index.js 코드 기반)
+          // 1. useOrders 훅의 데이터 갱신
           const ordersKeyPattern = `${functionsBaseUrlForMutate}/orders-get-all?userId=${userId}`;
           mutate(
             (key) =>
@@ -158,7 +194,7 @@ const PostUpdater = ({ bandNumber = null }) => {
             { revalidate: true }
           );
 
-          // 2. useProducts 훅의 데이터 갱신 (hooks/useProducts.js 코드 기반)
+          // 2. useProducts 훅의 데이터 갱신
           const productsKeyPattern = `${functionsBaseUrlForMutate}/products-get-all?userId=${userId}`;
           mutate(
             (key) =>
@@ -167,38 +203,28 @@ const PostUpdater = ({ bandNumber = null }) => {
             { revalidate: true }
           );
 
-          // 3. useOrderStats 훅의 데이터 갱신 (hooks/index.js 코드 기반)
-          const statsKeyPattern = `/orders/stats?userId=${userId}`; // 또는 `/api/orders/stats?userId=${userId}` 등 실제 API 경로에 맞춤
+          // 3. useOrderStats 훅의 데이터 갱신
+          const statsKeyPattern = `/orders/stats?userId=${userId}`;
           mutate(
             (key) => typeof key === "string" && key.startsWith(statsKeyPattern),
             undefined,
             { revalidate: true }
           );
-
-          // SWR 캐시 갱신 완료
-        } else {
-          // userId가 없어서 SWR 캐시 갱신 건너뜀
         }
-        // --- SWR 캐시 갱신 끝 ---
       } else {
-        // 🔥 완전 실패 처리 (500 등)
+        // 완전 실패 처리
         let errorMessage =
           responseData.message ||
           "게시물 동기화 중 서버에서 오류가 발생했습니다.";
 
-        // 에러 상세 정보가 있으면 추가
         if (responseData.errors && responseData.errors.length > 0) {
           errorMessage += `\n실패한 게시물: ${responseData.errors.length}개`;
-          // console.error("상세 에러 정보:", responseData.errors);
         }
 
         setError(errorMessage);
         setSuccessMessage("");
       }
     } catch (err) {
-      // console.error("!!! API Call CATCH block !!!");
-      // console.error("Full API Error Object:", err);
-
       let userFriendlyMessage =
         "게시물 업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
       if (err.isAxiosError && err.response) {
@@ -215,11 +241,10 @@ const PostUpdater = ({ bandNumber = null }) => {
       setError(userFriendlyMessage);
     } finally {
       setIsLoading(false);
-      // 성공 메시지 자동 해제는 useEffect에서 처리 (228-237번째 줄)
     }
-  }, [bandNumber, successMessage, mutate]); // 의존성 배열에 mutate 추가
+  }, [bandNumber, mutate]);
 
-  // 성공 메시지 자동 해제를 위한 useEffect (선택적 개선)
+  // 성공 메시지 자동 해제를 위한 useEffect
   useEffect(() => {
     let timer;
     if (successMessage) {
@@ -227,84 +252,74 @@ const PostUpdater = ({ bandNumber = null }) => {
         setSuccessMessage("");
       }, 5000); // 5초 후 성공 메시지 자동 해제
     }
-    return () => clearTimeout(timer); // 컴포넌트 언마운트 또는 successMessage 변경 시 타이머 클리어
+    return () => clearTimeout(timer);
   }, [successMessage]);
 
   return (
-    <div className="mb-2">
-      {" "}
-      {/* 컴포넌트 주변 여백 추가 */}
-      <button
-        onClick={handleUpdatePosts}
-        disabled={isLoading} // 🔥 로딩 중에만 비활성화 (에러 시에도 재시도 가능하게)
-        className={`
-          px-8 py-2 text-white font-medium rounded-md transition-colors duration-300 ease-in-out
-          focus:outline-none focus:ring-2 focus:ring-offset-2
-          disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed
-          flex items-center justify-center group {/* 아이콘과 텍스트 정렬 */}
-          ${
-            isLoading
-              ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-wait" // 로딩 중 스타일
-              : error && !successMessage
-              ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400" // 🔥 부분 실패/에러 스타일 (경고색)
-              : successMessage
-              ? "bg-green-600 hover:bg-green-700 focus:ring-green-500" // 성공 스타일
-              : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500" // 기본 활성 스타일
-          }
-        `}
-      >
-        {isLoading && (
-          <svg
-            className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-        )}
-        {isLoading
-          ? "동기화 중..."
-          : error && !successMessage
-          ? "재시도" // 🔥 에러 시 재시도 버튼으로 표시
-          : successMessage
-          ? "동기화 완료!"
-          : "업데이트"}
-      </button>
-      {error && (
-        <p
-          className={`mt-2 text-sm text-center ${
-            error.includes("자동으로 재시도")
-              ? "text-amber-600" // 🔥 부분 실패 시 경고색 (재시도 안내 포함)
-              : "text-red-600" // 완전 실패 시 빨간색
-          }`}
+    <>
+      {/* 토스트 메시지 */}
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setShowToast(false)}
+        />
+      )}
+      
+      <div className="w-full">
+        <button
+          onClick={handleUpdatePosts}
+          disabled={isLoading}
+          className={`
+            w-full px-6 py-4 text-white font-semibold text-lg rounded-lg
+            transition-all duration-200 ease-in-out
+            focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500
+            disabled:opacity-50 disabled:cursor-not-allowed
+            ${
+              isLoading
+                ? "bg-gray-400"
+                : successMessage
+                ? "bg-green-500 hover:bg-green-600"
+                : "bg-green-500 hover:bg-green-600"
+            }
+          `}
         >
-          {" "}
-          {/* 가운데 정렬 추가 */}
-          {error}
-        </p>
-      )}
-      {successMessage && !error && (
-        <p className="mt-2 text-sm text-green-600 text-center">
-          {" "}
-          {/* 가운데 정렬 추가 */}
-          {successMessage}
-        </p>
-      )}
-    </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2">
+              <ArrowPathIcon className="h-5 w-5 text-white animate-spin" />
+              <span>업데이트중</span>
+            </div>
+          ) : successMessage ? (
+            <div className="flex items-center justify-center gap-2">
+              <CheckIcon className="h-5 w-5 text-white" />
+              <span>완료</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2">
+              <ArrowPathIcon className="h-5 w-5 text-white" />
+              <span>업데이트</span>
+            </div>
+          )}
+        </button>
+        
+        {/* 에러 메시지만 표시 (성공 메시지는 토스트로 대체) */}
+        {error && (
+          <div
+            className={`mt-4 p-4 rounded-lg text-sm ${
+              error.includes("자동으로 재시도")
+                ? "bg-amber-50 border border-amber-200 text-amber-800"
+                : "bg-red-50 border border-red-200 text-red-800"
+            }`}
+          >
+            <div className="font-medium mb-1">
+              {error.includes("자동으로 재시도") ? "부분 실패" : "오류 발생"}
+            </div>
+            <div className="whitespace-pre-line">{error}</div>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 
-export default PostUpdater;
+export default UpdateButtonBeta;

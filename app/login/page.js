@@ -233,6 +233,7 @@ export default function LoginPage() {
           bandNumber: userDetails.bandNumber,
           band_number: userDetails.bandNumber,
           band_access_token: userDetails.band_access_token,
+          backup_band_keys: userDetails.backup_band_keys,
           band_key: userDetails.band_key,
 
           // 기타 정보

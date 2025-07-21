@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import CommentsModal from "../components/Comments";
-
-const fetcher = (url) => fetch(url).then((res) => res.json());
+import supabase from "../lib/supabaseClient";
 
 export default function PostsPage() {
   const router = useRouter();
@@ -36,18 +35,85 @@ export default function PostsPage() {
     }
   }, [router]);
 
-  // posts 데이터 가져오기
+  // Supabase에서 직접 posts 데이터 가져오기
+  const fetchPosts = async () => {
+    try {
+      // 전체 통계를 위한 별도 쿼리
+      let statsQuery = supabase
+        .from("posts")
+        .select("is_product, comment_sync_status", { count: 'exact', head: false })
+        .eq("user_id", userData.userId);
+
+      // 검색어가 있으면 통계 쿼리에도 적용
+      if (searchQuery) {
+        statsQuery = statsQuery.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
+      }
+
+      const { data: statsData, count: totalCount } = await statsQuery;
+
+      // 전체 통계 계산
+      const totalStats = {
+        totalPosts: totalCount || 0,
+        totalProductPosts: statsData?.filter(post => post.is_product).length || 0,
+        totalCompletedPosts: statsData?.filter(post => post.comment_sync_status === 'success').length || 0,
+      };
+
+      // 페이지네이션된 데이터 가져오기
+      let query = supabase
+        .from("posts")
+        .select(`*`)
+        .eq("user_id", userData.userId)
+        .order("posted_at", { ascending: false });
+
+      // 검색어가 있으면 적용
+      if (searchQuery) {
+        query = query.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
+      }
+
+      // 페이지네이션 적용
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      // 데이터 형식 변환 - products_data JSONB 필드에서 products 추출
+      const formattedData = data?.map(post => {
+        return {
+          ...post,
+          products: Array.isArray(post.products_data) ? post.products_data : []
+        };
+      }) || [];
+
+      // order_needs_ai가 true인 게시물 확인
+      const aiPosts = formattedData.filter(post => post.order_needs_ai);
+
+      return {
+        posts: formattedData,
+        totalCount: totalCount || 0,
+        totalPages: Math.ceil((totalCount || 0) / limit),
+        totalStats
+      };
+    } catch (error) {
+      console.error("Posts fetch error:", error);
+      throw error;
+    }
+  };
+
+  // SWR로 데이터 가져오기
   const {
     data: postsData,
     error,
     mutate,
   } = useSWR(
-    userData?.userId
-      ? `/api/posts?userId=${userData.userId}&page=${page}&limit=${limit}${
-          searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""
-        }`
-      : null,
-    fetcher
+    userData?.userId ? ['posts', userData.userId, page, limit, searchQuery] : null,
+    fetchPosts,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false
+    }
   );
 
   // 검색 기능
@@ -104,6 +170,7 @@ export default function PostsPage() {
       bandKey: bandKey,
       productName: post.title || "게시물",
       accessToken: userData.band_access_token,
+      backupAccessToken: userData.band_backup_access_token, // 백업 토큰 추가
       postContent: post.content || "",
     });
     setIsCommentsModalOpen(true);
@@ -339,6 +406,7 @@ export default function PostsPage() {
         bandKey={selectedPostForComments?.bandKey}
         postTitle={selectedPostForComments?.productName}
         accessToken={selectedPostForComments?.accessToken}
+        backupAccessToken={selectedPostForComments?.backupAccessToken}
         postContent={selectedPostForComments?.postContent}
       />
     </div>
@@ -371,15 +439,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
 
   // 이미지 URL 파싱 개선
   const getImageUrls = () => {
-    console.log("Post data:", post.post_key, {
-      image_urls: post.image_urls,
-      photos_data: post.photos_data,
-      image_urls_type: typeof post.image_urls,
-    });
-
     // image_urls 필드에서 이미지 URL 배열 가져오기
     if (post.image_urls && Array.isArray(post.image_urls)) {
-      console.log("Found image_urls array:", post.image_urls);
       return post.image_urls;
     }
 
@@ -388,7 +449,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
       const urls = post.photos_data
         .map((photo) => photo.url)
         .filter((url) => url);
-      console.log("Extracted from photos_data:", urls);
       return urls;
     }
 
@@ -396,14 +456,12 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
     if (typeof post.image_urls === "string") {
       try {
         const parsed = JSON.parse(post.image_urls);
-        console.log("Parsed from string:", parsed);
         return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
       }
     }
 
-    console.log("No images found for post:", post.post_key);
     return [];
   };
 
@@ -490,7 +548,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
         )}
 
         {/* 연관 상품 정보 */}
-        {post.products && post.products.length > 0 && (
+        {post.products && Array.isArray(post.products) && post.products.length > 0 && (
           <div className="bg-blue-50 rounded-md p-2 mb-3 border border-blue-100">
             <div className="flex items-center space-x-1 mb-1">
               <svg
@@ -511,11 +569,11 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
               </span>
             </div>
             <div className="text-xs text-blue-800 line-clamp-2">
-              {post.products.slice(0, 1).map((product) => (
-                <div key={product.product_id}>
-                  {product.title}{" "}
-                  {product.base_price &&
-                    `${Number(product.base_price).toLocaleString()}원`}
+              {post.products.slice(0, 1).map((product, index) => (
+                <div key={product.product_id || index}>
+                  {product.title || product.name}{" "}
+                  {(product.base_price || product.price) &&
+                    `${Number(product.base_price || product.price).toLocaleString()}원`}
                 </div>
               ))}
               {post.products.length > 1 && (

@@ -34,10 +34,10 @@ function LayoutContent({ children }) {
 
   // --- 주문 관리 메뉴 클릭 핸들러 추가 ---
   const handleOrdersMenuClick = () => {
-    console.log("주문 관리 메뉴 클릭됨, 데이터 갱신 시도...");
+    // 주문 관리 메뉴 클릭됨, 데이터 갱신 시도
 
     // !!! userData 상태가 제대로 설정되었는지 확인 !!!
-    console.log("클릭 시점 userData:", userData);
+    // 클릭 시점 userData 확인
     if (userData?.userId) {
       // --- 여기가 수정되어야 할 부분 ---
       // 실제 API 엔드포인트 패턴과 일치하도록 수정
@@ -50,7 +50,7 @@ function LayoutContent({ children }) {
 
         // 디버깅을 위해 매칭되는 키 출력
         if (isMatch) {
-          console.log(`[mutate] SWR 키 매칭됨: ${key}`);
+          // SWR 키 매칭됨
         }
         return isMatch;
       };
@@ -59,28 +59,26 @@ function LayoutContent({ children }) {
       // const orderKeyPattern = (key) => {
       //   const isMatch = Array.isArray(key) && key[0] === '/api/orders' && key[1] === userData.userId;
       //   if (isMatch) {
-      //     console.log(`[mutate] SWR 배열 키 매칭됨:`, key);
+      //     // SWR 배열 키 매칭됨
       //   }
       //   return isMatch;
       // };
       // --- 수정 끝 ---
 
       try {
-        console.log(
-          `[mutate] User ID (${userData.userId})에 대한 주문 데이터 재검증 시도...`
-        );
+        // User ID에 대한 주문 데이터 재검증 시도
         // undefined: 데이터를 직접 제공하지 않고 재검증만 요청
         // { revalidate: true }: SWR에게 캐시가 최신이더라도 강제로 재검증하도록 지시 (기본값)
         mutate(orderKeyPattern, undefined, { revalidate: true });
-        console.log("[mutate] 재검증 요청 완료.");
+        // 재검증 요청 완료
       } catch (error) {
-        console.error("[mutate] SWR mutate 중 오류 발생:", error);
+        // console.error("[mutate] SWR mutate 중 오류 발생:", error);
       }
     } else {
-      console.warn(
-        "[mutate] userId가 없어 SWR mutate를 실행할 수 없습니다. userData:",
-        userData
-      );
+      // console.warn(
+      //   "[mutate] userId가 없어 SWR mutate를 실행할 수 없습니다. userData:",
+      //   userData
+      // );
     }
     // 모바일 메뉴의 경우 클릭 후 메뉴를 닫아줍니다.
     setMobileMenuOpen(false);
@@ -100,8 +98,7 @@ function LayoutContent({ children }) {
   useEffect(() => {
     // 인증 상태를 확인하는 함수
     const checkAuth = () => {
-      console.log("현재 경로 기반 인증 상태 확인:", pathname); // 디버깅 로그
-      console.log("API 기본 URL 설정:", process.env.NEXT_PUBLIC_API_URL);
+      // 현재 경로 기반 인증 상태 확인
       try {
         // 세션 스토리지에서 사용자 데이터와 토큰을 가져옵니다.
         const sessionData = sessionStorage.getItem("userData");
@@ -111,18 +108,18 @@ function LayoutContent({ children }) {
           const userDataObj = JSON.parse(sessionData); // JSON 문자열을 객체로 변환
           setUserData(userDataObj); // 사용자 데이터 상태 업데이트
           setIsLoggedIn(true); // 로그인 상태를 true로 설정
-          console.log("사용자 로그인됨:", userDataObj); // 성공 로그
+          // 사용자 로그인됨
         } else {
           // 사용자 데이터 또는 토큰 중 하나라도 없으면 로그아웃 상태로 간주합니다.
           setIsLoggedIn(false); // 로그인 상태를 false로 설정
           setUserData(null); // 사용자 데이터 초기화
           // 선택 사항: 상태가 일치하지 않는 경우 정리 (예: userData는 없는데 token만 있는 경우)
 
-          console.log("사용자 로그아웃됨"); // 실패 로그
+          // 사용자 로그아웃됨
         }
       } catch (error) {
         // JSON 파싱 오류 또는 기타 오류 발생 시 처리
-        console.error("인증 상태 확인 또는 사용자 데이터 파싱 오류:", error);
+        // console.error("인증 상태 확인 또는 사용자 데이터 파싱 오류:", error);
         // 잠재적으로 손상된 데이터 제거
         sessionStorage.removeItem("userData");
         sessionStorage.removeItem("token");
@@ -137,7 +134,7 @@ function LayoutContent({ children }) {
     // ---- 선택 사항이지만 권장: 스토리지 이벤트 리스너 ----
     const handleStorageChange = (event) => {
       if (event.key === "userData") {
-        console.log("스토리지 이벤트 감지, 인증 상태 재확인...");
+        // 스토리지 이벤트 감지, 인증 상태 재확인
         checkAuth();
       }
     };
@@ -172,9 +169,9 @@ function LayoutContent({ children }) {
           <title>PODER - 인증</title>
           <meta name="description" content="PODER 인증 페이지" />
           {/* Pretendard 웹폰트 CDN */}
-          <link 
-            rel="stylesheet" 
-            as="style" 
+          <link
+            rel="stylesheet"
+            as="style"
             crossOrigin="anonymous"
             href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
           />
@@ -197,9 +194,9 @@ function LayoutContent({ children }) {
           content="upgrade-insecure-requests"
         ></meta>
         {/* Pretendard 웹폰트 CDN */}
-        <link 
-          rel="stylesheet" 
-          as="style" 
+        <link
+          rel="stylesheet"
+          as="style"
           crossOrigin="anonymous"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
@@ -258,6 +255,19 @@ function LayoutContent({ children }) {
                       }`}
                     >
                       주문 관리
+                    </Link>
+                    <Link
+                      href="/orders-test"
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        pathname === "/orders-test"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      주문관리{" "}
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
+                        beta
+                      </span>
                     </Link>
                     {/* <Link
                       href="/customers"
@@ -417,6 +427,35 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
+                  <Link
+                    href="/orders-test"
+                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                      pathname === "/orders-test"
+                        ? "bg-blue-100 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {/* 주문 관리 베타 아이콘 */}
+                    <svg
+                      className="w-5 h-5 mr-2 text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span className="flex items-center gap-2">
+                      주문관리
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">
+                        [beta]
+                      </span>
+                    </span>
+                  </Link>
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
@@ -506,7 +545,7 @@ function LayoutContent({ children }) {
             className="flex-1 overflow-y-auto w-full"
           >
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
-            <main className="mx-auto">
+            <main className="mx-auto h-full relative">
               <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
             </main>
           </div>

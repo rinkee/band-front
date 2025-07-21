@@ -274,6 +274,7 @@ const CommentsModal = ({
   bandKey,
   postTitle,
   accessToken,
+  backupAccessToken, // 백업 토큰 추가
   postContent, // 게시물 내용 추가
   tryKeyIndex = 0,
   order,
@@ -303,24 +304,49 @@ const CommentsModal = ({
   };
 
   // 댓글 가져오기 함수
-  const fetchComments = async (isRefresh = false) => {
+  const fetchComments = async (isRefresh = false, useBackupToken = false) => {
     if (!postKey || !bandKey || !accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
+      // props로 받은 백업 토큰 사용 (없으면 세션에서 가져오기)
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const backupKeys = userData.backup_band_keys;
+      const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
+      
+      console.log("토큰 정보:", {
+        메인토큰: accessToken ? "있음" : "없음",
+        백업토큰_props: backupAccessToken ? "있음" : "없음", 
+        백업토큰_세션: backupToken ? "있음" : "없음",
+        백업키_배열: backupKeys,
+        useBackupToken
+      });
+      
       const params = new URLSearchParams({
-        access_token: accessToken,
+        access_token: useBackupToken && backupToken ? backupToken : accessToken,
         band_key: bandKey,
         post_key: postKey,
         sort: "created_at", // 오래된 순 정렬로 변경
       });
+      
+      // 백업 토큰 사용 시 표시
+      if (useBackupToken && backupToken) {
+        console.log("백업 액세스 토큰으로 댓글 조회 중...");
+      }
 
       // 프록시 API 엔드포인트 사용
       const response = await fetch(`/api/band/comments?${params}`);
 
       if (!response.ok) {
+        console.log(`API 응답 실패: ${response.status}, useBackupToken: ${useBackupToken}, backupToken 존재: ${!!backupToken}`);
+        // 메인 토큰 실패 시 백업 토큰으로 재시도
+        if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
+          console.log("메인 토큰 실패, 백업 토큰으로 재시도...");
+          return fetchComments(isRefresh, true);
+        }
+        
         // 400/401/403/429 등 에러 시 failover 콜백 호출
         if (
           [400, 401, 403, 429].includes(response.status) &&
@@ -371,17 +397,36 @@ const CommentsModal = ({
   };
 
   // 더 많은 댓글 가져오기
-  const loadMoreComments = async () => {
+  const loadMoreComments = async (useBackupToken = false) => {
     if (!nextParams || loading) return;
 
     setLoading(true);
     try {
       const params = new URLSearchParams(nextParams);
+      
+      // 백업 토큰 사용 시 access_token 파라미터 교체
+      if (useBackupToken) {
+        const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+        const backupKeys = userData.backup_band_keys;
+        const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
+        if (backupToken) {
+          params.set('access_token', backupToken);
+          console.log("백업 토큰으로 추가 댓글 로드 중...");
+        }
+      }
 
       // 프록시 API 엔드포인트 사용
       const response = await fetch(`/api/band/comments?${params}`);
 
       if (!response.ok) {
+        // 메인 토큰 실패 시 백업 토큰으로 재시도
+        const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+        const backupKeys = userData.backup_band_keys;
+        const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
+        if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
+          console.log("추가 댓글 로드 실패, 백업 토큰으로 재시도...");
+          return loadMoreComments(true);
+        }
         throw new Error(`댓글 조회 실패: ${response.status}`);
       }
 
