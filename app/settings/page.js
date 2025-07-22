@@ -1015,6 +1015,9 @@ export default function SettingsPage() {
   const [forceAiProcessing, setForceAiProcessing] = useState(false); // <<<--- AI 강제 처리 상태 추가
   const [initialForceAiProcessing, setInitialForceAiProcessing] =
     useState(null); // <<<--- AI 강제 처리 초기 상태 추가
+  const [multiNumberAiProcessing, setMultiNumberAiProcessing] = useState(false); // <<<--- 다중 숫자 AI 처리 상태 추가
+  const [initialMultiNumberAiProcessing, setInitialMultiNumberAiProcessing] =
+    useState(null); // <<<--- 다중 숫자 AI 처리 초기 상태 추가
   const [savingAiProcessingSetting, setSavingAiProcessingSetting] =
     useState(false); // <<<--- AI 설정 저장 상태 추가
   const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
@@ -1158,6 +1161,7 @@ export default function SettingsPage() {
           sessionUserData.auto_barcode_generation ?? false
         );
         setForceAiProcessing(sessionUserData.force_ai_processing ?? false);
+        setMultiNumberAiProcessing(sessionUserData.multi_number_ai_processing ?? false);
 
         // postLimit도 세션에서 가져오기
         const sessionPostLimit = sessionStorage.getItem("userPostLimit");
@@ -1230,6 +1234,9 @@ export default function SettingsPage() {
           force_ai_processing:
             userDataToSave.force_ai_processing ??
             existingSessionData.force_ai_processing,
+          multi_number_ai_processing:
+            userDataToSave.multi_number_ai_processing ??
+            existingSessionData.multi_number_ai_processing,
           post_fetch_limit:
             userDataToSave.post_fetch_limit ??
             existingSessionData.post_fetch_limit,
@@ -1367,6 +1374,10 @@ export default function SettingsPage() {
         setInitialForceAiProcessing(
           userDataFromServer.force_ai_processing ?? false
         ); // 서버 값을 최종 초기값으로
+        setMultiNumberAiProcessing(userDataFromServer.multi_number_ai_processing ?? false);
+        setInitialMultiNumberAiProcessing(
+          userDataFromServer.multi_number_ai_processing ?? false
+        ); // 서버 값을 최종 초기값으로
         // postLimit은 사용자가 편집 중이 아닐 때만 업데이트
         if (!isEditingPostLimit) {
           setPostLimit(
@@ -1480,7 +1491,9 @@ export default function SettingsPage() {
     // 초기값이 아직 로드되지 않은 경우 현재 값과 비교할 수 없으므로 저장 진행
     if (
       initialForceAiProcessing !== null &&
-      forceAiProcessing === initialForceAiProcessing
+      forceAiProcessing === initialForceAiProcessing &&
+      initialMultiNumberAiProcessing !== null &&
+      multiNumberAiProcessing === initialMultiNumberAiProcessing
     ) {
       alert("변경된 내용이 없습니다.");
       return;
@@ -1488,7 +1501,10 @@ export default function SettingsPage() {
 
     setSavingAiProcessingSetting(true);
     setError(null);
-    const aiProcessingPayload = { force_ai_processing: forceAiProcessing };
+    const aiProcessingPayload = { 
+      force_ai_processing: forceAiProcessing,
+      multi_number_ai_processing: multiNumberAiProcessing
+    };
 
     try {
       const { data: updatedUser, error: updateError } = await supabase
@@ -1503,6 +1519,7 @@ export default function SettingsPage() {
       alert("AI 강제 처리 설정이 저장되었습니다.");
 
       setInitialForceAiProcessing(forceAiProcessing); // 성공 시 UI의 현재 값을 새 초기값으로
+      setInitialMultiNumberAiProcessing(multiNumberAiProcessing); // 성공 시 UI의 현재 값을 새 초기값으로
 
       if (updatedUser) {
         await userMutate(updatedUser, {
@@ -2008,6 +2025,38 @@ export default function SettingsPage() {
                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
                   </label>
                 </div>
+                {/* 다중 숫자 AI 처리 설정 */}
+                <div className="flex items-center justify-between">
+                  {/* 설정 설명 */}
+                  <div>
+                    <label
+                      htmlFor="multiNumberAiProcessingToggle"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      한 댓글 내 여러 숫자 AI 처리
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      활성화 시, 한 댓글에 여러 숫자가 감지되면 (전화번호 제외) AI로 처리합니다.
+                    </p>
+                  </div>
+                  {/* 토글 스위치 */}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="multiNumberAiProcessingToggle"
+                      checked={multiNumberAiProcessing} // 현재 상태값 바인딩
+                      onChange={() => setMultiNumberAiProcessing((prev) => !prev)} // 클릭 시 상태 변경
+                      disabled={
+                        savingAiProcessingSetting ||
+                        isDataLoading ||
+                        initialMultiNumberAiProcessing === null
+                      } // 저장 중이거나 로딩 중이거나 초기값이 없으면 비활성화
+                      className="sr-only peer"
+                    />
+                    {/* 스위치 디자인 (Tailwind CSS) */}
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </label>
+                </div>
               </div>
               {/* 카드 푸터 (저장 버튼들) */}
               <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end gap-3 rounded-b-xl">
@@ -2038,7 +2087,8 @@ export default function SettingsPage() {
                   disabled={
                     savingAiProcessingSetting ||
                     isDataLoading ||
-                    forceAiProcessing === initialForceAiProcessing
+                    (forceAiProcessing === initialForceAiProcessing &&
+                     multiNumberAiProcessing === initialMultiNumberAiProcessing)
                   } // 저장 중, 로딩 중, 또는 변경사항 없으면 비활성화
                   className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >

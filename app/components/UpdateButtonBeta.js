@@ -147,29 +147,55 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
       // 성공 또는 부분 성공 처리 (200 또는 207)
       if (response.status === 200 || response.status === 207) {
         const processedCount = responseData.data?.length || 0;
+        const newPosts = responseData.newPosts || 0;
+        const updatedComments = responseData.updatedComments || 0;
 
         // failover 정보 확인
         const failoverInfo = responseData.failoverInfo;
-        let baseMessage = `${processedCount}개의 게시물 정보를 동기화했습니다.`;
-
+        
         // 에러 요약 정보 확인
         if (responseData.errorSummary) {
           const { totalErrors, errorRate } = responseData.errorSummary;
-          baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
+          
+          // 부분 성공 - 성공한 내용과 실패한 내용을 모두 표시
+          let partialSuccessMessage = `✅ 업데이트 완료\n`;
+          partialSuccessMessage += `• 처리된 게시물: ${processedCount}개\n`;
+          if (newPosts > 0) {
+            partialSuccessMessage += `• 새 게시물: ${newPosts}개\n`;
+          }
+          if (updatedComments > 0) {
+            partialSuccessMessage += `• 업데이트된 댓글: ${updatedComments}개\n`;
+          }
+          
+          // 에러가 있었다면 경고 표시
+          if (totalErrors > 0) {
+            partialSuccessMessage += `\n⚠️ 일부 처리 실패: ${totalErrors}개 (${errorRate}%)\n`;
+            partialSuccessMessage += `실패한 항목은 다음 업데이트 시 자동으로 재시도됩니다.`;
+          }
 
-          baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
-
-          // 부분 실패이므로 경고 스타일로 표시
-          setError(baseMessage);
-          setSuccessMessage(""); // 성공 메시지는 비움
+          // 부분 성공도 성공으로 표시하되, 경고 정보 포함
+          setSuccessMessage(partialSuccessMessage);
+          setError(""); // 에러 메시지는 비움
+          
+          // 토스트 메시지 표시
+          setToastMessage(`업데이트 완료! (일부 항목 처리 실패: ${totalErrors}개)`);
+          setToastType("warning");
+          setShowToast(true);
         } else {
           // 완전 성공
-          let successMessage = baseMessage;
+          let successMessage = `✅ 업데이트 성공!\n`;
+          successMessage += `• 처리된 게시물: ${processedCount}개\n`;
+          if (newPosts > 0) {
+            successMessage += `• 새 게시물: ${newPosts}개\n`;
+          }
+          if (updatedComments > 0) {
+            successMessage += `• 업데이트된 댓글: ${updatedComments}개`;
+          }
 
           if (failoverInfo && failoverInfo.keysUsed > 1) {
-            successMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
+            successMessage += `\n\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
           } else if (failoverInfo && failoverInfo.finalKeyIndex > 0) {
-            successMessage += `\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
+            successMessage += `\n\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
           }
 
           setSuccessMessage(successMessage);
