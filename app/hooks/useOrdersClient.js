@@ -67,14 +67,9 @@ const fetchOrders = async (key) => {
     // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
     const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
 
-    console.log(`[useOrdersClient DEBUG] Search term: "${searchTerm}"`);
-    console.log(
-      `[useOrdersClient DEBUG] Is post_key search: ${isPostKeySearch}`
-    );
 
     if (isPostKeySearch) {
       // post_key 정확 매칭
-      console.log(`[useOrdersClient DEBUG] Applying post_key exact match`);
       query = query.eq("post_key", searchTerm);
     } else {
       // 일반 검색 - 한글 안전 처리
@@ -83,10 +78,10 @@ const fetchOrders = async (key) => {
           `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
         );
       } catch (error) {
-        console.warn(
-          "Search filter error, falling back to simple filtering:",
-          error
-        );
+        // console.warn(
+        //   "Search filter error, falling back to simple filtering:",
+        //   error
+        // );
         // 에러 발생시 고객명만으로 필터링
         query = query.ilike("customer_name", `%${searchTerm}%`);
       }
@@ -108,7 +103,7 @@ const fetchOrders = async (key) => {
         .gte("ordered_at", start)
         .lte("ordered_at", end.toISOString());
     } catch (dateError) {
-      console.error("Date filter error:", dateError);
+      // console.error("Date filter error:", dateError);
     }
   }
 
@@ -137,7 +132,7 @@ const fetchOrders = async (key) => {
       }
     }
   } catch (e) {
-    console.error("Error fetching excluded customers:", e);
+    // console.error("Error fetching excluded customers:", e);
   }
 
   // 정렬 및 페이지네이션
@@ -148,7 +143,7 @@ const fetchOrders = async (key) => {
   const { data, error, count } = await query;
 
   if (error) {
-    console.error("Supabase query error:", error);
+    // console.error("Supabase query error:", error);
     throw error;
   }
 
@@ -187,7 +182,7 @@ const fetchOrder = async (key) => {
     if (error.code === "PGRST116") {
       throw new Error("Order not found");
     }
-    console.error("Supabase query error:", error);
+    // console.error("Supabase query error:", error);
     throw error;
   }
 
@@ -243,10 +238,10 @@ const fetchOrderStats = async (key) => {
         `customer_name.ilike.%${searchTerm}%,products.title.ilike.%${searchTerm}%`
       );
     } catch (error) {
-      console.warn(
-        "Stats search filter error, falling back to simple filtering:",
-        error
-      );
+      // console.warn(
+      //   "Stats search filter error, falling back to simple filtering:",
+      //   error
+      // );
       // 에러 발생시 고객명만으로 필터링
       query = query.ilike("customer_name", `%${searchTerm}%`);
     }
@@ -262,7 +257,7 @@ const fetchOrderStats = async (key) => {
         .gte("ordered_at", start)
         .lte("ordered_at", end.toISOString());
     } catch (dateError) {
-      console.error("Date filter error:", dateError);
+      // console.error("Date filter error:", dateError);
     }
   }
 
@@ -290,19 +285,16 @@ const fetchOrderStats = async (key) => {
       }
     }
   } catch (e) {
-    console.error("Error fetching excluded customers for stats:", e);
+    // console.error("Error fetching excluded customers for stats:", e);
   }
 
   const { data, error } = await query;
 
   if (error) {
-    console.error("Supabase stats query error:", error);
+    // console.error("Supabase stats query error:", error);
     throw error;
   }
 
-  // 디버깅용 로그
-  console.log("Stats query filterOptions:", filterOptions);
-  console.log("Stats query result:", data);
 
   // 통계 계산
   const totalOrders = data.length;
@@ -468,7 +460,7 @@ export function useOrderClientMutations() {
       if (error.code === "PGRST116") {
         throw new Error("Order not found or access denied");
       }
-      console.error("Error updating order status:", error);
+      // console.error("Error updating order status:", error);
       throw error;
     }
 
@@ -518,7 +510,7 @@ export function useOrderClientMutations() {
       if (error.code === "PGRST116") {
         throw new Error("Order not found or access denied");
       }
-      console.error("Error updating order details:", error);
+      // console.error("Error updating order details:", error);
       throw error;
     }
 
@@ -592,7 +584,7 @@ export function useOrderClientMutations() {
       .select();
 
     if (error) {
-      console.error("Error bulk updating orders:", error);
+      // console.error("Error bulk updating orders:", error);
       throw error;
     }
 

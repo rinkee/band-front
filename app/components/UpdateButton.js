@@ -77,10 +77,9 @@ const PostUpdater = ({ bandNumber = null }) => {
           }
         }
       } catch (error) {
-        console.warn("세션 데이터 파싱 실패:", error);
+        // 세션 데이터 파싱 실패
       }
     }
-    console.log(`Using limit: ${currentLimit} for post updates.`);
 
     const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
     if (!functionsBaseUrl || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -103,29 +102,48 @@ const PostUpdater = ({ bandNumber = null }) => {
       // 예: params.append("processAI", "true");
 
       const functionUrl = `${functionsBaseUrl}/band-get-posts?${params.toString()}`;
-      console.log("Calling Supabase function via URL:", functionUrl);
 
       const response = await api.get(functionUrl, {
         timeout: 600000, // 10분 타임아웃
       });
 
-      console.log("API Response Data:", response.data);
       const responseData = response.data;
 
-      if (responseData.success) {
+      // 🔥 성공 또는 부분 성공 처리 (200 또는 207)
+      if (response.status === 200 || response.status === 207) {
         const processedCount = responseData.data?.length || 0;
 
         // failover 정보 확인
         const failoverInfo = responseData.failoverInfo;
-        let successMessage = `${processedCount}개의 게시물 정보를 성공적으로 동기화했습니다.`;
+        let baseMessage = `${processedCount}개의 게시물 정보를 동기화했습니다.`;
 
-        if (failoverInfo && failoverInfo.keysUsed > 1) {
-          successMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
-        } else if (failoverInfo && failoverInfo.finalKeyIndex > 0) {
-          successMessage += `\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
+        // 🔥 에러 요약 정보 확인
+        if (responseData.errorSummary) {
+          const { totalErrors, errorRate } = responseData.errorSummary;
+          baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
+
+          // 에러 상세 정보 (개발 시 필요하면 주석 해제)
+          // console.warn("처리 실패한 게시물들:", responseData.errors);
+
+          // 사용자에게 재시도 안내
+          baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
+
+          // 부분 실패이므로 경고 스타일로 표시
+          setError(baseMessage);
+          setSuccessMessage(""); // 성공 메시지는 비움
+        } else {
+          // 완전 성공
+          let successMessage = baseMessage;
+
+          if (failoverInfo && failoverInfo.keysUsed > 1) {
+            successMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
+          } else if (failoverInfo && failoverInfo.finalKeyIndex > 0) {
+            successMessage += `\n⚠️ 현재 백업 키 #${failoverInfo.finalKeyIndex}를 사용 중입니다.`;
+          }
+
+          setSuccessMessage(successMessage);
+          setError(""); // 에러 메시지는 비움
         }
-
-        setSuccessMessage(successMessage);
 
         if (userId) {
           // userId가 있을 때만 mutate 실행
@@ -157,20 +175,29 @@ const PostUpdater = ({ bandNumber = null }) => {
             { revalidate: true }
           );
 
-          console.log("SWR 캐시 (orders, products, stats) 갱신 요청됨.");
+          // SWR 캐시 갱신 완료
         } else {
-          console.warn("SWR 캐시 갱신 건너뜀: userId를 찾을 수 없습니다.");
+          // userId가 없어서 SWR 캐시 갱신 건너뜀
         }
         // --- SWR 캐시 갱신 끝 ---
       } else {
-        setError(
+        // 🔥 완전 실패 처리 (500 등)
+        let errorMessage =
           responseData.message ||
-            "게시물 동기화 중 서버에서 명시적 오류가 발생했습니다."
-        );
+          "게시물 동기화 중 서버에서 오류가 발생했습니다.";
+
+        // 에러 상세 정보가 있으면 추가
+        if (responseData.errors && responseData.errors.length > 0) {
+          errorMessage += `\n실패한 게시물: ${responseData.errors.length}개`;
+          // console.error("상세 에러 정보:", responseData.errors);
+        }
+
+        setError(errorMessage);
+        setSuccessMessage("");
       }
     } catch (err) {
-      console.error("!!! API Call CATCH block !!!");
-      console.error("Full API Error Object:", err);
+      // console.error("!!! API Call CATCH block !!!");
+      // console.error("Full API Error Object:", err);
 
       let userFriendlyMessage =
         "게시물 업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
@@ -188,13 +215,7 @@ const PostUpdater = ({ bandNumber = null }) => {
       setError(userFriendlyMessage);
     } finally {
       setIsLoading(false);
-      if (successMessage) {
-        // 성공 메시지가 설정된 경우에만 타임아웃 설정
-        const timer = setTimeout(() => setSuccessMessage(""), 5000); // 5초 후 메시지 지움
-        // 컴포넌트 언마운트 시 타이머 클리어 (메모리 누수 방지)
-        // 이 부분은 useEffect로 옮겨서 관리하는 것이 더 적절할 수 있음
-        // return () => clearTimeout(timer); << useCallback 내부에서는 직접 return 불가
-      }
+      // 성공 메시지 자동 해제는 useEffect에서 처리 (228-237번째 줄)
     }
   }, [bandNumber, successMessage, mutate]); // 의존성 배열에 mutate 추가
 
@@ -215,7 +236,7 @@ const PostUpdater = ({ bandNumber = null }) => {
       {/* 컴포넌트 주변 여백 추가 */}
       <button
         onClick={handleUpdatePosts}
-        disabled={isLoading || !!error} // 로딩 중이거나 에러 메시지가 있으면 비활성화
+        disabled={isLoading} // 🔥 로딩 중에만 비활성화 (에러 시에도 재시도 가능하게)
         className={`
           px-8 py-2 text-white font-medium rounded-md transition-colors duration-300 ease-in-out
           focus:outline-none focus:ring-2 focus:ring-offset-2
@@ -224,6 +245,8 @@ const PostUpdater = ({ bandNumber = null }) => {
           ${
             isLoading
               ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-wait" // 로딩 중 스타일
+              : error && !successMessage
+              ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400" // 🔥 부분 실패/에러 스타일 (경고색)
               : successMessage
               ? "bg-green-600 hover:bg-green-700 focus:ring-green-500" // 성공 스타일
               : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500" // 기본 활성 스타일
@@ -254,12 +277,20 @@ const PostUpdater = ({ bandNumber = null }) => {
         )}
         {isLoading
           ? "동기화 중..."
+          : error && !successMessage
+          ? "재시도" // 🔥 에러 시 재시도 버튼으로 표시
           : successMessage
           ? "동기화 완료!"
           : "업데이트"}
       </button>
       {error && (
-        <p className="mt-2 text-sm text-red-600 text-center">
+        <p
+          className={`mt-2 text-sm text-center ${
+            error.includes("자동으로 재시도")
+              ? "text-amber-600" // 🔥 부분 실패 시 경고색 (재시도 안내 포함)
+              : "text-red-600" // 완전 실패 시 빨간색
+          }`}
+        >
           {" "}
           {/* 가운데 정렬 추가 */}
           {error}
