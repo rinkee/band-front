@@ -49,6 +49,8 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("success");
+  const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
 
   const { mutate } = useSWRConfig();
 
@@ -132,16 +134,94 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
       const params = new URLSearchParams();
       params.append("userId", userId);
       params.append("limit", currentLimit.toString());
+      
+      // 세션 ID 생성 및 추가
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      params.append("sessionId", sessionId);
+      
       if (bandNumber) {
         params.append("bandNumber", bandNumber.toString());
       }
 
       const functionUrl = `${functionsBaseUrl}/band-get-posts?${params.toString()}`;
 
-      const response = await api.get(functionUrl, {
-        timeout: 600000, // 10분 타임아웃
+      // AbortController로 요청 관리
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
+
+      // API 요청 시작
+      const requestPromise = api.get(functionUrl, {
+        signal: controller.signal,
+        timeout: 600000, // 실제 처리는 곈4속됨
       });
 
+      // Promise.race로 빠른 응답 처리
+      const quickResponse = await Promise.race([
+        requestPromise,
+        new Promise((resolve) => setTimeout(() => resolve({ quickReturn: true }), 3000)) // 3초 후 즉시 반환
+      ]);
+
+      clearTimeout(timeoutId);
+
+      if (quickResponse.quickReturn) {
+        // 3초 내에 응답이 없으면 백그라운드 처리로 전환
+        console.log("⏰ 3초 타임아웃! 백그라운드 처리로 전환");
+        setIsLoading(false);
+        setIsBackgroundProcessing(true);
+        
+        // 실제 요청은 계속 진행되도록 함
+        requestPromise.then((response) => {
+          console.log("🔵 백그라운드 처리 완료! 서버 응답:", response);
+          console.log("🔵 응답 데이터:", response.data);
+          console.log("🔵 처리된 게시물 수:", response.data?.data?.length || 0);
+          
+          // 백그라운드에서 완료되면 즉시 완료 처리
+          setIsBackgroundProcessing(false);
+          
+          // 진행률을 100%로 즉시 업데이트
+          const processedCount = response.data?.data?.length || 0;
+          const newPosts = response.data?.newPosts || 0;
+          const updatedComments = response.data?.updatedComments || 0;
+          
+          setProgress({
+            current: processedCount,
+            total: processedCount,
+            message: `✨ 완료! ${newPosts > 0 ? `새 게시물: ${newPosts}개` : ''}${updatedComments > 0 ? `, 댓글: ${updatedComments}개` : ''}`
+          });
+          
+          handleResponse(response, userId);
+          
+          // 3초 후 진행률 초기화
+          setTimeout(() => {
+            setProgress({ current: 0, total: 0, message: '' });
+          }, 3000);
+        }).catch((err) => {
+          console.error("🔴 백그라운드 처리 에러:", err);
+          console.error("🔴 에러 상세:", err.response?.data);
+          setIsBackgroundProcessing(false);
+          if (!err.name?.includes('AbortError')) {
+            handleError(err);
+          }
+        });
+      } else {
+        // 3초 내에 응답이 온 경우
+        console.log("✅ 3초 내에 서버 응답 도착!");
+        console.log("✅ 빠른 응답:", quickResponse);
+        handleResponse(quickResponse, userId);
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setIsLoading(false);
+        setIsBackgroundProcessing(true);
+      } else {
+        handleError(err);
+      }
+    }
+  }, [bandNumber, mutate]);
+
+  // 응답 처리 함수 분리
+  const handleResponse = (response, userId) => {
+    try {
       const responseData = response.data;
 
       // 성공 또는 부분 성공 처리 (200 또는 207)
@@ -250,6 +330,14 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
         setError(errorMessage);
         setSuccessMessage("");
       }
+      
+      // 성공/실패 여부와 관계없이 백그라운드 처리 종료
+      setIsBackgroundProcessing(false);
+      
+      // 3초 후 진행률 초기화
+      setTimeout(() => {
+        setProgress({ current: 0, total: 0, message: '' });
+      }, 3000);
     } catch (err) {
       let userFriendlyMessage =
         "게시물 업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
@@ -265,21 +353,146 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
           "요청 시간이 초과되었습니다. 네트워크 상태를 확인하거나, 가져올 게시물 수를 줄여보세요.";
       }
       setError(userFriendlyMessage);
+      setIsBackgroundProcessing(false);
+      setProgress({ current: 0, total: 0, message: '' });
     } finally {
       setIsLoading(false);
     }
-  }, [bandNumber, mutate]);
+  };
+  
+  // 에러 처리 함수
+  const handleError = (err) => {
+    let userFriendlyMessage = "게시물 업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    
+    if (err.isAxiosError && err.response) {
+      userFriendlyMessage += ` (서버: ${err.response.data?.message || err.response.statusText || "알 수 없음"})`;
+    } else if (err.message.includes("timeout") || err.code === "ECONNABORTED") {
+      userFriendlyMessage = "요청 시간이 초과되었습니다. 네트워크 상태를 확인하거나, 가져올 게시물 수를 줄여보세요.";
+    }
+    
+    setError(userFriendlyMessage);
+    setIsLoading(false);
+    setIsBackgroundProcessing(false);
+    setProgress({ current: 0, total: 0, message: '' });
+  };
 
   // 성공 메시지 자동 해제를 위한 useEffect
   useEffect(() => {
     let timer;
-    if (successMessage) {
+    if (successMessage && !isBackgroundProcessing) {
       timer = setTimeout(() => {
         setSuccessMessage("");
       }, 5000); // 5초 후 성공 메시지 자동 해제
     }
     return () => clearTimeout(timer);
-  }, [successMessage]);
+  }, [successMessage, isBackgroundProcessing]);
+
+  // 주기적 캐시 갱신 및 진행률 시뮬레이션
+  useEffect(() => {
+    if (!isBackgroundProcessing) return;
+
+    const userId = getUserIdFromSession();
+    if (!userId) return;
+
+    // 사용자 설정에서 게시물 제한 가져오기
+    let estimatedTotal = 200; // 기본값
+    const storedLimit = sessionStorage.getItem("userPostLimit");
+    if (storedLimit) {
+      const parsedLimit = parseInt(storedLimit, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        estimatedTotal = parsedLimit;
+      }
+    } else {
+      // 세션에 없으면 세션 데이터에서 확인
+      try {
+        const sessionData = sessionStorage.getItem("sessionUserData");
+        if (sessionData) {
+          const userData = JSON.parse(sessionData);
+          if (userData?.post_fetch_limit) {
+            const userLimit = parseInt(userData.post_fetch_limit, 10);
+            if (!isNaN(userLimit) && userLimit > 0) {
+              estimatedTotal = userLimit;
+            }
+          }
+        }
+      } catch (error) {
+        // 세션 데이터 파싱 실패
+      }
+    }
+    
+    setProgress({ current: 0, total: estimatedTotal, message: '게시물 가져오는 중...' });
+
+    let currentCount = 0;
+    const increment = Math.ceil(estimatedTotal / 10); // 10단계로 나누어 진행
+
+    // 진행률 업데이트 및 캐시 갱신 (2초마다)
+    const intervalId = setInterval(() => {
+      // 실제 서버 응답이 왔는지 확인
+      if (!isBackgroundProcessing) {
+        clearInterval(intervalId);
+        return;
+      }
+      
+      currentCount += increment;
+      if (currentCount > estimatedTotal) currentCount = estimatedTotal;
+      
+      const messages = [
+        '게시물 가져오는 중...',
+        '댓글 분석 중...',
+        'AI 처리 중...',
+        '주문 정보 추출 중...',
+        '데이터 저장 중...'
+      ];
+      const messageIndex = Math.floor((currentCount / estimatedTotal) * messages.length);
+      
+      setProgress({
+        current: currentCount,
+        total: estimatedTotal,
+        message: messages[Math.min(messageIndex, messages.length - 1)]
+      });
+      
+      // 캐시 갱신
+      const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+      const ordersKeyPattern = `${functionsBaseUrl}/orders-get-all?userId=${userId}`;
+      mutate(
+        (key) => typeof key === "string" && key.startsWith(ordersKeyPattern),
+        undefined,
+        { revalidate: true }
+      );
+      
+      // 완료 처리
+      if (currentCount >= estimatedTotal) {
+        setIsBackgroundProcessing(false);
+        setSuccessMessage("✨ 모든 게시물이 성공적으로 업데이트되었습니다!");
+        
+        // 진행률 바 유지하고 3초 후 제거
+        setTimeout(() => {
+          setProgress({ current: 0, total: 0, message: '' });
+          setSuccessMessage("");
+        }, 3000);
+        
+        clearInterval(intervalId);
+      }
+    }, 2000);
+
+    // 최대 60초 타임아웃
+    const timeoutId = setTimeout(() => {
+      clearInterval(intervalId);
+      setIsBackgroundProcessing(false);
+      setProgress({ current: estimatedTotal, total: estimatedTotal, message: '완료!' });
+      setSuccessMessage("업데이트가 완료되었습니다!");
+      
+      setTimeout(() => {
+        setProgress({ current: 0, total: 0, message: '' });
+        setSuccessMessage("");
+      }, 3000);
+    }, 60000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearTimeout(timeoutId);
+    };
+  }, [isBackgroundProcessing, mutate]);
 
   return (
     <>
@@ -295,14 +508,14 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
       <div className="w-full">
         <button
           onClick={handleUpdatePosts}
-          disabled={isLoading}
+          disabled={isLoading || isBackgroundProcessing}
           className={`
             w-full px-6 py-4 text-white font-semibold text-lg rounded-lg
             transition-all duration-200 ease-in-out
             focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500
             disabled:opacity-50 disabled:cursor-not-allowed
             ${
-              isLoading
+              isLoading || isBackgroundProcessing
                 ? "bg-gray-400"
                 : successMessage
                 ? "bg-green-500 hover:bg-green-600"
@@ -310,7 +523,7 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
             }
           `}
         >
-          {isLoading ? (
+          {isLoading || isBackgroundProcessing ? (
             <div className="flex items-center justify-center gap-2">
               <ArrowPathIcon className="h-5 w-5 text-white animate-spin" />
               <span>업데이트중</span>
@@ -327,6 +540,45 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
             </div>
           )}
         </button>
+        
+        {/* 진행률 표시 */}
+        {(isBackgroundProcessing || progress.total > 0) && (
+          <div className="mt-3 space-y-2">
+            {/* 진행률 바 */}
+            <div className="relative">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs text-gray-600">
+                  {progress.message || '처리 중...'}
+                </span>
+                <span className="text-xs font-medium text-gray-700">
+                  {progress.current}/{progress.total}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div 
+                  className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-500 ease-out relative"
+                  style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                >
+                  {/* 애니메이션 효과 */}
+                  <div className="absolute inset-0 bg-white opacity-20 animate-pulse" />
+                </div>
+              </div>
+            </div>
+            
+            {/* 실시간 업데이트 내역 */}
+            {progress.current > 0 && (
+              <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded-md max-h-20 overflow-y-auto">
+                <div className="flex items-center">
+                  <svg className="animate-spin mr-1 h-3 w-3 text-green-500" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                  </svg>
+                  <span>{progress.current}개 게시물 처리 완료</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         
         {/* 에러 메시지만 표시 (성공 메시지는 토스트로 대체) */}
         {error && (

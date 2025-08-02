@@ -563,6 +563,7 @@ export default function ProductBarcodeModal({
   const barcodeManagers = useRef(new Map());
   const [expandedProducts, setExpandedProducts] = useState(new Set());
   const [productState, setProductState] = useState(new Map());
+  const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0, productName: '' });
 
   useEffect(() => {
     if (isOpen) {
@@ -608,6 +609,14 @@ export default function ProductBarcodeModal({
   };
 
   const handleProductUpdate = (updatedProduct) => {
+    // 낙관적 업데이트 - 즉시 UI 업데이트
+    if (data && data.products) {
+      const updatedProducts = data.products.map(p => 
+        p.product_id === updatedProduct.product_id ? updatedProduct : p
+      );
+      setData({ ...data, products: updatedProducts });
+    }
+    
     // 상품 업데이트 후 데이터 새로고침
     fetchPostDetails();
     // 상위 컴포넌트도 갱신
@@ -655,7 +664,7 @@ export default function ProductBarcodeModal({
     });
   }, []);
 
-  // 전체 저장 함수
+  // 전체 저장 함수 - 병렬 처리 및 진행률 표시
   const handleSaveAll = async () => {
     if (!data?.products || data.products.length === 0) {
       alert("저장할 상품이 없습니다.");
@@ -667,28 +676,100 @@ export default function ProductBarcodeModal({
 
     try {
       const managers = Array.from(barcodeManagers.current.values());
+      const productsToSave = [];
 
       // 모든 상품의 바코드 옵션 검증
-      for (const manager of managers) {
+      for (let i = 0; i < managers.length; i++) {
+        const manager = managers[i];
+        const product = data.products[i];
+        
         if (!manager.hasValidData()) {
           throw new Error("모든 바코드의 이름, 바코드, 가격을 입력해주세요.");
         }
         if (!manager.hasNoDuplicates()) {
           throw new Error("중복된 바코드가 있습니다. 중복을 제거해주세요.");
         }
+        
+        productsToSave.push({ manager, product });
       }
 
-      // 모든 상품 저장
-      for (const manager of managers) {
-        await manager.saveOptions();
+      // 진행률 초기화
+      setSaveProgress({ current: 0, total: productsToSave.length, productName: '' });
+
+      // 병렬 처리를 위한 배치 사이즈 (2-3개씩 동시 처리)
+      const batchSize = 3;
+      const batches = [];
+      
+      for (let i = 0; i < productsToSave.length; i += batchSize) {
+        batches.push(productsToSave.slice(i, i + batchSize));
       }
 
-      alert("모든 상품의 바코드가 성공적으로 저장되었습니다.");
-      // 데이터 새로고침
-      fetchPostDetails();
+      let completedCount = 0;
+      
+      // 배치별로 병렬 처리 with 에러 핸들링
+      const failedProducts = [];
+      
+      for (const batch of batches) {
+        const promises = batch.map(async ({ manager, product }) => {
+          try {
+            setSaveProgress(prev => ({ 
+              ...prev, 
+              productName: `${product.title || '상품'} 처리중...`
+            }));
+            
+            const result = await manager.saveOptions();
+            
+            completedCount++;
+            setSaveProgress(prev => ({ 
+              ...prev, 
+              current: completedCount,
+              productName: completedCount === productsToSave.length ? '✨ 모든 상품 저장 완료!' : `${product.title || '상품'} 완료`
+            }));
+            
+            // 낙관적 업데이트를 위해 개별 상품 업데이트 즉시 반영
+            handleProductUpdate(result);
+            
+            return { success: true, product, result };
+          } catch (error) {
+            console.error(`상품 ${product.title} 저장 실패:`, error);
+            failedProducts.push({ product, error: error.message });
+            completedCount++;
+            setSaveProgress(prev => ({ 
+              ...prev, 
+              current: completedCount
+            }));
+            return { success: false, product, error };
+          }
+        });
+        
+        await Promise.all(promises);
+      }
+      
+      // 실패한 항목이 있으면 알림
+      if (failedProducts.length > 0) {
+        const failedTitles = failedProducts.map(f => f.product.title).join(', ');
+        throw new Error(`일부 상품 저장 실패: ${failedTitles}`);
+      }
+
+      // 성공 시 조용히 처리 (alert 제거)
+      
+      // 데이터 새로고침 및 상위 컴포넌트 업데이트
+      await fetchPostDetails();
+      
+      // 상위 컴포넌트에 업데이트 알림 (posts 페이지 새로고침)
+      if (onProductUpdate) {
+        onProductUpdate();
+      }
+      
+      // 모달 닫기 전 잠시 대기 (사용자가 완료 상태를 볼 수 있도록)
+      setTimeout(() => {
+        setSaveProgress({ current: 0, total: 0, productName: '' });
+      }, 1000);
+      
     } catch (error) {
       console.error("전체 저장 오류:", error);
       setSaveError(error.message || "저장에 실패했습니다. 다시 시도해주세요.");
+      setSaveProgress({ current: 0, total: 0, productName: '' });
     } finally {
       setSaving(false);
     }
@@ -828,6 +909,25 @@ export default function ProductBarcodeModal({
         {/* 하단 고정 버튼 */}
         {data?.products && data.products.length > 0 && (
           <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
+            {/* 진행률 표시 바 */}
+            {saving && saveProgress.total > 0 && (
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-gray-600">
+                    진행 상황: {saveProgress.productName}
+                  </span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {saveProgress.current}/{saveProgress.total} 완료
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-orange-500 to-orange-600 h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${(saveProgress.current / saveProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
             {saveError && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                 {saveError}
@@ -837,12 +937,21 @@ export default function ProductBarcodeModal({
               <button
                 onClick={handleSaveAll}
                 disabled={saving}
-                className="px-8 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-md"
+                className="px-8 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-md min-w-[200px]"
               >
                 {saving ? (
                   <>
                     <LoadingSpinner className="w-5 h-5" color="text-white" />
-                    저장 중...
+                    <div className="flex flex-col items-start">
+                      <span>
+                        저장 중... ({saveProgress.current}/{saveProgress.total})
+                      </span>
+                      {saveProgress.productName && (
+                        <span className="text-xs opacity-80">
+                          {saveProgress.productName}
+                        </span>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <>

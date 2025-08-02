@@ -241,6 +241,12 @@ export function useProductClientMutations() {
       undefined,
       { revalidate: true }
     );
+    // orders 캐시도 갱신 (주문 페이지에서 상품 업데이트 반영을 위해)
+    globalMutate(
+      (key) => Array.isArray(key) && key[0] === "orders" && key[1] === userId,
+      undefined,
+      { revalidate: true }
+    );
 
     return data;
   };
