@@ -16,10 +16,11 @@ import { useUser, useProducts } from "../hooks";
 import {
   useOrdersClient,
   useOrderClientMutations,
+  useOrderStatsClient,
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
+import UpdateButton from "../components/UpdateButtonImproved"; // UpdateButton 개선 버전
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -441,6 +442,65 @@ export default function OrdersPage() {
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
   // useOrdersClient 훅 호출 부분 수정
+  
+  // 날짜 필터 파라미터 계산
+  const dateFilterParams = calculateDateFilterParams(
+    filterDateRange,
+    customStartDate,
+    customEndDate
+  );
+  
+  // 필터 객체 생성
+  const filters = {
+    limit: itemsPerPage,
+    sortBy,
+    sortOrder,
+    // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
+    status: (() => {
+      // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
+      // 주 상태(status) 필터는 적용하지 않음 (undefined)
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return undefined;
+      }
+      // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
+      if (filterSelection === "all") {
+        return undefined;
+      }
+      // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
+      return filterSelection;
+    })(),
+    subStatus: (() => {
+      // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return filterSelection;
+      }
+      // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
+      return undefined;
+    })(),
+    // --- 파라미터 동적 결정 로직 끝 ---
+    // --- 👇 검색 관련 파라미터 수정 👇 ---
+    search: searchTerm.trim() || undefined, // 일반 검색어
+    exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
+    // --- 👆 검색 관련 파라미터 수정 👆 ---
+    startDate: dateFilterParams.startDate,
+    endDate: dateFilterParams.endDate,
+  };
+  
+  console.log("=== 주문 조회 필터 ===");
+  console.log("전체 필터:", filters);
+  console.log("날짜 필터 기준: ordered_at (주문일) - 백엔드에서 처리");
+  console.log("현재 페이지:", currentPage);
+  console.log("userId:", userData?.userId);
+  console.log("===================");
+  
   const {
     data: ordersData,
     error: ordersError,
@@ -449,56 +509,7 @@ export default function OrdersPage() {
   } = useOrdersClient(
     userData?.userId,
     currentPage,
-    {
-      limit: itemsPerPage,
-      sortBy,
-      sortOrder,
-      // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
-      status: (() => {
-        // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
-        // 주 상태(status) 필터는 적용하지 않음 (undefined)
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return undefined;
-        }
-        // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
-        if (filterSelection === "all") {
-          return undefined;
-        }
-        // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
-        return filterSelection;
-      })(),
-      subStatus: (() => {
-        // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection;
-        }
-        // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
-        return undefined;
-      })(),
-      // --- 파라미터 동적 결정 로직 끝 ---
-      // --- 👇 검색 관련 파라미터 수정 👇 ---
-      search: searchTerm.trim() || undefined, // 일반 검색어
-      exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
-      // --- 👆 검색 관련 파라미터 수정 👆 ---
-      startDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).startDate,
-      endDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).endDate,
-    },
+    filters,
     swrOptions
   );
 
@@ -516,7 +527,17 @@ export default function OrdersPage() {
       refreshInterval: 300000, // 상품 데이터는 5분마다 업데이트 (주문보다 자주)
     }
   );
-  // useOrderStatsClient 제거 - 클라이언트에서 직접 계산
+  
+  // 전체 주문 통계를 위한 hook 사용
+  const {
+    data: statsData,
+    error: statsError,
+    isLoading: isStatsLoading,
+  } = useOrderStatsClient(
+    userData?.userId,
+    filters, // 동일한 필터 적용
+    swrOptions
+  );
 
   // 클라이언트 사이드 mutation 함수들
   const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
@@ -657,39 +678,66 @@ export default function OrdersPage() {
   };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
+    console.log("=== 날짜 필터링 디버깅 ===");
+    console.log("현재 시간:", now);
+    console.log("선택된 범위:", range);
+    
     let startDate = new Date();
     const endDate = new Date(now);
     endDate.setHours(23, 59, 59, 999);
+    
     if (range === "custom" && customStart) {
       const start = new Date(customStart);
       start.setHours(0, 0, 0, 0);
       const end = customEnd ? new Date(customEnd) : new Date(customStart);
       end.setHours(23, 59, 59, 999);
+      console.log("커스텀 날짜 필터:");
+      console.log("- startDate:", start, "=>", start.toISOString());
+      console.log("- endDate:", end, "=>", end.toISOString());
       return { startDate: start.toISOString(), endDate: end.toISOString() };
     }
+    
     switch (range) {
       case "today":
         startDate.setHours(0, 0, 0, 0);
+        console.log("오늘 필터 적용:");
+        console.log("- startDate:", startDate, "=>", startDate.toISOString());
+        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       case "7days":
         startDate.setDate(now.getDate() - 7);
         startDate.setHours(0, 0, 0, 0);
+        console.log("일주일 필터 적용:");
+        console.log("- startDate:", startDate, "=>", startDate.toISOString());
+        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       case "30days":
         startDate.setMonth(now.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
+        console.log("한달 필터 적용:");
+        console.log("- startDate:", startDate, "=>", startDate.toISOString());
+        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       case "90days":
         startDate.setMonth(now.getMonth() - 3);
         startDate.setHours(0, 0, 0, 0);
+        console.log("3개월 필터 적용:");
+        console.log("- startDate:", startDate, "=>", startDate.toISOString());
+        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       default:
+        console.log("기본값 반환 (날짜 필터 없음)");
         return { startDate: undefined, endDate: undefined };
     }
-    return {
+    
+    const result = {
       startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
+      endDate: endDate.toISOString()
     };
+    console.log("최종 날짜 파라미터:", result);
+    console.log("===================");
+    
+    return result;
   }
   const CustomDateInputButton = forwardRef(
     ({ value, onClick, isActive, disabled }, ref) => (
@@ -832,7 +880,54 @@ export default function OrdersPage() {
     };
   }, [mutateProducts, userData?.userId]);
   useEffect(() => {
-    if (ordersData?.data) setOrders(ordersData.data);
+    if (ordersData?.data) {
+      console.log("=== 받은 주문 데이터 분석 ===");
+      console.log("총 주문 수:", ordersData.data.length);
+      console.log("페이지네이션:", ordersData.pagination);
+      
+      // 처음 5개 주문 상세 정보 출력
+      ordersData.data.slice(0, 5).forEach((order, index) => {
+        console.log(`주문 ${index + 1}:`, {
+          order_id: order.order_id,
+          ordered_at: order.ordered_at,
+          completed_at: order.completed_at,
+          customer_name: order.customer_name,
+          status: order.status,
+          sub_status: order.sub_status,
+          product_title: order.product_title
+        });
+      });
+      
+      // 날짜 분석
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+      
+      console.log("오늘 날짜 범위:", {
+        start: today.toISOString(),
+        end: todayEnd.toISOString()
+      });
+      
+      // 오늘 주문된 건수
+      const todayOrderedCount = ordersData.data.filter(order => {
+        const orderDate = new Date(order.ordered_at);
+        return orderDate >= today && orderDate <= todayEnd;
+      }).length;
+      
+      // 오늘 수령완료된 건수
+      const todayCompletedCount = ordersData.data.filter(order => {
+        if (!order.completed_at) return false;
+        const completedDate = new Date(order.completed_at);
+        return completedDate >= today && completedDate <= todayEnd;
+      }).length;
+      
+      console.log("오늘 주문된 건수:", todayOrderedCount);
+      console.log("오늘 수령완료된 건수:", todayCompletedCount);
+      console.log("===================");
+      
+      setOrders(ordersData.data);
+    }
     if (ordersError) {
       console.error("Order Error:", ordersError);
       setError("Order Fetch Error");
@@ -1503,55 +1598,20 @@ export default function OrdersPage() {
   // 현재 검색된 주문 데이터에서 직접 통계 계산
   const currentOrders = ordersData?.data || [];
 
-  // 클라이언트 사이드에서 통계 계산 함수
-  const calculateClientStats = (orders) => {
-    const statusCounts = {};
-    const subStatusCounts = {};
-    let completedCount = 0;
-    let pendingCount = 0;
-
-    orders.forEach((order) => {
-      // Status 카운트
-      statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
-
-      // Sub_status 카운트
-      if (order.sub_status) {
-        subStatusCounts[order.sub_status] =
-          (subStatusCounts[order.sub_status] || 0) + 1;
-      }
-
-      // 완료/미완료 카운트
-      if (order.status === "수령완료") {
-        completedCount++;
-      } else if (order.sub_status === "미수령") {
-        pendingCount++;
-      }
-    });
-
-    return {
-      totalOrders: orders.length,
-      completedOrders: completedCount,
-      pendingOrders: pendingCount,
-      statusCounts,
-      subStatusCounts,
-    };
-  };
-
-  const clientStats = calculateClientStats(currentOrders);
-  const totalStatsOrders = clientStats.totalOrders;
-  const totalCompletedOrders = clientStats.completedOrders;
-  const totalPendingOrders = clientStats.pendingOrders;
+  // 전체 통계 데이터 사용 (useOrderStatsClient hook에서 가져온 데이터)
+  const totalStatsOrders = statsData?.data?.totalOrders || 0;
+  const totalCompletedOrders = statsData?.data?.statusCounts?.["수령완료"] || 0;
+  const totalPendingOrders = statsData?.data?.subStatusCounts?.["미수령"] || 0;
+  const statusCounts = statsData?.data?.statusCounts || {};
+  const subStatusCounts = statsData?.data?.subStatusCounts || {};
 
   // 디버깅용 로그
   console.log("Current search term:", searchTerm);
   console.log("Current filter selection:", filterSelection);
-  console.log("Current orders data:", currentOrders);
-  console.log("Client calculated stats:", clientStats);
-  console.log("Calculated totals:", {
-    totalStatsOrders,
-    totalCompletedOrders,
-    totalPendingOrders,
-  });
+  console.log("Stats from hook:", statsData?.data);
+  console.log("Total orders from stats:", totalStatsOrders);
+  console.log("Status counts from stats:", statusCounts);
+  console.log("Sub-status counts from stats:", subStatusCounts);
 
   const completionRate =
     totalStatsOrders > 0

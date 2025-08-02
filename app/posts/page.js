@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import CommentsModal from "../components/Comments";
+import ToastContainer from "../components/ToastContainer";
+import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 
 export default function PostsPage() {
@@ -23,6 +25,9 @@ export default function PostsPage() {
   // 댓글 모달 관련 상태
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
+
+  // 토스트 알림 훅
+  const { toasts, showSuccess, showError, hideToast } = useToast();
 
   // 사용자 데이터 가져오기
   useEffect(() => {
@@ -139,10 +144,45 @@ export default function PostsPage() {
     setSelectedPostId(null);
   };
 
-  const handleProductUpdate = () => {
-    // 바코드 업데이트 후 posts 데이터 새로고침
-    console.log("Posts 페이지: 바코드 업데이트 후 데이터 새로고침");
-    mutate();
+  const handleProductUpdate = (updatedProduct) => {
+    // 바코드 업데이트 후 posts 데이터 즉시 반영
+    console.log("Posts 페이지: 바코드 업데이트 후 즉시 반영", updatedProduct);
+    
+    // 낙관적 업데이트 - 즉시 UI에 반영
+    mutate(
+      (currentData) => {
+        if (!currentData || !currentData.posts) return currentData;
+        
+        const updatedPosts = currentData.posts.map(post => {
+          if (post.post_id === selectedPostId) {
+            // 상품 데이터 업데이트
+            const updatedProducts = post.products?.map(p => 
+              p.product_id === updatedProduct?.product_id ? updatedProduct : p
+            ) || [];
+            
+            return {
+              ...post,
+              products: updatedProducts,
+              products_data: updatedProducts // products_data도 업데이트
+            };
+          }
+          return post;
+        });
+        
+        return {
+          ...currentData,
+          posts: updatedPosts
+        };
+      },
+      {
+        revalidate: false // 서버 요청 없이 로컬 데이터만 업데이트
+      }
+    );
+    
+    // 이후 백그라운드에서 서버 데이터 동기화
+    setTimeout(() => {
+      mutate(); // 서버에서 최신 데이터 가져오기
+    }, 1000);
   };
 
   const handleViewOrders = (postKey) => {
@@ -180,6 +220,60 @@ export default function PostsPage() {
   const handleCloseCommentsModal = () => {
     setIsCommentsModalOpen(false);
     setSelectedPostForComments(null);
+  };
+
+  // 게시물 삭제 함수
+  const handleDeletePost = async (post) => {
+    if (!post || !post.post_id) {
+      showError('삭제할 게시물 정보가 없습니다.');
+      return;
+    }
+
+    // 연관 데이터 확인
+    let confirmMessage = `"${post.title || '제목 없음'}" 게시물을 삭제하시겠습니까?\n\n`;
+    
+    // 상품 정보 표시
+    if (post.products && Array.isArray(post.products) && post.products.length > 0) {
+      confirmMessage += `⚠️ 연관된 상품 ${post.products.length}개가 함께 삭제됩니다.\n`;
+    }
+    
+    confirmMessage += `⚠️ 연관된 모든 주문 데이터가 함께 삭제됩니다.\n\n`;
+    confirmMessage += `삭제된 데이터는 복구할 수 없습니다.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      // Edge Function을 통한 삭제 요청
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/posts-delete?postId=${post.post_id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || '게시물 삭제에 실패했습니다.');
+      }
+
+      // 성공 메시지 표시
+      showSuccess(`삭제 완료: ${result.message}`);
+      
+      // 데이터 새로고침
+      mutate();
+      
+    } catch (error) {
+      console.error('게시물 삭제 오류:', error);
+      showError(`게시물 삭제 중 오류가 발생했습니다: ${error.message}`);
+    }
   };
 
   if (!userData) {
@@ -372,6 +466,7 @@ export default function PostsPage() {
                 onClick={handlePostClick}
                 onViewOrders={handleViewOrders}
                 onViewComments={handleViewComments}
+                onDeletePost={handleDeletePost}
               />
             ))}
           </div>
@@ -392,7 +487,11 @@ export default function PostsPage() {
       {/* 게시물 상품 바코드 모달 */}
       <ProductBarcodeModal
         isOpen={isModalOpen}
-        onClose={handleCloseModal}
+        onClose={() => {
+          handleCloseModal();
+          // 모달 닫을 때도 데이터 동기화
+          mutate();
+        }}
         postId={selectedPostId}
         userId={userData?.userId}
         onProductUpdate={handleProductUpdate}
@@ -409,12 +508,15 @@ export default function PostsPage() {
         backupAccessToken={selectedPostForComments?.backupAccessToken}
         postContent={selectedPostForComments?.postContent}
       />
+
+      {/* 토스트 알림 컨테이너 */}
+      <ToastContainer toasts={toasts} hideToast={hideToast} />
     </div>
   );
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders, onViewComments }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost }) {
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -676,6 +778,32 @@ function PostCard({ post, onClick, onViewOrders, onViewComments }) {
               />
             </svg>
             <span className="text-xs font-medium text-gray-700">댓글보기</span>
+          </button>
+        </div>
+        
+        {/* 게시물 삭제 버튼 (별도 위치) */}
+        <div className="mt-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeletePost(post);
+            }}
+            className="w-full flex items-center justify-center py-2 px-3 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg transition-colors border border-red-200 text-sm font-medium"
+          >
+            <svg
+              className="w-4 h-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+            게시물 삭제
           </button>
         </div>
       </div>

@@ -288,7 +288,11 @@ const fetchOrderStats = async (key) => {
     // console.error("Error fetching excluded customers for stats:", e);
   }
 
-  const { data, error } = await query;
+  // 모든 주문을 가져오기 위해 limit을 명시적으로 설정
+  // Supabase의 기본 limit은 1000이므로, 전체 데이터를 가져오려면 더 큰 값이 필요
+  // range 대신 limit을 사용하여 전체 데이터 조회
+  const { data, error } = await query
+    .range(0, 9999);  // 0부터 9999까지 = 10000개
 
   if (error) {
     // console.error("Supabase stats query error:", error);

@@ -23,7 +23,7 @@ const sizes = {
   xl: "px-6 py-3 text-base",
 };
 
-export function StatusButton({
+export const StatusButton = React.memo(function StatusButton({
   children,
   onClick,
   type = "button",
@@ -115,4 +115,4 @@ export function StatusButton({
       </span>
     </button>
   );
-}
+});

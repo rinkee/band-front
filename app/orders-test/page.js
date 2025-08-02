@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, forwardRef, useMemo } from "react"; // React Fragment 사용을 위해 React 추가
+import React, { useState, useEffect, useRef, forwardRef, useMemo, useCallback } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -22,6 +22,7 @@ import { StatusButton } from "../components/StatusButton"; // StatusButton 다�
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
 import UpdateButtonBeta from "../components/UpdateButtonBeta"; // 베타 업데이트 버튼
+import UpdateButtonImproved from "../components/UpdateButtonImproved"; // 개선된 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -286,7 +287,9 @@ const Barcode = ({ value, width = 2, height = 100, fontSize = 16 }) => {
           background: "transparent",
         });
       } catch (error) {
-        console.error("Barcode Error:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Barcode Error:", error);
+        }
         if (barcodeRef.current) barcodeRef.current.innerHTML = "";
       }
     } else if (barcodeRef.current) barcodeRef.current.innerHTML = "";
@@ -371,7 +374,7 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
-  const [filterDateRange, setFilterDateRange] = useState("30");
+  const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
@@ -405,7 +408,7 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  const displayOrders = orders || [];
+  const displayOrders = useMemo(() => orders || [], [orders]);
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
@@ -450,7 +453,11 @@ export default function OrdersPage() {
     revalidateOnReconnect: true, // 네트워크 재연결 시 재검증 (유지 권장)
     refreshInterval: 600000, // <<<--- 10분(600,000ms)마다 자동 재검증 추가
     dedupingInterval: 30000, // 중복 요청 방지 간격 (기존 유지 또는 조정)
-    onError: (err) => console.error("SWR Error:", err),
+    onError: (err) => {
+      if (process.env.NODE_ENV === "development") {
+        console.error("SWR Error:", err);
+      }
+    },
     keepPreviousData: true, // 이전 데이터 유지 (기존 유지)
   };
   const {
@@ -535,24 +542,23 @@ export default function OrdersPage() {
     }
   );
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
+  const globalStatsDateParams = calculateDateFilterParams(
+    filterDateRange,
+    customStartDate,
+    customEndDate
+  );
+  
   const {
     data: globalStatsData,
     error: globalStatsError,
     isLoading: isGlobalStatsLoading,
+    mutate: mutateGlobalStats,
   } = useOrderStatsClient(
     userData?.userId,
     {
       // 날짜 필터만 적용 (상태 필터는 제외)
-      startDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).startDate,
-      endDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).endDate,
+      startDate: globalStatsDateParams.startDate,
+      endDate: globalStatsDateParams.endDate,
     },
     swrOptions
   );
@@ -638,29 +644,35 @@ export default function OrdersPage() {
         : prev.filter((id) => id !== orderId)
     );
   };
-  const handleSelectAllChange = (e) => {
+  const handleSelectAllChange = useCallback((e) => {
     const isChecked = e.target.checked;
     const currentIds = displayOrders.map((order) => order.order_id);
     setSelectedOrderIds((prev) => {
       const others = prev.filter((id) => !currentIds.includes(id));
       return isChecked ? [...new Set([...others, ...currentIds])] : others;
     });
-  };
+  }, [displayOrders]);
 
   // --- 검색창 업데이트 및 검색 실행 함수 ---
-  const handleCellClickToSearch = (searchValue) => {
+  const handleCellClickToSearch = useCallback((searchValue) => {
     if (!searchValue) return; // 빈 값은 무시
     const trimmedValue = searchValue.trim();
     setInputValue(trimmedValue); // 검색창 UI 업데이트
     setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
-    // 필요하다면 검색 후 맨 위로 스크롤
-  };
+    // 검색 후 맨 위로 스크롤
+    if (scrollToTop) {
+      setTimeout(() => scrollToTop(), 100);
+    }
+  }, [scrollToTop]);
 
-  const handleBulkStatusUpdate = async (newStatus) => {
+  const handleBulkStatusUpdate = useCallback(async (newStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkUpdateLoading(true);
+    
+    // 진행 상태 토스트 표시
+    showToast(`일괄 처리 중... (${selectedOrderIds.length}개 주문)`, "info");
 
     const ordersToUpdateFilter = orders.filter(
       (order) =>
@@ -707,6 +719,8 @@ export default function OrdersPage() {
       // 즉시 주문 리스트 새로고침
       // 일괄 상태 변경 후 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
+      // 통계 데이터도 갱신
+      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
@@ -717,10 +731,23 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orderStats" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
+      
+      // 성공 토스트 표시
+      showToast(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`, "success");
     } catch (err) {
-      console.error("Failed to bulk update orders (client-side):", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Failed to bulk update orders (client-side):", err);
+      }
       failCount = orderIdsToProcess.length;
-      alert(`일괄 업데이트 중 오류 발생: ${err.message}`);
+      showToast(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`, "error");
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
@@ -729,18 +756,17 @@ export default function OrdersPage() {
       if (successCount > 0) message += `${successCount}건 성공. `;
       if (failCount > 0) message += `${failCount}건 실패. `;
       if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`;
-      if (
-        !message &&
-        successCount === 0 &&
-        failCount === 0 &&
-        skippedCount === 0
-      )
-        message = "변경 대상 없음.";
-      else if (!message) message = "일괄 처리 완료.";
-
+      
+      // 추가 피드백 제공
+      if (skippedCount > 0 && successCount === 0) {
+        showToast(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`, "warning");
+      } else if (failCount > 0) {
+        showToast(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`, "warning");
+      }
+      
       // 최종 일괄 처리 결과
     }
-  };
+  }, [selectedOrderIds, orders, userData, bulkUpdateOrderStatus, mutateOrders, globalMutate]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -819,7 +845,9 @@ export default function OrdersPage() {
         if (!o?.userId) throw new Error("Invalid session");
         setUserData(o);
       } catch (err) {
-        console.error("Auth Error:", err);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Auth Error:", err);
+        }
         setError("Auth Error");
         sessionStorage.clear();
         localStorage.removeItem("userId");
@@ -834,7 +862,9 @@ export default function OrdersPage() {
   }, [userData, isDataLoading]);
   useEffect(() => {
     if (productsData?.data) setProducts(productsData.data);
-    if (productsError) console.error("Product Error:", productsError);
+    if (productsError && process.env.NODE_ENV === "development") {
+      console.error("Product Error:", productsError);
+    }
   }, [productsData, productsError]);
 
   // URL 파라미터에서 검색어 처리하는 useEffect 추가
@@ -932,7 +962,9 @@ export default function OrdersPage() {
   useEffect(() => {
     if (ordersData?.data) setOrders(ordersData.data);
     if (ordersError) {
-      console.error("Order Error:", ordersError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Order Error:", ordersError);
+      }
       setError("Order Fetch Error");
     }
     if (
@@ -1013,7 +1045,9 @@ export default function OrdersPage() {
 
       return null;
     } catch (error) {
-      console.error("날짜 파싱 오류:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("날짜 파싱 오류:", error);
+      }
       return null;
     }
   };
@@ -1069,7 +1103,9 @@ export default function OrdersPage() {
         mi = String(d.getMinutes()).padStart(2, "0");
       return `${mo}.${da} ${hr}:${mi}`;
     } catch (e) {
-      console.error("Date Format Err:", e);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Date Format Err:", e);
+      }
       return "Error";
     }
   };
@@ -1119,6 +1155,8 @@ export default function OrdersPage() {
       // 즉시 주문 리스트 새로고침
       // 주문 상태 변경 후 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
+      // 통계 데이터도 갱신
+      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
@@ -1129,10 +1167,20 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orderStats" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
 
       setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      console.error("Status Change Error (client-side):", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Status Change Error (client-side):", err);
+      }
       alert(err.message || "주문 상태 업데이트에 실패했습니다.");
     }
   };
@@ -1196,7 +1244,7 @@ export default function OrdersPage() {
   };
 
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     const trimmedInput = inputValue.trim();
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     if (trimmedInput !== searchTerm) {
@@ -1205,8 +1253,12 @@ export default function OrdersPage() {
       setCurrentPage(1); // 검색 시 항상 1페이지로
       setExactCustomerFilter(null); // 일반 검색 시 정확 고객명 필터 초기화
       setSelectedOrderIds([]); // 선택 초기화
+      // 검색 후 맨 위로 스크롤
+      if (scrollToTop) {
+        setTimeout(() => scrollToTop(), 100);
+      }
     }
-  };
+  }, [inputValue, searchTerm, scrollToTop]);
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -1342,6 +1394,8 @@ export default function OrdersPage() {
 
       // 즉시 주문 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
+      // 통계 데이터도 갱신
+      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
@@ -1352,11 +1406,21 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          key[0] === "orderStats" &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
 
       setIsEditingDetails(false); // 편집 모드 종료
       setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      console.error("Update Error (client-side):", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Update Error (client-side):", err);
+      }
       alert(err.message || "주문 정보 업데이트에 실패했습니다.");
     }
   };
@@ -1364,7 +1428,9 @@ export default function OrdersPage() {
   // --- 바코드 옵션 변경 핸들러 ---
   const handleBarcodeOptionChange = async (orderId, selectedOption) => {
     if (!userData?.userId) {
-      console.error("User ID is missing");
+      if (process.env.NODE_ENV === "development") {
+        console.error("User ID is missing");
+      }
       return;
     }
 
@@ -1412,7 +1478,9 @@ export default function OrdersPage() {
         { revalidate: true }
       );
     } catch (error) {
-      console.error("Failed to update barcode option:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Failed to update barcode option:", error);
+      }
       alert("바코드 옵션 변경에 실패했습니다.");
     }
   };
@@ -1483,10 +1551,12 @@ export default function OrdersPage() {
     if (!userData || !userData.userId) {
       // userData.id 였던 부분을 userData.userId로 변경
       alert("사용자 정보가 유효하지 않습니다. 다시 로그인해주세요."); // 사용자에게 피드백
-      console.error(
-        "User data or userId is missing. Current userData:",
-        userData
-      );
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          "User data or userId is missing. Current userData:",
+          userData
+        );
+      }
       return;
     }
     const userId = userData.userId; // userId 사용
@@ -1503,7 +1573,9 @@ export default function OrdersPage() {
       // Supabase configuration validated
 
       if (!supabaseUrl || !supabaseAnonKey) {
-        console.error("Supabase URL 또는 Anon Key가 설정되지 않았습니다.");
+        if (process.env.NODE_ENV === "development") {
+          console.error("Supabase URL 또는 Anon Key가 설정되지 않았습니다.");
+        }
         throw new Error("애플리케이션 설정 오류가 발생했습니다.");
       }
 
@@ -1552,7 +1624,9 @@ export default function OrdersPage() {
       // 성공 시
       setNewBarcodeValue(""); // 입력 필드 초기화
     } catch (error) {
-      console.error("Failed to save barcode:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Failed to save barcode:", error);
+      }
     } finally {
       setIsSavingBarcode(false);
     }
@@ -1644,19 +1718,32 @@ export default function OrdersPage() {
   // 현재 페이지의 통계 (UI 표시용)
   const clientStats = calculateClientStats(currentOrders);
 
-  // 전체 통계 데이터 사용 (전체 미수령 개수 등)
-  const totalStatsOrders = globalStatsData?.data?.totalOrders || 0;
-  const totalCompletedOrders =
-    globalStatsData?.data?.statusCounts?.["수령완료"] || 0;
-  const totalPendingOrders =
-    globalStatsData?.data?.subStatusCounts?.["미수령"] || 0;
+  // 전체 통계 데이터 사용 - globalStatsData 사용 (날짜 필터만 적용된 통계)
+  // 직접 globalStatsData를 OrderStatsSidebar에 전달하므로 여기서는 제거
 
   // 클라이언트 측 통계 계산 완료
 
   const completionRate =
-    totalStatsOrders > 0
-      ? Math.round((totalCompletedOrders / totalStatsOrders) * 100)
+    globalStatsData?.data?.totalOrders > 0
+      ? Math.round((globalStatsData?.data?.statusCounts?.["수령완료"] / globalStatsData?.data?.totalOrders) * 100)
       : 0;
+
+  // 개발 환경에서만 날짜 범위 로그 출력
+  if (process.env.NODE_ENV === "development" && globalStatsData) {
+    console.log("=== 통계 날짜 필터 ===");
+    console.log("filterDateRange:", filterDateRange);
+    console.log("startDate:", globalStatsDateParams.startDate);
+    console.log("endDate:", globalStatsDateParams.endDate);
+    console.log("globalStatsData:", globalStatsData);
+    console.log("totalOrders:", globalStatsData?.data?.totalOrders);
+    console.log("statusCounts:", globalStatsData?.data?.statusCounts);
+    console.log("subStatusCounts:", globalStatsData?.data?.subStatusCounts);
+    console.log("===================");
+    // 디버깅용 전역 변수 설정
+    if (typeof window !== 'undefined') {
+      window.globalStatsDataDebug = globalStatsData;
+    }
+  }
 
   // --- 메인 UI ---
   return (
@@ -1746,14 +1833,7 @@ export default function OrdersPage() {
 
               {/* 주문 통계 섹션 */}
               <OrderStatsSidebar
-                stats={{
-                  data: {
-                    totalOrders: globalStatsData?.data?.totalOrders || 0,
-                    statusCounts: globalStatsData?.data?.statusCounts || {},
-                    subStatusCounts:
-                      globalStatsData?.data?.subStatusCounts || {},
-                  },
-                }}
+                stats={globalStatsData}
                 isLoading={isGlobalStatsLoading}
                 newOrdersCount={newOrdersCount}
                 onFilterChange={handleFilterChange}
@@ -3554,9 +3634,7 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
         return optionName.includes(aiOption) || aiOption.includes(optionName);
       });
       if (matchedOption) {
-        console.log(
-          `[바코드 옵션] AI 매칭: "${aiSelectedOption}" → "${matchedOption.name}"`
-        );
+        // AI 매칭 성공
         return matchedOption;
       }
     }
@@ -3577,9 +3655,7 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
             return keywords.some((keyword) => optionName.includes(keyword));
           });
           if (matchedOption) {
-            console.log(
-              `[바코드 옵션] 댓글 매칭: "${customerComment}" → "${matchedOption.name}"`
-            );
+            // 댓글 매칭 성공
             return matchedOption;
           }
         }
