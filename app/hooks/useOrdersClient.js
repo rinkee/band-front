@@ -143,8 +143,13 @@ const fetchOrders = async (key) => {
   const { data, error, count } = await query;
 
   if (error) {
-    // console.error("Supabase query error:", error);
-    throw error;
+    console.error("Supabase query error:", error);
+    // Supabase 에러를 제대로 된 Error 객체로 변환
+    const errorMessage = error?.message || error?.details || "Failed to fetch orders";
+    const customError = new Error(errorMessage);
+    customError.status = error?.status || 500;
+    customError.code = error?.code;
+    throw customError;
   }
 
   const totalItems = count || 0;
@@ -182,8 +187,13 @@ const fetchOrder = async (key) => {
     if (error.code === "PGRST116") {
       throw new Error("Order not found");
     }
-    // console.error("Supabase query error:", error);
-    throw error;
+    console.error("Supabase query error:", error);
+    // Supabase 에러를 제대로 된 Error 객체로 변환
+    const errorMessage = error?.message || error?.details || "Failed to fetch order";
+    const customError = new Error(errorMessage);
+    customError.status = error?.status || 500;
+    customError.code = error?.code;
+    throw customError;
   }
 
   return {
@@ -295,8 +305,13 @@ const fetchOrderStats = async (key) => {
     .range(0, 9999);  // 0부터 9999까지 = 10000개
 
   if (error) {
-    // console.error("Supabase stats query error:", error);
-    throw error;
+    console.error("Supabase stats query error:", error);
+    // Supabase 에러를 제대로 된 Error 객체로 변환
+    const errorMessage = error?.message || error?.details || "Failed to fetch order stats";
+    const customError = new Error(errorMessage);
+    customError.status = error?.status || 500;
+    customError.code = error?.code;
+    throw customError;
   }
 
 

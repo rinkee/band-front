@@ -433,7 +433,32 @@ export default function OrdersPage() {
     revalidateOnReconnect: true, // 네트워크 재연결 시 재검증 (유지 권장)
     refreshInterval: 600000, // <<<--- 10분(600,000ms)마다 자동 재검증 추가
     dedupingInterval: 30000, // 중복 요청 방지 간격 (기존 유지 또는 조정)
-    onError: (err) => console.error("SWR Error:", err),
+    onError: (err, key) => {
+      // 에러가 실제로 있을 때만 로그
+      if (err) {
+        // 문자열인 경우와 객체인 경우를 구분하여 처리
+        if (typeof err === 'string') {
+          console.error("SWR Error (string):", err);
+          console.error("Error occurred for key:", key);
+        } else if (typeof err === 'object' && err !== null) {
+          console.error("SWR Error Details:", {
+            key: key,
+            message: err?.message || "Unknown error",
+            status: err?.status,
+            data: err?.data,
+            type: typeof err,
+            errorKeys: Object.keys(err)
+          });
+          
+          // 401 에러인 경우 로그인 페이지로 리다이렉트 고려
+          if (err?.status === 401) {
+            console.log("Authentication error detected");
+          }
+        } else {
+          console.error("SWR Unknown Error Type:", typeof err, err);
+        }
+      }
+    },
     keepPreviousData: true, // 이전 데이터 유지 (기존 유지)
   };
   const {
@@ -452,7 +477,8 @@ export default function OrdersPage() {
   
   // 필터 객체 생성
   const filters = {
-    limit: itemsPerPage,
+    // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+    limit: searchTerm ? 10000 : itemsPerPage,
     sortBy,
     sortOrder,
     // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
@@ -551,6 +577,32 @@ export default function OrdersPage() {
   const isSomeDisplayedSelected =
     displayedOrderIds.length > 0 &&
     displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+
+  // 선택된 주문들의 총 수량과 총 금액 계산
+  const selectedOrderTotals = useMemo(() => {
+    const selectedOrders = displayOrders.filter(order => 
+      selectedOrderIds.includes(order.order_id)
+    );
+    
+    const totalQuantity = selectedOrders.reduce((sum, order) => {
+      const quantity = parseInt(order.quantity, 10);
+      return sum + (isNaN(quantity) ? 0 : quantity);
+    }, 0);
+    
+    const totalAmount = selectedOrders.reduce((sum, order) => {
+      // selected_barcode_option이 있으면 그 가격 사용, 없으면 기본 가격 사용
+      let price = 0;
+      if (order.selected_barcode_option?.price) {
+        price = order.selected_barcode_option.price;
+      } else if (order.price) {
+        price = order.price;
+      }
+      const quantity = parseInt(order.quantity, 10) || 0;
+      return sum + (price * quantity);
+    }, 0);
+    
+    return { totalQuantity, totalAmount };
+  }, [displayOrders, selectedOrderIds]);
 
   useEffect(() => {
     if (!isUserLoading) {
@@ -2265,8 +2317,8 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          {/* 페이지네이션 */}
-          {totalItems > itemsPerPage && (
+          {/* 페이지네이션 - 검색어가 없을 때만 표시 */}
+          {!searchTerm && totalItems > itemsPerPage && (
             <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white sm:px-6 rounded-b-xl">
               <div>
                 <p className="text-sm text-gray-700">
@@ -2354,13 +2406,71 @@ export default function OrdersPage() {
         <div className="pt-[100px]"></div>
 
         {/* 일괄 처리 버튼 */}
-        <div className="fixed flex justify-end bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
-          {selectedOrderIds.length === 0 && !isDataLoading && (
-            <span className="text-sm text-gray-500 italic h-[38px] flex items-center mr-2">
-              항목을 선택하여 일괄 처리하세요.
-            </span>
-          )}
-          <button
+        <div className="fixed flex justify-between items-center bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
+          {/* 왼쪽 영역 - 안내 메시지 */}
+          <div className="flex items-center">
+            {selectedOrderIds.length === 0 && !isDataLoading && (
+              <span className="text-sm text-gray-500 italic">
+                항목을 선택하여 일괄 처리하세요
+              </span>
+            )}
+          </div>
+          
+          {/* 오른쪽 영역 - 총계 및 버튼 */}
+          <div className="flex items-center gap-4">
+            {/* 총계 표시 */}
+            {selectedOrderIds.length > 0 ? (
+              <>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 항목</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedOrderIds.length}개 선택됨
+                  </span>
+                </div>
+                <div className="h-10 w-px bg-gray-300"></div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 수량</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedOrderTotals.totalQuantity.toLocaleString()}개
+                  </span>
+                </div>
+                <div className="h-10 w-px bg-gray-300"></div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 금액</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    ₩{selectedOrderTotals.totalAmount.toLocaleString()}
+                  </span>
+                </div>
+              </>
+            ) : (
+              displayOrders.length > 0 && (
+                <>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">현재 페이지</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {displayOrders.length}개 항목
+                    </span>
+                  </div>
+                  <div className="h-10 w-px bg-gray-300"></div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">총 수량</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {currentPageTotalQuantity.toLocaleString()}개
+                    </span>
+                  </div>
+                  <div className="h-10 w-px bg-gray-300"></div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">총 금액</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      ₩{currentPageTotalAmount.toLocaleString()}
+                    </span>
+                  </div>
+                </>
+              )
+            )}
+            
+            {/* 일괄 처리 버튼들 */}
+            <button
             onClick={() => handleBulkStatusUpdate("주문취소")}
             disabled={
               selectedOrderIds.length === 0 ||
@@ -2411,6 +2521,7 @@ export default function OrdersPage() {
             <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
             {selectedOrderIds.length})
           </button>
+          </div>
         </div>
 
         {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}

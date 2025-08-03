@@ -475,7 +475,8 @@ export default function OrdersPage() {
     userData?.userId,
     currentPage,
     {
-      limit: itemsPerPage,
+      // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+      limit: searchTerm ? 10000 : itemsPerPage,
       sortBy,
       sortOrder,
       // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
@@ -624,6 +625,32 @@ export default function OrdersPage() {
   const isSomeDisplayedSelected =
     displayedOrderIds.length > 0 &&
     displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+
+  // 선택된 주문들의 총 수량과 총 금액 계산
+  const selectedOrderTotals = useMemo(() => {
+    const selectedOrders = displayOrders.filter(order => 
+      selectedOrderIds.includes(order.order_id)
+    );
+    
+    const totalQuantity = selectedOrders.reduce((sum, order) => {
+      const quantity = parseInt(order.quantity, 10);
+      return sum + (isNaN(quantity) ? 0 : quantity);
+    }, 0);
+    
+    const totalAmount = selectedOrders.reduce((sum, order) => {
+      // selected_barcode_option이 있으면 그 가격 사용, 없으면 기본 가격 사용
+      let price = 0;
+      if (order.selected_barcode_option?.price) {
+        price = order.selected_barcode_option.price;
+      } else if (order.price) {
+        price = order.price;
+      }
+      const quantity = parseInt(order.quantity, 10) || 0;
+      return sum + (price * quantity);
+    }, 0);
+    
+    return { totalQuantity, totalAmount };
+  }, [displayOrders, selectedOrderIds]);
 
   useEffect(() => {
     if (!isUserLoading) {
@@ -2106,11 +2133,11 @@ export default function OrdersPage() {
             <div className="bg-white rounded-lg shadow-sm p-4">
               <div className="flex flex-wrap gap-3 items-center">
                 {/* 검색 영역 */}
-                <div className="flex gap-2 items-center flex-1 min-w-0">
-                  <div className="relative flex-1 max-w-md">
+                <div className="flex gap-2 items-center">
+                  <div className="relative w-64">
                     <input
                       type="text"
-                      placeholder="고객명, 상품명, 바코드로 검색"
+                      placeholder="검색"
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={(e) => {
@@ -2144,32 +2171,84 @@ export default function OrdersPage() {
                   )}
                 </div>
 
-                {/* 일괄 처리 버튼 */}
-                <div className="flex gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => handleBulkStatusUpdate("주문취소")}
-                    disabled={selectedOrderIds.length === 0 || isDataLoading}
-                    className="px-3 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <XCircleIcon className="w-4 h-4 inline-block mr-1" />
-                    일괄취소
-                  </button>
-                  <button
-                    onClick={() => handleBulkStatusUpdate("결제완료")}
-                    disabled={selectedOrderIds.length === 0 || isDataLoading}
-                    className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
-                    일괄결제
-                  </button>
-                  <button
-                    onClick={() => handleBulkStatusUpdate("수령완료")}
-                    disabled={selectedOrderIds.length === 0 || isDataLoading}
-                    className="px-3 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
-                    일괄수령
-                  </button>
+                {/* 선택된 항목 총계 및 일괄 처리 버튼 */}
+                <div className="flex items-center gap-6 flex-shrink-0 ml-auto">
+                  {/* 총계 표시 - 배경과 보더 제거 */}
+                  {displayOrders.length > 0 && (
+                    <div className="flex items-center gap-4">
+                      {selectedOrderIds.length > 0 ? (
+                        <>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">선택</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {selectedOrderIds.length}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">수량</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {selectedOrderTotals.totalQuantity.toLocaleString()}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">금액</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              ₩{selectedOrderTotals.totalAmount.toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">전체</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {displayOrders.length}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">총수량</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {currentPageTotalQuantity.toLocaleString()}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">총금액</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              ₩{currentPageTotalAmount.toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* 일괄 처리 버튼 */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleBulkStatusUpdate("주문취소")}
+                      disabled={selectedOrderIds.length === 0 || isDataLoading}
+                      className="px-3 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <XCircleIcon className="w-4 h-4 inline-block mr-1" />
+                      일괄취소
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate("결제완료")}
+                      disabled={selectedOrderIds.length === 0 || isDataLoading}
+                      className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
+                      일괄결제
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate("수령완료")}
+                      disabled={selectedOrderIds.length === 0 || isDataLoading}
+                      className="px-3 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
+                      일괄수령
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2534,8 +2613,8 @@ export default function OrdersPage() {
               </table>
             </div>
 
-            {/* 페이지네이션 - 하단 고정 */}
-            {totalItems > itemsPerPage && (
+            {/* 페이지네이션 - 검색어가 없을 때만 표시, 하단 고정 */}
+            {!searchTerm && totalItems > itemsPerPage && (
               <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white">
                 <div>
                   <p className="text-sm text-gray-700">
