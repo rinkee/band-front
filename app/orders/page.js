@@ -554,14 +554,18 @@ export default function OrdersPage() {
     }
   );
   
-  // 전체 주문 통계를 위한 hook 사용
+  // 전체 주문 통계를 위한 hook 사용 - 날짜 필터만 적용
   const {
     data: statsData,
     error: statsError,
     isLoading: isStatsLoading,
   } = useOrderStatsClient(
     userData?.userId,
-    filters, // 동일한 필터 적용
+    {
+      // 날짜 필터만 적용 (상태 필터는 제외)
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    },
     swrOptions
   );
 

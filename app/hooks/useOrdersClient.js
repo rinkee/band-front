@@ -212,21 +212,11 @@ const fetchOrderStats = async (key) => {
     throw new Error("User ID is required");
   }
 
-  // 기본 통계 쿼리 - orders 테이블과 products 테이블 조인하여 상품 정보도 가져오기
+  // 기본 통계 쿼리 - orders_with_products 뷰를 사용하여 모든 데이터 가져오기
+  // 이 뷰는 이미 products 정보가 조인되어 있음
   let query = supabase
-    .from("orders")
-    .select(
-      `
-      status, 
-      sub_status,
-      total_amount, 
-      ordered_at, 
-      product_id,
-      customer_name,
-      quantity,
-      products!inner(title, barcode)
-    `
-    )
+    .from("orders_with_products")
+    .select("*", { count: "exact" })
     .eq("user_id", userId);
 
   // 상태 필터링 (status)
@@ -245,7 +235,7 @@ const fetchOrderStats = async (key) => {
     // 한글 문자열 처리를 위해 URL 인코딩하지 않고 직접 처리
     try {
       query = query.or(
-        `customer_name.ilike.%${searchTerm}%,products.title.ilike.%${searchTerm}%`
+        `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%`
       );
     } catch (error) {
       // console.warn(
@@ -298,25 +288,42 @@ const fetchOrderStats = async (key) => {
     // console.error("Error fetching excluded customers for stats:", e);
   }
 
-  // 모든 주문을 가져오기 위해 limit을 명시적으로 설정
-  // Supabase의 기본 limit은 1000이므로, 전체 데이터를 가져오려면 더 큰 값이 필요
-  // range 대신 limit을 사용하여 전체 데이터 조회
-  const { data, error } = await query
-    .range(0, 9999);  // 0부터 9999까지 = 10000개
+  // 먼저 전체 개수를 가져오기
+  const { count, error: countError } = await query
+    .select("*", { count: "exact", head: true });
 
-  if (error) {
-    console.error("Supabase stats query error:", error);
-    // Supabase 에러를 제대로 된 Error 객체로 변환
-    const errorMessage = error?.message || error?.details || "Failed to fetch order stats";
-    const customError = new Error(errorMessage);
-    customError.status = error?.status || 500;
-    customError.code = error?.code;
-    throw customError;
+  if (countError) {
+    console.error("Supabase count error:", countError);
+    throw new Error("Failed to get count");
   }
 
+  // 페이징을 통해 모든 데이터 가져오기
+  let allData = [];
+  const pageSize = 1000;
+  const totalPages = Math.ceil((count || 0) / pageSize);
+  
+  for (let page = 0; page < totalPages; page++) {
+    const start = page * pageSize;
+    const end = start + pageSize - 1;
+    
+    const { data: pageData, error: pageError } = await query
+      .range(start, end);
+    
+    if (pageError) {
+      console.error("Supabase page error:", pageError);
+      throw new Error(`Failed to fetch page ${page + 1}`);
+    }
+    
+    allData = allData.concat(pageData || []);
+  }
 
-  // 통계 계산
-  const totalOrders = data.length;
+  const data = allData;
+  const error = null;
+
+
+  // 통계 계산 - count를 사용하여 전체 개수 정확히 계산
+  console.log("Stats Debug - data.length:", data.length, "count:", count);
+  const totalOrders = count || data.length;  // count가 있으면 count 사용, 없으면 data.length
   const totalRevenue = data.reduce(
     (sum, order) => sum + (order.total_amount || 0),
     0
@@ -338,7 +345,7 @@ const fetchOrderStats = async (key) => {
 
   // 상품별 통계 (검색된 결과에서)
   const productStats = data.reduce((acc, order) => {
-    const productTitle = order.products?.title || "상품명 없음";
+    const productTitle = order.product_title || "상품명 없음";
     if (!acc[productTitle]) {
       acc[productTitle] = {
         totalOrders: 0,

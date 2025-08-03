@@ -697,10 +697,8 @@ export default function OrdersPage() {
   const handleBulkStatusUpdate = useCallback(async (newStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkUpdateLoading(true);
-    
-    // 진행 상태 토스트 표시
-    showToast(`일괄 처리 중... (${selectedOrderIds.length}개 주문)`, "info");
 
+    // orders 배열에서 필터링 (orders 페이지와 동일하게)
     const ordersToUpdateFilter = orders.filter(
       (order) =>
         selectedOrderIds.includes(order.order_id) && order.status !== newStatus
@@ -746,9 +744,7 @@ export default function OrdersPage() {
       // 즉시 주문 리스트 새로고침
       // 일괄 상태 변경 후 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
-      // 통계 데이터도 갱신
-      await mutateGlobalStats(undefined, { revalidate: true });
-
+      
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
         (key) =>
@@ -758,6 +754,8 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
+      
+      // 통계 캐시 무효화 - 모든 필터 조합에 대해
       globalMutate(
         (key) =>
           Array.isArray(key) &&
@@ -767,14 +765,17 @@ export default function OrdersPage() {
         { revalidate: true }
       );
       
-      // 성공 토스트 표시
-      showToast(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`, "success");
+      // 통계 데이터 강제 새로고침
+      await mutateGlobalStats();
+      
+      // 성공 메시지
+      console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("Failed to bulk update orders (client-side):", err);
       }
       failCount = orderIdsToProcess.length;
-      showToast(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`, "error");
+      alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
@@ -786,9 +787,9 @@ export default function OrdersPage() {
       
       // 추가 피드백 제공
       if (skippedCount > 0 && successCount === 0) {
-        showToast(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`, "warning");
+        console.log(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`);
       } else if (failCount > 0) {
-        showToast(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`, "warning");
+        console.log(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`);
       }
       
       // 최종 일괄 처리 결과
@@ -987,7 +988,9 @@ export default function OrdersPage() {
   }, [globalStatsData?.총주문수, previousOrderCount]);
 
   useEffect(() => {
-    if (ordersData?.data) setOrders(ordersData.data);
+    if (ordersData?.data) {
+      setOrders(ordersData.data);
+    }
     if (ordersError) {
       if (process.env.NODE_ENV === "development") {
         console.error("Order Error:", ordersError);
@@ -997,9 +1000,10 @@ export default function OrdersPage() {
     if (
       ordersData?.pagination &&
       currentPage > ordersData.pagination.totalPages
-    )
+    ) {
       setCurrentPage(1);
-  }, [ordersData, ordersError, currentPage, searchTerm]);
+    }
+  }, [ordersData, ordersError, currentPage]);
   // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -2235,7 +2239,7 @@ export default function OrdersPage() {
                     <button
                       onClick={() => handleBulkStatusUpdate("결제완료")}
                       disabled={selectedOrderIds.length === 0 || isDataLoading}
-                      className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      className="px-3 py-2 text-sm font-medium text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
                       일괄결제
@@ -2243,7 +2247,7 @@ export default function OrdersPage() {
                     <button
                       onClick={() => handleBulkStatusUpdate("수령완료")}
                       disabled={selectedOrderIds.length === 0 || isDataLoading}
-                      className="px-3 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
                       일괄수령
@@ -2733,7 +2737,7 @@ export default function OrdersPage() {
               isDataLoading ||
               bulkUpdateLoading
             }
-            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-yellow-600 text-white hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
                 : "opacity-100 scale-100"
