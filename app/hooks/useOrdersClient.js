@@ -96,12 +96,10 @@ const fetchOrders = async (key) => {
   // 날짜 범위 필터링
   if (filters.startDate && filters.endDate) {
     try {
-      const start = new Date(filters.startDate).toISOString();
-      const end = new Date(filters.endDate);
-      end.setHours(23, 59, 59, 999);
+      // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
       query = query
-        .gte("ordered_at", start)
-        .lte("ordered_at", end.toISOString());
+        .gte("ordered_at", filters.startDate)
+        .lte("ordered_at", filters.endDate);
     } catch (dateError) {
       // console.error("Date filter error:", dateError);
     }
@@ -250,12 +248,10 @@ const fetchOrderStats = async (key) => {
   // 날짜 범위 필터링
   if (filterOptions.startDate && filterOptions.endDate) {
     try {
-      const start = new Date(filterOptions.startDate).toISOString();
-      const end = new Date(filterOptions.endDate);
-      end.setHours(23, 59, 59, 999);
+      // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
       query = query
-        .gte("ordered_at", start)
-        .lte("ordered_at", end.toISOString());
+        .gte("ordered_at", filterOptions.startDate)
+        .lte("ordered_at", filterOptions.endDate);
     } catch (dateError) {
       // console.error("Date filter error:", dateError);
     }

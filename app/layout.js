@@ -289,6 +289,16 @@ function LayoutContent({ children }) {
                     >
                       설정
                     </Link>
+                    <Link
+                      href="/update-logs"
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        pathname === "/update-logs"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      업데이트 로그
+                    </Link>
                   </nav>
                 </div>
                 {/* 헤더 우측 영역 */}
@@ -513,6 +523,33 @@ function LayoutContent({ children }) {
                       />
                     </svg>
                     설정
+                  </Link>
+                  <Link
+                    href="/update-logs"
+                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                      pathname === "/update-logs"
+                        ? "bg-blue-100 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <svg
+                      className={`w-5 h-5 mr-2 ${
+                        pathname === "/update-logs"
+                          ? "text-gray-900"
+                          : "text-gray-500"
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    업데이트 로그
                   </Link>
                   {/* 로그아웃 버튼 */}
                   <button

@@ -799,7 +799,7 @@ export default function OrdersPage() {
     const now = new Date();
     let startDate = new Date();
     const endDate = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
+    
     if (range === "custom" && customStart) {
       const start = new Date(customStart);
       start.setHours(0, 0, 0, 0);
@@ -807,25 +807,31 @@ export default function OrdersPage() {
       end.setHours(23, 59, 59, 999);
       return { startDate: start.toISOString(), endDate: end.toISOString() };
     }
+    
     switch (range) {
       case "today":
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case "7days":
         startDate.setDate(now.getDate() - 7);
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case "30days":
         startDate.setMonth(now.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case "90days":
         startDate.setMonth(now.getMonth() - 3);
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       default:
         return { startDate: undefined, endDate: undefined };
     }
+    
     return {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
