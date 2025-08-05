@@ -96,12 +96,22 @@ const fetchOrders = async (key) => {
   // 날짜 범위 필터링
   if (filters.startDate && filters.endDate) {
     try {
+      // dateType 확인 (기본값: ordered)
+      const dateColumn = filters.dateType === "updated" ? "updated_at" : "ordered_at";
+      
+      console.log("Date filter debug:", {
+        dateType: filters.dateType,
+        dateColumn: dateColumn,
+        startDate: filters.startDate,
+        endDate: filters.endDate
+      });
+      
       // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
       query = query
-        .gte("ordered_at", filters.startDate)
-        .lte("ordered_at", filters.endDate);
+        .gte(dateColumn, filters.startDate)
+        .lte(dateColumn, filters.endDate);
     } catch (dateError) {
-      // console.error("Date filter error:", dateError);
+      console.error("Date filter error:", dateError);
     }
   }
 
@@ -149,6 +159,12 @@ const fetchOrders = async (key) => {
     customError.code = error?.code;
     throw customError;
   }
+  
+  console.log("Query result debug:", {
+    dataCount: data?.length || 0,
+    totalCount: count,
+    filters: filters
+  });
 
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
@@ -248,10 +264,13 @@ const fetchOrderStats = async (key) => {
   // 날짜 범위 필터링
   if (filterOptions.startDate && filterOptions.endDate) {
     try {
+      // dateType 확인 (기본값: ordered)
+      const dateColumn = filterOptions.dateType === "updated" ? "updated_at" : "ordered_at";
+      
       // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
       query = query
-        .gte("ordered_at", filterOptions.startDate)
-        .lte("ordered_at", filterOptions.endDate);
+        .gte(dateColumn, filterOptions.startDate)
+        .lte(dateColumn, filterOptions.endDate);
     } catch (dateError) {
       // console.error("Date filter error:", dateError);
     }
@@ -332,8 +351,9 @@ const fetchOrderStats = async (key) => {
   }, {});
 
   // 부가 상태별 카운트 (sub_status 기준)
+  // 수령완료 상태가 아닌 주문만 카운트
   const subStatusCounts = data.reduce((acc, order) => {
-    if (order.sub_status) {
+    if (order.sub_status && order.status !== "수령완료") {
       acc[order.sub_status] = (acc[order.sub_status] || 0) + 1;
     }
     return acc;

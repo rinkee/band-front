@@ -12,7 +12,6 @@ export async function GET() {
     const { data: logs, error } = await supabase
       .from('update_logs')
       .select('*')
-      .eq('is_published', true)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -42,7 +41,7 @@ export async function POST(request) {
 
     if (userError || user?.role !== 'admin') {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized - User is not admin' },
         { status: 403 }
       );
     }
@@ -56,6 +55,7 @@ export async function POST(request) {
         content,
         image_url,
         created_by: user_id,
+        is_published: true
       })
       .select()
       .single();

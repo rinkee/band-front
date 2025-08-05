@@ -375,6 +375,7 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState("status");
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
+  const [filterDateType, setFilterDateType] = useState("created"); // 날짜 필터 타입: created(주문일시) or updated(수령/변경일시)
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
@@ -524,6 +525,7 @@ export default function OrdersPage() {
         customStartDate,
         customEndDate
       ).endDate,
+      dateType: filterDateType, // 날짜 필터 타입 추가
     },
     swrOptions
   );
@@ -560,6 +562,7 @@ export default function OrdersPage() {
       // 날짜 필터만 적용 (상태 필터는 제외)
       startDate: globalStatsDateParams.startDate,
       endDate: globalStatsDateParams.endDate,
+      dateType: filterDateType, // 날짜 필터 타입 추가
     },
     swrOptions
   );
@@ -598,6 +601,7 @@ export default function OrdersPage() {
       })(),
       search: searchTerm.trim() || undefined,
       exactCustomerName: exactCustomerFilter || undefined,
+      dateType: filterDateType, // 날짜 필터 타입 추가
       startDate: calculateDateFilterParams(
         filterDateRange,
         customStartDate,
@@ -810,8 +814,19 @@ export default function OrdersPage() {
     
     switch (range) {
       case "today":
-        startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
+        // 로컬 시간으로 오늘의 시작과 끝 설정
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
+        
+        console.log("Today filter debug:", {
+          localNow: now.toString(),
+          startDate: todayStart.toISOString(),
+          endDate: todayEnd.toISOString()
+        });
+        
+        return { startDate: todayStart.toISOString(), endDate: todayEnd.toISOString() };
         break;
       case "7days":
         startDate.setDate(now.getDate() - 7);
@@ -1312,7 +1327,8 @@ export default function OrdersPage() {
     setExactCustomerFilter(null);
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
-    setFilterDateRange("30"); // 기본 날짜로 복귀
+    setFilterDateRange("30days"); // 기본 날짜로 복귀
+    setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
@@ -1902,6 +1918,30 @@ export default function OrdersPage() {
                   </button>
                   {isDateFilterOpen && (
                     <div className="border-t border-gray-200 p-4 bg-gray-50">
+                      {/* 날짜 필터 타입 선택 */}
+                      <div className="mb-3 flex gap-2">
+                        <button
+                          onClick={() => setFilterDateType("created")}
+                          className={`flex-1 py-2 px-3 text-xs rounded-lg transition-colors ${
+                            filterDateType === "created"
+                              ? "bg-blue-500 text-white"
+                              : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
+                          }`}
+                        >
+                          주문일시 기준
+                        </button>
+                        <button
+                          onClick={() => setFilterDateType("updated")}
+                          className={`flex-1 py-2 px-3 text-xs rounded-lg transition-colors ${
+                            filterDateType === "updated"
+                              ? "bg-blue-500 text-white"
+                              : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
+                          }`}
+                        >
+                          수령/변경일시 기준
+                        </button>
+                      </div>
+                      
                       <DatePicker
                         selectsRange={true}
                         startDate={customStartDate}

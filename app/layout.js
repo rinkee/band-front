@@ -176,7 +176,7 @@ function LayoutContent({ children }) {
             href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
           />
         </head>
-        <body className="text-black">
+        <body className="text-black" suppressHydrationWarning>
           <main>{children}</main>
         </body>
       </html>
@@ -201,7 +201,7 @@ function LayoutContent({ children }) {
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <div className="flex flex-col h-screen overflow-hidden bg-gray-100 ">
           {/* 로그인 상태일 때만 헤더 표시 */}
           {isLoggedIn && (

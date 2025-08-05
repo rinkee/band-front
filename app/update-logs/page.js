@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Edit2, Trash2, Upload, X } from 'lucide-react';
 import { useUser } from '../hooks';
@@ -29,11 +29,29 @@ export default function UpdateLogsPage() {
     }
   }, []);
 
-  // useUser hook 사용
-  const { data: userData, isLoading: userLoading } = useUser(localUser?.userId);
-  const user = userData?.data;
+  // useUser hook 사용 - userId가 있을 때만
+  const shouldFetchUser = !!localUser?.userId;
+  const { data: userData, isLoading: userLoading } = useUser(
+    shouldFetchUser ? localUser.userId : null,
+    { refreshInterval: 0 } // 자동 갱신 비활성화
+  );
+  
+  // user 데이터 처리 로직 수정
+  const user = useMemo(() => {
+    if (!localUser) return null;
+    
+    // userData가 있고 성공적으로 로드된 경우
+    if (userData?.data && userData.success) {
+      // API에서 가져온 데이터에 role 추가
+      return { ...userData.data, role: userData.data.role || localUser.role };
+    }
+    
+    // localUser 사용 (sessionStorage 데이터)
+    return localUser;
+  }, [userData, localUser]);
+  
   const isAdmin = user?.role === 'admin';
-
+  
   useEffect(() => {
     // userLoading이 완료되고 localUser가 있을 때만 fetchLogs 실행
     if (localUser && !userLoading) {
@@ -80,11 +98,12 @@ export default function UpdateLogsPage() {
       const data = await response.json();
       if (data.success) {
         return data.url;
+      } else {
+        throw new Error(data.error || '이미지 업로드 실패');
       }
     } catch (error) {
-      console.error('Error uploading image:', error);
+      throw error;
     }
-    return null;
   };
 
   const handleSubmit = async (e) => {
@@ -96,9 +115,15 @@ export default function UpdateLogsPage() {
       
       // 새 이미지가 있으면 업로드
       if (imageFile) {
-        const uploadedUrl = await uploadImage();
-        if (uploadedUrl) {
-          imageUrl = uploadedUrl;
+        try {
+          const uploadedUrl = await uploadImage();
+          if (uploadedUrl) {
+            imageUrl = uploadedUrl;
+          }
+        } catch (uploadError) {
+          alert(uploadError.message);
+          setLoading(false);
+          return;
         }
       }
 
@@ -188,8 +213,20 @@ export default function UpdateLogsPage() {
     });
   };
 
+  // 초기 로딩 상태 처리
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  
+  useEffect(() => {
+    // 컴포넌트가 마운트되고 약간의 시간이 지나면 초기 로딩 완료로 설정
+    const timer = setTimeout(() => {
+      setIsInitialLoad(false);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
+  
   // 초기 로딩 중인 경우만 로딩 표시
-  if (!localUser && userLoading) {
+  if (isInitialLoad && !localUser) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-gray-500">로딩 중...</div>
