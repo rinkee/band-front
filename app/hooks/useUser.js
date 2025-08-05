@@ -18,7 +18,7 @@ export function useUser(userId, options = {}) {
   // SWR 키 생성 함수
   const getKey = () => {
     if (!userId) {
-      console.warn("useUser: userId is required when not using JWT auth.");
+      // userId가 없으면 조용히 null 반환 (경고 제거)
       return null;
     }
     // Edge Function 경로 및 쿼리 파라미터 사용

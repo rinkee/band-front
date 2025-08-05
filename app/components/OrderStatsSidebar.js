@@ -34,9 +34,13 @@ const OrderStatsSidebar = ({ stats, isLoading, newOrdersCount = 0, onFilterChang
   const subStatusCounts = statsData.subStatusCounts || {};
   
   // 각 상태별 주문 수
+  // 미수령: sub_status가 '미수령'인 모든 주문
   const pendingOrders = subStatusCounts['미수령'] || 0;
+  // 확인필요: sub_status가 '확인필요'인 모든 주문
   const needCheckOrders = subStatusCounts['확인필요'] || 0;
+  // 수령완료: status가 '수령완료'인 모든 주문
   const completedOrders = statusCounts['수령완료'] || 0;
+  // 주문완료: status가 '주문완료'인 전체 주문 (미수령, 확인필요 포함)
   const orderCompletedOrders = statusCounts['주문완료'] || 0;
   const completionRate = totalOrders > 0 
     ? Math.round((completedOrders / totalOrders) * 100) 

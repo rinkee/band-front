@@ -43,7 +43,7 @@ export default function BandApiKeyManager({ userId }) {
       const { data, error } = await supabase
         .from("users")
         .select(
-          "band_access_token, band_key, band_access_tokens, current_band_key_index"
+          "band_access_token, band_key, backup_band_keys, current_band_key_index"
         )
         .eq("user_id", userId)
         .single();
@@ -52,9 +52,12 @@ export default function BandApiKeyManager({ userId }) {
 
       setBandKey(data.band_key || "");
 
-      // band_access_tokens 배열을 사용하되, 없으면 기존 band_access_token 사용
-      let tokens = data.band_access_tokens || [];
-      if (tokens.length === 0 && data.band_access_token) {
+      // backup_band_keys가 직접 배열로 저장됨
+      let tokens = [];
+      if (data.backup_band_keys && Array.isArray(data.backup_band_keys)) {
+        tokens = data.backup_band_keys;
+      } else if (data.band_access_token) {
+        // 백업 키가 없으면 기존 메인 토큰을 첫 번째로 사용
         tokens = [data.band_access_token];
       }
 
@@ -95,7 +98,7 @@ export default function BandApiKeyManager({ userId }) {
         .update({
           band_access_token: validTokens[safeCurrentIndex], // 현재 활성 토큰
           band_key: bandKey,
-          band_access_tokens: validTokens, // 모든 토큰 배열
+          backup_band_keys: validTokens, // 백업 토큰들을 배열로 직접 저장
           current_band_key_index: safeCurrentIndex,
         })
         .eq("user_id", userId);

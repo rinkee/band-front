@@ -375,6 +375,7 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState("status");
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
+  const [filterDateType, setFilterDateType] = useState("created"); // 날짜 필터 타입: created(주문일시) or updated(수령/변경일시)
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
@@ -475,7 +476,8 @@ export default function OrdersPage() {
     userData?.userId,
     currentPage,
     {
-      limit: itemsPerPage,
+      // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+      limit: searchTerm ? 10000 : itemsPerPage,
       sortBy,
       sortOrder,
       // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
@@ -523,6 +525,7 @@ export default function OrdersPage() {
         customStartDate,
         customEndDate
       ).endDate,
+      dateType: filterDateType, // 날짜 필터 타입 추가
     },
     swrOptions
   );
@@ -559,6 +562,7 @@ export default function OrdersPage() {
       // 날짜 필터만 적용 (상태 필터는 제외)
       startDate: globalStatsDateParams.startDate,
       endDate: globalStatsDateParams.endDate,
+      dateType: filterDateType, // 날짜 필터 타입 추가
     },
     swrOptions
   );
@@ -597,6 +601,7 @@ export default function OrdersPage() {
       })(),
       search: searchTerm.trim() || undefined,
       exactCustomerName: exactCustomerFilter || undefined,
+      dateType: filterDateType, // 날짜 필터 타입 추가
       startDate: calculateDateFilterParams(
         filterDateRange,
         customStartDate,
@@ -624,6 +629,32 @@ export default function OrdersPage() {
   const isSomeDisplayedSelected =
     displayedOrderIds.length > 0 &&
     displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+
+  // 선택된 주문들의 총 수량과 총 금액 계산
+  const selectedOrderTotals = useMemo(() => {
+    const selectedOrders = displayOrders.filter(order => 
+      selectedOrderIds.includes(order.order_id)
+    );
+    
+    const totalQuantity = selectedOrders.reduce((sum, order) => {
+      const quantity = parseInt(order.quantity, 10);
+      return sum + (isNaN(quantity) ? 0 : quantity);
+    }, 0);
+    
+    const totalAmount = selectedOrders.reduce((sum, order) => {
+      // selected_barcode_option이 있으면 그 가격 사용, 없으면 기본 가격 사용
+      let price = 0;
+      if (order.selected_barcode_option?.price) {
+        price = order.selected_barcode_option.price;
+      } else if (order.price) {
+        price = order.price;
+      }
+      const quantity = parseInt(order.quantity, 10) || 0;
+      return sum + (price * quantity);
+    }, 0);
+    
+    return { totalQuantity, totalAmount };
+  }, [displayOrders, selectedOrderIds]);
 
   useEffect(() => {
     if (!isUserLoading) {
@@ -670,10 +701,8 @@ export default function OrdersPage() {
   const handleBulkStatusUpdate = useCallback(async (newStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkUpdateLoading(true);
-    
-    // 진행 상태 토스트 표시
-    showToast(`일괄 처리 중... (${selectedOrderIds.length}개 주문)`, "info");
 
+    // orders 배열에서 필터링 (orders 페이지와 동일하게)
     const ordersToUpdateFilter = orders.filter(
       (order) =>
         selectedOrderIds.includes(order.order_id) && order.status !== newStatus
@@ -719,9 +748,7 @@ export default function OrdersPage() {
       // 즉시 주문 리스트 새로고침
       // 일괄 상태 변경 후 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
-      // 통계 데이터도 갱신
-      await mutateGlobalStats(undefined, { revalidate: true });
-
+      
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
         (key) =>
@@ -731,6 +758,8 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
+      
+      // 통계 캐시 무효화 - 모든 필터 조합에 대해
       globalMutate(
         (key) =>
           Array.isArray(key) &&
@@ -740,14 +769,17 @@ export default function OrdersPage() {
         { revalidate: true }
       );
       
-      // 성공 토스트 표시
-      showToast(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`, "success");
+      // 통계 데이터 강제 새로고침
+      await mutateGlobalStats();
+      
+      // 성공 메시지
+      console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("Failed to bulk update orders (client-side):", err);
       }
       failCount = orderIdsToProcess.length;
-      showToast(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`, "error");
+      alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
@@ -759,9 +791,9 @@ export default function OrdersPage() {
       
       // 추가 피드백 제공
       if (skippedCount > 0 && successCount === 0) {
-        showToast(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`, "warning");
+        console.log(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`);
       } else if (failCount > 0) {
-        showToast(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`, "warning");
+        console.log(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`);
       }
       
       // 최종 일괄 처리 결과
@@ -771,7 +803,7 @@ export default function OrdersPage() {
     const now = new Date();
     let startDate = new Date();
     const endDate = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
+    
     if (range === "custom" && customStart) {
       const start = new Date(customStart);
       start.setHours(0, 0, 0, 0);
@@ -779,25 +811,42 @@ export default function OrdersPage() {
       end.setHours(23, 59, 59, 999);
       return { startDate: start.toISOString(), endDate: end.toISOString() };
     }
+    
     switch (range) {
       case "today":
-        startDate.setHours(0, 0, 0, 0);
+        // 로컬 시간으로 오늘의 시작과 끝 설정
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
+        
+        console.log("Today filter debug:", {
+          localNow: now.toString(),
+          startDate: todayStart.toISOString(),
+          endDate: todayEnd.toISOString()
+        });
+        
+        return { startDate: todayStart.toISOString(), endDate: todayEnd.toISOString() };
         break;
       case "7days":
         startDate.setDate(now.getDate() - 7);
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case "30days":
         startDate.setMonth(now.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case "90days":
         startDate.setMonth(now.getMonth() - 3);
         startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       default:
         return { startDate: undefined, endDate: undefined };
     }
+    
     return {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
@@ -960,7 +1009,9 @@ export default function OrdersPage() {
   }, [globalStatsData?.총주문수, previousOrderCount]);
 
   useEffect(() => {
-    if (ordersData?.data) setOrders(ordersData.data);
+    if (ordersData?.data) {
+      setOrders(ordersData.data);
+    }
     if (ordersError) {
       if (process.env.NODE_ENV === "development") {
         console.error("Order Error:", ordersError);
@@ -970,9 +1021,10 @@ export default function OrdersPage() {
     if (
       ordersData?.pagination &&
       currentPage > ordersData.pagination.totalPages
-    )
+    ) {
       setCurrentPage(1);
-  }, [ordersData, ordersError, currentPage, searchTerm]);
+    }
+  }, [ordersData, ordersError, currentPage]);
   // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -1275,7 +1327,8 @@ export default function OrdersPage() {
     setExactCustomerFilter(null);
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
-    setFilterDateRange("30"); // 기본 날짜로 복귀
+    setFilterDateRange("30days"); // 기본 날짜로 복귀
+    setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
@@ -1865,6 +1918,30 @@ export default function OrdersPage() {
                   </button>
                   {isDateFilterOpen && (
                     <div className="border-t border-gray-200 p-4 bg-gray-50">
+                      {/* 날짜 필터 타입 선택 */}
+                      <div className="mb-3 flex gap-2">
+                        <button
+                          onClick={() => setFilterDateType("created")}
+                          className={`flex-1 py-2 px-3 text-xs rounded-lg transition-colors ${
+                            filterDateType === "created"
+                              ? "bg-blue-500 text-white"
+                              : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
+                          }`}
+                        >
+                          주문일시 기준
+                        </button>
+                        <button
+                          onClick={() => setFilterDateType("updated")}
+                          className={`flex-1 py-2 px-3 text-xs rounded-lg transition-colors ${
+                            filterDateType === "updated"
+                              ? "bg-blue-500 text-white"
+                              : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
+                          }`}
+                        >
+                          수령/변경일시 기준
+                        </button>
+                      </div>
+                      
                       <DatePicker
                         selectsRange={true}
                         startDate={customStartDate}
@@ -2106,11 +2183,11 @@ export default function OrdersPage() {
             <div className="bg-white rounded-lg shadow-sm p-4">
               <div className="flex flex-wrap gap-3 items-center">
                 {/* 검색 영역 */}
-                <div className="flex gap-2 items-center flex-1 min-w-0">
-                  <div className="relative flex-1 max-w-md">
+                <div className="flex gap-2 items-center">
+                  <div className="relative w-64">
                     <input
                       type="text"
-                      placeholder="고객명, 상품명, 바코드로 검색"
+                      placeholder="검색"
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={(e) => {
@@ -2144,32 +2221,84 @@ export default function OrdersPage() {
                   )}
                 </div>
 
-                {/* 일괄 처리 버튼 */}
-                <div className="flex gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => handleBulkStatusUpdate("주문취소")}
-                    disabled={selectedOrderIds.length === 0 || isDataLoading}
-                    className="px-3 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <XCircleIcon className="w-4 h-4 inline-block mr-1" />
-                    일괄취소
-                  </button>
-                  <button
-                    onClick={() => handleBulkStatusUpdate("결제완료")}
-                    disabled={selectedOrderIds.length === 0 || isDataLoading}
-                    className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
-                    일괄결제
-                  </button>
-                  <button
-                    onClick={() => handleBulkStatusUpdate("수령완료")}
-                    disabled={selectedOrderIds.length === 0 || isDataLoading}
-                    className="px-3 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
-                    일괄수령
-                  </button>
+                {/* 선택된 항목 총계 및 일괄 처리 버튼 */}
+                <div className="flex items-center gap-6 flex-shrink-0 ml-auto">
+                  {/* 총계 표시 - 배경과 보더 제거 */}
+                  {displayOrders.length > 0 && (
+                    <div className="flex items-center gap-4">
+                      {selectedOrderIds.length > 0 ? (
+                        <>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">선택</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {selectedOrderIds.length}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">수량</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {selectedOrderTotals.totalQuantity.toLocaleString()}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">금액</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              ₩{selectedOrderTotals.totalAmount.toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">전체</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {displayOrders.length}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">총수량</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {currentPageTotalQuantity.toLocaleString()}개
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-xs text-gray-500">총금액</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              ₩{currentPageTotalAmount.toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* 일괄 처리 버튼 */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleBulkStatusUpdate("주문취소")}
+                      disabled={selectedOrderIds.length === 0 || isDataLoading}
+                      className="px-3 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <XCircleIcon className="w-4 h-4 inline-block mr-1" />
+                      일괄취소
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate("결제완료")}
+                      disabled={selectedOrderIds.length === 0 || isDataLoading}
+                      className="px-3 py-2 text-sm font-medium text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
+                      일괄결제
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate("수령완료")}
+                      disabled={selectedOrderIds.length === 0 || isDataLoading}
+                      className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
+                      일괄수령
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2534,8 +2663,8 @@ export default function OrdersPage() {
               </table>
             </div>
 
-            {/* 페이지네이션 - 하단 고정 */}
-            {totalItems > itemsPerPage && (
+            {/* 페이지네이션 - 검색어가 없을 때만 표시, 하단 고정 */}
+            {!searchTerm && totalItems > itemsPerPage && (
               <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white">
                 <div>
                   <p className="text-sm text-gray-700">
@@ -2654,7 +2783,7 @@ export default function OrdersPage() {
               isDataLoading ||
               bulkUpdateLoading
             }
-            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-yellow-600 text-white hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
                 : "opacity-100 scale-100"
