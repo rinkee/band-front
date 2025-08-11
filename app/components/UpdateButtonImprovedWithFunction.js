@@ -1,15 +1,16 @@
-// UpdateButtonImproved.js - 즉시 응답 버전
+// UpdateButtonImprovedWithFunction.js - function_number 분산 + 진행률 표시 버전
 "use client";
 import React, { useState, useCallback, useEffect } from "react";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
 
-const UpdateButtonImproved = ({ bandNumber = null }) => {
+const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isBackgroundProcessing, setIsBackgroundProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
+  const [selectedFunction, setSelectedFunction] = useState(""); // 선택된 함수 표시용
 
   const { mutate } = useSWRConfig();
 
@@ -31,6 +32,21 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
     } catch (e) {
       setError("세션 정보를 처리하는 중 오류가 발생했습니다.");
       return null;
+    }
+  };
+
+  // function_number에 따른 Edge Function 이름 결정
+  const getEdgeFunctionName = (functionNumber) => {
+    console.log(`🎯 function_number: ${functionNumber}`);
+    
+    switch(functionNumber) {
+      case 1:
+        return 'band-get-posts-a';
+      case 2:
+        return 'band-get-posts-b';
+      case 0:
+      default:
+        return 'band-get-posts';
     }
   };
 
@@ -64,6 +80,27 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
       { revalidate: true }
     );
   }, [mutate]);
+
+  // 초기 로드 시 function_number 확인
+  useEffect(() => {
+    if (!getUserIdFromSession()) {
+      // 필요시 초기 에러 설정 또는 버튼 비활성화 로직
+    }
+    
+    // function_number 확인 및 표시
+    try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (sessionDataString) {
+        const sessionUserData = JSON.parse(sessionDataString);
+        const functionNumber = sessionUserData?.function_number ?? 0;
+        const functionName = getEdgeFunctionName(functionNumber);
+        setSelectedFunction(functionName);
+        console.log(`📡 User function_number: ${functionNumber} → ${functionName}`);
+      }
+    } catch (e) {
+      console.error("function_number 확인 실패:", e);
+    }
+  }, []);
 
   // 주기적 캐시 갱신 및 진행률 시뮬레이션
   useEffect(() => {
@@ -173,6 +210,24 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
       return;
     }
 
+    // 🎯 세션에서 function_number 가져오기
+    let functionNumber = 0; // 기본값
+    let edgeFunctionName = 'band-get-posts'; // 기본 함수
+    
+    try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (sessionDataString) {
+        const sessionUserData = JSON.parse(sessionDataString);
+        functionNumber = sessionUserData?.function_number ?? 0;
+        edgeFunctionName = getEdgeFunctionName(functionNumber);
+        setSelectedFunction(edgeFunctionName);
+        
+        console.log(`🚀 선택된 Edge Function: ${edgeFunctionName} (function_number: ${functionNumber})`);
+      }
+    } catch (e) {
+      console.error("function_number 읽기 실패, 기본값 사용:", e);
+    }
+
     // 사용자 설정에서 게시물 제한 가져오기
     let currentLimit = 200;
     const storedLimit = sessionStorage.getItem("userPostLimit");
@@ -203,7 +258,10 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
         params.append("bandNumber", bandNumber.toString());
       }
 
-      const functionUrl = `${functionsBaseUrl}/band-get-posts?${params.toString()}`;
+      // 🎯 동적으로 선택된 Edge Function 사용
+      const functionUrl = `${functionsBaseUrl}/${edgeFunctionName}?${params.toString()}`;
+      
+      console.log(`📡 API 호출: ${functionUrl}`);
 
       // AbortController로 요청 관리
       const controller = new AbortController();
@@ -237,7 +295,7 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
           console.log("🔵 처리된 게시물 수:", response.data?.data?.length || 0);
           
           // 백그라운드에서 완료되면 즉시 완료 처리
-          handleResponse(response, userId);
+          handleResponse(response, userId, functionNumber, edgeFunctionName);
           setIsBackgroundProcessing(false);
           
           // 진행률을 100%로 즉시 업데이트
@@ -263,7 +321,7 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
         // 3초 내에 응답이 온 경우 (기존 로직)
         console.log("✅ 3초 내에 서버 응답 도착!");
         console.log("✅ 빠른 응답:", quickResponse);
-        handleResponse(quickResponse, userId);
+        handleResponse(quickResponse, userId, functionNumber, edgeFunctionName);
       }
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -278,7 +336,7 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
   }, [bandNumber, refreshSWRCache]);
 
   // 응답 처리 (기존 로직)
-  const handleResponse = (response, userId) => {
+  const handleResponse = (response, userId, functionNumber, edgeFunctionName) => {
     const responseData = response.data;
 
     if (response.status === 200 || response.status === 207) {
@@ -294,10 +352,14 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
 
       if (responseData.errorSummary) {
         const { totalErrors, errorRate } = responseData.errorSummary;
-        const baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
-        setError(baseMessage + `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`);
+        let baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
+        baseMessage += `\n🎯 사용된 함수: ${edgeFunctionName} (function_number: ${functionNumber})`;
+        baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
+        setError(baseMessage);
       } else {
         let baseMessage = `✨ ${processedCount}개의 게시물이 성공적으로 동기화되었습니다!`;
+        baseMessage += `\n🎯 사용된 함수: ${edgeFunctionName}`;
+        
         if (failoverInfo && failoverInfo.keysUsed > 1) {
           baseMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
         }
@@ -346,6 +408,7 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
 
   return (
     <div className="mb-2">
+      
       <button
         onClick={handleUpdatePosts}
         disabled={isLoading || isBackgroundProcessing}
@@ -454,4 +517,4 @@ const UpdateButtonImproved = ({ bandNumber = null }) => {
   );
 };
 
-export default UpdateButtonImproved;
+export default UpdateButtonImprovedWithFunction;

@@ -339,12 +339,9 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
         setProgress({ current: 0, total: 0, message: '' });
       }, 3000);
     } catch (err) {
-      let userFriendlyMessage =
-        "게시물 업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+      let userFriendlyMessage = "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
       if (err.isAxiosError && err.response) {
-        userFriendlyMessage += ` (서버: ${
-          err.response.data?.message || err.response.statusText || "알 수 없음"
-        })`;
+        userFriendlyMessage = err.response.data?.message || "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
       } else if (
         err.message.includes("timeout") ||
         err.code === "ECONNABORTED"
@@ -362,10 +359,10 @@ const UpdateButtonBeta = ({ bandNumber = null }) => {
   
   // 에러 처리 함수
   const handleError = (err) => {
-    let userFriendlyMessage = "게시물 업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    let userFriendlyMessage = "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
     
     if (err.isAxiosError && err.response) {
-      userFriendlyMessage += ` (서버: ${err.response.data?.message || err.response.statusText || "알 수 없음"})`;
+      userFriendlyMessage = err.response.data?.message || "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
     } else if (err.message.includes("timeout") || err.code === "ECONNABORTED") {
       userFriendlyMessage = "요청 시간이 초과되었습니다. 네트워크 상태를 확인하거나, 가져올 게시물 수를 줄여보세요.";
     }

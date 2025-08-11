@@ -20,7 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonImproved"; // UpdateButton 개선 버전
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -2187,17 +2187,42 @@ export default function OrdersPage() {
                             const actualStatus = order.status;
                             const actualSubStatus = order.sub_status;
 
+                            // 확인필요 상태 - updated_at 시간 표시
                             if (
                               actualStatus !== "수령완료" &&
                               actualSubStatus === "확인필요"
                             ) {
                               return (
-                                <span className="inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white">
-                                  확인필요
-                                </span>
+                                <div>
+                                  <span className="inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white">
+                                    확인필요
+                                  </span>
+                                  {order.updated_at && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {formatDate(order.updated_at)}
+                                    </div>
+                                  )}
+                                </div>
                               );
                             }
 
+                            // 주문취소 상태 - updated_at 시간 표시
+                            if (actualStatus === "주문취소") {
+                              return (
+                                <div>
+                                  <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                                    취소
+                                  </span>
+                                  {order.updated_at && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {formatDate(order.updated_at)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            // 미수령 상태
                             if (
                               actualStatus !== "수령완료" &&
                               actualSubStatus === "미수령"
@@ -2209,6 +2234,7 @@ export default function OrdersPage() {
                               );
                             }
 
+                            // 수령완료 상태
                             if (
                               actualStatus === "수령완료" &&
                               order.completed_at
@@ -2531,7 +2557,7 @@ export default function OrdersPage() {
         {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
         {isDetailModalOpen && selectedOrder && (
           <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
-            <div className="bg-white rounded-xl max-w-2xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-xl max-w-4xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
               {/* 모달 헤더 */}
               <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -2650,161 +2676,173 @@ export default function OrdersPage() {
 
                 {/* 탭 콘텐츠 */}
                 <div className="space-y-6">
-                  {/* 상태 관리 탭 내용 */}
+                  {/* 상태 관리 탭 내용 - 토스 디자인 스타일 */}
                   {activeTab === "status" && (
-                    <div className="space-y-5">
-                      <LightCard
-                        padding="p-4"
-                        className="text-center bg-gray-50"
-                      >
-                        <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
-                          상품 바코드
-                        </label>
-                        <div className="max-w-xs mx-auto h-[70px] flex items-center justify-center">
-                          {" "}
-                          {/* 세로 정렬 및 최소 높이 보장 */}
-                          {getProductBarcode(selectedOrder.product_id) ? (
-                            <Barcode
-                              value={getProductBarcode(
-                                selectedOrder.product_id
-                              )}
-                              width={1.8}
-                              height={45}
-                              fontSize={12}
-                            />
-                          ) : (
-                            // 바코드가 없을 때 입력 필드와 저장 버튼 표시
-                            <div className="flex flex-col items-center space-y-2 w-full px-2 py-2">
-                              <input
-                                type="text"
-                                placeholder="바코드 입력"
-                                value={newBarcodeValue}
-                                onChange={(e) =>
-                                  setNewBarcodeValue(e.target.value)
-                                }
-                                className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900"
-                              />
-                              <button
-                                onClick={() =>
-                                  handleSaveBarcode(
-                                    selectedOrder.product_id,
-                                    newBarcodeValue
-                                  )
-                                }
-                                disabled={
-                                  !newBarcodeValue.trim() || isSavingBarcode
-                                }
-                                className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed w-full"
-                              >
-                                {isSavingBarcode ? (
-                                  <LoadingSpinner className="h-4 w-4 mr-1 text-white" />
-                                ) : null}{" "}
-                                {/* 로딩 스피너 색상 및 간격 조정 */}
-                                저장
-                              </button>
+                    <div className="grid grid-cols-2 gap-5">
+                      {/* 왼쪽 열 */}
+                      <div className="space-y-5">
+                        {/* 고객 정보 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">고객 정보</h3>
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
+                              <span className="text-xl">👤</span>
+                            </div>
+                            <div>
+                              <p className="text-base font-semibold text-gray-900">{selectedOrder.customer_name}</p>
+                              <p className="text-sm text-gray-500 mt-0.5">{selectedOrder.product_names || '2팩'}</p>
+                            </div>
+                          </div>
+                          {selectedOrder.status === 'completed' && (
+                            <div className="mt-4 px-3 py-2 bg-green-50 rounded-xl">
+                              <p className="text-xs font-semibold text-green-700">✓ 수령 완료</p>
                             </div>
                           )}
                         </div>
-                      </LightCard>
-                      <LightCard padding="p-4" className="">
-                        <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
-                          고객 주문 정보
-                        </label>
-                        <div className="flex items-start space-x-3">
-                          <UserCircleIcon className="w-6 h-6 text-gray-400 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1">
-                            <p className="text-sm text-gray-800 font-semibold">
-                              {selectedOrder.customer_name || "이름 없음"}
-                            </p>
-                            <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap break-words">
-                              {processBandTags(selectedOrder.comment) || (
-                                <span className="italic text-gray-400">
-                                  댓글 없음
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      </LightCard>
-                      <LightCard padding="p-4" className="">
-                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                          주문 상태 변경
-                        </label>
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                          <div>
-                            <span className="text-sm font-medium text-gray-500 mr-2">
-                              현재:
-                            </span>
-                            <StatusBadge
-                              status={selectedOrder.status}
-                              processingMethod={selectedOrder.processing_method}
-                            />
-                          </div>
-                          <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">
-                            {["주문완료", "주문취소", "확인필요"].map(
-                              (status) => {
-                                const isCurrent =
-                                  selectedOrder.status === status;
-                                return (
-                                  <div
-                                    key={status}
-                                    className="flex items-center gap-1"
-                                  >
-                                    <button
-                                      onClick={() =>
-                                        handleStatusChange(
-                                          selectedOrder.order_id,
-                                          status
-                                        )
-                                      }
-                                      disabled={isCurrent}
-                                      className={getStatusButtonStyle(status)}
-                                    >
-                                      {getStatusIcon(status)} {status} 처리
-                                    </button>
-                                    {/* AI/패턴 처리 아이콘 - 주문완료 버튼 옆에만 표시 */}
-                                    {status === "주문완료" &&
-                                      selectedOrder.processing_method && (
-                                        <div className="flex items-center">
-                                          {selectedOrder.processing_method ===
-                                            "ai" && (
-                                            <div
-                                              className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
-                                              title="AI 처리된 주문"
-                                            >
-                                              <SparklesIcon className="w-3 h-3" />
-                                              <span>AI</span>
-                                            </div>
-                                          )}
-                                          {selectedOrder.processing_method ===
-                                            "pattern" && (
-                                            <div
-                                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
-                                              title="패턴 처리된 주문"
-                                            >
-                                              <FunnelIcon className="w-3 h-3" />
-                                              <span>패턴</span>
-                                            </div>
-                                          )}
-                                          {selectedOrder.processing_method ===
-                                            "manual" && (
-                                            <div
-                                              className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
-                                              title="수동 처리된 주문"
-                                            >
-                                              <PencilSquareIcon className="w-3 h-3" />
-                                              <span>수동</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                  </div>
-                                );
-                              }
+
+                        {/* 바코드 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">상품 바코드</h3>
+                          <div className="bg-gray-50 rounded-xl p-4">
+                            {getProductBarcode(selectedOrder.product_id) ? (
+                              <Barcode
+                                value={getProductBarcode(selectedOrder.product_id)}
+                                width={1.3}
+                                height={35}
+                                fontSize={10}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                placeholder="바코드를 입력하세요"
+                                value={newBarcodeValue}
+                                onChange={(e) => setNewBarcodeValue(e.target.value)}
+                                className="w-full bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none"
+                              />
                             )}
                           </div>
+                          {!getProductBarcode(selectedOrder.product_id) && (
+                            <button 
+                              onClick={() => handleSaveBarcode(selectedOrder.product_id, newBarcodeValue)}
+                              disabled={!newBarcodeValue.trim() || isSavingBarcode}
+                              className="w-full mt-3 px-4 py-3 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-all disabled:bg-gray-300"
+                            >
+                              저장
+                            </button>
+                          )}
                         </div>
-                      </LightCard>
+
+                        {/* 주문 상태 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 상태 변경</h3>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "주문완료")}
+                              className="px-3 py-3 bg-blue-100 text-blue-700 text-sm font-semibold rounded-xl hover:bg-blue-200 transition-all"
+                            >
+                              주문완료
+                            </button>
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "주문취소")}
+                              className="px-3 py-3 bg-red-100 text-red-700 text-sm font-semibold rounded-xl hover:bg-red-200 transition-all"
+                            >
+                              주문취소
+                            </button>
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "확인필요")}
+                              className="px-3 py-3 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 transition-all"
+                            >
+                              확인필요
+                            </button>
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "수령완료")}
+                              disabled={selectedOrder.status === '수령완료'}
+                              className={`px-3 py-3 text-sm font-semibold rounded-xl transition-all ${
+                                selectedOrder.status === '수령완료' 
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                            >
+                              수령완료
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 오른쪽 열 */}
+                      <div className="space-y-5">
+                        {/* 주문 정보 수정 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 정보</h3>
+                          
+                          <div className="space-y-4">
+                            {/* 수량 입력 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">수량</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center">
+                                <input
+                                  type="number"
+                                  value={tempQuantity}
+                                  onChange={(e) => handleTempInputChange("quantity", e.target.value)}
+                                  className="flex-1 bg-transparent text-base font-semibold text-gray-900 outline-none"
+                                />
+                                <span className="text-sm text-gray-500">개</span>
+                              </div>
+                            </div>
+                            
+                            {/* 단가 입력 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">단가</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center">
+                                <input
+                                  type="number"
+                                  value={tempPrice}
+                                  onChange={(e) => handleTempInputChange("price", e.target.value)}
+                                  className="flex-1 bg-transparent text-base font-semibold text-gray-900 outline-none"
+                                />
+                                <span className="text-sm text-gray-500">원</span>
+                              </div>
+                            </div>
+                            
+                            {/* 총 금액 - 단가와 동일한 스타일 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">총 금액</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+                                <span className="text-base font-semibold text-gray-900">
+                                  {formatCurrency(
+                                    calculateTotalAmount(
+                                      parseInt(tempQuantity, 10) || 0,
+                                      selectedOrder?.product?.price_options || [
+                                        { price: tempPrice, quantity: 1 },
+                                      ],
+                                      parseFloat(tempPrice) || 0
+                                    )
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <button
+                              onClick={() => saveOrderDetails(selectedOrder.order_id, {
+                                quantity: parseInt(tempQuantity, 10),
+                                unit_price: parseFloat(tempPrice)
+                              })}
+                              disabled={
+                                parseInt(tempQuantity, 10) === selectedOrder.quantity && 
+                                parseFloat(tempPrice) === selectedOrder.unit_price
+                              }
+                              className={`w-full px-4 py-3 text-sm font-semibold rounded-xl transition-all shadow-sm ${
+                                parseInt(tempQuantity, 10) === selectedOrder.quantity && 
+                                parseFloat(tempPrice) === selectedOrder.unit_price
+                                  ? 'bg-gray-300 text-white cursor-not-allowed'
+                                  : 'bg-blue-500 text-white hover:bg-blue-600'
+                              }`}
+                            >
+                              변경사항 저장
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                   {/* 주문 정보 탭 내용 (복구) */}
