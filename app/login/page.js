@@ -221,6 +221,7 @@ export default function LoginPage() {
           userId: userDetails.userId,
           loginId: userDetails.loginId,
           function_number: functionNumber, // 🎯 Edge Function 분산용 번호 추가
+          post_fetch_limit: userDetails.post_fetch_limit || userDetails.postFetchLimit || 200, // 🎯 게시물 가져오기 제한 추가
 
           // 상점 정보 (서버에서 받은 필드명 그대로 사용하면서 camelCase도 함께 저장)
           storeName: userDetails.storeName,
@@ -350,6 +351,8 @@ export default function LoginPage() {
           bandNumber: userDetails.bandNumber,
           naverId: userDetails.naverId,
           excludedCustomers: userDetails.excludedCustomers || [], // 예시
+          function_number: userDetails.function_number ?? 0, // 🎯 Edge Function 분산용 번호 추가
+          post_fetch_limit: userDetails.post_fetch_limit ?? 200, // 🎯 게시물 가져오기 제한 추가
 
           // !!! 토큰을 이 객체 안에 포함 !!!
           token: token,
