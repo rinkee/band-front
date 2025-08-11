@@ -29,6 +29,9 @@ export default function PostsPage() {
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
 
+  // 재처리 알림 표시 여부 (세션 스토리지로 관리)
+  const [hasShownReprocessAlert, setHasShownReprocessAlert] = useState(false);
+
   // 사용자 데이터 가져오기
   useEffect(() => {
     const sessionData = sessionStorage.getItem("userData");
@@ -37,6 +40,12 @@ export default function PostsPage() {
       setUserData(userDataObj);
     } else {
       router.push("/login");
+    }
+
+    // 재처리 알림 표시 여부 확인
+    const alertShown = sessionStorage.getItem("reprocessAlertShown");
+    if (alertShown) {
+      setHasShownReprocessAlert(true);
     }
   }, [router]);
 
@@ -276,6 +285,56 @@ export default function PostsPage() {
     }
   };
 
+  // 댓글 재처리 토글 함수
+  const handleToggleReprocess = async (post, isEnabled) => {
+    if (!post || !post.post_key) {
+      showError('게시물 정보가 없습니다.');
+      return;
+    }
+
+    // 최초 클릭 시 알림 표시
+    if (!hasShownReprocessAlert && isEnabled) {
+      alert('⚠️ 누락 주문 재처리 안내\n\n이 기능을 활성화하면 다음 자동 업데이트 시(보통 1-5분 이내) 해당 게시물의 댓글을 다시 가져와서 누락된 주문을 재처리합니다.\n\n실시간으로 처리되지 않고, 다음 업데이트 시점에 처리됩니다.');
+      sessionStorage.setItem("reprocessAlertShown", "true");
+      setHasShownReprocessAlert(true);
+    }
+
+    try {
+      if (isEnabled) {
+        // 재처리 활성화 - pending으로 변경
+        const { error } = await supabase
+          .from('posts')
+          .update({ 
+            comment_sync_status: 'pending',
+            last_sync_attempt: null,
+            sync_retry_count: 0
+          })
+          .eq('post_key', post.post_key);
+
+        if (error) throw error;
+        showSuccess(`누락 주문 재처리 예약됨 (다음 업데이트 시 적용)`);
+      } else {
+        // 재처리 비활성화 - completed로 변경
+        const { error } = await supabase
+          .from('posts')
+          .update({ 
+            comment_sync_status: 'completed'
+          })
+          .eq('post_key', post.post_key);
+
+        if (error) throw error;
+        showSuccess(`재처리 예약 취소됨`);
+      }
+      
+      // 데이터 새로고침
+      mutate();
+      
+    } catch (error) {
+      console.error('재처리 토글 오류:', error);
+      showError(`설정 변경 중 오류가 발생했습니다: ${error.message}`);
+    }
+  };
+
   if (!userData) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -467,6 +526,7 @@ export default function PostsPage() {
                 onViewOrders={handleViewOrders}
                 onViewComments={handleViewComments}
                 onDeletePost={handleDeletePost}
+                onToggleReprocess={handleToggleReprocess}
               />
             ))}
           </div>
@@ -516,7 +576,25 @@ export default function PostsPage() {
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess }) {
+  // 사용자 친화적인 상태 표시
+  const getStatusDisplay = (status) => {
+    switch (status) {
+      case 'pending':
+        return { text: '재처리 예약됨', color: 'text-amber-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' };
+      case 'processing':
+        return { text: '처리 중...', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' };
+      case 'completed':
+      case 'success':
+        return { text: '처리 완료', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200' };
+      case 'failed':
+      case 'error':
+        return { text: '처리 실패', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' };
+      default:
+        return { text: '대기 중', color: 'text-gray-600', bgColor: 'bg-gray-50', borderColor: 'border-gray-200' };
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -573,11 +651,11 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
 
   return (
     <div
-      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col"
       onClick={() => onClick(post.post_id)}
     >
-      {/* 내용 섹션 */}
-      <div className="p-4">
+      {/* 내용 섹션 - 고정 높이 */}
+      <div className="p-4 flex-grow">
         {/* 작성자 정보 */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
@@ -688,34 +766,53 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
         )}
       </div>
 
-      {/* 이미지 섹션 */}
-      {hasImages && (
-        <div className="relative">
+      {/* 이미지 섹션 - 고정 높이 유지 */}
+      <div className="relative h-64 bg-gray-100">
+        {hasImages ? (
           <img
             src={mainImage}
             alt={post.title || "게시물 이미지"}
-            className="w-full h-64 object-cover"
+            className="w-full h-full object-cover"
             onError={(e) => {
               e.target.src = "/default-avatar.png"; // fallback 이미지
             }}
           />
-        </div>
-      )}
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-50">
+            <div className="text-center">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-300 mb-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1"
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <span className="text-gray-400 text-sm">이미지 없음</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* 하단 섹션 - 3개 버튼 */}
-      <div className="p-4">
-        {/* 액션 버튼들 */}
-        <div className="grid grid-cols-3 gap-2">
+      {/* 하단 섹션 - 컴팩트한 디자인 */}
+      <div className="p-3">
+        {/* 메인 액션 버튼들 - 더 작게 */}
+        <div className="grid grid-cols-3 gap-1.5">
           {/* 바코드 등록 버튼 */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClick(post.post_id);
             }}
-            className="flex flex-col items-center justify-center py-3 px-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg
-              className="w-5 h-5 text-gray-600 mb-1"
+              className="w-4 h-4 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -724,12 +821,10 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="2"
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
               />
             </svg>
-            <span className="text-xs font-medium text-gray-700">
-              바코드 등록
-            </span>
+            <span className="text-xs text-gray-600 mt-0.5">바코드</span>
           </button>
 
           {/* 주문보기 버튼 */}
@@ -738,10 +833,10 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
               e.stopPropagation();
               onViewOrders(post.post_key);
             }}
-            className="flex flex-col items-center justify-center py-3 px-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg
-              className="w-5 h-5 text-gray-600 mb-1"
+              className="w-4 h-4 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -753,19 +848,19 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
               />
             </svg>
-            <span className="text-xs font-medium text-gray-700">주문보기</span>
+            <span className="text-xs text-gray-600 mt-0.5">주문</span>
           </button>
 
-          {/* 댓글보기 버튼 */}
+          {/* 실시간 댓글 버튼 */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onViewComments(post);
             }}
-            className="flex flex-col items-center justify-center py-3 px-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg
-              className="w-5 h-5 text-gray-600 mb-1"
+              className="w-4 h-4 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -777,21 +872,54 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
-            <span className="text-xs font-medium text-gray-700">댓글보기</span>
+            <span className="text-xs text-gray-600 mt-0.5">실시간 댓글</span>
           </button>
         </div>
         
-        {/* 게시물 삭제 버튼 (별도 위치) */}
-        <div className="mt-2">
+        {/* 추가 옵션들 - 더 컴팩트하게 */}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {/* 재처리 스위치 - 미니멀 디자인 */}
+          <div className="flex items-center gap-2 flex-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const isCurrentlyPending = post.comment_sync_status === 'pending';
+                onToggleReprocess(post, !isCurrentlyPending);
+              }}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                post.comment_sync_status === 'pending'
+                  ? 'bg-amber-500'
+                  : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                  post.comment_sync_status === 'pending'
+                    ? 'translate-x-5'
+                    : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className={`text-xs ${
+              post.comment_sync_status === 'pending'
+                ? 'text-amber-600 font-medium'
+                : 'text-gray-400'
+            }`}>
+              {post.comment_sync_status === 'pending' ? '누락주문 재처리 예약' : '누락주문 재처리'}
+            </span>
+          </div>
+          
+          {/* 삭제 버튼 - 아이콘만 */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDeletePost(post);
             }}
-            className="w-full flex items-center justify-center py-2 px-3 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg transition-colors border border-red-200 text-sm font-medium"
+            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="삭제"
           >
             <svg
-              className="w-4 h-4 mr-2"
+              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -803,7 +931,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost })
                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
               />
             </svg>
-            게시물 삭제
           </button>
         </div>
       </div>

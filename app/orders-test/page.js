@@ -22,7 +22,8 @@ import { StatusButton } from "../components/StatusButton"; // StatusButton 다�
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
 import UpdateButtonBeta from "../components/UpdateButtonBeta"; // 베타 업데이트 버튼
-import UpdateButtonImproved from "../components/UpdateButtonImproved"; // 개선된 업데이트 버튼
+import UpdateButtonImproved from "../components/UpdateButtonImprovedWithFunction"; // function_number 분산 버전
+import UpdateButtonFrontend from "../components/UpdateButtonFrontend"; // 프론트엔드 처리 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -1871,7 +1872,11 @@ export default function OrdersPage() {
                       setPreviousOrderCount(globalStatsData?.총주문수 || 0);
                     }}
                   >
-                    <UpdateButtonBeta />
+                    {/* UpdateButtonImproved (WithFunction 버전) 사용 - function_number 분산 처리 */}
+                    <UpdateButtonImproved />
+                    {/* 기존 버튼들은 주석 처리 */}
+                    {/* <UpdateButtonBeta /> */}
+                    {/* <UpdateButtonFrontend mode="test" /> */}
                   </div>
                 </div>
                 <div className="flex items-center justify-center text-xs text-gray-500">

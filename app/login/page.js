@@ -193,6 +193,10 @@ export default function LoginPage() {
       if (result.success && result.token && result.user) {
         const userDetails = result.user;
         const token = result.token;
+        
+        // 🎯 function_number 확인 및 로깅
+        const functionNumber = userDetails.function_number ?? userDetails.functionNumber ?? 0;
+        console.log(`🎯 User function_number from server: ${functionNumber}`);
 
         // 아이디/비밀번호 저장 처리
         if (rememberId) {
@@ -216,6 +220,7 @@ export default function LoginPage() {
           // 기본 정보
           userId: userDetails.userId,
           loginId: userDetails.loginId,
+          function_number: functionNumber, // 🎯 Edge Function 분산용 번호 추가
 
           // 상점 정보 (서버에서 받은 필드명 그대로 사용하면서 camelCase도 함께 저장)
           storeName: userDetails.storeName,

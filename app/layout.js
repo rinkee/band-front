@@ -313,6 +313,22 @@ function LayoutContent({ children }) {
                         DB: {process.env.NEXT_PUBLIC_DB_NAME}
                       </span>
                     )}
+                    {/* Function Number 표시 */}
+                    {userData?.function_number !== undefined && (
+                      <span className={`text-sm font-medium ${
+                        userData.function_number === 0 ? 'text-gray-600' :
+                        userData.function_number === 1 ? 'text-blue-600' :
+                        userData.function_number === 2 ? 'text-green-600' :
+                        'text-gray-600'
+                      }`}>
+                        서버: {
+                          userData.function_number === 0 ? '기본' :
+                          userData.function_number === 1 ? 'A' :
+                          userData.function_number === 2 ? 'B' :
+                          userData.function_number
+                        }
+                      </span>
+                    )}
                   </div>
 
                   {/* 모바일 메뉴 토글 버튼 */}

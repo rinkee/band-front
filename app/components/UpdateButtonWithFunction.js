@@ -1,16 +1,17 @@
-// PostUpdater.js
+// UpdateButtonWithFunction.js
+// User 테이블의 function_number 필드를 사용한 Edge Function 분산 버전
 "use client";
 import React, { useState, useCallback, useEffect } from "react";
-import { api } from "../lib/fetcher"; // fetcher가 axios 인스턴스라고 가정
-import { useSWRConfig } from "swr"; // <<< SWRConfig 훅 임포트
+import { api } from "../lib/fetcher";
+import { useSWRConfig } from "swr";
 
 const PostUpdater = ({ bandNumber = null }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  // const [postsResponse, setPostsResponse] = useState(null); // 응답 데이터 직접 사용 안 하면 제거 가능
+  const [selectedFunction, setSelectedFunction] = useState(""); // 선택된 함수 표시용
 
-  const { mutate } = useSWRConfig(); // <<< mutate 함수 가져오기
+  const { mutate } = useSWRConfig();
 
   // 세션에서 userId 가져오는 헬퍼 함수
   const getUserIdFromSession = () => {
@@ -33,10 +34,39 @@ const PostUpdater = ({ bandNumber = null }) => {
     }
   };
 
+  // function_number에 따른 Edge Function 이름 결정
+  const getEdgeFunctionName = (functionNumber) => {
+    console.log(`🎯 function_number: ${functionNumber}`);
+    
+    switch(functionNumber) {
+      case 1:
+        return 'band-get-posts-a';
+      case 2:
+        return 'band-get-posts-b';
+      case 0:
+      default:
+        return 'band-get-posts';
+    }
+  };
+
   useEffect(() => {
-    // 초기 로드 시 로그인 상태 확인 (버튼 활성화 여부 등에 사용 가능)
+    // 초기 로드 시 로그인 상태 확인
     if (!getUserIdFromSession()) {
       // 필요시 초기 에러 설정 또는 버튼 비활성화 로직
+    }
+    
+    // function_number 확인 및 표시
+    try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (sessionDataString) {
+        const sessionUserData = JSON.parse(sessionDataString);
+        const functionNumber = sessionUserData?.function_number ?? 0;
+        const functionName = getEdgeFunctionName(functionNumber);
+        setSelectedFunction(functionName);
+        console.log(`📡 User function_number: ${functionNumber} → ${functionName}`);
+      }
+    } catch (e) {
+      console.error("function_number 확인 실패:", e);
     }
   }, []);
 
@@ -49,6 +79,24 @@ const PostUpdater = ({ bandNumber = null }) => {
     if (!userId) {
       setIsLoading(false);
       return;
+    }
+
+    // 🎯 세션에서 function_number 가져오기
+    let functionNumber = 0; // 기본값
+    let edgeFunctionName = 'band-get-posts'; // 기본 함수
+    
+    try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (sessionDataString) {
+        const sessionUserData = JSON.parse(sessionDataString);
+        functionNumber = sessionUserData?.function_number ?? 0;
+        edgeFunctionName = getEdgeFunctionName(functionNumber);
+        setSelectedFunction(edgeFunctionName);
+        
+        console.log(`🚀 선택된 Edge Function: ${edgeFunctionName} (function_number: ${functionNumber})`);
+      }
+    } catch (e) {
+      console.error("function_number 읽기 실패, 기본값 사용:", e);
     }
 
     // 사용자 설정에서 게시물 제한 가져오기
@@ -83,7 +131,6 @@ const PostUpdater = ({ bandNumber = null }) => {
 
     const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
     if (!functionsBaseUrl || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      // 환경 변수 존재 확인
       setError(
         "Supabase 함수 URL이 설정되지 않았습니다. 환경 변수를 확인해주세요."
       );
@@ -98,10 +145,11 @@ const PostUpdater = ({ bandNumber = null }) => {
       if (bandNumber) {
         params.append("bandNumber", bandNumber.toString());
       }
-      // AI 처리 여부 파라미터 (기본값 true, 필요시 false로 설정 가능하게)
-      // 예: params.append("processAI", "true");
 
-      const functionUrl = `${functionsBaseUrl}/band-get-posts?${params.toString()}`;
+      // 🎯 동적으로 선택된 Edge Function 사용
+      const functionUrl = `${functionsBaseUrl}/${edgeFunctionName}?${params.toString()}`;
+      
+      console.log(`📡 API 호출: ${functionUrl}`);
 
       const response = await api.get(functionUrl, {
         timeout: 600000, // 10분 타임아웃
@@ -109,28 +157,26 @@ const PostUpdater = ({ bandNumber = null }) => {
 
       const responseData = response.data;
 
-      // 🔥 성공 또는 부분 성공 처리 (200 또는 207)
+      // 성공 또는 부분 성공 처리 (200 또는 207)
       if (response.status === 200 || response.status === 207) {
         const processedCount = responseData.data?.length || 0;
 
         // failover 정보 확인
         const failoverInfo = responseData.failoverInfo;
         let baseMessage = `${processedCount}개의 게시물 정보를 동기화했습니다.`;
+        
+        // function_number 정보 추가
+        baseMessage += `\n🎯 사용된 함수: ${edgeFunctionName} (function_number: ${functionNumber})`;
 
-        // 🔥 에러 요약 정보 확인
+        // 에러 요약 정보 확인
         if (responseData.errorSummary) {
           const { totalErrors, errorRate } = responseData.errorSummary;
           baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
-
-          // 에러 상세 정보 (개발 시 필요하면 주석 해제)
-          // console.warn("처리 실패한 게시물들:", responseData.errors);
-
-          // 사용자에게 재시도 안내
+          baseMessage += `\n🎯 사용된 함수: ${edgeFunctionName}`;
           baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
 
-          // 부분 실패이므로 경고 스타일로 표시
           setError(baseMessage);
-          setSuccessMessage(""); // 성공 메시지는 비움
+          setSuccessMessage("");
         } else {
           // 완전 성공
           let successMessage = baseMessage;
@@ -142,14 +188,14 @@ const PostUpdater = ({ bandNumber = null }) => {
           }
 
           setSuccessMessage(successMessage);
-          setError(""); // 에러 메시지는 비움
+          setError("");
         }
 
         if (userId) {
-          // userId가 있을 때만 mutate 실행
-          const functionsBaseUrlForMutate = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`; // 키 패턴에 필요
+          // SWR 캐시 갱신
+          const functionsBaseUrlForMutate = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 
-          // 1. useOrders 훅의 데이터 갱신 (hooks/index.js 코드 기반)
+          // 1. useOrders 훅의 데이터 갱신
           const ordersKeyPattern = `${functionsBaseUrlForMutate}/orders-get-all?userId=${userId}`;
           mutate(
             (key) =>
@@ -158,7 +204,7 @@ const PostUpdater = ({ bandNumber = null }) => {
             { revalidate: true }
           );
 
-          // 2. useProducts 훅의 데이터 갱신 (hooks/useProducts.js 코드 기반)
+          // 2. useProducts 훅의 데이터 갱신
           const productsKeyPattern = `${functionsBaseUrlForMutate}/products-get-all?userId=${userId}`;
           mutate(
             (key) =>
@@ -167,38 +213,28 @@ const PostUpdater = ({ bandNumber = null }) => {
             { revalidate: true }
           );
 
-          // 3. useOrderStats 훅의 데이터 갱신 (hooks/index.js 코드 기반)
-          const statsKeyPattern = `/orders/stats?userId=${userId}`; // 또는 `/api/orders/stats?userId=${userId}` 등 실제 API 경로에 맞춤
+          // 3. useOrderStats 훅의 데이터 갱신
+          const statsKeyPattern = `/orders/stats?userId=${userId}`;
           mutate(
             (key) => typeof key === "string" && key.startsWith(statsKeyPattern),
             undefined,
             { revalidate: true }
           );
-
-          // SWR 캐시 갱신 완료
-        } else {
-          // userId가 없어서 SWR 캐시 갱신 건너뜀
         }
-        // --- SWR 캐시 갱신 끝 ---
       } else {
-        // 🔥 완전 실패 처리 (500 등)
+        // 완전 실패 처리 (500 등)
         let errorMessage =
           responseData.message ||
           "게시물 동기화 중 서버에서 오류가 발생했습니다.";
 
-        // 에러 상세 정보가 있으면 추가
         if (responseData.errors && responseData.errors.length > 0) {
           errorMessage += `\n실패한 게시물: ${responseData.errors.length}개`;
-          // console.error("상세 에러 정보:", responseData.errors);
         }
 
         setError(errorMessage);
         setSuccessMessage("");
       }
     } catch (err) {
-      // console.error("!!! API Call CATCH block !!!");
-      // console.error("Full API Error Object:", err);
-
       let userFriendlyMessage = "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
       if (err.isAxiosError && err.response) {
         userFriendlyMessage = err.response.data?.message || "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
@@ -212,11 +248,10 @@ const PostUpdater = ({ bandNumber = null }) => {
       setError(userFriendlyMessage);
     } finally {
       setIsLoading(false);
-      // 성공 메시지 자동 해제는 useEffect에서 처리 (228-237번째 줄)
     }
-  }, [bandNumber, successMessage, mutate]); // 의존성 배열에 mutate 추가
+  }, [bandNumber, successMessage, mutate]);
 
-  // 성공 메시지 자동 해제를 위한 useEffect (선택적 개선)
+  // 성공 메시지 자동 해제를 위한 useEffect
   useEffect(() => {
     let timer;
     if (successMessage) {
@@ -224,29 +259,34 @@ const PostUpdater = ({ bandNumber = null }) => {
         setSuccessMessage("");
       }, 5000); // 5초 후 성공 메시지 자동 해제
     }
-    return () => clearTimeout(timer); // 컴포넌트 언마운트 또는 successMessage 변경 시 타이머 클리어
+    return () => clearTimeout(timer);
   }, [successMessage]);
 
   return (
     <div className="mb-2">
-      {" "}
-      {/* 컴포넌트 주변 여백 추가 */}
+      {/* function_number 정보 표시 (개발/디버그용) */}
+      {selectedFunction && process.env.NODE_ENV === 'development' && (
+        <div className="mb-2 text-xs text-gray-500 text-center">
+          Edge Function: {selectedFunction}
+        </div>
+      )}
+      
       <button
         onClick={handleUpdatePosts}
-        disabled={isLoading} // 🔥 로딩 중에만 비활성화 (에러 시에도 재시도 가능하게)
+        disabled={isLoading}
         className={`
           px-8 py-2 text-white font-medium rounded-md transition-colors duration-300 ease-in-out
           focus:outline-none focus:ring-2 focus:ring-offset-2
           disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed
-          flex items-center justify-center group {/* 아이콘과 텍스트 정렬 */}
+          flex items-center justify-center group
           ${
             isLoading
-              ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-wait" // 로딩 중 스타일
+              ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-wait"
               : error && !successMessage
-              ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400" // 🔥 부분 실패/에러 스타일 (경고색)
+              ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400"
               : successMessage
-              ? "bg-green-600 hover:bg-green-700 focus:ring-green-500" // 성공 스타일
-              : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500" // 기본 활성 스타일
+              ? "bg-green-600 hover:bg-green-700 focus:ring-green-500"
+              : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500"
           }
         `}
       >
@@ -275,7 +315,7 @@ const PostUpdater = ({ bandNumber = null }) => {
         {isLoading
           ? "동기화 중..."
           : error && !successMessage
-          ? "재시도" // 🔥 에러 시 재시도 버튼으로 표시
+          ? "재시도"
           : successMessage
           ? "동기화 완료!"
           : "업데이트"}
@@ -284,19 +324,15 @@ const PostUpdater = ({ bandNumber = null }) => {
         <p
           className={`mt-2 text-sm text-center ${
             error.includes("자동으로 재시도")
-              ? "text-amber-600" // 🔥 부분 실패 시 경고색 (재시도 안내 포함)
-              : "text-red-600" // 완전 실패 시 빨간색
+              ? "text-amber-600"
+              : "text-red-600"
           }`}
         >
-          {" "}
-          {/* 가운데 정렬 추가 */}
           {error}
         </p>
       )}
       {successMessage && !error && (
         <p className="mt-2 text-sm text-green-600 text-center">
-          {" "}
-          {/* 가운데 정렬 추가 */}
           {successMessage}
         </p>
       )}
