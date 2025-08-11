@@ -114,27 +114,31 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
 
     // 사용자 설정에서 게시물 제한 가져오기
     let estimatedTotal = 200; // 기본값
-    const storedLimit = sessionStorage.getItem("userPostLimit");
-    if (storedLimit) {
-      const parsedLimit = parseInt(storedLimit, 10);
-      if (!isNaN(parsedLimit) && parsedLimit > 0) {
-        estimatedTotal = parsedLimit;
-      }
-    } else {
-      // 세션에 없으면 세션 데이터에서 확인
-      try {
-        const sessionData = sessionStorage.getItem("sessionUserData");
-        if (sessionData) {
-          const userData = JSON.parse(sessionData);
-          if (userData?.post_fetch_limit) {
-            const userLimit = parseInt(userData.post_fetch_limit, 10);
-            if (!isNaN(userLimit) && userLimit > 0) {
-              estimatedTotal = userLimit;
-            }
+    
+    // 1. userData에서 직접 post_fetch_limit 확인
+    try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (sessionDataString) {
+        const sessionUserData = JSON.parse(sessionDataString);
+        if (sessionUserData?.post_fetch_limit) {
+          const userLimit = parseInt(sessionUserData.post_fetch_limit, 10);
+          if (!isNaN(userLimit) && userLimit > 0) {
+            estimatedTotal = userLimit;
           }
         }
-      } catch (error) {
-        // 세션 데이터 파싱 실패
+      }
+    } catch (error) {
+      console.error("post_fetch_limit 읽기 실패:", error);
+    }
+    
+    // 2. 그래도 없으면 userPostLimit 세션 값 확인 (하위 호환성)
+    if (estimatedTotal === 200) {
+      const storedLimit = sessionStorage.getItem("userPostLimit");
+      if (storedLimit) {
+        const parsedLimit = parseInt(storedLimit, 10);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          estimatedTotal = parsedLimit;
+        }
       }
     }
     
@@ -229,12 +233,32 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     }
 
     // 사용자 설정에서 게시물 제한 가져오기
-    let currentLimit = 200;
-    const storedLimit = sessionStorage.getItem("userPostLimit");
-    if (storedLimit) {
-      const parsedLimit = parseInt(storedLimit, 10);
-      if (!isNaN(parsedLimit) && parsedLimit > 0) {
-        currentLimit = parsedLimit;
+    let currentLimit = 200; // 기본값
+    
+    // 1. userData에서 직접 post_fetch_limit 확인
+    try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (sessionDataString) {
+        const sessionUserData = JSON.parse(sessionDataString);
+        if (sessionUserData?.post_fetch_limit) {
+          const userLimit = parseInt(sessionUserData.post_fetch_limit, 10);
+          if (!isNaN(userLimit) && userLimit > 0) {
+            currentLimit = userLimit;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("post_fetch_limit 읽기 실패:", error);
+    }
+    
+    // 2. 그래도 없으면 userPostLimit 세션 값 확인 (하위 호환성)
+    if (currentLimit === 200) {
+      const storedLimit = sessionStorage.getItem("userPostLimit");
+      if (storedLimit) {
+        const parsedLimit = parseInt(storedLimit, 10);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          currentLimit = parsedLimit;
+        }
       }
     }
 
