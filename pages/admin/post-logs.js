@@ -1,6 +1,6 @@
 // 게시물 처리 로그 조회 페이지
 import { useState, useEffect } from 'react';
-import { supabase } from '../../utils/supabaseClient';
+import supabase from '../../app/lib/supabaseClient';
 
 export default function PostLogsPage() {
   const [logs, setLogs] = useState([]);
