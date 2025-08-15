@@ -694,15 +694,29 @@ export default function OrdersPage() {
     setEditValues({});
   };
 
+  // 토스트 알림 함수
+  const addToast = (message, type = 'info') => {
+    alert(message); // 임시로 alert 사용, 나중에 토스트 라이브러리로 교체 가능
+  };
+
   const handleEditSave = async (order) => {
     setSavingEdit(true);
+    
+    // product_name이 없다면 기존 값을 사용
+    const updateData = {
+      ...editValues,
+      product_name: editValues.product_name || order.product_name || '상품명 없음'
+    };
+
+    console.log('저장할 데이터:', updateData);
+    
     try {
       const response = await fetch(`/api/orders/${order.order_id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editValues),
+        body: JSON.stringify(updateData),
       });
 
       const result = await response.json();
@@ -715,7 +729,7 @@ export default function OrdersPage() {
       setOrders(prevOrders => 
         prevOrders.map(o => 
           o.order_id === order.order_id 
-            ? { ...o, ...editValues }
+            ? { ...o, ...updateData }
             : o
         )
       );
@@ -723,12 +737,12 @@ export default function OrdersPage() {
       setEditingOrderId(null);
       setEditValues({});
       
-      // Toast 또는 알림 표시
-      addToast('주문 정보가 성공적으로 업데이트되었습니다.', 'success');
+      // Toast 알림 표시
+      addToast('주문 정보가 성공적으로 업데이트되었습니다.');
       
     } catch (error) {
       console.error('주문 업데이트 에러:', error);
-      addToast('주문 정보 업데이트에 실패했습니다.', 'error');
+      addToast('주문 정보 업데이트에 실패했습니다: ' + error.message);
     } finally {
       setSavingEdit(false);
     }
