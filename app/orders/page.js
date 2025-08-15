@@ -727,7 +727,7 @@ export default function OrdersPage() {
       }
 
       // 성공 시 데이터 새로고침 - DB에서 최신 데이터 가져오기
-      await fetchOrders();
+      await mutateOrders(undefined, { revalidate: true });
 
       setEditingOrderId(null);
       setEditValues({});
