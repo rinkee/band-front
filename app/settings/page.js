@@ -1022,8 +1022,15 @@ export default function SettingsPage() {
   const [multiNumberAiProcessing, setMultiNumberAiProcessing] = useState(false); // <<<--- 다중 숫자 AI 처리 상태 추가
   const [initialMultiNumberAiProcessing, setInitialMultiNumberAiProcessing] =
     useState(null); // <<<--- 다중 숫자 AI 처리 초기 상태 추가
+  const [ignoreOrderNeedsAi, setIgnoreOrderNeedsAi] = useState(false); // <<<--- order_needs_ai 무시 상태 추가
+  const [initialIgnoreOrderNeedsAi, setInitialIgnoreOrderNeedsAi] =
+    useState(null); // <<<--- order_needs_ai 무시 초기 상태 추가
+  const [aiAnalysisLevel, setAiAnalysisLevel] = useState('smart'); // <<<--- AI 분석 모드 상태 추가
+  const [initialAiAnalysisLevel, setInitialAiAnalysisLevel] = 
+    useState(null); // <<<--- AI 분석 모드 초기 상태 추가
   const [savingAiProcessingSetting, setSavingAiProcessingSetting] =
     useState(false); // <<<--- AI 설정 저장 상태 추가
+  const [showLegacySettings, setShowLegacySettings] = useState(false); // <<<--- 기존 설정 표시 여부
   const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
   const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가 (기본값: 200, 최대값: 200)
   const [isEditingPostLimit, setIsEditingPostLimit] = useState(false); // 사용자가 postLimit을 편집 중인지 추적
@@ -1166,6 +1173,12 @@ export default function SettingsPage() {
         );
         setForceAiProcessing(sessionUserData.force_ai_processing ?? false);
         setMultiNumberAiProcessing(sessionUserData.multi_number_ai_processing ?? false);
+        setIgnoreOrderNeedsAi(sessionUserData.ignore_order_needs_ai ?? false);
+        
+        // AI 분석 레벨도 DB값 우선 사용
+        const sessionAiLevel = sessionUserData.ai_analysis_level;
+        const validLevels = ['off', 'smart', 'aggressive'];
+        setAiAnalysisLevel(validLevels.includes(sessionAiLevel) ? sessionAiLevel : 'smart');
 
         // postLimit도 세션에서 가져오기
         const sessionPostLimit = sessionStorage.getItem("userPostLimit");
@@ -1244,6 +1257,15 @@ export default function SettingsPage() {
           post_fetch_limit:
             userDataToSave.post_fetch_limit ??
             existingSessionData.post_fetch_limit,
+          ai_analysis_level:
+            userDataToSave.ai_analysis_level ??
+            existingSessionData.ai_analysis_level,
+          ai_mode_migrated:
+            userDataToSave.ai_mode_migrated ??
+            existingSessionData.ai_mode_migrated,
+          ignore_order_needs_ai:
+            userDataToSave.ignore_order_needs_ai ??
+            existingSessionData.ignore_order_needs_ai,
         };
 
         // 세션 스토리지에 업데이트된 데이터 저장
@@ -1382,6 +1404,34 @@ export default function SettingsPage() {
         setInitialMultiNumberAiProcessing(
           userDataFromServer.multi_number_ai_processing ?? false
         ); // 서버 값을 최종 초기값으로
+        setIgnoreOrderNeedsAi(userDataFromServer.ignore_order_needs_ai ?? false);
+        setInitialIgnoreOrderNeedsAi(
+          userDataFromServer.ignore_order_needs_ai ?? false
+        ); // 서버 값을 최종 초기값으로
+        
+        // AI 모드 설정 및 자동 마이그레이션
+        if (!userDataFromServer.ai_mode_migrated) {
+          // 기존 설정 기반 자동 마이그레이션
+          let migratedLevel = 'smart';
+          if (userDataFromServer.ignore_order_needs_ai === true) {
+            migratedLevel = 'off';
+          } else if (userDataFromServer.force_ai_processing === true) {
+            migratedLevel = 'aggressive';
+          }
+          setAiAnalysisLevel(migratedLevel);
+          setInitialAiAnalysisLevel(migratedLevel);
+        } else {
+          // DB에서 명시적으로 저장된 값 사용 (null이나 undefined가 아닌 경우)
+          const savedLevel = userDataFromServer.ai_analysis_level;
+          console.log('DB에서 가져온 AI 분석 레벨:', savedLevel);
+          
+          // 'off', 'smart', 'aggressive' 중 하나인지 확인
+          const validLevels = ['off', 'smart', 'aggressive'];
+          const levelToUse = validLevels.includes(savedLevel) ? savedLevel : 'smart';
+          
+          setAiAnalysisLevel(levelToUse);
+          setInitialAiAnalysisLevel(levelToUse);
+        }
         // postLimit은 사용자가 편집 중이 아닐 때만 업데이트
         if (!isEditingPostLimit) {
           setPostLimit(
@@ -1488,26 +1538,36 @@ export default function SettingsPage() {
     }
   };
 
-  // --- AI 강제 처리 설정 저장 함수 ---
+  // --- AI 분석 모드 설정 저장 함수 ---
   const handleSaveAiProcessingSetting = async () => {
     if (!userId || userLoading) return;
 
-    // 초기값이 아직 로드되지 않은 경우 현재 값과 비교할 수 없으므로 저장 진행
-    if (
-      initialForceAiProcessing !== null &&
-      forceAiProcessing === initialForceAiProcessing &&
-      initialMultiNumberAiProcessing !== null &&
-      multiNumberAiProcessing === initialMultiNumberAiProcessing
-    ) {
+    // AI 모드가 변경되었는지 확인
+    const modeChanged = initialAiAnalysisLevel !== null && 
+                       aiAnalysisLevel !== initialAiAnalysisLevel;
+    
+    // 레거시 설정이 변경되었는지 확인 (고급 설정 사용시)
+    const legacyChanged = showLegacySettings && (
+      (initialForceAiProcessing !== null && forceAiProcessing !== initialForceAiProcessing) ||
+      (initialMultiNumberAiProcessing !== null && multiNumberAiProcessing !== initialMultiNumberAiProcessing) ||
+      (initialIgnoreOrderNeedsAi !== null && ignoreOrderNeedsAi !== initialIgnoreOrderNeedsAi)
+    );
+
+    if (!modeChanged && !legacyChanged) {
       alert("변경된 내용이 없습니다.");
       return;
     }
 
     setSavingAiProcessingSetting(true);
     setError(null);
+    
     const aiProcessingPayload = { 
+      ai_analysis_level: aiAnalysisLevel,
+      ai_mode_migrated: true,
+      // 레거시 설정도 함께 저장 (고급 설정 사용시)
       force_ai_processing: forceAiProcessing,
-      multi_number_ai_processing: multiNumberAiProcessing
+      multi_number_ai_processing: multiNumberAiProcessing,
+      ignore_order_needs_ai: ignoreOrderNeedsAi
     };
 
     try {
@@ -1520,16 +1580,30 @@ export default function SettingsPage() {
 
       if (updateError) throw updateError;
 
-      alert("AI 강제 처리 설정이 저장되었습니다.");
+      alert("AI 설정이 저장되었습니다.");
 
+      setInitialAiAnalysisLevel(aiAnalysisLevel); // 성공 시 UI의 현재 값을 새 초기값으로
       setInitialForceAiProcessing(forceAiProcessing); // 성공 시 UI의 현재 값을 새 초기값으로
       setInitialMultiNumberAiProcessing(multiNumberAiProcessing); // 성공 시 UI의 현재 값을 새 초기값으로
+      setInitialIgnoreOrderNeedsAi(ignoreOrderNeedsAi); // 성공 시 UI의 현재 값을 새 초기값으로
 
       if (updatedUser) {
         await userMutate(updatedUser, {
           optimisticData: updatedUser,
           revalidate: false,
         });
+        
+        // 세션 스토리지도 업데이트
+        const currentSessionData = sessionStorage.getItem("userData");
+        if (currentSessionData) {
+          const sessionData = JSON.parse(currentSessionData);
+          sessionData.ai_analysis_level = aiAnalysisLevel;
+          sessionData.ai_mode_migrated = true;
+          sessionData.force_ai_processing = forceAiProcessing;
+          sessionData.multi_number_ai_processing = multiNumberAiProcessing;
+          sessionData.ignore_order_needs_ai = ignoreOrderNeedsAi;
+          sessionStorage.setItem("userData", JSON.stringify(sessionData));
+        }
       } else {
         userMutate();
       }
@@ -1996,70 +2070,180 @@ export default function SettingsPage() {
                   </label>
                 </div>
 
-                {/* AI 강제 처리 설정 */}
-                <div className="flex items-center justify-between">
-                  {/* 설정 설명 */}
-                  <div>
-                    <label
-                      htmlFor="forceAiProcessingToggle"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      다중 상품 게시물 AI 강제 처리
+                {/* AI 분석 모드 선택 - 새로운 UI */}
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3">AI 분석 모드</h3>
+                  <div className="space-y-3">
+                    {/* OFF 모드 */}
+                    <label className="flex items-start cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50"
+                           style={{ borderColor: aiAnalysisLevel === 'off' ? '#f97316' : '#e5e7eb' }}>
+                      <input
+                        type="radio"
+                        name="aiAnalysisLevel"
+                        value="off"
+                        checked={aiAnalysisLevel === 'off'}
+                        onChange={(e) => setAiAnalysisLevel(e.target.value)}
+                        disabled={savingAiProcessingSetting || isDataLoading}
+                        className="mt-1 mr-3"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">OFF - AI 사용 안 함</span>
+                          <span className="text-xs text-gray-500">(빠름)</span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          패턴 매칭만 사용합니다. 빠르지만 정확도가 낮을 수 있습니다.
+                        </p>
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="text-xs text-gray-500">속도: ⚡⚡⚡</span>
+                          <span className="text-xs text-gray-500">정확도: 70-80%</span>
+                          <span className="text-xs text-gray-500">비용: $0</span>
+                        </div>
+                      </div>
                     </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      활성화 시, 한 게시물에 상품이 2개 이상인 경우 댓글 주문을
-                      무조건 AI로 처리합니다.
-                    </p>
-                  </div>
-                  {/* 토글 스위치 */}
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="forceAiProcessingToggle"
-                      checked={forceAiProcessing} // 현재 상태값 바인딩
-                      onChange={() => setForceAiProcessing((prev) => !prev)} // 클릭 시 상태 변경
-                      disabled={
-                        savingAiProcessingSetting ||
-                        isDataLoading ||
-                        initialForceAiProcessing === null
-                      } // 저장 중이거나 로딩 중이거나 초기값이 없으면 비활성화
-                      className="sr-only peer"
-                    />
-                    {/* 스위치 디자인 (Tailwind CSS) */}
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                  </label>
-                </div>
-                {/* 다중 숫자 AI 처리 설정 */}
-                <div className="flex items-center justify-between">
-                  {/* 설정 설명 */}
-                  <div>
-                    <label
-                      htmlFor="multiNumberAiProcessingToggle"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      한 댓글 내 여러 숫자 AI 처리
+
+                    {/* SMART 모드 */}
+                    <label className="flex items-start cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50"
+                           style={{ borderColor: aiAnalysisLevel === 'smart' ? '#f97316' : '#e5e7eb' }}>
+                      <input
+                        type="radio"
+                        name="aiAnalysisLevel"
+                        value="smart"
+                        checked={aiAnalysisLevel === 'smart'}
+                        onChange={(e) => setAiAnalysisLevel(e.target.value)}
+                        disabled={savingAiProcessingSetting || isDataLoading}
+                        className="mt-1 mr-3"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">SMART - 스마트 모드</span>
+                          <span className="text-xs text-green-600 font-semibold">(추천)</span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          복잡한 주문만 AI로 분석합니다. 속도와 정확도의 균형을 맞춥니다.
+                        </p>
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="text-xs text-gray-500">속도: ⚡⚡</span>
+                          <span className="text-xs text-gray-500">정확도: 90-95%</span>
+                          <span className="text-xs text-gray-500">비용: 보통</span>
+                        </div>
+                      </div>
                     </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      활성화 시, 한 댓글에 여러 숫자가 감지되면 (전화번호 제외) AI로 처리합니다.
-                    </p>
+
+                    {/* AGGRESSIVE 모드 */}
+                    <label className="flex items-start cursor-pointer p-3 rounded-lg border-2 transition-all hover:bg-gray-50"
+                           style={{ borderColor: aiAnalysisLevel === 'aggressive' ? '#f97316' : '#e5e7eb' }}>
+                      <input
+                        type="radio"
+                        name="aiAnalysisLevel"
+                        value="aggressive"
+                        checked={aiAnalysisLevel === 'aggressive'}
+                        onChange={(e) => setAiAnalysisLevel(e.target.value)}
+                        disabled={savingAiProcessingSetting || isDataLoading}
+                        className="mt-1 mr-3"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">AGGRESSIVE - 공격적 모드</span>
+                          <span className="text-xs text-gray-500">(정확)</span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          애매한 경우 모두 AI로 분석합니다. 정확도가 높지만 느리고 비용이 많이 듭니다.
+                        </p>
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="text-xs text-gray-500">속도: ⚡</span>
+                          <span className="text-xs text-gray-500">정확도: 95-99%</span>
+                          <span className="text-xs text-gray-500">비용: 높음</span>
+                        </div>
+                      </div>
+                    </label>
                   </div>
-                  {/* 토글 스위치 */}
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="multiNumberAiProcessingToggle"
-                      checked={multiNumberAiProcessing} // 현재 상태값 바인딩
-                      onChange={() => setMultiNumberAiProcessing((prev) => !prev)} // 클릭 시 상태 변경
-                      disabled={
-                        savingAiProcessingSetting ||
-                        isDataLoading ||
-                        initialMultiNumberAiProcessing === null
-                      } // 저장 중이거나 로딩 중이거나 초기값이 없으면 비활성화
-                      className="sr-only peer"
-                    />
-                    {/* 스위치 디자인 (Tailwind CSS) */}
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                  </label>
+
+                  {/* 고급 설정 토글 */}
+                  <div className="mt-4 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => setShowLegacySettings(!showLegacySettings)}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      {showLegacySettings ? '고급 설정 숨기기' : '고급 설정 보기 (기존 설정)'}
+                    </button>
+                  </div>
+
+                  {/* 기존 설정들 (숨김 가능) */}
+                  {showLegacySettings && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg space-y-3">
+                      <p className="text-xs text-gray-500 mb-2">
+                        ⚠️ 고급 설정은 AI 모드와 별도로 동작합니다. 특별한 경우에만 사용하세요.
+                      </p>
+                      
+                      {/* 기존 다중 상품 AI 강제 처리 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <label className="text-xs font-medium text-gray-700">
+                            다중 상품 게시물 AI 강제 처리
+                          </label>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            한 게시물에 상품이 2개 이상인 경우
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={forceAiProcessing}
+                            onChange={() => setForceAiProcessing(!forceAiProcessing)}
+                            disabled={savingAiProcessingSetting || isDataLoading}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                        </label>
+                      </div>
+
+                      {/* 기존 다중 숫자 AI 처리 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <label className="text-xs font-medium text-gray-700">
+                            한 댓글 내 여러 숫자 AI 처리
+                          </label>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            여러 숫자 감지시 (전화번호 제외)
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={multiNumberAiProcessing}
+                            onChange={() => setMultiNumberAiProcessing(!multiNumberAiProcessing)}
+                            disabled={savingAiProcessingSetting || isDataLoading}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                        </label>
+                      </div>
+
+                      {/* 기존 order_needs_ai 무시 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <label className="text-xs font-medium text-gray-700">
+                            order_needs_ai 플래그 무시
+                          </label>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            게시물 설정 무시
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={ignoreOrderNeedsAi}
+                            onChange={() => setIgnoreOrderNeedsAi(!ignoreOrderNeedsAi)}
+                            disabled={savingAiProcessingSetting || isDataLoading}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* 카드 푸터 (저장 버튼들) */}
@@ -2091,8 +2275,10 @@ export default function SettingsPage() {
                   disabled={
                     savingAiProcessingSetting ||
                     isDataLoading ||
-                    (forceAiProcessing === initialForceAiProcessing &&
-                     multiNumberAiProcessing === initialMultiNumberAiProcessing)
+                    (aiAnalysisLevel === initialAiAnalysisLevel &&
+                     forceAiProcessing === initialForceAiProcessing &&
+                     multiNumberAiProcessing === initialMultiNumberAiProcessing &&
+                     ignoreOrderNeedsAi === initialIgnoreOrderNeedsAi)
                   } // 저장 중, 로딩 중, 또는 변경사항 없으면 비활성화
                   className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >

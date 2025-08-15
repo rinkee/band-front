@@ -24,9 +24,49 @@ export async function POST(request) {
       );
     }
 
-    console.log("로그인 요청:", { loginId, loginPassword });
+    console.log("로그인 요청:", { loginId });
 
-    // 서버 API 호출
+    // Supabase 직접 연결하여 사용자 정보 조회
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    // 사용자 정보 조회
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("login_id", loginId)
+      .single();
+
+    if (userError || !userData) {
+      console.warn(`로그인 실패: 사용자 없음 - loginId: ${loginId}`);
+      return NextResponse.json(
+        { success: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." },
+        { status: 401 }
+      );
+    }
+
+    // 계정 활성화 상태 확인
+    if (userData.is_active === false) {
+      console.warn(`로그인 실패: 비활성화된 계정 - loginId: ${loginId}`);
+      return NextResponse.json(
+        { success: false, message: "비활성화된 계정입니다. 관리자에게 문의해주세요." },
+        { status: 403 }
+      );
+    }
+
+    // 비밀번호 검증
+    if (userData.login_password !== loginPassword) {
+      console.warn(`로그인 실패: 비밀번호 불일치 - loginId: ${loginId}`);
+      return NextResponse.json(
+        { success: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." },
+        { status: 401 }
+      );
+    }
+
+    // 서버 API 호출 (기존 로직 유지 - 토큰 생성 등을 위해)
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: {

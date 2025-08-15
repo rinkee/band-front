@@ -37,7 +37,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
 
   // function_number에 따른 Edge Function 이름 결정
   const getEdgeFunctionName = (functionNumber) => {
-    console.log(`🎯 function_number: ${functionNumber}`);
     
     switch(functionNumber) {
       case 1:
@@ -95,7 +94,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         const functionNumber = sessionUserData?.function_number ?? 0;
         const functionName = getEdgeFunctionName(functionNumber);
         setSelectedFunction(functionName);
-        console.log(`📡 User function_number: ${functionNumber} → ${functionName}`);
       }
     } catch (e) {
       console.error("function_number 확인 실패:", e);
@@ -226,7 +224,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         edgeFunctionName = getEdgeFunctionName(functionNumber);
         setSelectedFunction(edgeFunctionName);
         
-        console.log(`🚀 선택된 Edge Function: ${edgeFunctionName} (function_number: ${functionNumber})`);
       }
     } catch (e) {
       console.error("function_number 읽기 실패, 기본값 사용:", e);
@@ -285,7 +282,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       // 🎯 동적으로 선택된 Edge Function 사용
       const functionUrl = `${functionsBaseUrl}/${edgeFunctionName}?${params.toString()}`;
       
-      console.log(`📡 API 호출: ${functionUrl}`);
 
       // AbortController로 요청 관리
       const controller = new AbortController();
@@ -307,16 +303,12 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
 
       if (quickResponse.quickReturn) {
         // 3초 내에 응답이 없으면 백그라운드 처리로 전환
-        console.log("⏰ 3초 타임아웃! 백그라운드 처리로 전환");
         setIsLoading(false);
         setSuccessMessage("");
         setIsBackgroundProcessing(true);
         
         // 실제 요청은 계속 진행되도록 함
         requestPromise.then((response) => {
-          console.log("🔵 백그라운드 처리 완료! 서버 응답:", response);
-          console.log("🔵 응답 데이터:", response.data);
-          console.log("🔵 처리된 게시물 수:", response.data?.data?.length || 0);
           
           // 백그라운드에서 완료되면 즉시 완료 처리
           handleResponse(response, userId, functionNumber, edgeFunctionName);
@@ -343,8 +335,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         });
       } else {
         // 3초 내에 응답이 온 경우 (기존 로직)
-        console.log("✅ 3초 내에 서버 응답 도착!");
-        console.log("✅ 빠른 응답:", quickResponse);
         handleResponse(quickResponse, userId, functionNumber, edgeFunctionName);
       }
     } catch (err) {

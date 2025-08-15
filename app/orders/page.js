@@ -356,6 +356,12 @@ export default function OrdersPage() {
   const [products, setProducts] = useState([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  
+  // 편집 관련 상태들
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editValues, setEditValues] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState({});
   const [activeTab, setActiveTab] = useState("status");
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
@@ -452,7 +458,6 @@ export default function OrdersPage() {
           
           // 401 에러인 경우 로그인 페이지로 리다이렉트 고려
           if (err?.status === 401) {
-            console.log("Authentication error detected");
           }
         } else {
           console.error("SWR Unknown Error Type:", typeof err, err);
@@ -520,12 +525,6 @@ export default function OrdersPage() {
     endDate: dateFilterParams.endDate,
   };
   
-  console.log("=== 주문 조회 필터 ===");
-  console.log("전체 필터:", filters);
-  console.log("날짜 필터 기준: ordered_at (주문일) - 백엔드에서 처리");
-  console.log("현재 페이지:", currentPage);
-  console.log("userId:", userData?.userId);
-  console.log("===================");
   
   const {
     data: ordersData,
@@ -610,7 +609,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!isUserLoading) {
-      console.log("User Data from Hook:", userDataFromHook);
     }
   }, [isUserLoading, userDataFromHook]);
 
@@ -647,6 +645,116 @@ export default function OrdersPage() {
     // 필요하다면 검색 후 맨 위로 스크롤
   };
 
+  // 편집 관련 함수들
+  const fetchProductsForPost = async (postId) => {
+    if (availableProducts[postId]) {
+      return availableProducts[postId];
+    }
+
+    try {
+      const response = await fetch(`/api/posts/${postId}/products`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setAvailableProducts(prev => ({
+          ...prev,
+          [postId]: result.data
+        }));
+        return result.data;
+      }
+    } catch (error) {
+      console.error('상품 목록 조회 실패:', error);
+    }
+    
+    return [];
+  };
+
+  const handleEditStart = async (order) => {
+    setEditingOrderId(order.order_id);
+    setEditValues({
+      product_id: order.product_id || '',
+      product_name: order.product_name || '',
+      quantity: order.quantity || 1
+    });
+
+    // 해당 게시물의 상품 목록 가져오기 - post_key 사용
+    const postKey = order.post_key;
+    console.log('Edit start - order:', order);
+    console.log('Using postKey:', postKey);
+    
+    if (postKey) {
+      await fetchProductsForPost(postKey);
+    } else {
+      console.error('post_key가 없습니다:', order);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingOrderId(null);
+    setEditValues({});
+  };
+
+  const handleEditSave = async (order) => {
+    setSavingEdit(true);
+    try {
+      const response = await fetch(`/api/orders/${order.order_id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editValues),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '업데이트 실패');
+      }
+
+      // 성공 시 로컬 상태 업데이트
+      setOrders(prevOrders => 
+        prevOrders.map(o => 
+          o.order_id === order.order_id 
+            ? { ...o, ...editValues }
+            : o
+        )
+      );
+
+      setEditingOrderId(null);
+      setEditValues({});
+      
+      // Toast 또는 알림 표시
+      addToast('주문 정보가 성공적으로 업데이트되었습니다.', 'success');
+      
+    } catch (error) {
+      console.error('주문 업데이트 에러:', error);
+      addToast('주문 정보 업데이트에 실패했습니다.', 'error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleProductSelect = (productId, order) => {
+    const postKey = order.post_key;
+    const products = availableProducts[postKey] || [];
+    const selectedProduct = products.find(p => p.product_id === productId);
+    
+    if (selectedProduct) {
+      setEditValues(prev => ({
+        ...prev,
+        product_id: productId,
+        product_name: selectedProduct.title
+      }));
+    }
+  };
+
+  const handleQuantityChange = (quantity) => {
+    setEditValues(prev => ({
+      ...prev,
+      quantity: parseInt(quantity) || 1
+    }));
+  };
+
   const handleBulkStatusUpdate = async (newStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkUpdateLoading(true);
@@ -679,9 +787,6 @@ export default function OrdersPage() {
       return;
     }
 
-    console.log(
-      `Attempting to bulk update ${orderIdsToProcess.length} orders to ${newStatus} via client-side`
-    );
 
     let successCount = 0;
     let failCount = 0;
@@ -693,10 +798,8 @@ export default function OrdersPage() {
         userData.userId
       );
       successCount = orderIdsToProcess.length;
-      console.log("일괄 업데이트 성공 (client-side)");
 
       // 즉시 주문 리스트 새로고침
-      console.log("🔄 일괄 상태 변경 후 리스트 새로고침 중...");
       await mutateOrders(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
@@ -729,14 +832,10 @@ export default function OrdersPage() {
         message = "변경 대상 없음.";
       else if (!message) message = "일괄 처리 완료.";
 
-      console.log("최종 일괄 처리 결과:", message);
     }
   };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
-    console.log("=== 날짜 필터링 디버깅 ===");
-    console.log("현재 시간:", now);
-    console.log("선택된 범위:", range);
     
     let startDate = new Date();
     const endDate = new Date(now);
@@ -747,42 +846,26 @@ export default function OrdersPage() {
       start.setHours(0, 0, 0, 0);
       const end = customEnd ? new Date(customEnd) : new Date(customStart);
       end.setHours(23, 59, 59, 999);
-      console.log("커스텀 날짜 필터:");
-      console.log("- startDate:", start, "=>", start.toISOString());
-      console.log("- endDate:", end, "=>", end.toISOString());
       return { startDate: start.toISOString(), endDate: end.toISOString() };
     }
     
     switch (range) {
       case "today":
         startDate.setHours(0, 0, 0, 0);
-        console.log("오늘 필터 적용:");
-        console.log("- startDate:", startDate, "=>", startDate.toISOString());
-        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       case "7days":
         startDate.setDate(now.getDate() - 7);
         startDate.setHours(0, 0, 0, 0);
-        console.log("일주일 필터 적용:");
-        console.log("- startDate:", startDate, "=>", startDate.toISOString());
-        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       case "30days":
         startDate.setMonth(now.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
-        console.log("한달 필터 적용:");
-        console.log("- startDate:", startDate, "=>", startDate.toISOString());
-        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       case "90days":
         startDate.setMonth(now.getMonth() - 3);
         startDate.setHours(0, 0, 0, 0);
-        console.log("3개월 필터 적용:");
-        console.log("- startDate:", startDate, "=>", startDate.toISOString());
-        console.log("- endDate:", endDate, "=>", endDate.toISOString());
         break;
       default:
-        console.log("기본값 반환 (날짜 필터 없음)");
         return { startDate: undefined, endDate: undefined };
     }
     
@@ -790,8 +873,6 @@ export default function OrdersPage() {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString()
     };
-    console.log("최종 날짜 파라미터:", result);
-    console.log("===================");
     
     return result;
   }
@@ -859,7 +940,6 @@ export default function OrdersPage() {
   useEffect(() => {
     const searchParam = searchParams.get("search");
     if (searchParam) {
-      console.log(`[URL Search] Auto-searching for: "${searchParam}"`);
       setInputValue(searchParam);
       setSearchTerm(searchParam);
       setCurrentPage(1);
@@ -877,14 +957,12 @@ export default function OrdersPage() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && userData?.userId) {
-        console.log("Page became visible, refreshing products data...");
         mutateProducts(); // 상품 데이터 새로고침
       }
     };
 
     const handleWindowFocus = () => {
       if (userData?.userId) {
-        console.log("Window focused, refreshing products data...");
         mutateProducts(); // 윈도우 포커스 시에도 상품 데이터 새로고침
       }
     };
@@ -901,7 +979,6 @@ export default function OrdersPage() {
   // 페이지 로드 시 상품 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
   useEffect(() => {
     if (userData?.userId) {
-      console.log("Orders page mounted, refreshing products data...");
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
     }
   }, [userData?.userId, mutateProducts]);
@@ -915,9 +992,6 @@ export default function OrdersPage() {
         const now = Date.now();
         // 5분 이내의 업데이트만 유효하다고 간주
         if (now - updateTime < 5 * 60 * 1000) {
-          console.log(
-            "Barcode options were updated, refreshing products data..."
-          );
           mutateProducts();
           // 플래그 제거하여 중복 업데이트 방지
           localStorage.removeItem("barcodeOptionsUpdated");
@@ -937,22 +1011,6 @@ export default function OrdersPage() {
   }, [mutateProducts, userData?.userId]);
   useEffect(() => {
     if (ordersData?.data) {
-      console.log("=== 받은 주문 데이터 분석 ===");
-      console.log("총 주문 수:", ordersData.data.length);
-      console.log("페이지네이션:", ordersData.pagination);
-      
-      // 처음 5개 주문 상세 정보 출력
-      ordersData.data.slice(0, 5).forEach((order, index) => {
-        console.log(`주문 ${index + 1}:`, {
-          order_id: order.order_id,
-          ordered_at: order.ordered_at,
-          completed_at: order.completed_at,
-          customer_name: order.customer_name,
-          status: order.status,
-          sub_status: order.sub_status,
-          product_title: order.product_title
-        });
-      });
       
       // 날짜 분석
       const today = new Date();
@@ -960,10 +1018,6 @@ export default function OrdersPage() {
       const todayEnd = new Date();
       todayEnd.setHours(23, 59, 59, 999);
       
-      console.log("오늘 날짜 범위:", {
-        start: today.toISOString(),
-        end: todayEnd.toISOString()
-      });
       
       // 오늘 주문된 건수
       const todayOrderedCount = ordersData.data.filter(order => {
@@ -978,9 +1032,6 @@ export default function OrdersPage() {
         return completedDate >= today && completedDate <= todayEnd;
       }).length;
       
-      console.log("오늘 주문된 건수:", todayOrderedCount);
-      console.log("오늘 수령완료된 건수:", todayCompletedCount);
-      console.log("===================");
       
       setOrders(ordersData.data);
     }
@@ -1306,9 +1357,6 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    console.log(
-      `OrdersPage: Current page changed to ${currentPage}, calling scrollToTop from context.`
-    );
     if (scrollToTop) {
       // scrollToTop 함수가 존재할 때만 호출
       // 약간의 지연을 주어 DOM 업데이트 후 스크롤 시도
@@ -1508,10 +1556,6 @@ export default function OrdersPage() {
   };
 
   const handleSaveBarcode = async (productId, barcodeValue) => {
-    // <<< --- 디버깅 로그 추가 --- >>>
-    console.log("handleSaveBarcode called with:", { productId, barcodeValue });
-    console.log("Current userData:", userData);
-    // <<< --- 디버깅 로그 추가 끝 --- >>>
 
     if (!barcodeValue.trim()) {
       return;
@@ -1661,13 +1705,6 @@ export default function OrdersPage() {
   const statusCounts = statsData?.data?.statusCounts || {};
   const subStatusCounts = statsData?.data?.subStatusCounts || {};
 
-  // 디버깅용 로그
-  console.log("Current search term:", searchTerm);
-  console.log("Current filter selection:", filterSelection);
-  console.log("Stats from hook:", statsData?.data);
-  console.log("Total orders from stats:", totalStatsOrders);
-  console.log("Status counts from stats:", statusCounts);
-  console.log("Sub-status counts from stats:", subStatusCounts);
 
   const completionRate =
     totalStatsOrders > 0
@@ -2007,6 +2044,9 @@ export default function OrdersPage() {
                   <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
                     게시물
                   </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    작업
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -2069,58 +2109,80 @@ export default function OrdersPage() {
                           </div>
                         </td>
                         <td
-                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44 hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가, truncate 제거
+                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44" 
                           title={getProductNameById(order.product_id)}
-                          onClick={(e) => {
-                            // 클릭 핸들러 추가
-                            e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
-                            handleCellClickToSearch(
-                              getProductNameById(order.product_id)
-                            ); // 검색 함수 호출
-                            setFilterSelection("all");
-                          }}
                         >
-                          {(() => {
-                            const productName = getProductNameById(
-                              order.product_id
-                            );
-                            const { name, date } =
-                              parseProductName(productName);
-                            const isAvailable =
-                              isClient && date
-                                ? isPickupAvailable(date)
-                                : false;
+                          {editingOrderId === order.order_id ? (
+                            // 편집 모드
+                            <select
+                              value={editValues.product_id}
+                              onChange={(e) => handleProductSelect(e.target.value, order)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">상품을 선택하세요</option>
+                              {(availableProducts[order.post_key] || []).map(product => (
+                                <option key={product.product_id} value={product.product_id}>
+                                  {product.title}
+                                  {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            // 일반 표시 모드
+                            <div 
+                              className="hover:text-orange-600 hover:underline cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCellClickToSearch(
+                                  getProductNameById(order.product_id)
+                                );
+                                setFilterSelection("all");
+                              }}
+                            >
+                              {(() => {
+                                const productName = getProductNameById(
+                                  order.product_id
+                                );
+                                const { name, date } =
+                                  parseProductName(productName);
+                                const isAvailable =
+                                  isClient && date
+                                    ? isPickupAvailable(date)
+                                    : false;
 
-                            return (
-                              <div className="flex flex-col">
-                                <div
-                                  className={`font-medium ${
-                                    isAvailable
-                                      ? "text-orange-600 font-bold"
-                                      : ""
-                                  }`}
-                                >
-                                  {name}
-                                </div>
-                                {date && (
-                                  <div
-                                    className={`text-xs mt-0.5 ${
-                                      isAvailable
-                                        ? "text-orange-500 font-medium"
-                                        : "text-gray-500"
-                                    }`}
-                                  >
-                                    [{date}]
-                                    {isAvailable && (
-                                      <span className="ml-1 text-orange-600 font-bold">
-                                        ✓ 수령가능
-                                      </span>
+                                return (
+                                  <div className="flex flex-col">
+                                    <div
+                                      className={`font-medium ${
+                                        isAvailable
+                                          ? "text-orange-600 font-bold"
+                                          : ""
+                                      }`}
+                                    >
+                                      {name}
+                                    </div>
+                                    {date && (
+                                      <div
+                                        className={`text-xs mt-0.5 ${
+                                          isAvailable
+                                            ? "text-orange-500 font-medium"
+                                            : "text-gray-500"
+                                        }`}
+                                      >
+                                        [{date}]
+                                        {isAvailable && (
+                                          <span className="ml-1 text-orange-600 font-bold">
+                                            ✓ 수령가능
+                                          </span>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })()}
+                                );
+                              })()}
+                            </div>
+                          )}
                         </td>
                         <td
                           className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
@@ -2142,7 +2204,18 @@ export default function OrdersPage() {
                         </td>
 
                         <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
-                          {order.quantity || 0}
+                          {editingOrderId === order.order_id ? (
+                            <input
+                              type="number"
+                              min="1"
+                              value={editValues.quantity}
+                              onChange={(e) => handleQuantityChange(e.target.value)}
+                              className="w-12 px-1 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            order.quantity || 0
+                          )}
                         </td>
                         <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
                           {formatCurrency(order.total_amount)}
@@ -2253,33 +2326,6 @@ export default function OrdersPage() {
                         {/* 게시물 버튼 셀 */}
                         <td className="py-2 pr-2 text-center w-20">
                           {(() => {
-                            // 디버깅: 첫 번째 주문의 모든 필드 확인
-                            if (order.order_id === displayOrders[0]?.order_id) {
-                              console.log("=== 주문 데이터 전체 확인 ===");
-                              console.log("전체 order 객체:", order);
-                              console.log("post 관련 필드들:");
-                              console.log("- post_key:", order.post_key);
-                              console.log("- post_number:", order.post_number);
-                              console.log(
-                                "- band_post_url:",
-                                order.band_post_url
-                              );
-
-                              // 모든 필드 이름 출력
-                              console.log(
-                                "모든 필드 이름들:",
-                                Object.keys(order)
-                              );
-
-                              // post가 포함된 모든 필드 찾기
-                              const postFields = Object.keys(order).filter(
-                                (key) => key.toLowerCase().includes("post")
-                              );
-                              console.log("post가 포함된 필드들:", postFields);
-                              postFields.forEach((field) => {
-                                console.log(`- ${field}:`, order[field]);
-                              });
-                            }
 
                             // 주문 ID에서 게시물 키 추출 시도
                             const extractedPostKey = extractPostKeyFromOrderId(
@@ -2290,13 +2336,6 @@ export default function OrdersPage() {
                               order.post_number ||
                               extractedPostKey;
 
-                            if (order.order_id === displayOrders[0]?.order_id) {
-                              console.log(
-                                "추출된 게시물 키:",
-                                extractedPostKey
-                              );
-                              console.log("최종 게시물 정보:", hasPostInfo);
-                            }
 
                             // console.log(
                             //   `주문 ${order.order_id} 댓글 버튼 표시:`,
@@ -2324,12 +2363,43 @@ export default function OrdersPage() {
                             </button>
                           )}
                         </td>
+                        {/* 편집 버튼 */}
+                        <td className="py-2 pr-2 text-center w-24" onClick={(e) => e.stopPropagation()}>
+                          {editingOrderId === order.order_id ? (
+                            <div className="flex justify-center space-x-1">
+                              <button
+                                onClick={() => handleEditSave(order)}
+                                disabled={savingEdit}
+                                className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="저장"
+                              >
+                                {savingEdit ? '저장중...' : '저장'}
+                              </button>
+                              <button
+                                onClick={handleEditCancel}
+                                disabled={savingEdit}
+                                className="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="취소"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleEditStart(order)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium"
+                              title="수정"
+                            >
+                              수정
+                            </button>
+                          )}
+                        </td>
                       </tr>
 
                       {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
                       {hasMultipleBarcodeOptions && (
                         <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                          <td colSpan="12" className="py-2 pr-2">
+                          <td colSpan="13" className="py-2 pr-2">
                             <div onClick={(e) => e.stopPropagation()}>
                               <BarcodeOptionSelector
                                 order={order}

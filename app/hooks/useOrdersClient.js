@@ -67,23 +67,42 @@ const fetchOrders = async (key) => {
     // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
     const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
 
+    // 검색을 위한 텍스트 정규화 함수
+    // 괄호와 특수문자를 제거하여 검색 성공률 향상
+    const normalizeForSearch = (str) => {
+      // 괄호와 그 안의 내용을 공백으로 치환
+      let normalized = str.replace(/\([^)]*\)/g, ' ');
+      // 대괄호와 그 안의 내용도 유지 (날짜 정보)
+      // 여러 공백을 하나로 정리
+      normalized = normalized.replace(/\s+/g, ' ').trim();
+      return normalized;
+    };
 
     if (isPostKeySearch) {
       // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
     } else {
-      // 일반 검색 - 한글 안전 처리
+      // 일반 검색 - 특수문자 제거 후 검색
       try {
-        query = query.or(
-          `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
-        );
+        // 원본 검색어와 정규화된 검색어 모두 시도
+        const normalizedTerm = normalizeForSearch(searchTerm);
+        
+        // 괄호가 포함된 경우 정규화된 버전으로 검색
+        if (searchTerm.includes('(') || searchTerm.includes(')')) {
+          query = query.or(
+            `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%,product_barcode.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
+          );
+        } else {
+          // 괄호가 없으면 원본 그대로 검색
+          query = query.or(
+            `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
+          );
+        }
       } catch (error) {
-        // console.warn(
-        //   "Search filter error, falling back to simple filtering:",
-        //   error
-        // );
-        // 에러 발생시 고객명만으로 필터링
-        query = query.ilike("customer_name", `%${searchTerm}%`);
+        console.warn('Search filter error:', error);
+        // 에러 발생시 정규화된 검색어로 고객명만 필터링
+        const normalizedTerm = normalizeForSearch(searchTerm);
+        query = query.ilike("customer_name", `%${normalizedTerm}%`);
       }
     }
   }
@@ -99,12 +118,6 @@ const fetchOrders = async (key) => {
       // dateType 확인 (기본값: ordered)
       const dateColumn = filters.dateType === "updated" ? "updated_at" : "ordered_at";
       
-      console.log("Date filter debug:", {
-        dateType: filters.dateType,
-        dateColumn: dateColumn,
-        startDate: filters.startDate,
-        endDate: filters.endDate
-      });
       
       // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
       query = query
@@ -160,11 +173,6 @@ const fetchOrders = async (key) => {
     throw customError;
   }
   
-  console.log("Query result debug:", {
-    dataCount: data?.length || 0,
-    totalCount: count,
-    filters: filters
-  });
 
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
@@ -246,18 +254,35 @@ const fetchOrderStats = async (key) => {
   // 검색어 필터링 (상품명, 고객명 등) - 한글 안전 처리
   if (filterOptions.search) {
     const searchTerm = filterOptions.search;
+    
+    // 검색을 위한 텍스트 정규화 함수
+    const normalizeForSearch = (str) => {
+      // 괄호와 그 안의 내용을 공백으로 치환
+      let normalized = str.replace(/\([^)]*\)/g, ' ');
+      // 여러 공백을 하나로 정리
+      normalized = normalized.replace(/\s+/g, ' ').trim();
+      return normalized;
+    };
+    
     // 한글 문자열 처리를 위해 URL 인코딩하지 않고 직접 처리
     try {
-      query = query.or(
-        `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%`
-      );
+      // 괄호가 포함된 경우 정규화된 버전으로 검색
+      const normalizedTerm = normalizeForSearch(searchTerm);
+      
+      if (searchTerm.includes('(') || searchTerm.includes(')')) {
+        query = query.or(
+          `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%`
+        );
+      } else {
+        query = query.or(
+          `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%`
+        );
+      }
     } catch (error) {
-      // console.warn(
-      //   "Stats search filter error, falling back to simple filtering:",
-      //   error
-      // );
-      // 에러 발생시 고객명만으로 필터링
-      query = query.ilike("customer_name", `%${searchTerm}%`);
+      console.warn('Stats search filter error:', error);
+      // 에러 발생시 정규화된 검색어로 고객명만 필터링
+      const normalizedTerm = normalizeForSearch(searchTerm);
+      query = query.ilike("customer_name", `%${normalizedTerm}%`);
     }
   }
 
@@ -337,7 +362,6 @@ const fetchOrderStats = async (key) => {
 
 
   // 통계 계산 - count를 사용하여 전체 개수 정확히 계산
-  console.log("Stats Debug - data.length:", data.length, "count:", count);
   const totalOrders = count || data.length;  // count가 있으면 count 사용, 없으면 data.length
   const totalRevenue = data.reduce(
     (sum, order) => sum + (order.total_amount || 0),

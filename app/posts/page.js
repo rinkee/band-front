@@ -8,16 +8,38 @@ import CommentsModal from "../components/Comments";
 import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
+import { useScroll } from "../context/ScrollContext";
 
 export default function PostsPage() {
   const router = useRouter();
   const [userData, setUserData] = useState(null);
-  const [page, setPage] = useState(1);
+  const { scrollableContentRef } = useScroll();
+  
+  // sessionStorage에서 저장된 페이지 번호 복원
+  const [page, setPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedPage = sessionStorage.getItem('postsPageNumber');
+      return savedPage ? parseInt(savedPage, 10) : 1;
+    }
+    return 1;
+  });
   const [limit] = useState(18); // 3x6 = 18개씩
 
-  // 검색 관련 상태
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  // 검색 관련 상태 - sessionStorage에서 복원
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedSearchTerm = sessionStorage.getItem('postsSearchTerm');
+      return savedSearchTerm || "";
+    }
+    return "";
+  });
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedSearchQuery = sessionStorage.getItem('postsSearchQuery');
+      return savedSearchQuery || "";
+    }
+    return "";
+  });
 
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,6 +70,55 @@ export default function PostsPage() {
       setHasShownReprocessAlert(true);
     }
   }, [router]);
+
+  // 페이지 번호가 변경될 때마다 sessionStorage에 저장
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('postsPageNumber', page.toString());
+    }
+  }, [page]);
+
+  // 검색어가 변경될 때마다 sessionStorage에 저장
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('postsSearchTerm', searchTerm);
+      sessionStorage.setItem('postsSearchQuery', searchQuery);
+    }
+  }, [searchTerm, searchQuery]);
+
+  // 스크롤 위치 실시간 저장
+  useEffect(() => {
+    if (!scrollableContentRef?.current) return;
+    
+    let scrollTimer;
+    
+    const handleScroll = () => {
+      // 디바운싱으로 성능 최적화
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        const container = scrollableContentRef.current;
+        if (container) {
+          const scrollPos = container.scrollTop;
+          
+          if (scrollPos >= 0) {
+            sessionStorage.setItem('postsLastScrollPosition', scrollPos.toString());
+            // 스크롤 위치 저장됨
+          }
+        }
+      }, 100);
+    };
+
+    const container = scrollableContentRef.current;
+    container.addEventListener('scroll', handleScroll);
+
+    // 클린업 함수
+    return () => {
+      clearTimeout(scrollTimer);
+      if (container) {
+        container.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, [scrollableContentRef]);
 
   // Supabase에서 직접 posts 데이터 가져오기
   const fetchPosts = async () => {
@@ -130,6 +201,39 @@ export default function PostsPage() {
     }
   );
 
+  // 데이터 로딩 완료 후 스크롤 위치 복원
+  useEffect(() => {
+    // postsData가 로드되고, sessionStorage에 스크롤 위치가 있을 때
+    if (postsData && postsData.posts && scrollableContentRef?.current) {
+      // 두 가지 키 모두 확인 (postsScrollPosition 또는 postsLastScrollPosition)
+      const savedScrollPosition = sessionStorage.getItem('postsScrollPosition') || 
+                                  sessionStorage.getItem('postsLastScrollPosition');
+      
+      if (savedScrollPosition) {
+        const position = parseInt(savedScrollPosition, 10);
+        
+        // 즉시 복원 시도
+        if (scrollableContentRef.current) {
+          scrollableContentRef.current.scrollTop = position;
+          // 스크롤 위치 즉시 복원
+        }
+        
+        // 이미지 로딩을 위한 추가 복원 (더 짧은 지연)
+        const scrollTimeout = setTimeout(() => {
+          if (scrollableContentRef.current) {
+            scrollableContentRef.current.scrollTop = position;
+            // 스크롤 위치 복원 확인
+          }
+          
+          // 복원 후 삭제 (한 번만 복원)
+          sessionStorage.removeItem('postsScrollPosition');
+        }, 100); // 100ms로 줄임
+
+        return () => clearTimeout(scrollTimeout);
+      }
+    }
+  }, [postsData, scrollableContentRef]);
+
   // 검색 기능
   const handleSearch = (e) => {
     e.preventDefault();
@@ -141,6 +245,15 @@ export default function PostsPage() {
     setSearchTerm("");
     setSearchQuery("");
     setPage(1);
+    
+    // sessionStorage도 초기화
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('postsSearchTerm', '');
+      sessionStorage.setItem('postsSearchQuery', '');
+      sessionStorage.setItem('postsPageNumber', '1');
+      sessionStorage.removeItem('postsScrollPosition'); // 스크롤 위치도 초기화
+      sessionStorage.removeItem('postsLastScrollPosition'); // 실시간 저장된 스크롤 위치도 초기화
+    }
   };
 
   const handlePostClick = (postId) => {
@@ -196,6 +309,13 @@ export default function PostsPage() {
 
   const handleViewOrders = (postKey) => {
     if (!postKey) return;
+
+    // 페이지 상태만 저장 (스크롤 위치는 PostCard에서 이미 저장됨)
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('postsPageNumber', page.toString());
+      sessionStorage.setItem('postsSearchTerm', searchTerm);
+      sessionStorage.setItem('postsSearchQuery', searchQuery);
+    }
 
     // 주문 관리 페이지로 이동하면서 post_key로 검색
     router.push(`/orders?search=${encodeURIComponent(postKey)}`);
@@ -878,34 +998,47 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         
         {/* 추가 옵션들 - 더 컴팩트하게 */}
         <div className="mt-2 flex items-center justify-between gap-2">
-          {/* 재처리 스위치 - 미니멀 디자인 */}
+          {/* 재처리 스위치 - 미니멀 디자인, is_product가 true일 때만 활성화 */}
           <div className="flex items-center gap-2 flex-1">
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                if (!post.is_product) return; // is_product가 false면 클릭 무시
                 const isCurrentlyPending = post.comment_sync_status === 'pending';
                 onToggleReprocess(post, !isCurrentlyPending);
               }}
+              disabled={!post.is_product}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                post.comment_sync_status === 'pending'
+                !post.is_product
+                  ? 'bg-gray-100 cursor-not-allowed'
+                  : post.comment_sync_status === 'pending'
                   ? 'bg-amber-500'
                   : 'bg-gray-200'
               }`}
             >
               <span
-                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                  post.comment_sync_status === 'pending'
-                    ? 'translate-x-5'
-                    : 'translate-x-1'
+                className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
+                  !post.is_product
+                    ? 'bg-gray-300'
+                    : post.comment_sync_status === 'pending'
+                    ? 'translate-x-5 bg-white'
+                    : 'translate-x-1 bg-white'
                 }`}
               />
             </button>
             <span className={`text-xs ${
-              post.comment_sync_status === 'pending'
+              !post.is_product
+                ? 'text-gray-300'
+                : post.comment_sync_status === 'pending'
                 ? 'text-amber-600 font-medium'
                 : 'text-gray-400'
             }`}>
-              {post.comment_sync_status === 'pending' ? '누락주문 재처리 예약' : '누락주문 재처리'}
+              {!post.is_product 
+                ? '상품이 아님' 
+                : post.comment_sync_status === 'pending' 
+                ? '누락주문 재처리 예약' 
+                : '누락주문 재처리'
+              }
             </span>
           </div>
           

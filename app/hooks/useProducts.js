@@ -20,7 +20,6 @@ export function useProducts(userId, page = 1, filters = {}, options = {}) {
   // SWR 키 생성 함수
   const getKey = () => {
     if (!userId) {
-      console.warn("useProducts: userId is required when not using JWT auth.");
       return null;
     }
 
