@@ -652,7 +652,7 @@ export default function OrdersPage() {
     }
 
     try {
-      const response = await fetch(`/api/posts/${postId}/products`);
+      const response = await fetch(`${window.location.origin}/api/posts/${postId}/products`);
       const result = await response.json();
       
       if (result.success) {
@@ -712,7 +712,7 @@ export default function OrdersPage() {
     console.log('저장할 데이터:', updateData);
     
     try {
-      const response = await fetch(`/api/orders/${order.order_id}`, {
+      const response = await fetch(`${window.location.origin}/api/orders/${order.order_id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
