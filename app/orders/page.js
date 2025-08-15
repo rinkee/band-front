@@ -675,7 +675,7 @@ export default function OrdersPage() {
       product_id: order.product_id || '',
       product_name: order.product_name || '',
       quantity: order.quantity || 1,
-      product_price: order.product_price || 0
+      product_price: order.price || 0
     });
 
     // 해당 게시물의 상품 목록 가져오기 - post_key 사용
@@ -726,11 +726,11 @@ export default function OrdersPage() {
         throw new Error(result.error || '업데이트 실패');
       }
 
-      // 성공 시 로컬 상태 업데이트
+      // 성공 시 로컬 상태 업데이트 - price 필드도 함께 업데이트
       setOrders(prevOrders => 
         prevOrders.map(o => 
           o.order_id === order.order_id 
-            ? { ...o, ...updateData }
+            ? { ...o, ...updateData, price: updateData.product_price || o.price }
             : o
         )
       );

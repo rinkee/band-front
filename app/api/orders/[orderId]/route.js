@@ -31,9 +31,9 @@ export async function PATCH(request, { params }) {
       updateData.product_id = product_id;
     }
 
-    // product_price가 제공된 경우 함께 업데이트
+    // product_price가 제공된 경우 price 컬럼에 업데이트
     if (product_price !== undefined && product_price !== null) {
-      updateData.product_price = parseInt(product_price);
+      updateData.price = parseInt(product_price);
     }
 
     const { data, error } = await supabase
