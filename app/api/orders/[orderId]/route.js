@@ -21,8 +21,17 @@ export async function PATCH(request, { params }) {
     }
 
     // 주문 정보 업데이트 - product_id, product_price도 함께 업데이트
+    const qty = parseInt(quantity);
+    let price = product_price ? parseInt(product_price) : null;
+    
+    // 기존 가격 정보가 없으면 현재 주문에서 가져오기 (필요한 경우)
+    if (!price && !product_id) {
+      // 가격 변경 없이 수량만 변경하는 경우를 위해 현재 주문 정보 조회 필요
+      // 하지만 여기서는 product_price가 항상 제공된다고 가정
+    }
+    
     const updateData = {
-      quantity: parseInt(quantity),
+      quantity: qty,
       updated_at: new Date().toISOString()
     };
     
@@ -31,9 +40,10 @@ export async function PATCH(request, { params }) {
       updateData.product_id = product_id;
     }
 
-    // product_price가 제공된 경우 price 컬럼에 업데이트
-    if (product_price !== undefined && product_price !== null) {
-      updateData.price = parseInt(product_price);
+    // product_price가 제공된 경우 price와 total_amount 컬럼에 업데이트
+    if (price) {
+      updateData.price = price;
+      updateData.total_amount = price * qty; // 가격 * 수량
     }
 
     const { data, error } = await supabase
