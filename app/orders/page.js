@@ -726,14 +726,8 @@ export default function OrdersPage() {
         throw new Error(result.error || '업데이트 실패');
       }
 
-      // 성공 시 로컬 상태 업데이트 - price 필드도 함께 업데이트
-      setOrders(prevOrders => 
-        prevOrders.map(o => 
-          o.order_id === order.order_id 
-            ? { ...o, ...updateData, price: updateData.product_price || o.price }
-            : o
-        )
-      );
+      // 성공 시 데이터 새로고침 - DB에서 최신 데이터 가져오기
+      await fetchOrders();
 
       setEditingOrderId(null);
       setEditValues({});
