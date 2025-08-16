@@ -17,7 +17,7 @@ import { useSWRConfig } from "swr";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ko } from "date-fns/locale";
-import UpdateButton from "../components/UpdateButton"; // UpdateButton 컴포넌트 import
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
 
 // --- 아이콘 (Heroicons) ---
 import {
