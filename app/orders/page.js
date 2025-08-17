@@ -375,6 +375,15 @@ export default function OrdersPage() {
   const [tempQuantity, setTempQuantity] = useState(1);
   const [tempPrice, setTempPrice] = useState(0);
 
+  // --- 모달 편집 관련 상태 ---
+  const [modalEditMode, setModalEditMode] = useState(false);
+  const [modalEditValues, setModalEditValues] = useState({
+    product_id: '',
+    product_name: '',
+    quantity: 1,
+    product_price: 0
+  });
+
   // --- 바코드 저장 관련 상태 및 함수 ---
   const [newBarcodeValue, setNewBarcodeValue] = useState("");
   const [isSavingBarcode, setIsSavingBarcode] = useState(false);
@@ -748,6 +757,113 @@ export default function OrdersPage() {
     if (!productName) return productName;
     // [날짜] 패턴 제거 (예: [8월18일], [08월18일], [8/18] 등)
     return productName.replace(/^\[[\d월일/\s]+\]\s*/g, '').trim();
+  };
+
+  // 모달 편집 관련 함수들
+  const handleModalEditStart = async () => {
+    if (!selectedOrder) return;
+    
+    setModalEditMode(true);
+    setModalEditValues({
+      product_id: selectedOrder.product_id || '',
+      product_name: selectedOrder.product_name || '',
+      quantity: selectedOrder.quantity || 1,
+      product_price: selectedOrder.price || 0
+    });
+
+    // 해당 게시물의 상품 목록 가져오기
+    const postKey = selectedOrder.post_key;
+    console.log('Modal edit start - order:', selectedOrder);
+    console.log('Using postKey:', postKey);
+    
+    if (postKey) {
+      await fetchProductsForPost(postKey);
+    } else {
+      console.error('post_key가 없습니다:', selectedOrder);
+    }
+  };
+
+  const handleModalEditCancel = () => {
+    setModalEditMode(false);
+    setModalEditValues({
+      product_id: '',
+      product_name: '',
+      quantity: 1,
+      product_price: 0
+    });
+  };
+
+  const handleModalEditSave = async () => {
+    if (!selectedOrder) return;
+    
+    // product_name이 없다면 기존 값을 사용
+    const updateData = {
+      ...modalEditValues,
+      product_name: modalEditValues.product_name || selectedOrder.product_name || '상품명 없음'
+    };
+
+    console.log('모달에서 저장할 데이터:', updateData);
+    
+    try {
+      const response = await fetch(`${window.location.origin}/api/orders/${selectedOrder.order_id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '업데이트 실패');
+      }
+
+      // 성공 시 데이터 새로고침
+      await mutateOrders(undefined, { revalidate: true });
+
+      // 모달 편집 모드 종료
+      setModalEditMode(false);
+      setModalEditValues({
+        product_id: '',
+        product_name: '',
+        quantity: 1,
+        product_price: 0
+      });
+      
+      // 선택된 주문 정보도 업데이트
+      const updatedOrder = { ...selectedOrder, ...result.data };
+      setSelectedOrder(updatedOrder);
+      
+      addToast('주문 정보가 성공적으로 업데이트되었습니다.');
+      
+    } catch (error) {
+      console.error('모달 주문 업데이트 에러:', error);
+      addToast('주문 정보 업데이트에 실패했습니다: ' + error.message);
+    }
+  };
+
+  // 모달에서 상품 선택 시 처리
+  const handleModalProductSelect = (productId) => {
+    const selectedProduct = (availableProducts[selectedOrder?.post_key] || [])
+      .find(p => p.product_id === productId);
+    
+    if (selectedProduct) {
+      setModalEditValues(prev => ({
+        ...prev,
+        product_id: productId,
+        product_name: selectedProduct.title,
+        product_price: selectedProduct.base_price || 0
+      }));
+    }
+  };
+
+  // 모달에서 입력 값 변경 처리
+  const handleModalInputChange = (field, value) => {
+    setModalEditValues(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   const handleProductSelect = (productId, order) => {
@@ -1275,7 +1391,15 @@ export default function OrdersPage() {
     setIsDetailModalOpen(false);
     setSelectedOrder(null);
     setIsEditingDetails(false);
-  }; // isEditingDetails 리셋 추가
+    // 모달 편집 모드도 리셋
+    setModalEditMode(false);
+    setModalEditValues({
+      product_id: '',
+      product_name: '',
+      quantity: 1,
+      product_price: 0
+    });
+  };
   const handleLogout = () => {
     sessionStorage.clear();
     localStorage.removeItem("userId");
@@ -2938,11 +3062,29 @@ export default function OrdersPage() {
                   )}
                   {/* 주문 정보 탭 내용 (복구) */}
                   {activeTab === "info" && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 ${
+                      modalEditMode ? 'bg-blue-50 border border-blue-200 rounded-lg p-4 transition-all duration-200' : ''
+                    }`}>
+                      {modalEditMode && (
+                        <div className="md:col-span-2 mb-4">
+                          <div className="flex items-center space-x-2 text-blue-600">
+                            <PencilSquareIcon className="w-5 h-5" />
+                            <span className="text-sm font-medium">편집 모드</span>
+                          </div>
+                        </div>
+                      )}
                       {[
                         {
                           label: "상품명",
+                          field: "modal_product",
+                          type: "select",
                           value: (() => {
+                            // 편집 모드일 때는 선택된 product_id를 반환
+                            if (modalEditMode) {
+                              return modalEditValues.product_id || selectedOrder.product_id || '';
+                            }
+                            
+                            // 일반 모드일 때는 상품명 표시
                             const productName = getProductNameById(
                               selectedOrder.product_id
                             );
@@ -2983,7 +3125,7 @@ export default function OrdersPage() {
                               </div>
                             );
                           })(),
-                          readOnly: true,
+                          readOnly: !modalEditMode,
                         },
                         // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
                         // {
@@ -3056,16 +3198,18 @@ export default function OrdersPage() {
                           label: "수량",
                           field: "quantity",
                           type: "number",
-                          value: tempQuantity,
+                          value: modalEditMode ? modalEditValues.quantity : tempQuantity,
                           min: 1,
+                          readOnly: !modalEditMode,
                         },
                         {
                           label: "단가 (원)",
                           field: "price",
                           type: "number",
-                          value: tempPrice,
+                          value: modalEditMode ? modalEditValues.product_price : tempPrice,
                           min: 0,
                           step: 100,
+                          readOnly: !modalEditMode,
                         },
                         {
                           label: "총 금액 (계산됨)",
@@ -3114,6 +3258,21 @@ export default function OrdersPage() {
                                 ? item.value
                                 : String(item.value)}
                             </div>
+                          ) : item.type === "select" && item.field === "modal_product" ? (
+                            // 상품 선택 드롭다운
+                            <select
+                              id={item.field}
+                              value={item.value}
+                              onChange={(e) => handleModalProductSelect(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                            >
+                              <option value="">상품을 선택하세요</option>
+                              {(availableProducts[selectedOrder?.post_key] || []).map((product) => (
+                                <option key={product.product_id} value={product.product_id}>
+                                  {cleanProductName(product.title)} - ₩{product.base_price?.toLocaleString()}
+                                </option>
+                              ))}
+                            </select>
                           ) : (
                             <input
                               id={item.field}
@@ -3121,30 +3280,44 @@ export default function OrdersPage() {
                               min={item.min}
                               step={item.step}
                               value={item.value}
-                              onChange={(e) =>
-                                handleTempInputChange(
-                                  item.field,
-                                  e.target.value
-                                )
-                              }
+                              onChange={(e) => {
+                                if (modalEditMode) {
+                                  handleModalInputChange(item.field, e.target.value);
+                                } else {
+                                  handleTempInputChange(item.field, e.target.value);
+                                }
+                              }}
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                              // Disable editing for readOnly fields conceptually,
-                              // though we render a div above for readOnly=true
                               disabled={item.readOnly}
                             />
                           )}
                         </div>
                       ))}
-                      {/* 저장 버튼 */}
-                      <div className="md:col-span-2 flex justify-end pt-2">
-                        <StatusButton
-                          onClick={saveOrderDetails}
-                          variant="primary"
-                          icon={PencilSquareIcon}
-                          isLoading={false /* 필요 시 로딩 상태 추가 */}
-                        >
-                          변경사항 저장
-                        </StatusButton>
+                      {/* 편집/저장/취소 버튼 */}
+                      <div className="md:col-span-2 flex justify-end pt-2 space-x-2">
+                        {!modalEditMode ? (
+                          <button
+                            onClick={handleModalEditStart}
+                            className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                          >
+                            편집
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={handleModalEditCancel}
+                              className="px-4 py-2 bg-gray-500 text-white text-sm font-medium rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+                            >
+                              취소
+                            </button>
+                            <button
+                              onClick={handleModalEditSave}
+                              className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
+                            >
+                              저장
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
