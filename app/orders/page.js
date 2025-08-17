@@ -743,6 +743,13 @@ export default function OrdersPage() {
     }
   };
 
+  // 상품명에서 날짜 부분을 제거하는 함수
+  const cleanProductName = (productName) => {
+    if (!productName) return productName;
+    // [날짜] 패턴 제거 (예: [8월18일], [08월18일], [8/18] 등)
+    return productName.replace(/^\[[\d월일/\s]+\]\s*/g, '').trim();
+  };
+
   const handleProductSelect = (productId, order) => {
     const postKey = order.post_key;
     const products = availableProducts[postKey] || [];
@@ -752,7 +759,7 @@ export default function OrdersPage() {
       setEditValues(prev => ({
         ...prev,
         product_id: productId,
-        product_name: selectedProduct.title,
+        product_name: cleanProductName(selectedProduct.title),
         product_price: selectedProduct.base_price || 0
       }));
     }
@@ -2096,11 +2103,15 @@ export default function OrdersPage() {
                     <React.Fragment key={order.order_id}>
                       <tr
                         className={`${
-                          isSelected ? "bg-orange-50" : "hover:bg-gray-50"
+                          editingOrderId === order.order_id 
+                            ? "bg-blue-50 border-l-4 border-blue-400" 
+                            : isSelected 
+                              ? "bg-orange-50" 
+                              : "hover:bg-gray-50"
                         } transition-colors group cursor-pointer ${
                           isOrdersLoading ? "opacity-70" : ""
                         }`}
-                        onClick={() => openDetailModal(order)}
+                        onClick={() => editingOrderId === order.order_id ? null : openDetailModal(order)}
                       >
                         <td
                           onClick={(e) => e.stopPropagation()}
@@ -2133,7 +2144,7 @@ export default function OrdersPage() {
                               <option value="">상품을 선택하세요</option>
                               {(availableProducts[order.post_key] || []).map(product => (
                                 <option key={product.product_id} value={product.product_id}>
-                                  {product.title}
+                                  {cleanProductName(product.title)}
                                   {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
                                 </option>
                               ))}
@@ -2376,31 +2387,31 @@ export default function OrdersPage() {
                         {/* 편집 버튼 */}
                         <td className="py-2 pr-2 text-center w-24" onClick={(e) => e.stopPropagation()}>
                           {editingOrderId === order.order_id ? (
-                            <div className="flex justify-center space-x-1">
+                            <div className="flex justify-center space-x-1 animate-pulse">
                               <button
                                 onClick={() => handleEditSave(order)}
                                 disabled={savingEdit}
-                                className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
                                 title="저장"
                               >
-                                {savingEdit ? '저장중...' : '저장'}
+                                {savingEdit ? '💾 저장중...' : '✅ 저장'}
                               </button>
                               <button
                                 onClick={handleEditCancel}
                                 disabled={savingEdit}
-                                className="bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
                                 title="취소"
                               >
-                                취소
+                                ❌ 취소
                               </button>
                             </div>
                           ) : (
                             <button
                               onClick={() => handleEditStart(order)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium"
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium shadow transform hover:scale-105 transition-all duration-200"
                               title="수정"
                             >
-                              수정
+                              ✏️ 수정
                             </button>
                           )}
                         </td>
