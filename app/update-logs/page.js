@@ -301,8 +301,8 @@ export default function UpdateLogsPage() {
                 <ol className="space-y-1 text-sm text-blue-700 list-decimal list-inside">
                   <li><strong>게시물 관리</strong> 메뉴 접속</li>
                   <li>해당 게시물의 <strong>상품 정보</strong> 섹션 확인</li>
-                  <li><strong>"누락 주문 재처리"</strong> 버튼 활성화</li>
-                  <li><strong>"업데이트"</strong> 버튼 클릭</li>
+                  <li><strong>&quot;누락 주문 재처리&quot;</strong> 버튼 활성화</li>
+                  <li><strong>&quot;업데이트&quot;</strong> 버튼 클릭</li>
                   <li>✅ 누락된 주문이 자동으로 재생성됩니다</li>
                 </ol>
               </div>
