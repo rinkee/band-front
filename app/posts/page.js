@@ -538,12 +538,16 @@ export default function PostsPage() {
             </div>
           </div>
 
-          {/* 검색 바 */}
+          {/* 검색 바와 업데이트 버튼 */}
           <div className="mt-6 flex items-center justify-between">
-            <form
-              onSubmit={handleSearch}
-              className="flex items-center space-x-3"
-            >
+            <div className="flex items-center space-x-4">
+              {/* 업데이트 버튼을 왼쪽 끝에 배치 */}
+              <UpdateButton />
+              
+              <form
+                onSubmit={handleSearch}
+                className="flex items-center space-x-3"
+              >
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
@@ -596,11 +600,7 @@ export default function PostsPage() {
                   검색 초기화
                 </button>
               )}
-            </form>
-            
-            {/* 업데이트 버튼 추가 */}
-            <div className="ml-4">
-              <UpdateButton />
+              </form>
             </div>
           </div>
         </div>

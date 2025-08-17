@@ -367,12 +367,10 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       if (responseData.errorSummary) {
         const { totalErrors, errorRate } = responseData.errorSummary;
         let baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
-        baseMessage += `\n🎯 사용된 함수: ${edgeFunctionName} (function_number: ${functionNumber})`;
         baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
         setError(baseMessage);
       } else {
         let baseMessage = `✨ ${processedCount}개의 게시물이 성공적으로 동기화되었습니다!`;
-        baseMessage += `\n🎯 사용된 함수: ${edgeFunctionName}`;
         
         if (failoverInfo && failoverInfo.keysUsed > 1) {
           baseMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
