@@ -1377,7 +1377,7 @@ export default function OrdersPage() {
     }
   };
   const handleTabChange = (tab) => setActiveTab(tab);
-  const openDetailModal = (order) => {
+  const openDetailModal = async (order) => {
     setSelectedOrder({ ...order });
     // 주문 정보 수정 상태 초기화 복구
     setTempItemNumber(order.item_number || 1);
@@ -1385,6 +1385,21 @@ export default function OrdersPage() {
     setTempPrice(order.price ?? 0);
     setIsEditingDetails(false); // 편집 모드 비활성화로 시작
     setActiveTab("status");
+    
+    // 모달 편집 값 초기화
+    setModalEditValues({
+      product_id: order.product_id || '',
+      product_name: order.product_name || '',
+      quantity: order.quantity || 1,
+      product_price: order.price || 0
+    });
+    
+    // 해당 게시물의 상품 목록 자동 로드
+    const postKey = order.post_key;
+    if (postKey) {
+      await fetchProductsForPost(postKey);
+    }
+    
     setIsDetailModalOpen(true);
   };
   const closeDetailModal = () => {
@@ -2991,14 +3006,36 @@ export default function OrdersPage() {
                           <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 정보</h3>
                           
                           <div className="space-y-4">
+                            {/* 상품 선택 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">상품</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                                <select
+                                  value={modalEditValues.product_id || selectedOrder.product_id}
+                                  onChange={(e) => handleModalProductSelect(e.target.value)}
+                                  className="w-full bg-transparent text-base font-semibold text-gray-900 outline-none"
+                                >
+                                  <option value="">상품을 선택하세요</option>
+                                  {(availableProducts[selectedOrder?.post_key] || []).map((product) => (
+                                    <option key={product.product_id} value={product.product_id}>
+                                      {cleanProductName(product.title)} - ₩{product.base_price?.toLocaleString()}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
                             {/* 수량 입력 */}
                             <div>
                               <label className="text-xs font-semibold text-gray-500 mb-2 block">수량</label>
                               <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center">
                                 <input
                                   type="number"
-                                  value={tempQuantity}
-                                  onChange={(e) => handleTempInputChange("quantity", e.target.value)}
+                                  value={modalEditValues.quantity || tempQuantity}
+                                  onChange={(e) => {
+                                    handleModalInputChange("quantity", e.target.value);
+                                    handleTempInputChange("quantity", e.target.value);
+                                  }}
                                   className="flex-1 bg-transparent text-base font-semibold text-gray-900 outline-none"
                                 />
                                 <span className="text-sm text-gray-500">개</span>
@@ -3011,8 +3048,11 @@ export default function OrdersPage() {
                               <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center">
                                 <input
                                   type="number"
-                                  value={tempPrice}
-                                  onChange={(e) => handleTempInputChange("price", e.target.value)}
+                                  value={modalEditValues.product_price || tempPrice}
+                                  onChange={(e) => {
+                                    handleModalInputChange("product_price", e.target.value);
+                                    handleTempInputChange("price", e.target.value);
+                                  }}
                                   className="flex-1 bg-transparent text-base font-semibold text-gray-900 outline-none"
                                 />
                                 <span className="text-sm text-gray-500">원</span>
@@ -3022,36 +3062,16 @@ export default function OrdersPage() {
                             {/* 총 금액 - 단가와 동일한 스타일 */}
                             <div>
                               <label className="text-xs font-semibold text-gray-500 mb-2 block">총 금액</label>
-                              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
-                                <span className="text-base font-semibold text-gray-900">
-                                  {formatCurrency(
-                                    calculateTotalAmount(
-                                      parseInt(tempQuantity, 10) || 0,
-                                      selectedOrder?.product?.price_options || [
-                                        { price: tempPrice, quantity: 1 },
-                                      ],
-                                      parseFloat(tempPrice) || 0
-                                    )
-                                  )}
+                              <div className="bg-orange-50 rounded-xl px-4 py-3 flex items-center justify-between border border-orange-200">
+                                <span className="text-base font-semibold text-orange-700">
+                                  ₩{((modalEditValues.quantity || tempQuantity) * (modalEditValues.product_price || tempPrice)).toLocaleString()}
                                 </span>
                               </div>
                             </div>
                             
                             <button
-                              onClick={() => saveOrderDetails(selectedOrder.order_id, {
-                                quantity: parseInt(tempQuantity, 10),
-                                unit_price: parseFloat(tempPrice)
-                              })}
-                              disabled={
-                                parseInt(tempQuantity, 10) === selectedOrder.quantity && 
-                                parseFloat(tempPrice) === selectedOrder.unit_price
-                              }
-                              className={`w-full px-4 py-3 text-sm font-semibold rounded-xl transition-all shadow-sm ${
-                                parseInt(tempQuantity, 10) === selectedOrder.quantity && 
-                                parseFloat(tempPrice) === selectedOrder.unit_price
-                                  ? 'bg-gray-300 text-white cursor-not-allowed'
-                                  : 'bg-blue-500 text-white hover:bg-blue-600'
-                              }`}
+                              onClick={handleModalEditSave}
+                              className="w-full px-4 py-3 text-sm font-semibold rounded-xl transition-all shadow-sm bg-blue-500 text-white hover:bg-blue-600"
                             >
                               변경사항 저장
                             </button>
@@ -3062,29 +3082,11 @@ export default function OrdersPage() {
                   )}
                   {/* 주문 정보 탭 내용 (복구) */}
                   {activeTab === "info" && (
-                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 ${
-                      modalEditMode ? 'bg-blue-50 border border-blue-200 rounded-lg p-4 transition-all duration-200' : ''
-                    }`}>
-                      {modalEditMode && (
-                        <div className="md:col-span-2 mb-4">
-                          <div className="flex items-center space-x-2 text-blue-600">
-                            <PencilSquareIcon className="w-5 h-5" />
-                            <span className="text-sm font-medium">편집 모드</span>
-                          </div>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                       {[
                         {
                           label: "상품명",
-                          field: "modal_product",
-                          type: "select",
                           value: (() => {
-                            // 편집 모드일 때는 선택된 product_id를 반환
-                            if (modalEditMode) {
-                              return modalEditValues.product_id || selectedOrder.product_id || '';
-                            }
-                            
-                            // 일반 모드일 때는 상품명 표시
                             const productName = getProductNameById(
                               selectedOrder.product_id
                             );
@@ -3125,7 +3127,7 @@ export default function OrdersPage() {
                               </div>
                             );
                           })(),
-                          readOnly: !modalEditMode,
+                          readOnly: true,
                         },
                         // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
                         // {
@@ -3196,20 +3198,13 @@ export default function OrdersPage() {
                         },
                         {
                           label: "수량",
-                          field: "quantity",
-                          type: "number",
-                          value: modalEditMode ? modalEditValues.quantity : tempQuantity,
-                          min: 1,
-                          readOnly: !modalEditMode,
+                          value: selectedOrder.quantity + "개",
+                          readOnly: true,
                         },
                         {
                           label: "단가 (원)",
-                          field: "price",
-                          type: "number",
-                          value: modalEditMode ? modalEditValues.product_price : tempPrice,
-                          min: 0,
-                          step: 100,
-                          readOnly: !modalEditMode,
+                          value: "₩" + (selectedOrder.price || 0).toLocaleString(),
+                          readOnly: true,
                         },
                         {
                           label: "총 금액 (계산됨)",
@@ -3258,21 +3253,6 @@ export default function OrdersPage() {
                                 ? item.value
                                 : String(item.value)}
                             </div>
-                          ) : item.type === "select" && item.field === "modal_product" ? (
-                            // 상품 선택 드롭다운
-                            <select
-                              id={item.field}
-                              value={item.value}
-                              onChange={(e) => handleModalProductSelect(e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                            >
-                              <option value="">상품을 선택하세요</option>
-                              {(availableProducts[selectedOrder?.post_key] || []).map((product) => (
-                                <option key={product.product_id} value={product.product_id}>
-                                  {cleanProductName(product.title)} - ₩{product.base_price?.toLocaleString()}
-                                </option>
-                              ))}
-                            </select>
                           ) : (
                             <input
                               id={item.field}
@@ -3280,45 +3260,18 @@ export default function OrdersPage() {
                               min={item.min}
                               step={item.step}
                               value={item.value}
-                              onChange={(e) => {
-                                if (modalEditMode) {
-                                  handleModalInputChange(item.field, e.target.value);
-                                } else {
-                                  handleTempInputChange(item.field, e.target.value);
-                                }
-                              }}
+                              onChange={(e) =>
+                                handleTempInputChange(
+                                  item.field,
+                                  e.target.value
+                                )
+                              }
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                               disabled={item.readOnly}
                             />
                           )}
                         </div>
                       ))}
-                      {/* 편집/저장/취소 버튼 */}
-                      <div className="md:col-span-2 flex justify-end pt-2 space-x-2">
-                        {!modalEditMode ? (
-                          <button
-                            onClick={handleModalEditStart}
-                            className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                          >
-                            편집
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              onClick={handleModalEditCancel}
-                              className="px-4 py-2 bg-gray-500 text-white text-sm font-medium rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
-                            >
-                              취소
-                            </button>
-                            <button
-                              onClick={handleModalEditSave}
-                              className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
-                            >
-                              저장
-                            </button>
-                          </>
-                        )}
-                      </div>
                     </div>
                   )}
 
