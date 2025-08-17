@@ -149,7 +149,7 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
     } = data;
 
     return (
-      <div className="flex-grow p-6">
+      <div className="flex-grow overflow-y-auto p-6 pb-8">
         {/* 게시물 기본 정보 - 최소화 */}
         <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
           <div className="flex items-center justify-between">
@@ -215,8 +215,8 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
 
         {/* 상품과 주문 비교 뷰 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* 상품 섹션 - 스티키 */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden sticky top-6 self-start">
+          {/* 상품 섹션 */}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="bg-blue-50 px-4 py-3 border-b border-gray-200">
               <div className="flex items-center">
                 <Package size={18} className="mr-2 text-blue-600" />
@@ -225,7 +225,7 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
                 </h3>
               </div>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
+            <div className="p-4 max-h-80 overflow-y-auto">
               <ProductList products={products} formatPrice={formatPrice} />
             </div>
           </div>
@@ -240,7 +240,7 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
                 </h3>
               </div>
             </div>
-            <div className="p-4">
+            <div className="p-4 max-h-80 overflow-y-auto">
               <OrderList
                 orders={orders}
                 formatPrice={formatPrice}
@@ -253,7 +253,7 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
 
         {/* 댓글 섹션 (접을 수 있도록) */}
         {comments.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
             <div className="bg-orange-50 px-4 py-3 border-b border-gray-200">
               <div className="flex items-center">
                 <MessageCircle size={18} className="mr-2 text-orange-600" />
@@ -262,7 +262,7 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
                 </h3>
               </div>
             </div>
-            <div className="p-4 max-h-60 overflow-y-auto">
+            <div className="p-4 max-h-[400px] overflow-y-auto">
               <CommentList comments={comments} formatDate={formatDate} />
             </div>
           </div>
@@ -277,7 +277,7 @@ export default function PostDetailModal({ isOpen, onClose, postId, userId }) {
       onClick={onClose}
     >
       <div
-        className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col"
+        className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}

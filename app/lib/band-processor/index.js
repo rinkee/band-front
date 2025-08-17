@@ -255,7 +255,7 @@ async function processPost({
       logger.info(`[상품 분류] 가격 정보 없음 - 비상품 게시물로 분류: ${postKey}`);
       normalizedPost.ai_extraction_status = 'not_product';
       normalizedPost.ai_classification_result = '공지사항';
-      normalizedPost.is_product_post = false;
+      normalizedPost.is_product = false;  // is_product로 수정 (실제 DB 스키마와 일치)
       
       // 비상품 게시물은 상품 없이 처리
       productInfo = {
@@ -301,7 +301,7 @@ async function processPost({
             // AI 추출 상태 업데이트
             normalizedPost.ai_extraction_status = 'success';
             normalizedPost.ai_classification_result = '상품게시물';
-            normalizedPost.is_product_post = true;
+            normalizedPost.is_product = true;  // is_product_post → is_product로 수정 (실제 DB 스키마와 일치)
             normalizedPost.keyword_mappings = productInfo.keywordMappings;
             normalizedPost.multiple_products = productInfo.multipleProducts;
             

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(.commit_message.txt)"
+    ],
+    "deny": [
+    ]
+  },
+
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/auto-commit.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+

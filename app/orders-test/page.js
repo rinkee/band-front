@@ -1874,9 +1874,16 @@ export default function OrdersPage() {
                   >
                     {/* UpdateButtonImproved (WithFunction 버전) 사용 - function_number 분산 처리 */}
                     <UpdateButtonImproved />
+                    
+                    {/* 개발 환경에서만 프론트엔드 버전 버튼 표시 */}
+                    {process.env.NODE_ENV === "development" && (
+                      <div className="mt-2">
+                        <UpdateButtonFrontend mode="test" />
+                      </div>
+                    )}
+                    
                     {/* 기존 버튼들은 주석 처리 */}
                     {/* <UpdateButtonBeta /> */}
-                    {/* <UpdateButtonFrontend mode="test" /> */}
                   </div>
                 </div>
                 <div className="flex items-center justify-center text-xs text-gray-500">

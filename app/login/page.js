@@ -164,7 +164,34 @@ export default function LoginPage() {
     };
     console.log("Credentials for fetch:", credentials);
 
+    // Edge Function 호출 전에 is_active 체크
     try {
+      // 먼저 사용자 정보와 is_active 상태 확인
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("login_id, is_active, login_password")
+        .eq("login_id", loginId)
+        .single();
+
+      if (userError || !userData) {
+        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      // is_active 체크
+      if (userData.is_active === false) {
+        console.warn(`로그인 차단: 비활성화된 계정 - ${loginId}`);
+        setError("비활성화된 계정입니다. 관리자에게 문의해주세요.");
+        return;
+      }
+
+      // 비밀번호 체크 (선택적 - 보안을 위해 서버에서만 체크하려면 이 부분 제거)
+      if (userData.login_password !== loginPassword) {
+        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      // is_active가 true인 경우에만 Edge Function 호출
       const response = await fetch(`${functionsBaseUrl}/auth-login`, {
         method: "POST",
         headers: {
@@ -436,6 +463,31 @@ export default function LoginPage() {
             </div>
           )}
 
+          {error && (
+            <div className="rounded-md bg-red-50 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="h-5 w-5 text-red-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">
+                    {error}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="loginId" className="sr-only">
@@ -515,29 +567,6 @@ export default function LoginPage() {
             {/* --- 👆 비밀번호 저장 체크박스 UI 부분 👆 --- */}
           </div>
 
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg
-                    className="h-5 w-5 text-red-400"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-red-800">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div>
             <button
               type="submit"
@@ -607,29 +636,6 @@ export default function LoginPage() {
               />
             </div>
           </div>
-
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg
-                    className="h-5 w-5 text-red-400"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-red-800">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div>
             <button

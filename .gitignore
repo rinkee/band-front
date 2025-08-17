@@ -11,7 +11,7 @@
 !.yarn/versions
 
 # testing
-/coverage
+/coverageg
 
 # next.js
 /.next/
@@ -39,3 +39,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.commit_message.txt

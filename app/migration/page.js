@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../lib/fetcher";
-import UpdateButton from "../components/UpdateButton";
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
 
 // --- 간단화된 레이아웃 컴포넌트 ---
 function LightCard({ children, className = "", padding = "p-6" }) {

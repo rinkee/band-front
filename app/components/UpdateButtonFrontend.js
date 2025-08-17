@@ -6,7 +6,8 @@
 import React, { useState, useCallback, useEffect } from "react";
 import ReactDOM from "react-dom";
 import { useSWRConfig } from "swr";
-import { processBandPosts } from "../lib/band-processor";
+// 최적화 버전 사용
+import { processBandPosts } from "../lib/band-processor/index-optimized";
 import supabase from "../lib/supabaseClient";
 import { 
   CheckIcon, 
@@ -64,7 +65,9 @@ const ProgressOverlay = ({ progress, onClose }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9998]">
       <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">게시물 처리 중...</h3>
+          <h3 className="text-lg font-semibold">
+            {progress.percentage === 100 ? '처리 완료!' : '게시물 처리 중...'}
+          </h3>
           {progress.canCancel && (
             <button
               onClick={onClose}
@@ -79,17 +82,21 @@ const ProgressOverlay = ({ progress, onClose }) => {
           {/* 진행률 바 */}
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className={`h-2 rounded-full transition-all duration-300 ${
+                progress.percentage === 100 ? 'bg-green-600' : 'bg-blue-600'
+              }`}
               style={{ width: `${progress.percentage}%` }}
             />
           </div>
           
           {/* 상태 텍스트 */}
           <div className="text-sm text-gray-600">
-            <p>{progress.message}</p>
+            <p className={progress.percentage === 100 ? 'font-semibold text-green-600' : ''}>
+              {progress.message}
+            </p>
             {progress.current > 0 && progress.total > 0 && (
               <p className="text-xs mt-1">
-                {progress.current} / {progress.total} 완료
+                {progress.current} / {progress.total} 게시물 처리 완료
               </p>
             )}
           </div>
@@ -99,18 +106,27 @@ const ProgressOverlay = ({ progress, onClose }) => {
             <div className="mt-3 pt-3 border-t text-xs text-gray-500">
               <div className="grid grid-cols-2 gap-2">
                 {progress.stats.products > 0 && (
-                  <div>상품: {progress.stats.products}개</div>
+                  <div>📦 상품: {progress.stats.products}개</div>
                 )}
                 {progress.stats.orders > 0 && (
-                  <div>주문: {progress.stats.orders}개</div>
+                  <div>🛒 주문: {progress.stats.orders}개</div>
                 )}
                 {progress.stats.customers > 0 && (
-                  <div>고객: {progress.stats.customers}명</div>
+                  <div>👥 고객: {progress.stats.customers}명</div>
                 )}
                 {progress.stats.errors > 0 && (
-                  <div className="text-red-500">오류: {progress.stats.errors}개</div>
+                  <div className="text-red-500">⚠️ 오류: {progress.stats.errors}개</div>
                 )}
               </div>
+              
+              {/* 처리 완료 시 성능 정보 추가 표시 */}
+              {progress.percentage === 100 && progress.message.includes('소요시간') && (
+                <div className="mt-2 pt-2 border-t text-center">
+                  <span className="text-blue-600 font-medium">
+                    ✨ 처리 성능이 Edge Function 대비 향상되었습니다!
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -166,21 +182,34 @@ const UpdateButtonFrontend = ({ bandNumber = null, mode = 'test' }) => {
       return;
     }
 
+    // 시작 시간 기록
+    const startTime = new Date();
+    const startTimeString = startTime.toLocaleTimeString('ko-KR');
+
     setIsLoading(true);
     setProgress({
       isActive: true,
       current: 0,
       total: 0,
       percentage: 0,
-      message: 'Band API 연결 중...',
+      message: `Band API 연결 중... (시작: ${startTimeString})`,
       canCancel: true,
       stats: null
     });
 
     try {
-      // 사용자 설정 가져오기
+      // 사용자 설정 가져오기 - post_fetch_limit 우선 사용
+      const userPostFetchLimit = userData?.post_fetch_limit || userData?.postFetchLimit;
       const storedLimit = sessionStorage.getItem("userPostLimit");
-      const limit = storedLimit ? parseInt(storedLimit, 10) : 20;
+      
+      // 우선순위: 1. post_fetch_limit, 2. userPostLimit, 3. 기본값 20
+      const limit = userPostFetchLimit 
+        ? parseInt(userPostFetchLimit, 10) 
+        : storedLimit 
+          ? parseInt(storedLimit, 10) 
+          : 20;
+      
+      console.log(`[프론트엔드 처리] 게시물 가져오기 제한: ${limit} (post_fetch_limit: ${userPostFetchLimit}, userPostLimit: ${storedLimit})`);
 
       // Supabase 설정
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -204,13 +233,25 @@ const UpdateButtonFrontend = ({ bandNumber = null, mode = 'test' }) => {
       });
 
       if (result.success) {
+        // 종료 시간 계산
+        const endTime = new Date();
+        const endTimeString = endTime.toLocaleTimeString('ko-KR');
+        const elapsedTime = Math.round((endTime - startTime) / 1000); // 초 단위
+        
+        // 경과 시간 포맷팅
+        const minutes = Math.floor(elapsedTime / 60);
+        const seconds = elapsedTime % 60;
+        const elapsedString = minutes > 0 
+          ? `${minutes}분 ${seconds}초` 
+          : `${seconds}초`;
+
         // 진행 상황 업데이트
         setProgress({
           isActive: true,
           current: result.stats.processedPosts,
           total: result.stats.totalPosts,
           percentage: 100,
-          message: '처리 완료!',
+          message: `처리 완료! (종료: ${endTimeString}, 소요시간: ${elapsedString})`,
           canCancel: false,
           stats: {
             products: result.stats.totalProducts,
@@ -224,7 +265,7 @@ const UpdateButtonFrontend = ({ bandNumber = null, mode = 'test' }) => {
         setTimeout(() => {
           setProgress({ isActive: false });
           showToastMessage(
-            `${result.stats.processedPosts}개 게시물 처리 완료 (주문: ${result.stats.totalOrders}개)`,
+            `${result.stats.processedPosts}개 게시물 처리 완료 (주문: ${result.stats.totalOrders}개) - 소요시간: ${elapsedString}`,
             'success'
           );
           
@@ -232,7 +273,7 @@ const UpdateButtonFrontend = ({ bandNumber = null, mode = 'test' }) => {
           mutate('/api/orders');
           mutate('/api/products');
           mutate('/api/customers');
-        }, 1500);
+        }, 2500);
 
       } else {
         throw new Error(result.message || '처리 실패');
@@ -262,10 +303,19 @@ const UpdateButtonFrontend = ({ bandNumber = null, mode = 'test' }) => {
     showToastMessage('Edge Function으로 처리 중...', 'info');
 
     try {
+      // Edge Function에서도 동일한 limit 사용
+      const userPostFetchLimit = userData?.post_fetch_limit || userData?.postFetchLimit;
+      const storedLimit = sessionStorage.getItem("userPostLimit");
+      const limitForEdge = userPostFetchLimit 
+        ? parseInt(userPostFetchLimit, 10) 
+        : storedLimit 
+          ? parseInt(storedLimit, 10) 
+          : 20;
+      
       const params = new URLSearchParams({
         userId: userData.userId,
         bandNumber: bandNumber || userData.bandNumber,
-        limit: sessionStorage.getItem("userPostLimit") || "20"
+        limit: limitForEdge.toString()
       });
 
       const functionsBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL;
