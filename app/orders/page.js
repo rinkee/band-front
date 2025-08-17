@@ -2657,9 +2657,9 @@ export default function OrdersPage() {
         {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
         {isDetailModalOpen && selectedOrder && (
           <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
-            <div className="bg-white rounded-xl max-w-4xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-xl max-w-4xl w-full shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
               {/* 모달 헤더 */}
-              <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+              <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl flex-shrink-0">
                 <h3 className="text-lg font-semibold text-gray-900">
                   {(() => {
                     const productName = getProductNameById(
@@ -2707,7 +2707,7 @@ export default function OrdersPage() {
                 </button>
               </div>
               {/* 모달 본문 */}
-              <div className="flex-grow overflow-y-auto p-4 sm:p-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
                 {/* 탭 네비게이션 */}
                 <div className="border-b border-gray-200 mb-6">
                   <div className="flex -mb-px space-x-6 sm:space-x-8">
@@ -2778,7 +2778,7 @@ export default function OrdersPage() {
                 <div className="space-y-6">
                   {/* 상태 관리 탭 내용 - 토스 디자인 스타일 */}
                   {activeTab === "status" && (
-                    <div className="grid grid-cols-2 gap-5">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                       {/* 왼쪽 열 */}
                       <div className="space-y-5">
                         {/* 고객 정보 카드 - 토스 스타일 */}

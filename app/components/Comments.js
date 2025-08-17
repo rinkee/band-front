@@ -494,7 +494,7 @@ const CommentsModal = ({
 
       {/* 모달 컨텐츠 */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-xl flex">
+        <div className="relative w-full max-w-7xl h-[90vh] bg-white rounded-xl shadow-xl flex">
           {/* 왼쪽: 게시물 내용 */}
           <div className="w-1/2 border-r border-gray-200">
             {/* 헤더 */}
@@ -509,7 +509,7 @@ const CommentsModal = ({
             </div>
 
             {/* 게시물 내용 */}
-            <div className="p-6 max-h-96 overflow-y-auto">
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
               {postContent ? (
                 <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed">
                   {decodeHtmlEntities(postContent)}
@@ -542,7 +542,7 @@ const CommentsModal = ({
             {/* 댓글 목록 */}
             <div
               ref={scrollContainerRef}
-              className="flex-1 max-h-96 overflow-y-auto"
+              className="flex-1 max-h-[70vh] overflow-y-auto"
             >
               <CommentsList
                 comments={comments}

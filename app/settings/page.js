@@ -2024,6 +2024,8 @@ export default function SettingsPage() {
             </LightCard>
             {/* 밴드 정보 업데이트 설정 및 실행 카드 */}
             {/* <<<--- 상품 설정 카드 추가 --- START --->>> */}
+            {/* 상품 설정 - 임시 주석 처리 */}
+            {false && (
             <LightCard padding="p-0">
               {/* 카드 헤더 */}
               <div className="p-5 sm:p-6 border-b">
@@ -2294,6 +2296,8 @@ export default function SettingsPage() {
                 </button>
               </div>
             </LightCard>
+            )}
+            {/* 상품 설정 끝 - 임시 주석 처리 */}
 
             {/* Band API 테스트 카드 */}
             <LightCard padding="p-0">

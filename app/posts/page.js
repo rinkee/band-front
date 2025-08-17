@@ -9,6 +9,7 @@ import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // 업데이트 버튼 추가
 
 export default function PostsPage() {
   const router = useRouter();
@@ -596,6 +597,11 @@ export default function PostsPage() {
                 </button>
               )}
             </form>
+            
+            {/* 업데이트 버튼 추가 */}
+            <div className="ml-4">
+              <UpdateButton />
+            </div>
           </div>
         </div>
       </div>

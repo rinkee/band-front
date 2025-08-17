@@ -256,7 +256,8 @@ function LayoutContent({ children }) {
                     >
                       주문 관리
                     </Link>
-                    <Link
+                    {/* 주문관리 beta 메뉴 - 임시 숨김 처리 */}
+                    {/* <Link
                       href="/orders-test"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/orders-test"
@@ -268,7 +269,7 @@ function LayoutContent({ children }) {
                       <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
                         beta
                       </span>
-                    </Link>
+                    </Link> */}
                     {/* <Link
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -291,13 +292,17 @@ function LayoutContent({ children }) {
                     </Link>
                     <Link
                       href="/update-logs"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      className={`px-3 py-2 text-sm font-medium rounded-md relative ${
                         pathname === "/update-logs"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
                       업데이트 로그
+                      <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      </span>
                     </Link>
                   </nav>
                 </div>
@@ -453,7 +458,8 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  <Link
+                  {/* 주문관리 beta 메뉴 - 임시 숨김 처리 */}
+                  {/* <Link
                     href="/orders-test"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/orders-test"
@@ -461,7 +467,6 @@ function LayoutContent({ children }) {
                         : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
-                    {/* 주문 관리 베타 아이콘 */}
                     <svg
                       className="w-5 h-5 mr-2 text-gray-500"
                       fill="none"
@@ -481,7 +486,7 @@ function LayoutContent({ children }) {
                         [beta]
                       </span>
                     </span>
-                  </Link>
+                  </Link> */}
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
@@ -542,7 +547,7 @@ function LayoutContent({ children }) {
                   </Link>
                   <Link
                     href="/update-logs"
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md relative ${
                       pathname === "/update-logs"
                         ? "bg-blue-100 text-gray-900"
                         : "text-gray-600 hover:bg-gray-100"
@@ -566,6 +571,10 @@ function LayoutContent({ children }) {
                       />
                     </svg>
                     업데이트 로그
+                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
                   </Link>
                   {/* 로그아웃 버튼 */}
                   <button

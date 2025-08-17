@@ -249,6 +249,84 @@ export default function UpdateLogsPage() {
           )}
         </div>
 
+        {/* AI 처리 중단 안내 메시지 */}
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-semibold text-red-800 mb-2">
+                댓글 AI 처리 임시 중단
+              </h3>
+              <ul className="space-y-1 text-sm text-red-700">
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>AI 처리시 댓글 누락 문제 확인</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>임시 중단으로 한 댓글에 여러 주문 처리 불가능</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>기존 알고리즘 처리 강화로 90% 처리 가능</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>잘못 처리된 주문은 수정버튼으로 처리 가능</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* 누락 주문 재처리 안내 */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                누락 주문 재처리 기능 추가 🔧
+              </h3>
+              <div className="mb-3">
+                <h4 className="text-sm font-semibold text-blue-700 mb-2">📋 사용 방법</h4>
+                <p className="text-sm text-blue-700 mb-2">누락된 주문이 있을 경우, 다음 단계를 따라 쉽게 재처리할 수 있습니다:</p>
+                <ol className="space-y-1 text-sm text-blue-700 list-decimal list-inside">
+                  <li><strong>게시물 관리</strong> 메뉴 접속</li>
+                  <li>해당 게시물의 <strong>상품 정보</strong> 섹션 확인</li>
+                  <li><strong>"누락 주문 재처리"</strong> 버튼 활성화</li>
+                  <li><strong>"업데이트"</strong> 버튼 클릭</li>
+                  <li>✅ 누락된 주문이 자동으로 재생성됩니다</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-blue-700 mb-2">💡 재처리 기능 특징</h4>
+                <ul className="space-y-1 text-sm text-blue-700">
+                  <li className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>기존 주문과 중복 없이 안전하게 처리</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>누락된 댓글만 선별하여 주문 생성</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>처리 완료 후 새로고침하면 주문 목록에 반영</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 작성/수정 폼 */}
         {showForm && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
