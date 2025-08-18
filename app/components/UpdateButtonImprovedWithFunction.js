@@ -314,10 +314,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           handleResponse(response, userId, functionNumber, edgeFunctionName);
           setIsBackgroundProcessing(false);
           
-          // 마지막 업데이트 시간을 localStorage에 저장 (모든 게시물용)
-          const updateTime = Date.now();
-          localStorage.setItem('lastUpdateTime', updateTime.toString());
-          
           // 진행률을 100%로 즉시 업데이트
           const processedCount = response.data?.data?.length || 0;
           setProgress({
@@ -340,10 +336,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       } else {
         // 3초 내에 응답이 온 경우 (기존 로직)
         handleResponse(quickResponse, userId, functionNumber, edgeFunctionName);
-        
-        // 마지막 업데이트 시간을 localStorage에 저장 (모든 게시물용)
-        const updateTime = Date.now();
-        localStorage.setItem('lastUpdateTime', updateTime.toString());
       }
     } catch (err) {
       if (err.name === 'AbortError') {
