@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -145,6 +145,11 @@ const CommentItem = ({ comment, isExcludedCustomer }) => {
               제외 고객
             </span>
           )}
+          {isSavedInDB && (
+            <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+              ✓ DB 저장됨
+            </span>
+          )}
         </div>
 
         {/* 댓글 텍스트 */}
@@ -187,6 +192,7 @@ const CommentsList = ({
   loadMoreLoading,
   shouldScrollToBottom = false,
   excludedCustomers = [],
+  savedComments = {},
 }) => {
   const commentsEndRef = useRef(null);
 
@@ -285,11 +291,15 @@ const CommentsList = ({
             });
           }
           
+          // DB 저장 여부 확인
+          const isSavedInDB = savedComments[comment.comment_key] || false;
+          
           return (
             <CommentItem 
               key={comment.comment_key} 
               comment={comment}
               isExcludedCustomer={isExcludedCustomer}
+              isSavedInDB={isSavedInDB}
             />
           );
         })}
@@ -321,6 +331,7 @@ const CommentsModal = ({
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
+  const [savedComments, setSavedComments] = useState({});
   const scrollContainerRef = useRef(null);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
@@ -403,13 +414,20 @@ const CommentsModal = ({
 
       if (isRefresh) {
         setComments(newComments);
+        // 댓글들의 DB 저장 상태 확인
+        checkCommentsInDB(newComments);
         // 초기 로드 시에만 맨 아래로 스크롤
         setShouldScrollToBottom(true);
       } else {
         // 더보기 댓글 로드 시에는 스크롤 위치 유지
         const prevScrollHeight = scrollContainerRef.current?.scrollHeight || 0;
 
-        setComments((prev) => [...prev, ...newComments]);
+        setComments((prev) => {
+          const updatedComments = [...prev, ...newComments];
+          // 새로운 댓글들의 DB 저장 상태 확인
+          checkCommentsInDB(updatedComments);
+          return updatedComments;
+        });
         setShouldScrollToBottom(false);
 
         // 새 댓글 추가 후 스크롤 위치 조정 (이전 위치 유지)
@@ -475,7 +493,12 @@ const CommentsModal = ({
         const currentScrollHeight =
           scrollContainerRef.current?.scrollHeight || 0;
 
-        setComments((prev) => [...prev, ...newComments]);
+        setComments((prev) => {
+          const updatedComments = [...prev, ...newComments];
+          // 새로운 댓글들의 DB 저장 상태 확인
+          checkCommentsInDB(updatedComments);
+          return updatedComments;
+        });
         setNextParams(apiResponse.data?.paging?.next_params || null);
 
         // 스크롤 위치 유지
@@ -492,6 +515,37 @@ const CommentsModal = ({
       console.error("추가 댓글 조회 오류:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 댓글들이 DB에 저장되어 있는지 확인하는 함수
+  const checkCommentsInDB = async (commentsToCheck) => {
+    if (!commentsToCheck || commentsToCheck.length === 0) return;
+    
+    try {
+      const commentKeys = commentsToCheck.map(c => c.comment_key);
+      
+      const response = await fetch('/api/orders/check-comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          commentKeys,
+          postKey,
+          bandKey
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.savedComments) {
+          setSavedComments(data.savedComments);
+          console.log('DB 저장 상태:', data.savedComments);
+        }
+      }
+    } catch (error) {
+      console.error('DB 저장 상태 확인 오류:', error);
     }
   };
 
@@ -600,6 +654,7 @@ const CommentsModal = ({
                 loadMoreLoading={loading}
                 shouldScrollToBottom={shouldScrollToBottom}
                 excludedCustomers={excludedCustomers}
+                savedComments={savedComments}
               />
             </div>
           </div>
