@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -151,10 +151,15 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB }) => {
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
                 ✓ 주문 처리됨
               </span>
-            ) : (
-              // DB에 저장되지 않은 모든 댓글은 누락 주문
+            ) : isMissed ? (
+              // 누락된 주문 (이후 댓글이 DB에 있음)
               <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
                 ⚠ 누락 주문
+              </span>
+            ) : (
+              // 업데이트 전 (아직 처리 대상 아님)
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                업데이트 전
               </span>
             )
           )}
@@ -203,6 +208,16 @@ const CommentsList = ({
   savedComments = {},
 }) => {
   const commentsEndRef = useRef(null);
+  
+  // 가장 이른 저장된 댓글의 시간 찾기
+  const earliestSavedCommentTime = useMemo(() => {
+    const savedTimes = comments
+      .filter(comment => savedComments[comment.comment_key])
+      .map(comment => comment.created_at);
+    
+    if (savedTimes.length === 0) return null;
+    return Math.min(...savedTimes);
+  }, [comments, savedComments]);
 
   // 댓글이 업데이트될 때 조건부로 스크롤 이동
   useEffect(() => {
@@ -293,12 +308,17 @@ const CommentsList = ({
           // DB 저장 여부 확인
           const isSavedInDB = savedComments[comment.comment_key] || false;
           
+          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중에 작성된 댓글이 DB에 있는 경우
+          const isMissed = !isSavedInDB && earliestSavedCommentTime && 
+                           comment.created_at < earliestSavedCommentTime;
+          
           return (
             <CommentItem 
               key={comment.comment_key} 
               comment={comment}
               isExcludedCustomer={isExcludedCustomer}
               isSavedInDB={isSavedInDB}
+              isMissed={isMissed}
             />
           );
         })}
