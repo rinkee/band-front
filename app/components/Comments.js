@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment }) => {
+const CommentItem = ({ comment, isExcludedCustomer }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -140,6 +140,11 @@ const CommentItem = ({ comment }) => {
           <span className="font-medium text-gray-900 text-sm">
             {comment.author?.name || "익명"}
           </span>
+          {isExcludedCustomer && (
+            <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+              제외 고객
+            </span>
+          )}
         </div>
 
         {/* 댓글 텍스트 */}
@@ -181,6 +186,7 @@ const CommentsList = ({
   onLoadMore,
   loadMoreLoading,
   shouldScrollToBottom = false,
+  excludedCustomers = [],
 }) => {
   const commentsEndRef = useRef(null);
 
@@ -256,9 +262,37 @@ const CommentsList = ({
 
       {/* 댓글 목록 */}
       <div className="divide-y divide-gray-100">
-        {sortedComments.map((comment) => (
-          <CommentItem key={comment.comment_key} comment={comment} />
-        ))}
+        {sortedComments.map((comment) => {
+          // 제외 고객 여부 확인
+          const authorName = comment.author?.name;
+          const isExcludedCustomer = excludedCustomers.some(
+            (excluded) => {
+              // 문자열로 직접 비교 (제외 고객이 문자열 배열인 경우)
+              if (typeof excluded === 'string') {
+                return excluded === authorName;
+              }
+              // 객체인 경우 name 속성 비교
+              return excluded.name === authorName;
+            }
+          );
+          
+          // 디버깅용 로그 (애플망고7677인 경우만)
+          if (authorName === "애플망고7677") {
+            console.log("애플망고7677 발견:", {
+              authorName,
+              excludedCustomers,
+              isExcludedCustomer
+            });
+          }
+          
+          return (
+            <CommentItem 
+              key={comment.comment_key} 
+              comment={comment}
+              isExcludedCustomer={isExcludedCustomer}
+            />
+          );
+        })}
         {/* 스크롤 위치 참조 */}
         <div ref={commentsEndRef} />
       </div>
@@ -286,6 +320,7 @@ const CommentsModal = ({
   const [nextParams, setNextParams] = useState(null);
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
+  const [excludedCustomers, setExcludedCustomers] = useState([]);
   const scrollContainerRef = useRef(null);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
@@ -460,13 +495,24 @@ const CommentsModal = ({
     }
   };
 
-  // 모달이 열릴 때 댓글 가져오기
+  // 모달이 열릴 때 댓글 가져오기 및 제외 고객 목록 로드
   useEffect(() => {
     if (isOpen && postKey && bandKey && accessToken) {
       setComments([]);
       setNextParams(null);
       setShowLoadMoreButton(false);
       setShouldScrollToBottom(false);
+      
+      // 세션에서 제외 고객 목록 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      console.log("userData:", userData);
+      console.log("excluded_customers:", userData?.excluded_customers);
+      
+      if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
+        setExcludedCustomers(userData.excluded_customers);
+        console.log("제외 고객 목록 설정:", userData.excluded_customers);
+      }
+      
       fetchComments(true);
     }
   }, [isOpen, postKey, bandKey, accessToken]);
@@ -553,6 +599,7 @@ const CommentsModal = ({
                 onLoadMore={loadMoreComments}
                 loadMoreLoading={loading}
                 shouldScrollToBottom={shouldScrollToBottom}
+                excludedCustomers={excludedCustomers}
               />
             </div>
           </div>
