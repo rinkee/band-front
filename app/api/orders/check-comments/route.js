@@ -17,17 +17,24 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // postKey와 bandKey는 선택사항으로 변경
+    if (!postKey || !bandKey) {
+      return NextResponse.json({
+        error: 'postKey와 bandKey가 필요합니다.'
+      }, { status: 400 });
+    }
+    
     console.log('댓글 확인 요청:', {
       commentKeys,
       postKey,
       bandKey
     });
 
-    // orders 테이블에서 comment_key로 직접 조회
+    // orders 테이블에서 band_key, post_key, comment_key로 조회
     const { data: orders, error } = await supabase
       .from('orders')
       .select('comment_key')
+      .eq('band_key', bandKey)
+      .eq('post_key', postKey)
       .in('comment_key', commentKeys);
 
     if (error) {
