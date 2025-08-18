@@ -17,20 +17,18 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    if (!postKey || !bandKey) {
-      return NextResponse.json({
-        error: 'postKey와 bandKey가 필요합니다.'
-      }, { status: 400 });
-    }
+    // postKey와 bandKey는 선택사항으로 변경
+    console.log('댓글 확인 요청:', {
+      commentKeys,
+      postKey,
+      bandKey
+    });
 
-    // orders 테이블에서 해당 댓글들이 저장되어 있는지 확인
-    // order_id 패턴: order_{bandKey}_{postKey}_{commentKey}_{itemNumber}
-    // comment_key로 부분 매칭
+    // orders 테이블에서 comment_key로 직접 조회
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('order_id, comment_key')
-      .eq('post_key', postKey)
-      .eq('band_key', bandKey);
+      .select('comment_key')
+      .in('comment_key', commentKeys);
 
     if (error) {
       console.error('주문 확인 에러:', error);
@@ -39,24 +37,21 @@ export async function POST(request) {
       }, { status: 500 });
     }
 
+    console.log('조회된 주문 수:', orders?.length || 0);
+    if (orders && orders.length > 0) {
+      console.log('저장된 comment_key들:', orders.map(o => o.comment_key));
+    }
+    
     // 각 댓글 키에 대해 DB 저장 여부 확인
     const savedComments = {};
     
     commentKeys.forEach(commentKey => {
-      // order_id에서 comment_key 부분 추출하여 매칭
-      const isSaved = orders?.some(order => {
-        // order_id에서 comment_key 부분 추출
-        const parts = order.order_id?.split('_');
-        if (parts && parts.length >= 4) {
-          const orderCommentKey = parts[3];
-          return orderCommentKey === commentKey;
-        }
-        // 또는 comment_key 필드가 있으면 직접 비교
-        return order.comment_key === commentKey;
-      });
-      
+      // comment_key가 orders에 있는지 확인
+      const isSaved = orders?.some(order => order.comment_key === commentKey);
       savedComments[commentKey] = isSaved || false;
     });
+    
+    console.log('저장된 댓글 상태:', savedComments);
 
     return NextResponse.json({
       success: true,
