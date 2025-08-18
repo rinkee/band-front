@@ -264,9 +264,27 @@ const CommentsList = ({
       <div className="divide-y divide-gray-100">
         {sortedComments.map((comment) => {
           // 제외 고객 여부 확인
+          const authorName = comment.author?.name;
           const isExcludedCustomer = excludedCustomers.some(
-            (excluded) => excluded.name === comment.author?.name
+            (excluded) => {
+              // 문자열로 직접 비교 (제외 고객이 문자열 배열인 경우)
+              if (typeof excluded === 'string') {
+                return excluded === authorName;
+              }
+              // 객체인 경우 name 속성 비교
+              return excluded.name === authorName;
+            }
           );
+          
+          // 디버깅용 로그 (애플망고7677인 경우만)
+          if (authorName === "애플망고7677") {
+            console.log("애플망고7677 발견:", {
+              authorName,
+              excludedCustomers,
+              isExcludedCustomer
+            });
+          }
+          
           return (
             <CommentItem 
               key={comment.comment_key} 
@@ -487,8 +505,12 @@ const CommentsModal = ({
       
       // 세션에서 제외 고객 목록 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      console.log("userData:", userData);
+      console.log("excluded_customers:", userData?.excluded_customers);
+      
       if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
         setExcludedCustomers(userData.excluded_customers);
+        console.log("제외 고객 목록 설정:", userData.excluded_customers);
       }
       
       fetchComments(true);
