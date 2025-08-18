@@ -145,21 +145,23 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isAfterUpdate }
               제외 고객
             </span>
           )}
-          {/* 댓글 상태 표시 */}
-          {isSavedInDB ? (
-            <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
-              ✓ 주문 처리됨
-            </span>
-          ) : isAfterUpdate ? (
-            // 업데이트 후 댓글인데 DB에 없으면 누락 주문 가능성
-            <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
-              ⚠ 누락 주문
-            </span>
-          ) : (
-            // 업데이트 전 댓글
-            <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
-              업데이트 전
-            </span>
+          {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
+          {!isExcludedCustomer && (
+            isSavedInDB ? (
+              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+                ✓ 주문 처리됨
+              </span>
+            ) : isAfterUpdate ? (
+              // 업데이트 후 댓글인데 DB에 없으면 누락 주문 가능성
+              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
+                ⚠ 누락 주문
+              </span>
+            ) : (
+              // 업데이트 전 댓글
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                업데이트 전
+              </span>
+            )
           )}
         </div>
 
