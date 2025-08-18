@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isAfterUpdate }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -145,9 +145,20 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB }) => {
               제외 고객
             </span>
           )}
-          {isSavedInDB && (
+          {/* 댓글 상태 표시 */}
+          {isSavedInDB ? (
             <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
               ✓ 주문 처리됨
+            </span>
+          ) : isAfterUpdate ? (
+            // 업데이트 후 댓글인데 DB에 없으면 누락 주문 가능성
+            <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
+              ⚠ 누락 주문
+            </span>
+          ) : (
+            // 업데이트 전 댓글
+            <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+              업데이트 전
             </span>
           )}
         </div>
@@ -193,6 +204,7 @@ const CommentsList = ({
   shouldScrollToBottom = false,
   excludedCustomers = [],
   savedComments = {},
+  lastUpdateTime = null,
 }) => {
   const commentsEndRef = useRef(null);
 
@@ -294,12 +306,16 @@ const CommentsList = ({
           // DB 저장 여부 확인
           const isSavedInDB = savedComments[comment.comment_key] || false;
           
+          // 마지막 업데이트 후 댓글인지 확인 (업데이트 시간보다 이후에 작성된 댓글)
+          const isAfterUpdate = lastUpdateTime && comment.created_at > lastUpdateTime;
+          
           return (
             <CommentItem 
               key={comment.comment_key} 
               comment={comment}
               isExcludedCustomer={isExcludedCustomer}
               isSavedInDB={isSavedInDB}
+              isAfterUpdate={isAfterUpdate}
             />
           );
         })}
@@ -332,6 +348,7 @@ const CommentsModal = ({
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [savedComments, setSavedComments] = useState({});
+  const [lastUpdateTime, setLastUpdateTime] = useState(null);
   const scrollContainerRef = useRef(null);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
@@ -567,6 +584,13 @@ const CommentsModal = ({
         console.log("제외 고객 목록 설정:", userData.excluded_customers);
       }
       
+      // 마지막 업데이트 시간 가져오기 - 전역 localStorage 값 사용
+      const storedUpdateTime = localStorage.getItem('lastUpdateTime');
+      if (storedUpdateTime) {
+        setLastUpdateTime(parseInt(storedUpdateTime));
+        console.log('마지막 업데이트 시간:', new Date(parseInt(storedUpdateTime)));
+      }
+      
       fetchComments(true);
     }
   }, [isOpen, postKey, bandKey, accessToken]);
@@ -655,6 +679,7 @@ const CommentsModal = ({
                 shouldScrollToBottom={shouldScrollToBottom}
                 excludedCustomers={excludedCustomers}
                 savedComments={savedComments}
+                lastUpdateTime={lastUpdateTime}
               />
             </div>
           </div>
