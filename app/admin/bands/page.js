@@ -5,6 +5,7 @@ import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { useAdminApi } from '../hooks/useAdminApi';
 
 /**
  * 밴드 관리 페이지
@@ -21,6 +22,7 @@ export default function AdminBands() {
   });
   const [sortBy, setSortBy] = useState('last_post_at');
   const [sortOrder, setSortOrder] = useState('desc');
+  const { fetchAdminApi } = useAdminApi();
 
   useEffect(() => {
     fetchBands();
@@ -37,12 +39,9 @@ export default function AdminBands() {
         ...(search && { search })
       });
 
-      const res = await fetch(`/api/admin/bands?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setBands(data.bands || []);
-        setPagination(data.pagination);
-      }
+      const data = await fetchAdminApi(`/api/admin/bands?${params}`);
+      setBands(data.bands || []);
+      setPagination(data.pagination);
     } catch (error) {
       console.error('Bands fetch error:', error);
     } finally {

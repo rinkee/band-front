@@ -5,6 +5,7 @@ import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { useAdminApi } from '../hooks/useAdminApi';
 
 /**
  * 사용자 관리 페이지
@@ -20,6 +21,7 @@ export default function AdminUsers() {
     total: 0,
     totalPages: 0
   });
+  const { fetchAdminApi } = useAdminApi();
 
   useEffect(() => {
     fetchUsers();
@@ -35,12 +37,9 @@ export default function AdminUsers() {
         ...(search && { search })
       });
 
-      const res = await fetch(`/api/admin/users?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data.users || []);
-        setPagination(data.pagination);
-      }
+      const data = await fetchAdminApi(`/api/admin/users?${params}`);
+      setUsers(data.users || []);
+      setPagination(data.pagination);
     } catch (error) {
       console.error('Users fetch error:', error);
     } finally {
