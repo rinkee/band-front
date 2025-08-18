@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// 환경 변수 디버깅
+console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log('Service Role Key exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+console.log('Service Role Key length:', process.env.SUPABASE_SERVICE_ROLE_KEY?.length);
+console.log('Service Role Key prefix:', process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20));
+
 // 서비스 역할 키를 사용하여 관리자 권한으로 데이터베이스에 접근
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
