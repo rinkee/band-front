@@ -147,7 +147,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB }) => {
           )}
           {isSavedInDB && (
             <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
-              ✓ DB 저장됨
+              ✓ 주문 처리됨
             </span>
           )}
         </div>
