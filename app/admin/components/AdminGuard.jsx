@@ -20,19 +20,19 @@ export default function AdminGuard({ children }) {
 
   useEffect(() => {
     if (!loading) {
-      console.log('AdminGuard - User info:', user); // 디버깅용
+      // AdminGuard - User info check
       
       // 로그인하지 않았거나 관리자가 아닌 경우
       if (!user) {
         redirect('/login?redirect=/admin');
       } else if (user.role !== 'admin') {
         // 관리자가 아닌 경우 대시보드로 리다이렉트
-        console.log('AdminGuard - Not admin:', user.role, user.login_id); // 디버깅용
+        // AdminGuard - Not admin
         alert('관리자 권한이 필요합니다.');
         redirect('/dashboard');
       } else {
         // 권한 확인 완료
-        console.log('AdminGuard - Admin confirmed'); // 디버깅용
+        // AdminGuard - Admin confirmed
         setIsChecking(false);
       }
     }

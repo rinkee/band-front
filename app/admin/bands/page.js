@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, ArrowDownTrayIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import { useAdminApi } from '../hooks/useAdminApi';
+import ErrorMessage from '../components/ErrorMessage';
+import RefreshButton from '../components/RefreshButton';
 
 /**
  * 밴드 관리 페이지
@@ -13,6 +15,8 @@ import { useAdminApi } from '../hooks/useAdminApi';
 export default function AdminBands() {
   const [bands, setBands] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedBands, setSelectedBands] = useState(new Set());
   const [search, setSearch] = useState('');
   const [pagination, setPagination] = useState({
     page: 1,
@@ -28,8 +32,9 @@ export default function AdminBands() {
     fetchBands();
   }, [pagination.page, sortBy, sortOrder]);
 
-  const fetchBands = async () => {
-    setLoading(true);
+  const fetchBands = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         page: pagination.page,
@@ -43,7 +48,7 @@ export default function AdminBands() {
       setBands(data.bands || []);
       setPagination(data.pagination);
     } catch (error) {
-      console.error('Bands fetch error:', error);
+      setError('밴드 데이터를 불러오는 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -69,10 +74,119 @@ export default function AdminBands() {
     return new Date(date).toLocaleDateString('ko-KR');
   };
 
+  // CSV 다운로드
+  const downloadCSV = () => {
+    const headers = ['상점명', '로그인ID', 'Function#', '게시물', '주문', '총매출', '최근활동'];
+    const rows = bands.map(band => [
+      band.store_name,
+      band.login_id,
+      band.function_number || '',
+      band.post_count,
+      band.order_count,
+      band.total_sales || 0,
+      band.last_post_at ? new Date(band.last_post_at).toLocaleDateString('ko-KR') : ''
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `bands_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  // 통계 정보
+  const getStatistics = () => {
+    const totalSales = bands.reduce((sum, band) => sum + (band.total_sales || 0), 0);
+    const totalPosts = bands.reduce((sum, band) => sum + band.post_count, 0);
+    const totalOrders = bands.reduce((sum, band) => sum + band.order_count, 0);
+    const activeBands = bands.filter(band => band.last_post_at && 
+      new Date(band.last_post_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    ).length;
+
+    return { totalSales, totalPosts, totalOrders, activeBands };
+  };
+
+  const stats = getStatistics();
+
   return (
     <AdminGuard>
-      <AdminLayout>
+      <AdminLayout title="밴드 관리">
         <div className="space-y-6">
+          {/* 헤더 영역 */}
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-900">밴드 관리</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={downloadCSV}
+                disabled={bands.length === 0}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4 mr-1.5" />
+                CSV 다운로드
+              </button>
+              <RefreshButton 
+                onRefresh={() => fetchBands(false)} 
+                autoRefresh={false}
+              />
+            </div>
+          </div>
+
+          {/* 통계 카드 */}
+          {!loading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex items-center">
+                  <ChartBarIcon className="h-8 w-8 text-blue-500 mr-3" />
+                  <div>
+                    <p className="text-sm text-gray-500">활성 밴드</p>
+                    <p className="text-2xl font-bold">{stats.activeBands}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex items-center">
+                  <ChartBarIcon className="h-8 w-8 text-green-500 mr-3" />
+                  <div>
+                    <p className="text-sm text-gray-500">총 게시물</p>
+                    <p className="text-2xl font-bold">{stats.totalPosts.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex items-center">
+                  <ChartBarIcon className="h-8 w-8 text-purple-500 mr-3" />
+                  <div>
+                    <p className="text-sm text-gray-500">총 주문</p>
+                    <p className="text-2xl font-bold">{stats.totalOrders.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex items-center">
+                  <ChartBarIcon className="h-8 w-8 text-yellow-500 mr-3" />
+                  <div>
+                    <p className="text-sm text-gray-500">총 매출</p>
+                    <p className="text-2xl font-bold">{stats.totalSales.toLocaleString()}원</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 에러 메시지 */}
+          {error && (
+            <ErrorMessage 
+              message={error} 
+              onClose={() => setError(null)}
+              type="error"
+            />
+          )}
+
           {/* 검색 바 */}
           <div className="bg-white shadow rounded-lg p-4">
             <form onSubmit={handleSearch} className="flex gap-4">
@@ -162,7 +276,7 @@ export default function AdminBands() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {bands.map((band) => (
-                        <tr key={band.user_id} className="hover:bg-gray-50">
+                        <tr key={band.user_id} className="hover:bg-gray-50 cursor-pointer">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
                               {band.store_name}

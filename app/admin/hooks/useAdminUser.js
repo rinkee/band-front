@@ -19,10 +19,10 @@ export function useUser() {
       try {
         // userData 객체로 저장된 세션 데이터 가져오기
         const userDataString = sessionStorage.getItem('userData');
-        console.log('Raw userData from sessionStorage:', userDataString); // 디버깅용
+        // Raw userData from sessionStorage
         
         if (!userDataString) {
-          console.log('No userData found in sessionStorage');
+          // No userData found in sessionStorage
           setUser(null);
           setLoading(false);
           return;
@@ -34,7 +34,7 @@ export function useUser() {
         const storeName = userData.storeName || userData.store_name;
         const functionNumber = userData.function_number || userData.functionNumber;
         
-        console.log('Parsed session data:', { userId, loginId, storeName, functionNumber }); // 디버깅용
+        // Parsed session data
         
         if (userId && loginId) {
           // Supabase에서 실제 role 정보 가져오기
@@ -45,7 +45,7 @@ export function useUser() {
             .single();
           
           if (error) {
-            console.error('Failed to fetch user role:', error);
+            // Failed to fetch user role
             // 오류 발생 시 loginId로 판단하거나 userData에 저장된 role 사용
             setUser({
               user_id: userId,
@@ -55,7 +55,7 @@ export function useUser() {
               role: userData.role || (loginId === 'bibimember' ? 'admin' : 'user')
             });
           } else {
-            console.log('User role from DB:', data.role); // 디버깅용
+            // User role from DB
             setUser({
               user_id: userId,
               login_id: data.login_id || loginId,
@@ -65,11 +65,11 @@ export function useUser() {
             });
           }
         } else {
-          console.log('userId or loginId missing');
+          // userId or loginId missing
           setUser(null);
         }
       } catch (error) {
-        console.error('Failed to load user:', error);
+        // Failed to load user
         setUser(null);
       } finally {
         setLoading(false);
@@ -88,7 +88,7 @@ export function useUser() {
       // 로그인 페이지로 리다이렉트
       router.push('/login');
     } catch (error) {
-      console.error('Logout error:', error);
+      // Logout error
     }
   };
 

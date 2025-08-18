@@ -59,6 +59,15 @@ export default function AdminSettings() {
 
   useEffect(() => {
     fetchDatabaseStats();
+    // localStorage에서 설정 불러오기
+    const savedSettings = localStorage.getItem('adminSettings');
+    if (savedSettings) {
+      try {
+        setSettings(JSON.parse(savedSettings));
+      } catch (e) {
+        // 무시
+      }
+    }
   }, []);
 
   const fetchDatabaseStats = async () => {
@@ -87,7 +96,7 @@ export default function AdminSettings() {
         products: productStats || 0
       });
     } catch (error) {
-      console.error('Stats fetch error:', error);
+      // 조용히 실패
     }
   };
 
@@ -97,13 +106,19 @@ export default function AdminSettings() {
     
     // 실제로는 API를 통해 설정을 저장해야 하지만, 
     // 현재는 로컬 스토리지에 저장
-    localStorage.setItem('adminSettings', JSON.stringify(settings));
-    
-    setTimeout(() => {
+    try {
+      localStorage.setItem('adminSettings', JSON.stringify(settings));
+      
+      setTimeout(() => {
+        setLoading(false);
+        setSaveMessage('설정이 저장되었습니다.');
+        setTimeout(() => setSaveMessage(''), 3000);
+      }, 500);
+    } catch (error) {
       setLoading(false);
-      setSaveMessage('설정이 저장되었습니다.');
+      setSaveMessage('설정 저장에 실패했습니다.');
       setTimeout(() => setSaveMessage(''), 3000);
-    }, 1000);
+    }
   };
 
   const handleInputChange = (section, field, value) => {

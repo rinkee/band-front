@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, UserPlusIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useAdminApi } from '../hooks/useAdminApi';
+import ErrorMessage from '../components/ErrorMessage';
+import RefreshButton from '../components/RefreshButton';
 
 /**
  * 사용자 관리 페이지
@@ -13,6 +15,8 @@ import { useAdminApi } from '../hooks/useAdminApi';
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedUsers, setSelectedUsers] = useState(new Set());
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [pagination, setPagination] = useState({
@@ -27,8 +31,9 @@ export default function AdminUsers() {
     fetchUsers();
   }, [pagination.page, filter]);
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const fetchUsers = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         page: pagination.page,
@@ -41,7 +46,7 @@ export default function AdminUsers() {
       setUsers(data.users || []);
       setPagination(data.pagination);
     } catch (error) {
-      console.error('Users fetch error:', error);
+      setError('사용자 데이터를 불러오는 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -69,13 +74,59 @@ export default function AdminUsers() {
       }
     } catch (error) {
       console.error('Update error:', error);
-      alert('업데이트 중 오류가 발생했습니다.');
+      setError('업데이트 중 오류가 발생했습니다.');
     }
   };
 
   const toggleUserStatus = (userId, currentStatus) => {
     if (confirm(`사용자를 ${currentStatus ? '비활성화' : '활성화'}하시겠습니까?`)) {
       handleUserUpdate(userId, { is_active: !currentStatus });
+    }
+  };
+
+  // CSV 다운로드
+  const downloadCSV = () => {
+    const headers = ['로그인ID', '상점명', '역할', '상태', '밴드연결', 'Function#', '게시물수', '주문수', '최근로그인'];
+    const rows = users.map(user => [
+      user.login_id,
+      user.store_name || '',
+      user.role || 'user',
+      user.is_active ? '활성' : '비활성',
+      user.has_band ? '연결됨' : '미연결',
+      user.function_number || '',
+      user.total_posts || 0,
+      user.total_orders || 0,
+      user.last_login_at ? new Date(user.last_login_at).toLocaleDateString('ko-KR') : ''
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `users_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  // 선택된 사용자 처리
+  const toggleUserSelection = (userId) => {
+    const newSelected = new Set(selectedUsers);
+    if (newSelected.has(userId)) {
+      newSelected.delete(userId);
+    } else {
+      newSelected.add(userId);
+    }
+    setSelectedUsers(newSelected);
+  };
+
+  const selectAllUsers = () => {
+    if (selectedUsers.size === users.length) {
+      setSelectedUsers(new Set());
+    } else {
+      setSelectedUsers(new Set(users.map(u => u.user_id)));
     }
   };
 
@@ -86,8 +137,36 @@ export default function AdminUsers() {
 
   return (
     <AdminGuard>
-      <AdminLayout>
+      <AdminLayout title="사용자 관리">
         <div className="space-y-6">
+          {/* 헤더 영역 */}
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-900">사용자 관리</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={downloadCSV}
+                disabled={users.length === 0}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4 mr-1.5" />
+                CSV 다운로드
+              </button>
+              <RefreshButton 
+                onRefresh={() => fetchUsers(false)} 
+                autoRefresh={false}
+              />
+            </div>
+          </div>
+
+          {/* 에러 메시지 */}
+          {error && (
+            <ErrorMessage 
+              message={error} 
+              onClose={() => setError(null)}
+              type="error"
+            />
+          )}
+
           {/* 검색 및 필터 */}
           <div className="bg-white shadow rounded-lg p-4">
             <div className="flex gap-4">
@@ -139,6 +218,14 @@ export default function AdminUsers() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-6 py-3 text-left">
+                          <input
+                            type="checkbox"
+                            checked={selectedUsers.size === users.length && users.length > 0}
+                            onChange={selectAllUsers}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           로그인 ID
                         </th>
@@ -171,6 +258,14 @@ export default function AdminUsers() {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {users.map((user) => (
                         <tr key={user.user_id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.has(user.user_id)}
+                              onChange={() => toggleUserSelection(user.user_id)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
                               {user.login_id}

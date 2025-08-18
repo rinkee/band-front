@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
-import { MagnifyingGlassIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarIcon, FunnelIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useAdminApi } from '../hooks/useAdminApi';
+import ErrorMessage from '../components/ErrorMessage';
+import RefreshButton from '../components/RefreshButton';
 
 /**
  * 주문 현황 페이지
@@ -13,6 +15,8 @@ import { useAdminApi } from '../hooks/useAdminApi';
 export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [status, setStatus] = useState('all');
@@ -49,12 +53,13 @@ export default function AdminOrders() {
       const data = await fetchAdminApi('/api/admin/bands?limit=100');
       setBands(data.bands || []);
     } catch (error) {
-      console.error('Bands fetch error:', error);
+      // 조용히 실패
     }
   };
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         page: pagination.page,
@@ -69,7 +74,7 @@ export default function AdminOrders() {
       setOrders(data.orders || []);
       setPagination(data.pagination);
     } catch (error) {
-      console.error('Orders fetch error:', error);
+      setError('주문 데이터를 불러오는 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -103,9 +108,75 @@ export default function AdminOrders() {
     );
   };
 
+  // CSV 다운로드 함수
+  const downloadCSV = () => {
+    const headers = ['주문일시', '밴드', '로그인ID', '고객명', '상품명', '수량', '금액', '상태'];
+    const rows = orders.map(order => [
+      new Date(order.created_at).toLocaleString('ko-KR'),
+      order.store_name || '',
+      order.login_id || '',
+      order.customer_name,
+      order.product_name,
+      order.quantity,
+      order.total_amount,
+      order.status
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `orders_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  const toggleOrderExpansion = (orderId) => {
+    const newExpanded = new Set(expandedOrders);
+    if (newExpanded.has(orderId)) {
+      newExpanded.delete(orderId);
+    } else {
+      newExpanded.add(orderId);
+    }
+    setExpandedOrders(newExpanded);
+  };
+
   return (
     <AdminGuard>
       <AdminLayout title="주문 현황">
+        {/* 헤더 영역 */}
+        <div className="mb-4 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-gray-900">주문 관리</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={downloadCSV}
+              disabled={orders.length === 0}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4 mr-1.5" />
+              CSV 다운로드
+            </button>
+            <RefreshButton 
+              onRefresh={() => fetchOrders(false)} 
+              autoRefresh={false}
+            />
+          </div>
+        </div>
+
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="mb-4">
+            <ErrorMessage 
+              message={error} 
+              onClose={() => setError(null)}
+              type="error"
+            />
+          </div>
+        )}
+
         {/* 필터 영역 */}
         <div className="bg-white shadow rounded-lg p-6 mb-6">
           <form onSubmit={handleSearch} className="space-y-4">
@@ -229,7 +300,11 @@ export default function AdminOrders() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {orders.length > 0 ? (
                       orders.map((order, index) => (
-                        <tr key={`order-${index}-${order.order_id}`} className="hover:bg-gray-50">
+                        <tr 
+                          key={`order-${index}-${order.order_id}`} 
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => toggleOrderExpansion(order.order_id)}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {new Date(order.created_at).toLocaleString('ko-KR')}
                           </td>

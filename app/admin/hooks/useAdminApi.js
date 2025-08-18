@@ -50,7 +50,6 @@ export function useAdminApi() {
       const data = await response.json();
       return data;
     } catch (err) {
-      console.error('Admin API error:', err);
       setError(err.message);
       throw err;
     } finally {
