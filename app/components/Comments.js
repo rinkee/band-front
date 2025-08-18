@@ -296,15 +296,6 @@ const CommentsList = ({
             }
           );
           
-          // 디버깅용 로그 (애플망고7677인 경우만)
-          if (authorName === "애플망고7677") {
-            console.log("애플망고7677 발견:", {
-              authorName,
-              excludedCustomers,
-              isExcludedCustomer
-            });
-          }
-          
           // DB 저장 여부 확인
           const isSavedInDB = savedComments[comment.comment_key] || false;
           
@@ -381,34 +372,19 @@ const CommentsModal = ({
       const backupKeys = userData.backup_band_keys;
       const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
       
-      console.log("토큰 정보:", {
-        메인토큰: accessToken ? "있음" : "없음",
-        백업토큰_props: backupAccessToken ? "있음" : "없음", 
-        백업토큰_세션: backupToken ? "있음" : "없음",
-        백업키_배열: backupKeys,
-        useBackupToken
-      });
-      
       const params = new URLSearchParams({
         access_token: useBackupToken && backupToken ? backupToken : accessToken,
         band_key: bandKey,
         post_key: postKey,
         sort: "created_at", // 오래된 순 정렬로 변경
       });
-      
-      // 백업 토큰 사용 시 표시
-      if (useBackupToken && backupToken) {
-        console.log("백업 액세스 토큰으로 댓글 조회 중...");
-      }
 
       // 프록시 API 엔드포인트 사용
       const response = await fetch(`/api/band/comments?${params}`);
 
       if (!response.ok) {
-        console.log(`API 응답 실패: ${response.status}, useBackupToken: ${useBackupToken}, backupToken 존재: ${!!backupToken}`);
         // 메인 토큰 실패 시 백업 토큰으로 재시도
         if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
-          console.log("메인 토큰 실패, 백업 토큰으로 재시도...");
           return fetchComments(isRefresh, true);
         }
         
@@ -483,7 +459,6 @@ const CommentsModal = ({
         const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
         if (backupToken) {
           params.set('access_token', backupToken);
-          console.log("백업 토큰으로 추가 댓글 로드 중...");
         }
       }
 
@@ -496,7 +471,6 @@ const CommentsModal = ({
         const backupKeys = userData.backup_band_keys;
         const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
         if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
-          console.log("추가 댓글 로드 실패, 백업 토큰으로 재시도...");
           return loadMoreComments(true);
         }
         throw new Error(`댓글 조회 실패: ${response.status}`);
@@ -560,7 +534,6 @@ const CommentsModal = ({
         const data = await response.json();
         if (data.success && data.savedComments) {
           setSavedComments(data.savedComments);
-          console.log('DB 저장 상태:', data.savedComments);
         }
       }
     } catch (error) {
@@ -578,19 +551,15 @@ const CommentsModal = ({
       
       // 세션에서 제외 고객 목록 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
-      console.log("userData:", userData);
-      console.log("excluded_customers:", userData?.excluded_customers);
       
       if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
         setExcludedCustomers(userData.excluded_customers);
-        console.log("제외 고객 목록 설정:", userData.excluded_customers);
       }
       
       // 마지막 업데이트 시간 가져오기 - 전역 localStorage 값 사용
       const storedUpdateTime = localStorage.getItem('lastUpdateTime');
       if (storedUpdateTime) {
         setLastUpdateTime(parseInt(storedUpdateTime));
-        console.log('마지막 업데이트 시간:', new Date(parseInt(storedUpdateTime)));
       }
       
       fetchComments(true);

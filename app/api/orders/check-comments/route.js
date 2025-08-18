@@ -23,11 +23,6 @@ export async function POST(request) {
       }, { status: 400 });
     }
     
-    console.log('댓글 확인 요청:', {
-      commentKeys,
-      postKey,
-      bandKey
-    });
 
     // orders 테이블에서 band_key, post_key, comment_key로 조회
     const { data: orders, error } = await supabase
@@ -44,10 +39,6 @@ export async function POST(request) {
       }, { status: 500 });
     }
 
-    console.log('조회된 주문 수:', orders?.length || 0);
-    if (orders && orders.length > 0) {
-      console.log('저장된 comment_key들:', orders.map(o => o.comment_key));
-    }
     
     // 각 댓글 키에 대해 DB 저장 여부 확인
     const savedComments = {};
@@ -57,8 +48,6 @@ export async function POST(request) {
       const isSaved = orders?.some(order => order.comment_key === commentKey);
       savedComments[commentKey] = isSaved || false;
     });
-    
-    console.log('저장된 댓글 상태:', savedComments);
 
     return NextResponse.json({
       success: true,
