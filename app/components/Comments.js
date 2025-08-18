@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isAfterUpdate }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -145,6 +145,24 @@ const CommentItem = ({ comment, isExcludedCustomer }) => {
               제외 고객
             </span>
           )}
+          {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
+          {!isExcludedCustomer && (
+            isSavedInDB ? (
+              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+                ✓ 주문 처리됨
+              </span>
+            ) : isAfterUpdate ? (
+              // 업데이트 후 댓글인데 DB에 없으면 누락 주문 가능성
+              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
+                ⚠ 누락 주문
+              </span>
+            ) : (
+              // 업데이트 전 댓글
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                업데이트 전
+              </span>
+            )
+          )}
         </div>
 
         {/* 댓글 텍스트 */}
@@ -187,6 +205,8 @@ const CommentsList = ({
   loadMoreLoading,
   shouldScrollToBottom = false,
   excludedCustomers = [],
+  savedComments = {},
+  lastUpdateTime = null,
 }) => {
   const commentsEndRef = useRef(null);
 
@@ -276,20 +296,19 @@ const CommentsList = ({
             }
           );
           
-          // 디버깅용 로그 (애플망고7677인 경우만)
-          if (authorName === "애플망고7677") {
-            console.log("애플망고7677 발견:", {
-              authorName,
-              excludedCustomers,
-              isExcludedCustomer
-            });
-          }
+          // DB 저장 여부 확인
+          const isSavedInDB = savedComments[comment.comment_key] || false;
+          
+          // 마지막 업데이트 후 댓글인지 확인 (업데이트 시간보다 이후에 작성된 댓글)
+          const isAfterUpdate = lastUpdateTime && comment.created_at > lastUpdateTime;
           
           return (
             <CommentItem 
               key={comment.comment_key} 
               comment={comment}
               isExcludedCustomer={isExcludedCustomer}
+              isSavedInDB={isSavedInDB}
+              isAfterUpdate={isAfterUpdate}
             />
           );
         })}
@@ -321,6 +340,8 @@ const CommentsModal = ({
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
+  const [savedComments, setSavedComments] = useState({});
+  const [lastUpdateTime, setLastUpdateTime] = useState(null);
   const scrollContainerRef = useRef(null);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
@@ -351,34 +372,19 @@ const CommentsModal = ({
       const backupKeys = userData.backup_band_keys;
       const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
       
-      console.log("토큰 정보:", {
-        메인토큰: accessToken ? "있음" : "없음",
-        백업토큰_props: backupAccessToken ? "있음" : "없음", 
-        백업토큰_세션: backupToken ? "있음" : "없음",
-        백업키_배열: backupKeys,
-        useBackupToken
-      });
-      
       const params = new URLSearchParams({
         access_token: useBackupToken && backupToken ? backupToken : accessToken,
         band_key: bandKey,
         post_key: postKey,
         sort: "created_at", // 오래된 순 정렬로 변경
       });
-      
-      // 백업 토큰 사용 시 표시
-      if (useBackupToken && backupToken) {
-        console.log("백업 액세스 토큰으로 댓글 조회 중...");
-      }
 
       // 프록시 API 엔드포인트 사용
       const response = await fetch(`/api/band/comments?${params}`);
 
       if (!response.ok) {
-        console.log(`API 응답 실패: ${response.status}, useBackupToken: ${useBackupToken}, backupToken 존재: ${!!backupToken}`);
         // 메인 토큰 실패 시 백업 토큰으로 재시도
         if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
-          console.log("메인 토큰 실패, 백업 토큰으로 재시도...");
           return fetchComments(isRefresh, true);
         }
         
@@ -403,13 +409,20 @@ const CommentsModal = ({
 
       if (isRefresh) {
         setComments(newComments);
+        // 댓글들의 DB 저장 상태 확인
+        checkCommentsInDB(newComments);
         // 초기 로드 시에만 맨 아래로 스크롤
         setShouldScrollToBottom(true);
       } else {
         // 더보기 댓글 로드 시에는 스크롤 위치 유지
         const prevScrollHeight = scrollContainerRef.current?.scrollHeight || 0;
 
-        setComments((prev) => [...prev, ...newComments]);
+        setComments((prev) => {
+          const updatedComments = [...prev, ...newComments];
+          // 새로운 댓글들의 DB 저장 상태 확인
+          checkCommentsInDB(updatedComments);
+          return updatedComments;
+        });
         setShouldScrollToBottom(false);
 
         // 새 댓글 추가 후 스크롤 위치 조정 (이전 위치 유지)
@@ -446,7 +459,6 @@ const CommentsModal = ({
         const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
         if (backupToken) {
           params.set('access_token', backupToken);
-          console.log("백업 토큰으로 추가 댓글 로드 중...");
         }
       }
 
@@ -459,7 +471,6 @@ const CommentsModal = ({
         const backupKeys = userData.backup_band_keys;
         const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
         if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
-          console.log("추가 댓글 로드 실패, 백업 토큰으로 재시도...");
           return loadMoreComments(true);
         }
         throw new Error(`댓글 조회 실패: ${response.status}`);
@@ -475,7 +486,12 @@ const CommentsModal = ({
         const currentScrollHeight =
           scrollContainerRef.current?.scrollHeight || 0;
 
-        setComments((prev) => [...prev, ...newComments]);
+        setComments((prev) => {
+          const updatedComments = [...prev, ...newComments];
+          // 새로운 댓글들의 DB 저장 상태 확인
+          checkCommentsInDB(updatedComments);
+          return updatedComments;
+        });
         setNextParams(apiResponse.data?.paging?.next_params || null);
 
         // 스크롤 위치 유지
@@ -495,6 +511,36 @@ const CommentsModal = ({
     }
   };
 
+  // 댓글들이 DB에 저장되어 있는지 확인하는 함수
+  const checkCommentsInDB = async (commentsToCheck) => {
+    if (!commentsToCheck || commentsToCheck.length === 0) return;
+    
+    try {
+      const commentKeys = commentsToCheck.map(c => c.comment_key);
+      
+      const response = await fetch('/api/orders/check-comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          commentKeys,
+          postKey,
+          bandKey
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.savedComments) {
+          setSavedComments(data.savedComments);
+        }
+      }
+    } catch (error) {
+      console.error('DB 저장 상태 확인 오류:', error);
+    }
+  };
+
   // 모달이 열릴 때 댓글 가져오기 및 제외 고객 목록 로드
   useEffect(() => {
     if (isOpen && postKey && bandKey && accessToken) {
@@ -505,12 +551,15 @@ const CommentsModal = ({
       
       // 세션에서 제외 고객 목록 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
-      console.log("userData:", userData);
-      console.log("excluded_customers:", userData?.excluded_customers);
       
       if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
         setExcludedCustomers(userData.excluded_customers);
-        console.log("제외 고객 목록 설정:", userData.excluded_customers);
+      }
+      
+      // 마지막 업데이트 시간 가져오기 - 전역 localStorage 값 사용
+      const storedUpdateTime = localStorage.getItem('lastUpdateTime');
+      if (storedUpdateTime) {
+        setLastUpdateTime(parseInt(storedUpdateTime));
       }
       
       fetchComments(true);
@@ -600,6 +649,8 @@ const CommentsModal = ({
                 loadMoreLoading={loading}
                 shouldScrollToBottom={shouldScrollToBottom}
                 excludedCustomers={excludedCustomers}
+                savedComments={savedComments}
+                lastUpdateTime={lastUpdateTime}
               />
             </div>
           </div>
