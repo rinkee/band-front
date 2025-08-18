@@ -276,7 +276,7 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                     ) : (
                       <button
                         onClick={() => handleEditStart(order)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium"
+                        className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium"
                       >
                         수정
                       </button>
