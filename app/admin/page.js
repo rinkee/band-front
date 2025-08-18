@@ -112,8 +112,8 @@ export default function AdminDashboard() {
                 </h3>
                 <div className="space-y-3">
                   {recentOrders.length > 0 ? (
-                    recentOrders.map((order) => (
-                      <div key={order.order_id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    recentOrders.map((order, index) => (
+                      <div key={`order-${index}-${order.order_id}`} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                         <div className="flex-1">
                           <p className="font-medium text-gray-900 text-sm">
                             {order.customer_name}
