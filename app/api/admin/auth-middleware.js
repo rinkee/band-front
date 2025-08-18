@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// 환경 변수 디버깅
-console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-console.log('Service Role Key exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-console.log('Service Role Key length:', process.env.SUPABASE_SERVICE_ROLE_KEY?.length);
-console.log('Service Role Key prefix:', process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20));
-
-// 서비스 역할 키를 사용하여 관리자 권한으로 데이터베이스에 접근
-const supabase = createClient(
+// anon 키를 사용하여 데이터베이스에 접근 (뷰에는 RLS가 비활성화되어 있음)
+export const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
 );
 
 /**
@@ -44,7 +44,7 @@ export async function checkAdminAuth(request) {
     
     // 사용자 권한 확인
     console.log('Querying user with userId:', userId);
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('role, login_id, user_id')
       .eq('user_id', userId)

@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { checkAdminAuth } from '../auth-middleware';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { checkAdminAuth, supabaseAdmin } from '../auth-middleware';
 
 export async function GET(request) {
   try {
@@ -23,7 +17,7 @@ export async function GET(request) {
     const filter = searchParams.get('filter') || 'all'; // all, active, inactive, admin
 
     // 사용자 목록 조회 (뷰 사용)
-    let query = supabase
+    let query = supabaseAdmin
       .from('v_admin_user_activity')
       .select('*', { count: 'exact' });
 
@@ -92,7 +86,7 @@ export async function PATCH(request) {
     }
 
     // 사용자 정보 업데이트
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('users')
       .update(updates)
       .eq('user_id', userId)

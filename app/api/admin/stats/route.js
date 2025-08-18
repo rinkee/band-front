@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { checkAdminAuth } from '../auth-middleware';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { checkAdminAuth, supabaseAdmin } from '../auth-middleware';
 
 export async function GET(request) {
   try {
@@ -24,7 +18,7 @@ export async function GET(request) {
     console.log('User authorized, fetching stats');
     
     // 대시보드 통계 조회 (뷰 사용)
-    const { data: stats, error: statsError } = await supabase
+    const { data: stats, error: statsError } = await supabaseAdmin
       .from('v_admin_dashboard_stats')
       .select('*')
       .single();

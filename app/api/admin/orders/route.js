@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { checkAdminAuth } from '../auth-middleware';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { checkAdminAuth, supabaseAdmin } from '../auth-middleware';
 
 export async function GET(request) {
   try {
@@ -25,7 +19,7 @@ export async function GET(request) {
     const bandKey = searchParams.get('bandKey');
 
     // 주문 목록 조회 (뷰 사용)
-    let query = supabase
+    let query = supabaseAdmin
       .from('v_admin_orders_overview')
       .select('*', { count: 'exact' });
 
