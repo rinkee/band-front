@@ -140,7 +140,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       }
     }
     
-    setProgress({ current: 0, total: estimatedTotal, message: '게시물 가져오는 중...' });
+    setProgress({ current: 0, total: estimatedTotal, message: '시작 중...' });
 
     let currentCount = 0;
     const increment = Math.ceil(estimatedTotal / 10); // 10단계로 나누어 진행
@@ -151,11 +151,11 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       if (currentCount > estimatedTotal) currentCount = estimatedTotal;
       
       const messages = [
-        '게시물 분석 중...',
-        '댓글 추출 중...',
-        '주문 정보 처리 중...',
-        '데이터 저장 중...',
-        '마무리 작업 중...'
+        '분석 중...',
+        '추출 중...',
+        '처리 중...',
+        '저장 중...',
+        '마무리 중...'
       ];
       const messageIndex = Math.floor((currentCount / estimatedTotal) * messages.length);
       
@@ -170,7 +170,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       // 완료 처리
       if (currentCount >= estimatedTotal) {
         setIsBackgroundProcessing(false);
-        setSuccessMessage("✨ 모든 게시물이 성공적으로 업데이트되었습니다!");
+        setSuccessMessage("✨ 업데이트 완료!");
         
         // 진행률 바 유지하고 3초 후 제거
         setTimeout(() => {
@@ -187,7 +187,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       clearInterval(intervalId);
       setIsBackgroundProcessing(false);
       setProgress({ current: estimatedTotal, total: estimatedTotal, message: '완료!' });
-      setSuccessMessage("업데이트가 완료되었습니다!");
+      setSuccessMessage("✨ 업데이트 완료!");
       
       setTimeout(() => {
         setProgress({ current: 0, total: 0, message: '' });
@@ -319,7 +319,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           setProgress({
             current: processedCount,
             total: processedCount,
-            message: '✨ 업데이트 완료!'
+            message: '완료!'
           });
           
           // 3초 후 진행률 초기화
@@ -361,21 +361,14 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       setProgress({
         current: processedCount,
         total: processedCount,
-        message: '✨ 업데이트 완료!'
+        message: '완료!'
       });
 
       if (responseData.errorSummary) {
         const { totalErrors, errorRate } = responseData.errorSummary;
-        let baseMessage = `${processedCount}개 게시물 중 ${totalErrors}개 실패 (${errorRate}% 오류율)`;
-        baseMessage += `\n⚠️ 실패한 게시물은 다음 업데이트 시 자동으로 재시도됩니다.`;
-        setError(baseMessage);
+        setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
       } else {
-        let baseMessage = `✨ ${processedCount}개의 게시물이 성공적으로 동기화되었습니다!`;
-        
-        if (failoverInfo && failoverInfo.keysUsed > 1) {
-          baseMessage += `\n⚠️ 메인 키 한계량 초과로 백업 키 #${failoverInfo.finalKeyIndex}를 사용했습니다.`;
-        }
-        setSuccessMessage(baseMessage);
+        setSuccessMessage(`✨ ${processedCount}개 동기화 완료!`);
       }
 
       refreshSWRCache(userId);
@@ -395,12 +388,13 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
 
   // 에러 처리
   const handleError = (err) => {
-    let userFriendlyMessage = "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
+    let userFriendlyMessage = "잠시 후 다시 시도해주세요.";
     
     if (err.isAxiosError && err.response) {
-      userFriendlyMessage = err.response.data?.message || "너무 이른 요청입니다. 잠시 후 다시 시도해주세요.";
+      const msg = err.response.data?.message || "잠시 후 다시 시도해주세요.";
+      userFriendlyMessage = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
     } else if (err.message.includes("timeout") || err.code === "ECONNABORTED") {
-      userFriendlyMessage = "요청 시간이 초과되었습니다. 네트워크 상태를 확인하거나, 가져올 게시물 수를 줄여보세요.";
+      userFriendlyMessage = "요청 시간 초과. 네트워크를 확인하세요.";
     }
     
     setError(userFriendlyMessage);
@@ -473,56 +467,40 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           : "업데이트"}
       </button>
 
-      {/* 진행률 표시 */}
+      {/* 진행률 표시 - 컴팩트 버전 */}
       {(isBackgroundProcessing || progress.total > 0) && (
-        <div className="mt-3 space-y-2">
-          {/* 진행률 바 */}
-          <div className="relative">
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-xs text-gray-600">
-                {progress.message || '처리 중...'}
-              </span>
-              <span className="text-xs font-medium text-gray-700">
-                {progress.current}/{progress.total}
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-500 ease-out relative"
-                style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-              >
-                {/* 애니메이션 효과 */}
-                <div className="absolute inset-0 bg-white opacity-20 animate-pulse" />
+        <div className="mt-2">
+          <div className="flex items-center gap-3">
+            {/* 진행률 바 */}
+            <div className="flex-1">
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="bg-blue-500 h-full rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                />
               </div>
+            </div>
+            {/* 진행 상태 텍스트 */}
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+              <span>{progress.current}/{progress.total}</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">{progress.message || '처리 중...'}</span>
             </div>
           </div>
-          
-          {/* 실시간 업데이트 내역 */}
-          {progress.current > 0 && (
-            <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded-md max-h-20 overflow-y-auto">
-              <div className="flex items-center">
-                <svg className="animate-spin mr-1 h-3 w-3 text-green-500" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                </svg>
-                <span>{progress.current}개 게시물 처리 완료</span>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
       {error && (
-        <p className={`mt-2 text-sm text-center ${
+        <p className={`mt-1 text-xs ${
           error.includes("자동으로 재시도") ? "text-amber-600" : "text-red-600"
         }`}>
-          {error}
+          {error.length > 80 ? error.substring(0, 80) + '...' : error}
         </p>
       )}
 
       {successMessage && !error && !isBackgroundProcessing && (
-        <p className="mt-2 text-sm text-green-600 text-center">
-          {successMessage}
+        <p className="mt-1 text-xs text-green-600">
+          {successMessage.length > 60 ? successMessage.substring(0, 60) + '...' : successMessage}
         </p>
       )}
     </div>
