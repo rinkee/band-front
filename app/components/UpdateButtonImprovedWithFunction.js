@@ -466,11 +466,23 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           : "업데이트"}
       </button>
 
-      {/* 진행률 표시 - 퍼센트만 표시 */}
+      {/* 진행률 표시 - 컴팩트 바 버전 */}
       {(isBackgroundProcessing || progress.total > 0) && (
-        <span className="ml-3 text-xs text-gray-500">
-          {progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}%
-        </span>
+        <div className="mt-2 flex items-center gap-2">
+          {/* 진행률 바 - 길이 제한 */}
+          <div className="w-32">
+            <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className="bg-blue-500 h-full rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+          {/* 진행 상태 텍스트 - 간결하게 */}
+          <span className="text-xs text-gray-500">
+            {progress.current}/{progress.total} • {progress.message || '처리 중'}
+          </span>
+        </div>
       )}
 
       {error && (
