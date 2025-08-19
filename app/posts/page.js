@@ -539,12 +539,12 @@ export default function PostsPage() {
           </div>
 
           {/* 업데이트 버튼 */}
-          <div className="mt-6">
+          <div className="mt-3">
             <UpdateButton />
           </div>
 
           {/* 검색 바 */}
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-3 flex items-center justify-between">
             <form
               onSubmit={handleSearch}
               className="flex items-center space-x-3"

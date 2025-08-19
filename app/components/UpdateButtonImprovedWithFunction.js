@@ -413,8 +413,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   }, [successMessage, isBackgroundProcessing]);
 
   return (
-    <div className="mb-2">
-      
+    <div className="inline-block">
       <button
         onClick={handleUpdatePosts}
         disabled={isLoading || isBackgroundProcessing}
@@ -467,27 +466,11 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           : "업데이트"}
       </button>
 
-      {/* 진행률 표시 - 컴팩트 버전 */}
+      {/* 진행률 표시 - 퍼센트만 표시 */}
       {(isBackgroundProcessing || progress.total > 0) && (
-        <div className="mt-2">
-          <div className="flex items-center gap-3">
-            {/* 진행률 바 */}
-            <div className="flex-1">
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div 
-                  className="bg-blue-500 h-full rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-            {/* 진행 상태 텍스트 */}
-            <div className="flex items-center gap-2 text-xs text-gray-600">
-              <span>{progress.current}/{progress.total}</span>
-              <span className="hidden sm:inline">•</span>
-              <span className="hidden sm:inline">{progress.message || '처리 중...'}</span>
-            </div>
-          </div>
-        </div>
+        <span className="ml-3 text-xs text-gray-500">
+          {progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}%
+        </span>
       )}
 
       {error && (
