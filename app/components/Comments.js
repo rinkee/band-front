@@ -291,7 +291,7 @@ const CommentsList = ({
 
       {/* 댓글 목록 */}
       <div className="divide-y divide-gray-100">
-        {sortedComments.map((comment) => {
+        {sortedComments.map((comment, currentIndex) => {
           // 제외 고객 여부 확인
           const authorName = comment.author?.name;
           const isExcludedCustomer = excludedCustomers.some(
@@ -308,9 +308,10 @@ const CommentsList = ({
           // DB 저장 여부 확인
           const isSavedInDB = savedComments[comment.comment_key] || false;
           
-          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중에 작성된 댓글이 DB에 있는 경우
-          const isMissed = !isSavedInDB && earliestSavedCommentTime && 
-                           comment.created_at < earliestSavedCommentTime;
+          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
+          const isMissed = !isSavedInDB && sortedComments.some(
+            (c, idx) => idx > currentIndex && savedComments[c.comment_key]
+          );
           
           return (
             <CommentItem 
