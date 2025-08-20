@@ -342,6 +342,7 @@ export default function PostsPage() {
       accessToken: userData.band_access_token,
       backupAccessToken: userData.band_backup_access_token, // 백업 토큰 추가
       postContent: post.content || "",
+      post: post, // 재처리를 위한 post 정보 추가
     });
     setIsCommentsModalOpen(true);
   };
@@ -693,6 +694,12 @@ export default function PostsPage() {
         accessToken={selectedPostForComments?.accessToken}
         backupAccessToken={selectedPostForComments?.backupAccessToken}
         postContent={selectedPostForComments?.postContent}
+        onEnableReprocess={() => {
+          if (selectedPostForComments?.post) {
+            handleToggleReprocess(selectedPostForComments.post, true);
+            handleCloseCommentsModal();
+          }
+        }}
       />
 
       {/* 토스트 알림 컨테이너 */}
