@@ -149,9 +149,8 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
           {!isExcludedCustomer && (
             isDbDataLoading ? (
               // DB 데이터 로딩 중
-              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full font-medium flex items-center gap-1">
-                <ArrowPathIcon className="w-3 h-3 animate-spin" />
-                확인 중
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
+                <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
               </span>
             ) : isSavedInDB ? (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
