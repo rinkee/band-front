@@ -797,6 +797,13 @@ export default function OrdersPage() {
     }
   };
 
+  // 상품명에서 날짜 부분을 제거하는 함수
+  const cleanProductName = (productName) => {
+    if (!productName) return productName;
+    // [날짜] 패턴 제거 (예: [8월18일], [08월18일], [8/18] 등)
+    return productName.replace(/^\[[\d월일/\s]+\]\s*/g, '').trim();
+  };
+
   const handleProductSelect = (productId, order) => {
     const postKey = order.post_key;
     const products = availableProducts[postKey] || [];
