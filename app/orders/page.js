@@ -55,6 +55,7 @@ import {
   TagIcon,
   CheckIcon,
   CodeBracketIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
 
 // 밴드 특수 태그 처리 함수
@@ -2374,18 +2375,18 @@ export default function OrdersPage() {
                                 e.stopPropagation(); // 행 클릭 이벤트 방지
                                 openCommentsModal(order);
                               }}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                              className="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
                               title="게시물 보기"
                             >
-                              <span className="text-xs">보기</span>
+                              <EyeIcon className="w-4 h-4" />
                             </button>
                           ) : (
                             <button
                               disabled
-                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-400 cursor-not-allowed"
+                              className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-md"
                               title="게시물 정보 없음"
                             >
-                              <span className="text-xs">-</span>
+                              <EyeIcon className="w-4 h-4 opacity-50" />
                             </button>
                           )}
                         </td>
@@ -2413,10 +2414,10 @@ export default function OrdersPage() {
                           ) : (
                             <button
                               onClick={() => handleEditStart(order)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium shadow transform hover:scale-105 transition-all duration-200"
+                              className="inline-flex items-center justify-center w-8 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow transform hover:scale-105 transition-all duration-200"
                               title="수정"
                             >
-                              수정
+                              <PencilSquareIcon className="w-4 h-4" />
                             </button>
                           )}
                         </td>
