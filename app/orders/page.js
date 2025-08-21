@@ -2188,15 +2188,11 @@ export default function OrdersPage() {
                                     </div>
                                     {date && (
                                       <div
-                                        className={`text-xs mt-0.5 ${
-                                          isAvailable
-                                            ? "text-orange-500 font-medium"
-                                            : "text-gray-500"
-                                        }`}
+                                        className="text-xs mt-0.5 text-gray-500"
                                       >
                                         [{date}]
                                         {isAvailable && (
-                                          <span className="ml-1 text-orange-600 font-bold">
+                                          <span className="ml-1 text-gray-500">
                                             ✓ 수령가능
                                           </span>
                                         )}
@@ -2680,15 +2676,11 @@ export default function OrdersPage() {
                         </div>
                         {date && (
                           <div
-                            className={`text-sm mt-1 ${
-                              isAvailable
-                                ? "text-orange-500 font-medium"
-                                : "text-gray-500"
-                            }`}
+                            className="text-sm mt-1 text-gray-500"
                           >
                             [{date}]
                             {isAvailable && (
-                              <span className="ml-1 text-orange-600 font-bold">
+                              <span className="ml-1 text-gray-500">
                                 ✓ 수령가능
                               </span>
                             )}
@@ -2952,15 +2944,11 @@ export default function OrdersPage() {
                                 </div>
                                 {date && (
                                   <div
-                                    className={`text-sm mt-1 ${
-                                      isAvailable
-                                        ? "text-orange-500 font-medium"
-                                        : "text-gray-500"
-                                    }`}
+                                    className="text-sm mt-1 text-gray-500"
                                   >
                                     [{date}]
                                     {isAvailable && (
-                                      <span className="ml-1 text-orange-600 font-bold">
+                                      <span className="ml-1 text-gray-500">
                                         ✓ 수령가능
                                       </span>
                                     )}
