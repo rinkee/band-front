@@ -756,10 +756,11 @@ export default function OrdersPage() {
   const handleEditSave = async (order) => {
     setSavingEdit(true);
     
-    // product_name이 없다면 기존 값을 사용
+    // product_name이 없다면 기존 값을 사용하고, 총 금액도 계산
     const updateData = {
       ...editValues,
-      product_name: editValues.product_name || order.product_name || '상품명 없음'
+      product_name: editValues.product_name || order.product_name || '상품명 없음',
+      total_amount: (editValues.quantity || 1) * (editValues.product_price || 0)
     };
 
     console.log('저장할 데이터:', updateData);
@@ -809,6 +810,13 @@ export default function OrdersPage() {
         product_price: selectedProduct.base_price || 0
       }));
     }
+  };
+
+  const handleQuantityChange = (quantity) => {
+    setEditValues(prev => ({
+      ...prev,
+      quantity: parseInt(quantity) || 1
+    }));
   };
 
   const handleBulkStatusUpdate = useCallback(async (newStatus) => {
@@ -2652,10 +2660,27 @@ export default function OrdersPage() {
                           </td>
 
                           <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
-                            {order.quantity || 0}
+                            {editingOrderId === order.order_id ? (
+                              <input
+                                type="number"
+                                min="1"
+                                value={editValues.quantity}
+                                onChange={(e) => handleQuantityChange(e.target.value)}
+                                className="w-12 px-1 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              order.quantity || 0
+                            )}
                           </td>
                           <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
-                            {formatCurrency(order.total_amount)}
+                            {editingOrderId === order.order_id ? (
+                              <span className="text-orange-600 font-semibold">
+                                ₩{((editValues.quantity || 1) * (editValues.product_price || 0)).toLocaleString()}
+                              </span>
+                            ) : (
+                              formatCurrency(order.total_amount)
+                            )}
                           </td>
                           <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
                             {formatDate(order.ordered_at)}
