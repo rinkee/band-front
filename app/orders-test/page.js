@@ -62,7 +62,6 @@ import {
   CodeBracketIcon,
   ClockIcon,
   EyeIcon,
-  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 
 // 밴드 특수 태그 처리 함수
