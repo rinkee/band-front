@@ -20,10 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButton"; // UpdateButton 추가
-import UpdateButtonBeta from "../components/UpdateButtonBeta"; // 베타 업데이트 버튼
-import UpdateButtonImproved from "../components/UpdateButtonImprovedWithFunction"; // function_number 분산 버전
-import UpdateButtonFrontend from "../components/UpdateButtonFrontend"; // 프론트엔드 처리 버튼
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -1863,29 +1860,22 @@ export default function OrdersPage() {
 
           {!isSidebarCollapsed && (
             <div className="p-4 space-y-6">
-              {/* 업데이트 섹션 - 심플 */}
+              {/* 업데이트 섹션 */}
               <div className="space-y-2">
-                <div className="relative">
-                  {/* 업데이트 전 현재 주문 수 저장 */}
-                  <div
-                    onClick={() => {
-                      setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                    }}
-                  >
-                    {/* UpdateButtonImproved (WithFunction 버전) 사용 - function_number 분산 처리 */}
-                    <UpdateButtonImproved />
-                    
-                    {/* 개발 환경에서만 프론트엔드 버전 버튼 표시 */}
-                    {process.env.NODE_ENV === "development" && (
-                      <div className="mt-2">
-                        <UpdateButtonFrontend mode="test" />
-                      </div>
-                    )}
-                    
-                    {/* 기존 버튼들은 주석 처리 */}
-                    {/* <UpdateButtonBeta /> */}
-                  </div>
-                </div>
+                <UpdateButton
+                  onClick={async () => {
+                    console.log("🔄 수동 업데이트 버튼 클릭");
+                    // 업데이트 전 현재 주문 수 저장
+                    setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                    await mutateOrders(undefined, { revalidate: true });
+                    await mutateProducts(undefined, { revalidate: true });
+                  }}
+                  loading={isOrdersLoading}
+                  disabled={isOrdersLoading}
+                  className="w-full"
+                >
+                  업데이트
+                </UpdateButton>
                 <div className="flex items-center justify-center text-xs text-gray-500">
                   <ClockIcon className="w-3.5 h-3.5 mr-1" />
                   {userDataFromHook?.data?.last_crawl_at

@@ -256,8 +256,7 @@ function LayoutContent({ children }) {
                     >
                       주문 관리
                     </Link>
-                    {/* 주문관리 beta 메뉴 - 임시 숨김 처리 */}
-                    {/* <Link
+                    <Link
                       href="/orders-test"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/orders-test"
@@ -269,7 +268,7 @@ function LayoutContent({ children }) {
                       <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
                         beta
                       </span>
-                    </Link> */}
+                    </Link>
                     {/* <Link
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -458,8 +457,7 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  {/* 주문관리 beta 메뉴 - 임시 숨김 처리 */}
-                  {/* <Link
+                  <Link
                     href="/orders-test"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/orders-test"
@@ -486,7 +484,7 @@ function LayoutContent({ children }) {
                         [beta]
                       </span>
                     </span>
-                  </Link> */}
+                  </Link>
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
