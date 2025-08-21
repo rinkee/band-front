@@ -11,8 +11,10 @@ export const useUpdateProgress = () => {
   return context;
 };
 
-// 세션 ID 생성/관리
+// 세션 ID 생성/관리 (클라이언트에서만 실행)
 const getSessionId = () => {
+  if (typeof window === 'undefined') return null;
+  
   let sessionId = localStorage.getItem('update_session_id');
   if (!sessionId) {
     sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -24,10 +26,17 @@ const getSessionId = () => {
 export const UpdateProgressProvider = ({ children }) => {
   // 페이지별 진행 상태 관리: { posts: {...}, products: {...}, orders: {...} }
   const [progressStates, setProgressStates] = useState({});
-  const [sessionId] = useState(getSessionId());
+  const [sessionId, setSessionId] = useState(null);
 
-  // localStorage에서 초기 상태 복원
+  // 클라이언트에서 세션 ID 초기화
   useEffect(() => {
+    setSessionId(getSessionId());
+  }, []);
+
+  // localStorage에서 초기 상태 복원 (클라이언트에서만)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     try {
       const saved = localStorage.getItem('update_progress_states');
       if (saved) {
@@ -39,8 +48,10 @@ export const UpdateProgressProvider = ({ children }) => {
     }
   }, []);
 
-  // 상태 변경 시 localStorage에 저장
+  // 상태 변경 시 localStorage에 저장 (클라이언트에서만)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     try {
       localStorage.setItem('update_progress_states', JSON.stringify(progressStates));
     } catch (error) {

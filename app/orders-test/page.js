@@ -41,7 +41,7 @@ import {
   DocumentTextIcon, // DocumentTextIcon 다시 사용
   QrCodeIcon,
   LinkIcon,
-  PencilSquareIcon,
+  PencilIcon,
   ChevronUpIcon,
   ChevronDownIcon, // PencilSquareIcon 다시 사용
   ChevronUpDownIcon,
@@ -242,7 +242,7 @@ function StatusBadge({ status, processingMethod }) {
       case "pattern":
         return <FunnelIcon className="h-2.5 w-2.5 mr-1" />;
       case "manual":
-        return <PencilSquareIcon className="h-2.5 w-2.5 mr-1" />;
+        return <PencilIcon className="h-2.5 w-2.5 mr-1" />;
       default:
         return null;
     }
@@ -2822,7 +2822,7 @@ export default function OrdersPage() {
                                   className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-r-md border border-gray-300 transition-colors"
                                   title="수정"
                                 >
-                                  <PencilSquareIcon className="w-4 h-4" />
+                                  <PencilIcon className="w-4 h-4" />
                                 </button>
                               )}
                             </div>
@@ -3258,7 +3258,7 @@ export default function OrdersPage() {
                                             className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
                                             title="수동 처리된 주문"
                                           >
-                                            <PencilSquareIcon className="w-3 h-3" />
+                                            <PencilIcon className="w-3 h-3" />
                                             <span>수동</span>
                                           </div>
                                         )}
@@ -3469,7 +3469,7 @@ export default function OrdersPage() {
                       <StatusButton
                         onClick={saveOrderDetails}
                         variant="primary"
-                        icon={PencilSquareIcon}
+                        icon={PencilIcon}
                         isLoading={false /* 필요 시 로딩 상태 추가 */}
                       >
                         변경사항 저장
