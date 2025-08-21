@@ -2782,7 +2782,7 @@ export default function OrdersPage() {
                                     e.stopPropagation(); // 행 클릭 이벤트 방지
                                     openCommentsModal(order);
                                   }}
-                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
                                   title="게시물 보기"
                                 >
                                   <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
@@ -2790,7 +2790,7 @@ export default function OrdersPage() {
                               ) : (
                                 <button
                                   disabled
-                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-md"
+                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 cursor-not-allowed rounded-md"
                                   title="게시물 정보 없음"
                                 >
                                   <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
@@ -2819,7 +2819,7 @@ export default function OrdersPage() {
                               ) : (
                                 <button
                                   onClick={() => handleEditStart(order)}
-                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
                                   title="수정"
                                 >
                                   <PencilIcon className="w-4 h-4" />
