@@ -24,12 +24,15 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
 
   // 세션에서 userId 가져오는 헬퍼 함수
   const getUserIdFromSession = () => {
-    const sessionDataString = sessionStorage.getItem("userData");
-    if (!sessionDataString) {
-      setError("로그인 정보가 필요합니다. 먼저 로그인해주세요.");
-      return null;
-    }
+    if (typeof window === 'undefined') return null;
+    
     try {
+      const sessionDataString = sessionStorage.getItem("userData");
+      if (!sessionDataString) {
+        setError("로그인 정보가 필요합니다. 먼저 로그인해주세요.");
+        return null;
+      }
+      
       const sessionUserData = JSON.parse(sessionDataString);
       const userId = sessionUserData?.userId;
       if (!userId) {
@@ -38,6 +41,7 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
       }
       return userId;
     } catch (e) {
+      console.error('getUserIdFromSession 에러:', e);
       setError("세션 정보를 처리하는 중 오류가 발생했습니다.");
       return null;
     }
@@ -149,7 +153,9 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
 
     try {
       // Context를 통해 업데이트 시작
+      console.log('업데이트 시작 시도:', { pageType, currentLimit, userId });
       const progressId = await startUpdate(pageType, currentLimit);
+      console.log('업데이트 시작 성공, progressId:', progressId);
 
       const params = new URLSearchParams();
       params.append("userId", userId);

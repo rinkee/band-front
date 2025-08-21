@@ -59,8 +59,10 @@ export const UpdateProgressProvider = ({ children }) => {
     }
   }, [progressStates]);
 
-  // Supabase Realtime 구독
+  // Supabase Realtime 구독 (sessionId가 있을 때만)
   useEffect(() => {
+    if (!sessionId) return;
+
     let subscription;
 
     const setupRealtimeSubscription = async () => {
@@ -180,10 +182,29 @@ export const UpdateProgressProvider = ({ children }) => {
   // 새로운 업데이트 시작
   const startUpdate = async (pageType, totalItems = 0) => {
     try {
+      // sessionId가 없으면 에러
+      if (!sessionId) {
+        throw new Error('Session ID가 없습니다. 페이지를 새로고침해주세요.');
+      }
+
+      // 실제 사용자 ID 가져오기
+      let userId = 'anonymous';
+      try {
+        const sessionDataString = sessionStorage.getItem("userData");
+        if (sessionDataString) {
+          const sessionUserData = JSON.parse(sessionDataString);
+          userId = sessionUserData?.userId || 'anonymous';
+        }
+      } catch (e) {
+        console.warn('사용자 데이터 가져오기 실패, anonymous 사용:', e);
+      }
+
+      console.log('업데이트 시작:', { pageType, totalItems, sessionId, userId });
+
       const { data, error } = await supabase
         .from('update_progress')
         .insert({
-          user_id: 'current_user', // 실제 사용자 ID로 변경 필요
+          user_id: userId,
           session_id: sessionId,
           current_step: pageType, // page_type을 current_step에 저장
           total_posts: totalItems,
@@ -196,13 +217,16 @@ export const UpdateProgressProvider = ({ children }) => {
         .single();
 
       if (error) {
-        console.error('Failed to start update:', error);
+        console.error('Supabase 삽입 에러:', error);
+        console.error('에러 상세:', JSON.stringify(error, null, 2));
         throw error;
       }
 
+      console.log('업데이트 시작 성공:', data);
       return data.id;
     } catch (error) {
-      console.error('Error starting update:', error);
+      console.error('업데이트 시작 에러:', error);
+      console.error('에러 상세:', JSON.stringify(error, null, 2));
       throw error;
     }
   };

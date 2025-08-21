@@ -2337,7 +2337,7 @@ export default function OrdersPage() {
 
                         {/* 작업 버튼들 */}
                         <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center space-x-0">
+                          <div className="flex items-center justify-center space-x-1">
                             {/* 게시물 보기 버튼 */}
                             {(() => {
                               // 주문 ID에서 게시물 키 추출 시도
@@ -2356,18 +2356,18 @@ export default function OrdersPage() {
                                   e.stopPropagation(); // 행 클릭 이벤트 방지
                                   openCommentsModal(order);
                                 }}
-                                className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-l-md border border-gray-300 border-r-0 transition-colors"
+                                className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
                                 title="게시물 보기"
                               >
-                                <EyeIcon className="w-4 h-4" />
+                                <EyeIcon className="w-5 h-5" />
                               </button>
                             ) : (
                               <button
                                 disabled
-                                className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-l-md border border-gray-300 border-r-0"
+                                className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-md"
                                 title="게시물 정보 없음"
                               >
-                                <EyeIcon className="w-4 h-4 opacity-50" />
+                                <EyeIcon className="w-5 h-5 opacity-50" />
                               </button>
                             )}
                             
@@ -2394,10 +2394,10 @@ export default function OrdersPage() {
                             ) : (
                               <button
                                 onClick={() => handleEditStart(order)}
-                                className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-r-md border border-gray-300 transition-colors"
+                                className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
                                 title="수정"
                               >
-                                <PencilIcon className="w-4 h-4" />
+                                <PencilIcon className="w-5 h-5" />
                               </button>
                             )}
                           </div>
