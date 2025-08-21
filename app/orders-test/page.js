@@ -61,7 +61,7 @@ import {
   CheckIcon,
   CodeBracketIcon,
   ClockIcon,
-  EyeIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 
 // 밴드 특수 태그 처리 함수
@@ -2782,10 +2782,10 @@ export default function OrdersPage() {
                                     e.stopPropagation(); // 행 클릭 이벤트 방지
                                     openCommentsModal(order);
                                   }}
-                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
                                   title="게시물 보기"
                                 >
-                                  <EyeIcon className="w-5 h-5" />
+                                  <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
                                 </button>
                               ) : (
                                 <button
@@ -2793,7 +2793,7 @@ export default function OrdersPage() {
                                   className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-md"
                                   title="게시물 정보 없음"
                                 >
-                                  <EyeIcon className="w-5 h-5 opacity-50" />
+                                  <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
                                 </button>
                               )}
                               
@@ -2819,10 +2819,10 @@ export default function OrdersPage() {
                               ) : (
                                 <button
                                   onClick={() => handleEditStart(order)}
-                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+                                  className="inline-flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
                                   title="수정"
                                 >
-                                  <PencilIcon className="w-5 h-5" />
+                                  <PencilIcon className="w-4 h-4" />
                                 </button>
                               )}
                             </div>
