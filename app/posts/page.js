@@ -9,7 +9,7 @@ import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
-import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // 업데이트 버튼 추가
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
 
 export default function PostsPage() {
   const router = useRouter();

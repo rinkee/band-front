@@ -2062,11 +2062,7 @@ export default function OrdersPage() {
                   <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     서브상태
                   </th>
-                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
-                    게시물
-                  </th>
-                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
-                    작업
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-44">
                   </th>
                 </tr>
               </thead>
@@ -2350,76 +2346,72 @@ export default function OrdersPage() {
                           })()}
                         </td>
 
-                        {/* 게시물 버튼 셀 */}
-                        <td className="py-2 pr-2 text-center w-20">
-                          {(() => {
+                        {/* 작업 버튼들 */}
+                        <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center space-x-0">
+                            {/* 게시물 보기 버튼 */}
+                            {(() => {
+                              // 주문 ID에서 게시물 키 추출 시도
+                              const extractedPostKey = extractPostKeyFromOrderId(
+                                order.order_id
+                              );
+                              const hasPostInfo =
+                                order.post_key ||
+                                order.post_number ||
+                                extractedPostKey;
 
-                            // 주문 ID에서 게시물 키 추출 시도
-                            const extractedPostKey = extractPostKeyFromOrderId(
-                              order.order_id
-                            );
-                            const hasPostInfo =
-                              order.post_key ||
-                              order.post_number ||
-                              extractedPostKey;
-
-
-                            // console.log(
-                            //   `주문 ${order.order_id} 댓글 버튼 표시:`,
-                            //   !!hasPostInfo
-                            // );
-                            return hasPostInfo;
-                          })() ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation(); // 행 클릭 이벤트 방지
-                                openCommentsModal(order);
-                              }}
-                              className="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
-                              title="게시물 보기"
-                            >
-                              <EyeIcon className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <button
-                              disabled
-                              className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-md"
-                              title="게시물 정보 없음"
-                            >
-                              <EyeIcon className="w-4 h-4 opacity-50" />
-                            </button>
-                          )}
-                        </td>
-                        {/* 편집 버튼 */}
-                        <td className="py-2 pr-2 text-center w-24" onClick={(e) => e.stopPropagation()}>
-                          {editingOrderId === order.order_id ? (
-                            <div className="flex justify-center space-x-1 animate-pulse">
+                              return hasPostInfo;
+                            })() ? (
                               <button
-                                onClick={() => handleEditSave(order)}
-                                disabled={savingEdit}
-                                className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
-                                title="저장"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // 행 클릭 이벤트 방지
+                                  openCommentsModal(order);
+                                }}
+                                className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-l-md border border-gray-300 border-r-0 transition-colors"
+                                title="게시물 보기"
                               >
-                                {savingEdit ? '저장중...' : '저장'}
+                                <EyeIcon className="w-4 h-4" />
                               </button>
+                            ) : (
                               <button
-                                onClick={handleEditCancel}
-                                disabled={savingEdit}
-                                className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
-                                title="취소"
+                                disabled
+                                className="inline-flex items-center justify-center w-8 h-8 text-gray-400 cursor-not-allowed rounded-l-md border border-gray-300 border-r-0"
+                                title="게시물 정보 없음"
                               >
-                                취소
+                                <EyeIcon className="w-4 h-4 opacity-50" />
                               </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleEditStart(order)}
-                              className="inline-flex items-center justify-center w-8 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow transform hover:scale-105 transition-all duration-200"
-                              title="수정"
-                            >
-                              <PencilSquareIcon className="w-4 h-4" />
-                            </button>
-                          )}
+                            )}
+                            
+                            {/* 편집 버튼 */}
+                            {editingOrderId === order.order_id ? (
+                              <div className="flex space-x-1 animate-pulse">
+                                <button
+                                  onClick={() => handleEditSave(order)}
+                                  disabled={savingEdit}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-r-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
+                                  title="저장"
+                                >
+                                  {savingEdit ? '저장중...' : '저장'}
+                                </button>
+                                <button
+                                  onClick={handleEditCancel}
+                                  disabled={savingEdit}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200 ml-1"
+                                  title="취소"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleEditStart(order)}
+                                className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-r-md border border-gray-300 transition-colors"
+                                title="수정"
+                              >
+                                <PencilSquareIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
 

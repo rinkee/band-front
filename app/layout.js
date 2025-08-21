@@ -7,13 +7,16 @@ import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
 import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< ScrollContext 임포트
+import { UpdateProgressProvider } from "../src/contexts/UpdateProgressContext"; // UpdateProgressContext 추가
 
 export default function RootLayoutWrapper({ children }) {
   // Provider를 사용하기 위해 래퍼 컴포넌트
   return (
-    <ScrollProvider>
-      <LayoutContent>{children}</LayoutContent>
-    </ScrollProvider>
+    <UpdateProgressProvider>
+      <ScrollProvider>
+        <LayoutContent>{children}</LayoutContent>
+      </ScrollProvider>
+    </UpdateProgressProvider>
   );
 }
 
