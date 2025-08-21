@@ -371,6 +371,13 @@ export default function OrdersPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
+  
+  // 편집 관련 상태들
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editValues, setEditValues] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState({});
+  
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [filterDateType, setFilterDateType] = useState("created"); // 날짜 필터 타입: created(주문일시) or updated(수령/변경일시)
@@ -695,6 +702,114 @@ export default function OrdersPage() {
       setTimeout(() => scrollToTop(), 100);
     }
   }, [scrollToTop]);
+
+  // 편집 관련 함수들
+  const fetchProductsForPost = async (postId) => {
+    if (availableProducts[postId]) {
+      return availableProducts[postId];
+    }
+
+    try {
+      const response = await fetch(`${window.location.origin}/api/posts/${postId}/products`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setAvailableProducts(prev => ({
+          ...prev,
+          [postId]: result.data
+        }));
+        return result.data;
+      }
+    } catch (error) {
+      console.error('상품 목록 조회 실패:', error);
+    }
+    
+    return [];
+  };
+
+  const handleEditStart = async (order) => {
+    setEditingOrderId(order.order_id);
+    setEditValues({
+      product_id: order.product_id || '',
+      product_name: order.product_name || '',
+      quantity: order.quantity || 1,
+      product_price: order.price || 0
+    });
+
+    // 해당 게시물의 상품 목록 가져오기 - post_key 사용
+    const postKey = order.post_key;
+    console.log('Edit start - order:', order);
+    console.log('Using postKey:', postKey);
+    
+    if (postKey) {
+      await fetchProductsForPost(postKey);
+    } else {
+      console.error('post_key가 없습니다:', order);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingOrderId(null);
+    setEditValues({});
+  };
+
+  const handleEditSave = async (order) => {
+    setSavingEdit(true);
+    
+    // product_name이 없다면 기존 값을 사용
+    const updateData = {
+      ...editValues,
+      product_name: editValues.product_name || order.product_name || '상품명 없음'
+    };
+
+    console.log('저장할 데이터:', updateData);
+    
+    try {
+      const response = await fetch(`${window.location.origin}/api/orders/${order.order_id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '업데이트 실패');
+      }
+
+      // 성공 시 데이터 새로고침 - DB에서 최신 데이터 가져오기
+      await mutateOrders(undefined, { revalidate: true });
+
+      setEditingOrderId(null);
+      setEditValues({});
+      
+      // 성공 알림
+      alert('주문 정보가 성공적으로 업데이트되었습니다.');
+      
+    } catch (error) {
+      console.error('주문 업데이트 에러:', error);
+      alert('주문 정보 업데이트에 실패했습니다: ' + error.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleProductSelect = (productId, order) => {
+    const postKey = order.post_key;
+    const products = availableProducts[postKey] || [];
+    const selectedProduct = products.find(p => p.product_id === productId);
+    
+    if (selectedProduct) {
+      setEditValues(prev => ({
+        ...prev,
+        product_id: productId,
+        product_name: cleanProductName(selectedProduct.title),
+        product_price: selectedProduct.base_price || 0
+      }));
+    }
+  };
 
   const handleBulkStatusUpdate = useCallback(async (newStatus) => {
     if (selectedOrderIds.length === 0) return;
@@ -2377,12 +2492,15 @@ export default function OrdersPage() {
                     <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20 bg-gray-50">
                       게시물
                     </th>
+                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                      작업
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {isOrdersLoading && !ordersData && (
                     <tr>
-                      <td colSpan="13" className="px-6 py-10 text-center">
+                      <td colSpan="14" className="px-6 py-10 text-center">
                         <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                         <span className="text-sm text-gray-500 mt-2 block">
                           주문 목록 로딩 중...
@@ -2418,11 +2536,15 @@ export default function OrdersPage() {
                       <React.Fragment key={order.order_id}>
                         <tr
                           className={`${
-                            isSelected ? "bg-orange-50" : "hover:bg-gray-50"
+                            editingOrderId === order.order_id 
+                              ? "bg-blue-50 border-l-4 border-blue-400" 
+                              : isSelected 
+                                ? "bg-orange-50" 
+                                : "hover:bg-gray-50"
                           } transition-colors group cursor-pointer ${
                             isOrdersLoading ? "opacity-70" : ""
                           }`}
-                          onClick={() => openDetailModal(order)}
+                          onClick={() => editingOrderId === order.order_id ? null : openDetailModal(order)}
                         >
                           <td
                             onClick={(e) => e.stopPropagation()}
@@ -2441,58 +2563,74 @@ export default function OrdersPage() {
                             </div>
                           </td>
                           <td
-                            className="py-2 pr-4 text-sm text-gray-700 font-medium w-44 hover:text-orange-600 hover:underline cursor-pointer" // 호버 시 색상/밑줄, 커서 포인터 추가, truncate 제거
+                            className="py-2 pr-4 text-sm text-gray-700 font-medium w-44" 
                             title={getProductNameById(order.product_id)}
-                            onClick={(e) => {
-                              // 클릭 핸들러 추가
-                              e.stopPropagation(); // 행의 onClick(모달 열기) 이벤트 전파 중단
-                              handleCellClickToSearch(
-                                getProductNameById(order.product_id)
-                              ); // 검색 함수 호출
-                              setFilterSelection("all");
-                            }}
                           >
-                            {(() => {
-                              const productName = getProductNameById(
-                                order.product_id
-                              );
-                              const { name, date } =
-                                parseProductName(productName);
-                              const isAvailable =
-                                isClient && date
-                                  ? isPickupAvailable(date)
-                                  : false;
+                            {editingOrderId === order.order_id ? (
+                              // 편집 모드
+                              <select
+                                value={editValues.product_id}
+                                onChange={(e) => handleProductSelect(e.target.value, order)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <option value="">상품을 선택하세요</option>
+                                {(availableProducts[order.post_key] || []).map(product => (
+                                  <option key={product.product_id} value={product.product_id}>
+                                    {cleanProductName(product.title)}
+                                    {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              // 일반 표시 모드
+                              <div 
+                                className="hover:text-orange-600 hover:underline cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCellClickToSearch(
+                                    getProductNameById(order.product_id)
+                                  );
+                                  setFilterSelection("all");
+                                }}
+                              >
+                                {(() => {
+                                  const productName = getProductNameById(
+                                    order.product_id
+                                  );
+                                  const { name, date } =
+                                    parseProductName(productName);
+                                  const isAvailable =
+                                    isClient && date
+                                      ? isPickupAvailable(date)
+                                      : false;
 
-                              return (
-                                <div className="flex flex-col">
-                                  <div
-                                    className={`font-medium ${
-                                      isAvailable
-                                        ? "text-orange-600 font-bold"
-                                        : ""
-                                    }`}
-                                  >
-                                    {name}
-                                  </div>
-                                  {date && (
-                                    <div
-                                      className={`text-xs mt-0.5 ${
-                                        isAvailable
-                                          ? "text-orange-500 font-medium"
-                                          : "text-gray-500"
-                                      }`}
-                                    >
-                                      [{date}]
-                                      {isAvailable && (
-                                        <span className="ml-1 text-orange-600 font-bold">
-                                          ✓ 수령가능
-                                        </span>
+                                  return (
+                                    <div className="flex flex-col">
+                                      <div
+                                        className={`font-medium ${
+                                          isAvailable
+                                            ? "text-orange-600 font-bold"
+                                            : ""
+                                        }`}
+                                      >
+                                        {name}
+                                      </div>
+                                      {date && (
+                                        <div className="text-xs mt-0.5 text-gray-500">
+                                          [{date}]
+                                          {isAvailable && (
+                                            <span className="ml-1 text-gray-500">
+                                              ✓ 수령가능
+                                            </span>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
+                                  );
+                                })()}
+                              </div>
+                            )}
                           </td>
                           <td
                             className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
@@ -2642,12 +2780,43 @@ export default function OrdersPage() {
                               </button>
                             )}
                           </td>
+                          {/* 편집 버튼 */}
+                          <td className="py-2 pr-2 text-center w-24" onClick={(e) => e.stopPropagation()}>
+                            {editingOrderId === order.order_id ? (
+                              <div className="flex justify-center space-x-1 animate-pulse">
+                                <button
+                                  onClick={() => handleEditSave(order)}
+                                  disabled={savingEdit}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
+                                  title="저장"
+                                >
+                                  {savingEdit ? '저장중...' : '저장'}
+                                </button>
+                                <button
+                                  onClick={handleEditCancel}
+                                  disabled={savingEdit}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
+                                  title="취소"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleEditStart(order)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium shadow transform hover:scale-105 transition-all duration-200"
+                                title="수정"
+                              >
+                                수정
+                              </button>
+                            )}
+                          </td>
                         </tr>
 
                         {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
                         {hasMultipleBarcodeOptions && (
                           <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                            <td colSpan="12" className="py-2 pr-2">
+                            <td colSpan="14" className="py-2 pr-2">
                               <div onClick={(e) => e.stopPropagation()}>
                                 <BarcodeOptionSelector
                                   order={order}
