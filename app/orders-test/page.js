@@ -2762,7 +2762,8 @@ export default function OrdersPage() {
                               return "-";
                             })()}
                           </td>
-
+                          {/* 작업 버튼들 */}
+                          <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center space-x-0">
                               {/* 게시물 보기 버튼 */}
                               {(() => {

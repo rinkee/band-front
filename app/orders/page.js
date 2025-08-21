@@ -20,7 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -1757,18 +1757,7 @@ export default function OrdersPage() {
               <p className="text-sm text-gray-500 mb-2">
                 등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.
               </p>
-              <UpdateButton
-                onClick={async () => {
-                  console.log("🔄 수동 업데이트 버튼 클릭");
-                  await mutateOrders(undefined, { revalidate: true });
-                  await mutateProducts(undefined, { revalidate: true });
-                }}
-                loading={isDataLoading}
-                disabled={isDataLoading}
-                className="w-full md:w-auto" // w-full md:w-auto
-              >
-                업데이트
-              </UpdateButton>
+              <UpdateButton pageType="orders" />
               {/* <p className="text-sm md:text-base text-gray-600">
               최근 업데이트:
               {userDataFromHook?.last_crawl_at

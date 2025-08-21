@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
-import { useUpdateProgress } from "../../src/contexts/UpdateProgressContext";
+import { useUpdateProgress } from "../contexts/UpdateProgressContext";
 
 const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts' }) => {
   const [error, setError] = useState("");

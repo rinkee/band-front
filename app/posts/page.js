@@ -541,7 +541,7 @@ export default function PostsPage() {
 
           {/* 업데이트 버튼 */}
           <div className="mt-3">
-            <UpdateButton />
+            <UpdateButton pageType="posts" />
           </div>
 
           {/* 검색 바 */}

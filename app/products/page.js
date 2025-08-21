@@ -17,7 +17,7 @@ import { useSWRConfig } from "swr";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ko } from "date-fns/locale";
-import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -1216,14 +1216,7 @@ export default function ProductsPage() {
           <p className="text-sm text-gray-500 mb-1">
             등록된 상품을 관리하고 바코드를 생성/수정할 수 있습니다.
           </p>
-          <UpdateButton
-            onClick={() => mutateProducts()} // mutateProducts만 호출 (필요시 다른 mutate도 추가)
-            loading={isDataLoading}
-            disabled={isDataLoading}
-            className="w-full md:w-auto" // OrdersPage와 동일한 스타일
-          >
-            업데이트
-          </UpdateButton>
+          <UpdateButton pageType="products" />
         </div>
 
         {/* 필터 섹션 */}
