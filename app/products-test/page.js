@@ -797,6 +797,9 @@ export default function ProductsPage() {
   // 상품 목록 상태 업데이트 useEffect
   useEffect(() => {
     if (productsData?.data) {
+      // 주문 수량 데이터 확인
+      console.log('상품 데이터 예시:', productsData.data[0]);
+      
       setProducts(
         productsData.data
           .slice() // Create a shallow copy before reversing
