@@ -1080,11 +1080,10 @@ export default function ProductsPage() {
     if (!ds) return "-";
     const d = new Date(ds);
     if (isNaN(d.getTime())) return "-";
-    return new Intl.DateTimeFormat("ko-KR", {
-      month: "2-digit",
-      day: "2-digit",
-      weekday: "short",
-    }).format(d);
+    // 상품명과 동일한 형식으로 표시 (예: 8월22일)
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${month}월${day}일`;
   };
   const handleProductClick = (productId) => {
     if (userData) setSelectedProductId(productId);
@@ -1713,7 +1712,20 @@ export default function ProductsPage() {
                       <td className="px-4 py-4 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}>
                         <div className="space-y-2" style={{ width: "180px" }}>
-                          {/* 바코드 입력칸 */}
+                          {/* 바코드 미리보기 - 위로 이동 */}
+                          {(editingBarcodes[product.product_id] || product.barcode) && (
+                            <div className="bg-white p-1 rounded border border-gray-200 overflow-hidden">
+                              <Barcode
+                                value={editingBarcodes[product.product_id] ?? product.barcode}
+                                height={40}
+                                width={1.2}
+                                displayValue={false}
+                                margin={0}
+                                textMargin={0}
+                              />
+                            </div>
+                          )}
+                          {/* 바코드 입력칸 - 아래로 이동 */}
                           <div className="relative">
                             <input
                               ref={el => barcodeInputRefs.current[product.product_id] = el}
@@ -1740,19 +1752,6 @@ export default function ProductsPage() {
                               </div>
                             )}
                           </div>
-                          {/* 바코드 미리보기 */}
-                          {(editingBarcodes[product.product_id] || product.barcode) && (
-                            <div className="bg-white p-1 rounded border border-gray-200 overflow-hidden">
-                              <Barcode
-                                value={editingBarcodes[product.product_id] ?? product.barcode}
-                                height={40}
-                                width={1.2}
-                                displayValue={false}
-                                margin={0}
-                                textMargin={0}
-                              />
-                            </div>
-                          )}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1764,13 +1763,26 @@ export default function ProductsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {product.pickup_date ? (
-                          <span className="font-medium">
-                            {formatDatePickup(product.pickup_date)}
-                          </span>
-                        ) : (
-                          "-"
-                        )}
+                        <div className="flex flex-col">
+                          {product.pickup_date ? (
+                            <span className="font-medium">
+                              {formatDatePickup(product.pickup_date)}
+                            </span>
+                          ) : (
+                            "-"
+                          )}
+                          {(() => {
+                            const parsed = parseProductName(product.title);
+                            if (parsed.date) {
+                              return (
+                                <span className="text-xs text-orange-600 mt-1">
+                                  (제목: {parsed.date})
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <StatusBadge status={product.status} />
