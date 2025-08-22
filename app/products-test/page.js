@@ -984,12 +984,9 @@ export default function ProductsPage() {
   const handleViewProductOrders = (productTitle) => {
     if (!productTitle) return;
 
-    // 상품명에서 날짜 부분을 제거하고 순수 상품명만 추출
-    const parsed = parseProductName(productTitle);
-    const searchTerm = parsed.name || productTitle;
-
-    // 주문 관리 페이지로 이동하면서 상품명으로 검색
-    router.push(`/orders?search=${encodeURIComponent(searchTerm)}`);
+    // 날짜를 포함한 전체 상품명으로 검색 (예: "[8월22일] 백천황도 복숭아 1박스")
+    // 이렇게 하면 해당 날짜의 상품 주문만 정확히 검색됨
+    router.push(`/orders?search=${encodeURIComponent(productTitle)}`);
   };
 
   // 게시물 주문보기 핸들러 (post_key로 검색)
