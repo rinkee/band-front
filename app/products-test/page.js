@@ -174,7 +174,7 @@ function LightCard({ children, className = "", padding = "p-6" }) {
 }
 
 // --- 바코드 컴포넌트 ---
-const Barcode = ({ value, width = 1.5, height = 40 }) => {
+const Barcode = ({ value, width = 1.5, height = 40, displayValue = true, fontSize = 12, margin = 5, textMargin = 2 }) => {
   const barcodeRef = useRef(null);
   useEffect(() => {
     if (barcodeRef.current && value) {
@@ -184,9 +184,10 @@ const Barcode = ({ value, width = 1.5, height = 40 }) => {
           lineColor: "#000",
           width: width,
           height: height,
-          displayValue: true,
-          fontSize: 12,
-          margin: 5,
+          displayValue: displayValue,
+          fontSize: fontSize,
+          margin: margin,
+          textMargin: textMargin,
           background: "#FFFFFF",
         });
       } catch (error) {
@@ -1664,13 +1665,14 @@ export default function ProductsPage() {
                           </div>
                           {/* 바코드 미리보기 */}
                           {(editingBarcodes[product.product_id] || product.barcode) && (
-                            <div className="bg-white p-2 rounded border border-gray-200">
+                            <div className="bg-white p-1 rounded border border-gray-200 overflow-hidden">
                               <Barcode
                                 value={editingBarcodes[product.product_id] ?? product.barcode}
-                                height={35}
+                                height={40}
                                 width={1.2}
-                                fontSize={0}
                                 displayValue={false}
+                                margin={0}
+                                textMargin={0}
                               />
                             </div>
                           )}
