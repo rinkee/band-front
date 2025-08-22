@@ -1448,14 +1448,14 @@ export default function ProductsPage() {
               <thead className="bg-gray-50">
                 <tr>
                   {/* Index 컬럼 추가 */}
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-16">
                     #
                   </th>
                   {/* Item Number 정렬 컬럼 추가 */}
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-20">
                     <button
                       onClick={() => handleSortChange("item_number")}
-                      className="flex items-center justify-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      className="flex items-center justify-center focus:outline-none group text-gray-700 hover:text-gray-900"
                       disabled={isDataLoading}
                     >
                       번호
@@ -1464,10 +1464,10 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sm:pl-6">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider sm:pl-6">
                     <button
                       onClick={() => handleSortChange("title")}
-                      className="flex items-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
                       disabled={isDataLoading}
                     >
                       상품명
@@ -1476,10 +1476,10 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("base_price")}
-                      className="flex items-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
                       disabled={isDataLoading}
                     >
                       가격
@@ -1488,13 +1488,16 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-48">
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    주문수량
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
                     바코드
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("created_at")}
-                      className="flex items-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
                       disabled={isDataLoading}
                     >
                       등록일
@@ -1503,10 +1506,10 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("pickup_date")}
-                      className="flex items-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
                       disabled={isDataLoading}
                     >
                       수령일
@@ -1515,10 +1518,10 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("status")}
-                      className="flex items-center focus:outline-none group text-gray-600 hover:text-gray-800"
+                      className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
                       disabled={isDataLoading}
                     >
                       상태
@@ -1527,7 +1530,7 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     작업
                   </th>
                 </tr>
@@ -1536,7 +1539,7 @@ export default function ProductsPage() {
                 {isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="9"
+                      colSpan="10"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
@@ -1547,7 +1550,7 @@ export default function ProductsPage() {
                 {!isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="9"
+                      colSpan="10"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
@@ -1574,11 +1577,11 @@ export default function ProductsPage() {
                       onClick={() => handleProductClick(product.product_id)}
                     >
                       {/* Index 표시 셀 추가 */}
-                      <td className="px-4 py-3 text-center text-sm text-gray-500">
+                      <td className="px-4 py-5 text-center text-base font-medium text-gray-600">
                         {rowNum}
                       </td>
                       {/* Item Number 표시 셀 추가 */}
-                      <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                      <td className="px-4 py-5 text-center text-base font-semibold text-gray-700">
                         {product.item_number || "-"}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
@@ -1630,8 +1633,26 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">
+                      <td className="px-4 py-5 whitespace-nowrap text-base text-gray-800 font-semibold">
                         {formatCurrency(product.base_price)}
+                      </td>
+                      <td className="px-4 py-5 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center">
+                          {product.total_order_quantity ? (
+                            <>
+                              <span className="text-lg font-bold text-orange-600">
+                                {product.total_order_quantity}개
+                              </span>
+                              {product.total_order_amount && (
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {formatCurrency(product.total_order_amount)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}>
