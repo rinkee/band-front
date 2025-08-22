@@ -1625,7 +1625,8 @@ export default function ProductsPage() {
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800">
                         {formatCurrency(product.base_price)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap"
+                          onClick={(e) => e.stopPropagation()}>
                         <div className="space-y-2" style={{ width: "150px" }}>
                           {/* 바코드 입력칸 */}
                           <div className="relative">
@@ -1636,6 +1637,7 @@ export default function ProductsPage() {
                               onChange={(e) => handleBarcodeChange(product.product_id, e.target.value)}
                               onBlur={() => handleBarcodeSave(product)}
                               onKeyDown={(e) => handleBarcodeKeyDown(e, product, index)}
+                              onClick={(e) => e.stopPropagation()}
                               placeholder="바코드 입력"
                               disabled={savingBarcodes[product.product_id]}
                               className={`w-full px-2 py-1 text-sm border rounded-md transition-all ${
