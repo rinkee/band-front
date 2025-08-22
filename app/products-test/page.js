@@ -1669,8 +1669,8 @@ export default function ProductsPage() {
                                 value={editingBarcodes[product.product_id] ?? product.barcode}
                                 height={35}
                                 width={1.2}
-                                fontSize={12}
-                                displayValue={true}
+                                fontSize={0}
+                                displayValue={false}
                               />
                             </div>
                           )}
