@@ -20,7 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // Realtime 상태 관리가 통합된 버전
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -1994,19 +1994,16 @@ export default function OrdersPage() {
               {/* 업데이트 섹션 */}
               <div className="space-y-2">
                 <UpdateButton
-                  onClick={async () => {
-                    console.log("🔄 수동 업데이트 버튼 클릭");
-                    // 업데이트 전 현재 주문 수 저장
+                  pageType="orders"
+                  totalItems={globalStatsData?.총주문수 || 0}
+                  onSuccess={() => {
+                    console.log("🔄 주문 업데이트 완료");
                     setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                    await mutateOrders(undefined, { revalidate: true });
-                    await mutateProducts(undefined, { revalidate: true });
+                    mutateOrders(undefined, { revalidate: true });
+                    mutateProducts(undefined, { revalidate: true });
                   }}
-                  loading={isOrdersLoading}
-                  disabled={isOrdersLoading}
                   className="w-full"
-                >
-                  업데이트
-                </UpdateButton>
+                />
                 <div className="flex items-center justify-center text-xs text-gray-500">
                   <ClockIcon className="w-3.5 h-3.5 mr-1" />
                   {userDataFromHook?.data?.last_crawl_at

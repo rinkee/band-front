@@ -411,8 +411,8 @@ async function processPost({
         
         logger.info(`[댓글 처리] 필터링 후 ${sortedComments.length}개 댓글 남음`);
 
-        // 6. 취소 댓글 처리
-        await processCancellationComments(
+        // 6. 취소 댓글 처리 및 필터링
+        const cancellationResult = await processCancellationComments(
           supabase,
           userId,
           sortedComments,
@@ -420,6 +420,11 @@ async function processPost({
           bandKey,
           bandNumber
         );
+        
+        // 취소 댓글을 제외한 댓글만 주문 처리에 사용
+        const commentsForOrders = cancellationResult.filteredComments || sortedComments;
+        
+        logger.info(`[취소 처리] ${cancellationResult.cancellationCount}개 취소 댓글 처리, ${commentsForOrders.length}개 댓글 주문 처리 진행`);
 
         // 7. 주문 추출
         // AI에서 추출한 keywordMappings가 있으면 사용, 없으면 기본 생성
@@ -448,7 +453,7 @@ async function processPost({
 
       const orderResult = await extractOrdersFromComments({
         postInfo,
-        comments: sortedComments,
+        comments: commentsForOrders,  // 취소 댓글이 제외된 댓글 사용
         userId,
         bandNumber,
         postId: postKey,

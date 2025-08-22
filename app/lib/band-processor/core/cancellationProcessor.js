@@ -23,7 +23,7 @@ const CANCELLATION_PATTERNS = [
  * @param {string} postKey - 게시물 키
  * @param {string} bandKey - 밴드 키
  * @param {string} bandNumber - 밴드 번호
- * @returns {Promise<number>} 처리된 취소 댓글 수
+ * @returns {Promise<Object>} 처리 결과 (filteredComments: 취소 댓글 제외 배열, cancellationCount: 처리된 취소 댓글 수)
  */
 export async function processCancellationComments(
   supabase,
@@ -42,6 +42,7 @@ export async function processCancellationComments(
     });
     
     let cancellationCount = 0;
+    const filteredComments = [];
     
     for (let i = 0; i < sortedComments.length; i++) {
       const comment = sortedComments[i];
@@ -74,6 +75,10 @@ export async function processCancellationComments(
             commentContent
           );
         }
+        // 취소 댓글은 필터링 (주문 처리에서 제외)
+      } else {
+        // 취소 댓글이 아닌 경우만 배열에 추가
+        filteredComments.push(comment);
       }
     }
     
@@ -83,11 +88,17 @@ export async function processCancellationComments(
       );
     }
     
-    return cancellationCount;
+    return {
+      filteredComments,
+      cancellationCount
+    };
   } catch (error) {
     console.error("[취소 처리] 오류 발생:", error);
-    // 에러가 발생해도 프로세스는 계속 진행
-    return 0;
+    // 에러가 발생해도 프로세스는 계속 진행 (원본 댓글 반환)
+    return {
+      filteredComments: comments,
+      cancellationCount: 0
+    };
   }
 }
 
@@ -121,9 +132,9 @@ async function cancelPreviousOrders(
     const { data: orders, error: selectError } = await supabase
       .from("orders")
       .select("order_id, status")
-      .eq("post_id", postKey)
-      .eq("customer_id", `${bandNumber}_${authorUserNo}`)
-      .eq("status", "pending");
+      .eq("post_key", postKey)
+      .eq("customer_band_id", authorUserNo)
+      .eq("status", "주문완료");
     
     if (selectError) {
       console.error("[취소 처리] 주문 조회 실패:", selectError);
@@ -142,9 +153,8 @@ async function cancelPreviousOrders(
     const { error: updateError } = await supabase
       .from("orders")
       .update({
-        status: "cancelled",
-        cancellation_time: cancellationTime,
-        cancellation_reason: cancellationComment,
+        status: "주문취소",
+        canceled_at: cancellationTime,
         updated_at: new Date().toISOString(),
       })
       .in("order_id", orderIds);
@@ -158,25 +168,26 @@ async function cancelPreviousOrders(
       `[취소 처리] ${orders.length}개 주문 취소 처리 완료 (사용자: ${authorUserNo})`
     );
     
-    // 취소 로그 기록
-    const cancellationLog = {
-      user_id: userId,
-      post_id: postKey,
-      band_number: bandNumber,
-      customer_id: `${bandNumber}_${authorUserNo}`,
-      cancelled_orders: orderIds,
-      cancellation_time: cancellationTime,
-      cancellation_comment: cancellationComment,
-      created_at: new Date().toISOString(),
-    };
-    
-    await supabase
-      .from("order_cancellation_logs")
-      .insert(cancellationLog)
-      .catch((err) => {
-        console.warn("[취소 처리] 취소 로그 기록 실패:", err);
-        // 로그 실패는 무시하고 계속 진행
-      });
+    // 취소 로그 기록 (선택적)
+    try {
+      const cancellationLog = {
+        user_id: userId,
+        post_key: postKey,
+        band_number: bandNumber,
+        customer_band_id: authorUserNo,
+        cancelled_orders: orderIds,
+        canceled_at: cancellationTime,
+        cancellation_comment: cancellationComment,
+        created_at: new Date().toISOString(),
+      };
+      
+      await supabase
+        .from("order_cancellation_logs")
+        .insert(cancellationLog);
+    } catch (err) {
+      console.warn("[취소 처리] 취소 로그 기록 실패:", err);
+      // 로그 실패는 무시하고 계속 진행
+    }
     
   } catch (error) {
     console.error(

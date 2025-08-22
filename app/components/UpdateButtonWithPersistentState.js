@@ -15,12 +15,21 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     updateProgress,
     completeUpdate,
     getProgressState,
-    hasActiveUpdate
+    hasActiveUpdate,
+    forceResetState
   } = useUpdateProgress();
 
   // 현재 페이지의 진행 상태 가져오기
   const currentProgress = getProgressState(pageType);
   const isBackgroundProcessing = hasActiveUpdate(pageType);
+
+  // 디버깅을 위한 상태 로깅
+  console.log('🔍 UpdateButton 상태:', {
+    pageType,
+    currentProgress,
+    isBackgroundProcessing,
+    timestamp: new Date().toISOString()
+  });
 
   // 세션에서 userId 가져오는 헬퍼 함수
   const getUserIdFromSession = () => {
@@ -92,6 +101,12 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
   }, [mutate]);
 
   const handleUpdatePosts = useCallback(async () => {
+    // 이미 처리 중이면 중복 실행 방지
+    if (isBackgroundProcessing) {
+      console.log('⚠️ 이미 처리 중이므로 중복 실행 방지');
+      return;
+    }
+
     setError("");
     setSuccessMessage("");
 
@@ -156,6 +171,9 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
       console.log('업데이트 시작 시도:', { pageType, currentLimit, userId });
       const progressId = await startUpdate(pageType, currentLimit);
       console.log('업데이트 시작 성공, progressId:', progressId);
+      
+      // 즉시 상태 업데이트 (Realtime이 없을 때를 위해)
+      await updateProgress(progressId, { status: 'processing' });
 
       const params = new URLSearchParams();
       params.append("userId", userId);
@@ -201,7 +219,7 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
           // 백그라운드 에러 처리
           console.error("🔴 백그라운드 처리 에러:", err);
           console.error("🔴 에러 상세:", err.response?.data);
-          completeUpdate(progressId, false);
+          // Edge Function이 이미 에러 상태로 execution_locks를 업데이트함
           handleError(err);
         });
       } else {
@@ -225,57 +243,27 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     }
   }, [bandNumber, pageType, startUpdate, completeUpdate, updateProgress, refreshSWRCache]);
 
-  // 백그라운드 진행률 시뮬레이션
+  // 백그라운드 처리 - Realtime으로 완료 감지
   const simulateProgress = (progressId, totalItems) => {
-    let currentCount = 0;
-    const increment = Math.ceil(totalItems / 10); // 10단계로 나누어 진행
-
-    const intervalId = setInterval(async () => {
-      currentCount += increment;
-      if (currentCount > totalItems) currentCount = totalItems;
-      
-      const messages = [
-        '분석 중...',
-        '추출 중...',
-        '처리 중...',
-        '저장 중...',
-        '마무리 중...'
-      ];
-      const messageIndex = Math.floor((currentCount / totalItems) * messages.length);
-      
-      try {
-        await updateProgress(progressId, {
-          processed_posts: currentCount,
-          status: currentCount >= totalItems ? 'completed' : 'processing'
-        });
-      } catch (error) {
-        console.error("진행률 업데이트 실패:", error);
-      }
-      
-      // SWR 캐시 갱신
+    console.log('🔄 백그라운드 처리 시작:', { progressId, totalItems });
+    
+    // 주기적으로 SWR 캐시만 갱신 (DB 업데이트는 Edge Function이 처리)
+    const intervalId = setInterval(() => {
       const userId = getUserIdFromSession();
       if (userId) {
         refreshSWRCache(userId);
+        console.log('🔄 SWR 캐시 갱신');
       }
-      
-      // 완료 처리
-      if (currentCount >= totalItems) {
-        try {
-          await completeUpdate(progressId, true);
-          setSuccessMessage("✨ 업데이트 완료!");
-        } catch (error) {
-          console.error("완료 처리 실패:", error);
-        }
-        clearInterval(intervalId);
-      }
-    }, 2000);
-
-    // 최대 60초 타임아웃
+    }, 10000); // 10초마다 캐시 갱신
+    
+    // 인터벌 정리를 위한 참조 저장 (Realtime으로 완료 감지 시 정리)
+    // Edge Function이 완료하면 Realtime 이벤트로 자동 완료 처리됨
+    
+    // 5분 후 안전장치 (비정상 종료 방지)
     setTimeout(() => {
       clearInterval(intervalId);
-      completeUpdate(progressId, true);
-      setSuccessMessage("✨ 업데이트 완료!");
-    }, 60000);
+      console.log('⏰ 5분 안전장치 작동 - 인터벌 정리');
+    }, 300000);
   };
 
   // 응답 처리
@@ -285,15 +273,18 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     if (response.status === 200 || response.status === 207) {
       const processedCount = responseData.data?.length || 0;
 
-      // 진행률을 100%로 업데이트
+      // Edge Function이 완료되었으므로 Realtime으로 자동 처리됨
+      console.log('✅ Edge Function 응답 수신:', { processedCount, status: response.status });
+      
+      // 로컬 상태 업데이트만 수행 (DB는 Edge Function이 이미 처리함)
       try {
         await updateProgress(progressId, {
           processed_posts: processedCount,
           status: 'completed'
         });
-        await completeUpdate(progressId, true);
+        // completeUpdate 제거 - Realtime 이벤트로 처리
       } catch (error) {
-        console.error("진행률 완료 처리 실패:", error);
+        console.error("로컬 상태 업데이트 실패:", error);
       }
 
       if (responseData.errorSummary) {
@@ -307,11 +298,8 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     } else {
       let errorMessage = responseData.message || "게시물 동기화 중 서버에서 오류가 발생했습니다.";
       setError(errorMessage);
-      try {
-        await completeUpdate(progressId, false);
-      } catch (error) {
-        console.error("실패 처리 실패:", error);
-      }
+      console.log('❌ Edge Function 에러 응답:', { status: response.status, errorMessage });
+      // Edge Function이 이미 에러 상태로 execution_locks를 업데이트함
     }
   };
 
@@ -344,15 +332,22 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     <div className="inline-block">
       <button
         onClick={handleUpdatePosts}
-        disabled={isBackgroundProcessing}
+        onDoubleClick={async () => {
+          if (isBackgroundProcessing) {
+            console.log('🔥 더블클릭으로 강제 상태 초기화');
+            await forceResetState(pageType);
+            setError("");
+            setSuccessMessage("");
+          }
+        }}
+        disabled={false} // 더블클릭을 위해 disabled 제거
         className={`
           px-8 py-2 text-white font-medium rounded-md transition-colors duration-300 ease-in-out
           focus:outline-none focus:ring-2 focus:ring-offset-2
-          disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed
           flex items-center justify-center group
           ${
             isBackgroundProcessing
-              ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-wait"
+              ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-pointer"
               : error && !successMessage
               ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400"
               : successMessage
@@ -360,6 +355,7 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
               : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500"
           }
         `}
+        title={isBackgroundProcessing ? "더블클릭으로 강제 초기화 가능" : "업데이트"}
       >
         {isBackgroundProcessing && (
           <svg
@@ -409,7 +405,7 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
           {/* 진행 상태 텍스트 - 간결하게 */}
           <span className="text-xs text-gray-500">
             {currentProgress ? 
-              `${currentProgress.processedPosts}/${currentProgress.totalPosts} • ${currentProgress.message || '처리 중'}` :
+              `${currentProgress.message || '처리 중'}` :
               '처리 중...'
             }
           </span>

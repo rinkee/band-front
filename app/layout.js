@@ -315,6 +315,11 @@ function LayoutContent({ children }) {
                     <span className="text-sm text-gray-600">
                       로그인ID: {userData?.loginId}
                     </span>
+                    {userData?.storeAddress && (
+                      <span className="text-sm text-gray-600">
+                        주소: {userData.storeAddress}
+                      </span>
+                    )}
                     {process.env.NEXT_PUBLIC_DB_NAME && (
                       <span className="text-sm text-gray-600">
                         DB: {process.env.NEXT_PUBLIC_DB_NAME}
