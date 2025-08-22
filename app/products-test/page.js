@@ -1580,24 +1580,24 @@ export default function ProductsPage() {
                       <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">
                         {product.item_number || "-"}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap sm:pl-6">
-                        <div className="flex items-center space-x-3">
-                          {/* 상품 이미지 */}
-                          <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+                      <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
+                        <div className="flex items-center space-x-4">
+                          {/* 상품 이미지 - 크기 증가 */}
+                          <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
                             {(product.post_key && postsImages[product.post_key]) ? (
                               <img
                                 src={postsImages[product.post_key]}
                                 alt={product.title}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
                                 onError={(e) => {
                                   e.target.onerror = null;
                                   e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239CA3AF'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E";
                                 }}
                               />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center">
+                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
                                 <svg
-                                  className="w-6 h-6 text-gray-400"
+                                  className="w-10 h-10 text-gray-300"
                                   fill="none"
                                   stroke="currentColor"
                                   viewBox="0 0 24 24"
@@ -1613,21 +1613,28 @@ export default function ProductsPage() {
                             )}
                           </div>
                           {/* 상품명 */}
-                          <div className="text-sm font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                            {(() => {
-                              const parsed = parseProductName(product.title);
-                              // 날짜 부분을 제거하고 순수 상품명만 표시
-                              return parsed.name || product.title || "-";
-                            })()}
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
+                              {(() => {
+                                const parsed = parseProductName(product.title);
+                                // 날짜 부분을 제거하고 순수 상품명만 표시
+                                return parsed.name || product.title || "-";
+                              })()}
+                            </div>
+                            {product.post_key && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                게시물 #{product.item_number || '-'}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">
                         {formatCurrency(product.base_price)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap"
+                      <td className="px-4 py-4 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}>
-                        <div className="space-y-2" style={{ width: "150px" }}>
+                        <div className="space-y-2" style={{ width: "180px" }}>
                           {/* 바코드 입력칸 */}
                           <div className="relative">
                             <input
@@ -1640,12 +1647,12 @@ export default function ProductsPage() {
                               onClick={(e) => e.stopPropagation()}
                               placeholder="바코드 입력"
                               disabled={savingBarcodes[product.product_id]}
-                              className={`w-full px-2 py-1 text-sm border rounded-md transition-all ${
+                              className={`w-full px-3 py-1.5 text-sm font-mono border rounded-md transition-all ${
                                 savingBarcodes[product.product_id]
                                   ? 'bg-gray-100 border-gray-300 cursor-not-allowed'
                                   : editingBarcodes[product.product_id] !== undefined
-                                  ? 'border-orange-400 bg-orange-50 focus:border-orange-500 focus:ring-1 focus:ring-orange-500'
-                                  : 'border-gray-300 hover:border-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                                  ? 'border-orange-400 bg-orange-50 focus:border-orange-500 focus:ring-2 focus:ring-orange-200'
+                                  : 'border-gray-300 hover:border-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
                               } focus:outline-none`}
                             />
                             {/* 저장 중 표시 */}
@@ -1657,17 +1664,19 @@ export default function ProductsPage() {
                           </div>
                           {/* 바코드 미리보기 */}
                           {(editingBarcodes[product.product_id] || product.barcode) && (
-                            <div className="overflow-hidden">
+                            <div className="bg-white p-2 rounded border border-gray-200">
                               <Barcode
                                 value={editingBarcodes[product.product_id] ?? product.barcode}
-                                height={25}
-                                width={1}
+                                height={35}
+                                width={1.2}
+                                fontSize={12}
+                                displayValue={true}
                               />
                             </div>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-col">
                           <span>{formatDate(product.posted_at)}</span>
                           <span className="text-xs">
@@ -1675,7 +1684,7 @@ export default function ProductsPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                         {product.pickup_date ? (
                           <span className="font-medium">
                             {formatDatePickup(product.pickup_date)}
@@ -1684,10 +1693,10 @@ export default function ProductsPage() {
                           "-"
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <StatusBadge status={product.status} />
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           {/* 상품 주문보기 버튼 */}
                           <button
