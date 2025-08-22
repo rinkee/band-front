@@ -1078,7 +1078,14 @@ export default function ProductsPage() {
   };
   const formatDatePickup = (ds) => {
     if (!ds) return "-";
-    const d = new Date(ds);
+    // UTC 날짜를 로컬 날짜로 변환하지 않고 그대로 사용
+    // DB에 저장된 날짜 문자열에서 날짜 부분만 추출
+    const dateStr = ds.split('T')[0]; // "2025-08-22" 형식
+    const [year, month, day] = dateStr.split('-');
+    
+    // Date 객체를 UTC가 아닌 로컬 시간으로 생성
+    const d = new Date(year, month - 1, day);
+    
     if (isNaN(d.getTime())) return "-";
     return new Intl.DateTimeFormat("ko-KR", {
       month: "2-digit",
