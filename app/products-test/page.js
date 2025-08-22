@@ -800,12 +800,30 @@ export default function ProductsPage() {
       // 주문 수량 데이터 확인
       console.log('상품 데이터 예시:', productsData.data[0]);
       
-      setProducts(
-        productsData.data
-          .slice() // Create a shallow copy before reversing
-          // .reverse() // Reverse the array
-          .map((p) => ({ ...p, barcode: p.barcode || "" }))
-      );
+      // 상품 ID 추출
+      const productIds = productsData.data.map(p => p.product_id).filter(Boolean);
+      
+      // 주문 통계 가져오기
+      if (productIds.length > 0) {
+        fetchProductOrderStats(productIds).then(statsMap => {
+          // 주문 통계를 상품 데이터에 추가
+          const productsWithStats = productsData.data.map(p => ({
+            ...p,
+            barcode: p.barcode || "",
+            total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
+            total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
+            order_count: statsMap[p.product_id]?.order_count || 0
+          }));
+          
+          setProducts(productsWithStats);
+        });
+      } else {
+        setProducts(
+          productsData.data
+            .slice()
+            .map((p) => ({ ...p, barcode: p.barcode || "" }))
+        );
+      }
       
       // 고유한 post_key 추출
       const postKeys = [...new Set(productsData.data
@@ -829,6 +847,42 @@ export default function ProductsPage() {
       setCurrentPage(1);
     }
   }, [productsData, productsError, currentPage, searchTerm]); // currentPage 의존성 추가
+
+  // 상품별 주문 통계 가져오기
+  const fetchProductOrderStats = async (productIds) => {
+    try {
+      // orders 테이블에서 상품별 주문 통계 계산
+      const { data, error } = await supabase
+        .from('orders')
+        .select('product_id, quantity, total_amount, status')
+        .in('product_id', productIds)
+        .neq('status', '주문취소'); // 취소된 주문 제외
+      
+      if (error) {
+        console.error('주문 통계 가져오기 오류:', error);
+        return {};
+      }
+      
+      // 상품별로 통계 집계
+      const statsMap = {};
+      productIds.forEach(productId => {
+        const productOrders = data?.filter(order => order.product_id === productId) || [];
+        const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
+        const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+        
+        statsMap[productId] = {
+          total_order_quantity: totalQuantity,
+          total_order_amount: totalAmount,
+          order_count: productOrders.length
+        };
+      });
+      
+      return statsMap;
+    } catch (error) {
+      console.error('주문 통계 가져오기 예외:', error);
+      return {};
+    }
+  };
 
   // posts 테이블에서 이미지 데이터 가져오기
   const fetchPostsImages = async (postKeys) => {
@@ -1641,7 +1695,7 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         <div className="flex flex-col items-center">
-                          {product.total_order_quantity ? (
+                          {product.total_order_quantity && product.total_order_quantity > 0 ? (
                             <>
                               <span className="text-lg font-bold text-orange-600">
                                 {product.total_order_quantity}개
@@ -1653,7 +1707,9 @@ export default function ProductsPage() {
                               )}
                             </>
                           ) : (
-                            <span className="text-sm text-gray-400">-</span>
+                            <span className="text-sm text-gray-400">
+                              주문 없음
+                            </span>
                           )}
                         </div>
                       </td>
