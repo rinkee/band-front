@@ -240,6 +240,19 @@ function LayoutContent({ children }) {
                       상품 관리
                     </Link>
                     <Link
+                      href="/products-test"
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        pathname === "/products-test"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      상품 관리{" "}
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
+                        beta
+                      </span>
+                    </Link>
+                    <Link
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/posts"
