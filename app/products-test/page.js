@@ -1080,10 +1080,11 @@ export default function ProductsPage() {
     if (!ds) return "-";
     const d = new Date(ds);
     if (isNaN(d.getTime())) return "-";
-    // 상품명과 동일한 형식으로 표시 (예: 8월22일)
-    const month = d.getMonth() + 1;
-    const day = d.getDate();
-    return `${month}월${day}일`;
+    return new Intl.DateTimeFormat("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+    }).format(d);
   };
   const handleProductClick = (productId) => {
     if (userData) setSelectedProductId(productId);
@@ -1763,26 +1764,13 @@ export default function ProductsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex flex-col">
-                          {product.pickup_date ? (
-                            <span className="font-medium">
-                              {formatDatePickup(product.pickup_date)}
-                            </span>
-                          ) : (
-                            "-"
-                          )}
-                          {(() => {
-                            const parsed = parseProductName(product.title);
-                            if (parsed.date) {
-                              return (
-                                <span className="text-xs text-orange-600 mt-1">
-                                  (제목: {parsed.date})
-                                </span>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
+                        {product.pickup_date ? (
+                          <span className="font-medium">
+                            {formatDatePickup(product.pickup_date)}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <StatusBadge status={product.status} />
