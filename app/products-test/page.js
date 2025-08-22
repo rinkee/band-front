@@ -11,6 +11,7 @@ import {
 } from "../hooks/useProductsClient";
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
+import supabase from "../lib/supabaseClient";
 
 import JsBarcode from "jsbarcode";
 import { useSWRConfig } from "swr";
@@ -636,6 +637,7 @@ export default function ProductsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
+  const [postsImages, setPostsImages] = useState({}); // post_key를 키로 하는 이미지 맵
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
@@ -797,6 +799,17 @@ export default function ProductsPage() {
           // .reverse() // Reverse the array
           .map((p) => ({ ...p, barcode: p.barcode || "" }))
       );
+      
+      // 고유한 post_key 추출
+      const postKeys = [...new Set(productsData.data
+        .map(p => p.post_key)
+        .filter(Boolean)
+      )];
+      
+      // posts 테이블에서 이미지 데이터 가져오기
+      if (postKeys.length > 0) {
+        fetchPostsImages(postKeys);
+      }
     } else if (productsError) {
       setProducts([]);
     }
@@ -809,6 +822,47 @@ export default function ProductsPage() {
       setCurrentPage(1);
     }
   }, [productsData, productsError, currentPage, searchTerm]); // currentPage 의존성 추가
+
+  // posts 테이블에서 이미지 데이터 가져오기
+  const fetchPostsImages = async (postKeys) => {
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('post_key, photos_data, image_urls')
+        .in('post_key', postKeys);
+      
+      if (error) {
+        console.error('Posts 이미지 가져오기 오류:', error);
+        return;
+      }
+      
+      // post_key를 키로 하는 이미지 맵 생성
+      const imageMap = {};
+      data?.forEach(post => {
+        let imageUrl = null;
+        
+        // photos_data에서 첫 번째 이미지 추출
+        if (post.photos_data && Array.isArray(post.photos_data)) {
+          const firstPhoto = post.photos_data[0];
+          if (firstPhoto) {
+            imageUrl = typeof firstPhoto === 'string' ? firstPhoto : firstPhoto.url;
+          }
+        }
+        // image_urls에서 첫 번째 이미지 추출
+        else if (post.image_urls && Array.isArray(post.image_urls)) {
+          imageUrl = post.image_urls[0];
+        }
+        
+        if (imageUrl) {
+          imageMap[post.post_key] = imageUrl;
+        }
+      });
+      
+      setPostsImages(imageMap);
+    } catch (error) {
+      console.error('Posts 이미지 가져오기 예외:', error);
+    }
+  };
 
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -1446,9 +1500,9 @@ export default function ProductsPage() {
                         <div className="flex items-center space-x-3">
                           {/* 상품 이미지 */}
                           <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
-                            {product.image_url ? (
+                            {(product.post_key && postsImages[product.post_key]) ? (
                               <img
-                                src={product.image_url}
+                                src={postsImages[product.post_key]}
                                 alt={product.title}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {

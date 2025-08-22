@@ -34,16 +34,10 @@ const fetchProducts = async (key) => {
   const sortBy = filters.sortBy || "posted_at";
   const ascending = filters.sortOrder === "asc";
 
-  // Supabase 쿼리 시작 - posts 테이블과 JOIN하여 이미지 데이터 가져오기
+  // Supabase 쿼리 시작
   let query = supabase
     .from("products")
-    .select(`
-      *,
-      posts:post_key (
-        photos_data,
-        image_urls
-      )
-    `, { count: "exact" })
+    .select("*", { count: "exact" })
     .eq("user_id", userId);
 
   // 상태 필터링
@@ -80,36 +74,9 @@ const fetchProducts = async (key) => {
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
 
-  // 데이터 처리 - posts의 이미지를 products에 추가
-  const processedData = (data || []).map(product => {
-    let imageUrl = null;
-    
-    // posts 데이터에서 이미지 URL 추출
-    if (product.posts) {
-      // photos_data에서 첫 번째 이미지 가져오기
-      if (product.posts.photos_data && Array.isArray(product.posts.photos_data)) {
-        const firstPhoto = product.posts.photos_data[0];
-        if (firstPhoto) {
-          imageUrl = typeof firstPhoto === 'string' ? firstPhoto : firstPhoto.url;
-        }
-      }
-      // image_urls에서 첫 번째 이미지 가져오기
-      else if (product.posts.image_urls && Array.isArray(product.posts.image_urls)) {
-        imageUrl = product.posts.image_urls[0];
-      }
-    }
-    
-    // posts 데이터를 제거하고 image_url만 추가
-    const { posts, ...productData } = product;
-    return {
-      ...productData,
-      image_url: imageUrl
-    };
-  });
-
   return {
     success: true,
-    data: processedData,
+    data: data || [],
     pagination: {
       totalItems,
       totalPages,
