@@ -638,6 +638,9 @@ export default function ProductsPage() {
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
   const [postsImages, setPostsImages] = useState({}); // post_key를 키로 하는 이미지 맵
+  const [editingBarcodes, setEditingBarcodes] = useState({}); // 편집 중인 바코드 상태
+  const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
+  const barcodeInputRefs = useRef({}); // 바코드 입력칸 ref
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
@@ -1075,6 +1078,87 @@ export default function ProductsPage() {
   // 클라이언트 사이드 mutation 함수들
   const { patchProduct, deleteProduct: deleteProductMutation } =
     useProductClientMutations();
+
+  // 바코드 변경 핸들러
+  const handleBarcodeChange = (productId, value) => {
+    // 영문, 숫자만 허용
+    const sanitizedValue = value.replace(/[^a-zA-Z0-9]/g, "");
+    setEditingBarcodes(prev => ({
+      ...prev,
+      [productId]: sanitizedValue
+    }));
+  };
+
+  // 바코드 저장 핸들러
+  const handleBarcodeSave = async (product) => {
+    const newBarcode = editingBarcodes[product.product_id];
+    
+    // 변경되지 않았으면 무시
+    if (newBarcode === undefined || newBarcode === product.barcode) {
+      return;
+    }
+
+    // 저장 중 상태 설정
+    setSavingBarcodes(prev => ({ ...prev, [product.product_id]: true }));
+
+    try {
+      // Supabase를 통한 직접 업데이트
+      const { error } = await supabase
+        .from('products')
+        .update({ barcode: newBarcode })
+        .eq('product_id', product.product_id);
+
+      if (error) throw error;
+
+      // 성공 시 상품 목록 업데이트
+      setProducts(prev => prev.map(p => 
+        p.product_id === product.product_id 
+          ? { ...p, barcode: newBarcode }
+          : p
+      ));
+      
+      // 편집 상태 초기화
+      setEditingBarcodes(prev => {
+        const newState = { ...prev };
+        delete newState[product.product_id];
+        return newState;
+      });
+      
+      showSuccess('바코드가 저장되었습니다.');
+      
+      // 데이터 새로고침
+      mutateProducts();
+    } catch (error) {
+      console.error('바코드 저장 오류:', error);
+      showError('바코드 저장에 실패했습니다.');
+    } finally {
+      // 저장 중 상태 해제
+      setSavingBarcodes(prev => {
+        const newState = { ...prev };
+        delete newState[product.product_id];
+        return newState;
+      });
+    }
+  };
+
+  // Enter 키로 다음 바코드 입력칸으로 이동
+  const handleBarcodeKeyDown = (e, product, index) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      // 현재 바코드 저장
+      handleBarcodeSave(product);
+      
+      // 다음 바코드 입력칸으로 포커스 이동
+      const nextIndex = index + 1;
+      if (nextIndex < products.length) {
+        const nextProductId = products[nextIndex].product_id;
+        setTimeout(() => {
+          barcodeInputRefs.current[nextProductId]?.focus();
+        }, 100);
+      }
+    }
+  };
 
   const updateProduct = async () => {
     if (
@@ -1542,15 +1626,43 @@ export default function ProductsPage() {
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div
-                          style={{ width: "150px" }}
-                          className="mx-auto sm:mx-0"
-                        >
-                          <Barcode
-                            value={product.barcode}
-                            height={30}
-                            width={1.2}
-                          />
+                        <div className="space-y-2" style={{ width: "150px" }}>
+                          {/* 바코드 입력칸 */}
+                          <div className="relative">
+                            <input
+                              ref={el => barcodeInputRefs.current[product.product_id] = el}
+                              type="text"
+                              value={editingBarcodes[product.product_id] ?? product.barcode ?? ''}
+                              onChange={(e) => handleBarcodeChange(product.product_id, e.target.value)}
+                              onBlur={() => handleBarcodeSave(product)}
+                              onKeyDown={(e) => handleBarcodeKeyDown(e, product, index)}
+                              placeholder="바코드 입력"
+                              disabled={savingBarcodes[product.product_id]}
+                              className={`w-full px-2 py-1 text-sm border rounded-md transition-all ${
+                                savingBarcodes[product.product_id]
+                                  ? 'bg-gray-100 border-gray-300 cursor-not-allowed'
+                                  : editingBarcodes[product.product_id] !== undefined
+                                  ? 'border-orange-400 bg-orange-50 focus:border-orange-500 focus:ring-1 focus:ring-orange-500'
+                                  : 'border-gray-300 hover:border-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                              } focus:outline-none`}
+                            />
+                            {/* 저장 중 표시 */}
+                            {savingBarcodes[product.product_id] && (
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                <LoadingSpinner className="h-4 w-4" color="text-orange-500" />
+                              </div>
+                            )}
+                          </div>
+                          {/* 바코드 미리보기 */}
+                          {(editingBarcodes[product.product_id] || product.barcode) && (
+                            <div className="overflow-hidden">
+                              <Barcode
+                                value={editingBarcodes[product.product_id] ?? product.barcode}
+                                height={25}
+                                width={1}
+                              />
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
