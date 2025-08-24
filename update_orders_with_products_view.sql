@@ -5,7 +5,7 @@
 -- 기존 뷰 삭제
 DROP VIEW IF EXISTS "public"."orders_with_products" CASCADE;
 
--- 새로운 뷰 생성 (기존 구조 유지 + band_key 추가)
+-- 새로운 뷰 생성 (기존 구조 정확히 유지 + band_key 추가)
 CREATE VIEW "public"."orders_with_products" AS
 SELECT 
     o.order_id,
@@ -29,10 +29,10 @@ SELECT
     o.selected_barcode_option,
     o.created_at,
     o.updated_at,
-    o.band_key,  -- band_key 추가
     p.title AS product_title,
     p.barcode AS product_barcode,
-    p.price_options AS product_price_options
+    p.price_options AS product_price_options,
+    o.band_key  -- band_key 추가
 FROM public.orders o
 LEFT JOIN public.products p ON o.product_id = p.product_id;
 
