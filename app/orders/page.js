@@ -649,19 +649,27 @@ export default function OrdersPage() {
   };
 
   // 편집 관련 함수들
-  const fetchProductsForPost = async (postId) => {
-    if (availableProducts[postId]) {
-      return availableProducts[postId];
+  const fetchProductsForPost = async (postId, bandKey) => {
+    // 캐시 키를 band_key와 post_key 조합으로 변경
+    const cacheKey = `${bandKey}_${postId}`;
+    
+    if (availableProducts[cacheKey]) {
+      return availableProducts[cacheKey];
     }
 
     try {
-      const response = await fetch(`${window.location.origin}/api/posts/${postId}/products`);
+      // band_key를 쿼리 파라미터로 추가
+      const url = bandKey 
+        ? `${window.location.origin}/api/posts/${postId}/products?band_key=${bandKey}`
+        : `${window.location.origin}/api/posts/${postId}/products`;
+      
+      const response = await fetch(url);
       const result = await response.json();
       
       if (result.success) {
         setAvailableProducts(prev => ({
           ...prev,
-          [postId]: result.data
+          [cacheKey]: result.data
         }));
         return result.data;
       }
@@ -681,15 +689,16 @@ export default function OrdersPage() {
       product_price: order.price || 0
     });
 
-    // 해당 게시물의 상품 목록 가져오기 - post_key 사용
+    // 해당 게시물의 상품 목록 가져오기 - post_key와 band_key 사용
     const postKey = order.post_key;
+    const bandKey = order.band_key;
     console.log('Edit start - order:', order);
-    console.log('Using postKey:', postKey);
+    console.log('Using postKey:', postKey, 'bandKey:', bandKey);
     
-    if (postKey) {
-      await fetchProductsForPost(postKey);
+    if (postKey && bandKey) {
+      await fetchProductsForPost(postKey, bandKey);
     } else {
-      console.error('post_key가 없습니다:', order);
+      console.error('post_key 또는 band_key가 없습니다:', order);
     }
   };
 
@@ -756,7 +765,9 @@ export default function OrdersPage() {
 
   const handleProductSelect = (productId, order) => {
     const postKey = order.post_key;
-    const products = availableProducts[postKey] || [];
+    const bandKey = order.band_key;
+    const cacheKey = `${bandKey}_${postKey}`;
+    const products = availableProducts[cacheKey] || [];
     const selectedProduct = products.find(p => p.product_id === productId);
     
     if (selectedProduct) {
@@ -2132,7 +2143,7 @@ export default function OrdersPage() {
                               onClick={(e) => e.stopPropagation()}
                             >
                               <option value="">상품을 선택하세요</option>
-                              {(availableProducts[order.post_key] || []).map(product => (
+                              {(availableProducts[`${order.band_key}_${order.post_key}`] || []).map(product => (
                                 <option key={product.product_id} value={product.product_id}>
                                   {cleanProductName(product.title)}
                                   {product.base_price && ` (₩${product.base_price.toLocaleString()})`}

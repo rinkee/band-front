@@ -11,8 +11,9 @@ export async function GET(request, { params }) {
     const { postId } = await params; // Next.js 15에서 params를 await해야 함
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('user_id');
+    const bandKey = searchParams.get('band_key'); // band_key 파라미터 추가
 
-    console.log('Products API - postId:', postId, 'userId:', userId);
+    console.log('Products API - postId:', postId, 'userId:', userId, 'bandKey:', bandKey);
 
     if (!postId) {
       return NextResponse.json({
@@ -20,13 +21,20 @@ export async function GET(request, { params }) {
       }, { status: 400 });
     }
 
-    // 해당 게시물(post)에 속한 모든 상품 조회 - post_key로 조회
-    const { data, error } = await supabase
+    // 해당 게시물(post)에 속한 모든 상품 조회 - post_key와 band_key로 조회
+    let query = supabase
       .from('products')
       .select('product_id, title, base_price, quantity, stock_quantity, is_closed, post_key, item_number')
       .eq('post_key', postId) // post_key로 조회
       .eq('is_closed', false) // 판매 중인 상품만
       .order('item_number', { ascending: true }); // item_number로 정렬
+    
+    // band_key가 제공된 경우에만 필터 추가
+    if (bandKey) {
+      query = query.eq('band_key', bandKey);
+    }
+
+    const { data, error } = await query;
 
     console.log('Products query result:', { data, error });
 
