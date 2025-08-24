@@ -194,6 +194,7 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 // --- 상태 배지 ---
 function StatusBadge({ status, processingMethod }) {
   let bgColor, textColor;
+  
   switch (status) {
     case "수령완료":
       bgColor = "bg-green-100";
