@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -153,9 +153,15 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                 <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
               </span>
             ) : isSavedInDB ? (
-              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
-                ✓ 주문 처리됨
-              </span>
+              orderStatus === "주문취소" ? (
+                <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+                  ✓ 취소 처리됨
+                </span>
+              ) : (
+                <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+                  ✓ 주문 처리됨
+                </span>
+              )
             ) : isMissed ? (
               // 누락된 주문 (이후 댓글이 DB에 있음)
               <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
@@ -237,9 +243,10 @@ const CommentsList = ({
       
       if (isExcludedCustomer) return false;
       
-      const isSavedInDB = savedComments[comment.comment_key] || false;
+      const savedComment = savedComments[comment.comment_key];
+      const isSavedInDB = savedComment?.isSaved || false;
       const isMissed = !isSavedInDB && sortedComments.some(
-        (c, idx) => idx > currentIndex && savedComments[c.comment_key]
+        (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
       );
       
       return isMissed;
@@ -249,7 +256,7 @@ const CommentsList = ({
   // 가장 이른 저장된 댓글의 시간 찾기
   const earliestSavedCommentTime = useMemo(() => {
     const savedTimes = comments
-      .filter(comment => savedComments[comment.comment_key])
+      .filter(comment => savedComments[comment.comment_key]?.isSaved)
       .map(comment => comment.created_at);
     
     if (savedTimes.length === 0) return null;
@@ -376,12 +383,14 @@ const CommentsList = ({
             }
           );
           
-          // DB 저장 여부 확인
-          const isSavedInDB = savedComments[comment.comment_key] || false;
+          // DB 저장 여부 및 상태 확인
+          const savedComment = savedComments[comment.comment_key];
+          const isSavedInDB = savedComment?.isSaved || false;
+          const orderStatus = savedComment?.status || null;
           
           // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
           const isMissed = !isSavedInDB && sortedComments.some(
-            (c, idx) => idx > currentIndex && savedComments[c.comment_key]
+            (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
           );
           
           return (
@@ -392,6 +401,7 @@ const CommentsList = ({
               isSavedInDB={isSavedInDB}
               isMissed={isMissed}
               isDbDataLoading={isDbDataLoading}
+              orderStatus={orderStatus}
             />
           );
         })}

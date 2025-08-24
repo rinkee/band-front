@@ -194,6 +194,8 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 // --- 상태 배지 ---
 function StatusBadge({ status, processingMethod }) {
   let bgColor, textColor;
+  let displayText = status; // 기본적으로 status 그대로 표시
+  
   switch (status) {
     case "수령완료":
       bgColor = "bg-green-100";
@@ -202,6 +204,7 @@ function StatusBadge({ status, processingMethod }) {
     case "주문취소":
       bgColor = "bg-red-100";
       textColor = "text-red-700";
+      displayText = "취소 처리됨"; // 주문취소를 취소 처리됨으로 표시
       break;
     case "주문완료":
       bgColor = "bg-blue-100";
@@ -247,7 +250,7 @@ function StatusBadge({ status, processingMethod }) {
       className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
     >
       {getProcessingIcon()}
-      {status}
+      {displayText}
     </span>
   );
 }
@@ -430,7 +433,7 @@ export default function OrdersPage() {
     { value: "주문완료", label: "주문완료" },
     { value: "수령완료", label: "수령완료" },
     { value: "미수령", label: "미수령" },
-    { value: "주문취소", label: "주문취소" },
+    { value: "주문취소", label: "취소 처리됨" },
     { value: "결제완료", label: "결제완료" },
     { value: "확인필요", label: "확인필요" },
   ];
