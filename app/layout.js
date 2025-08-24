@@ -239,7 +239,7 @@ function LayoutContent({ children }) {
                     >
                       상품 관리
                     </Link>
-                    <Link
+                    {/* <Link
                       href="/products-test"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/products-test"
@@ -251,7 +251,7 @@ function LayoutContent({ children }) {
                       <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
                         beta
                       </span>
-                    </Link>
+                    </Link> */}
                     <Link
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
