@@ -638,7 +638,7 @@ export default function ProductsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
-  const [postsImages, setPostsImages] = useState({}); // post_key를 키로 하는 이미지 맵
+  const [postsImages, setPostsImages] = useState({}); // band_key_post_key를 키로 하는 이미지 맵
   const [editingBarcodes, setEditingBarcodes] = useState({}); // 편집 중인 바코드 상태
   const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
   const barcodeInputRefs = useRef({}); // 바코드 입력칸 ref
@@ -825,15 +825,19 @@ export default function ProductsPage() {
         );
       }
       
-      // 고유한 post_key 추출
-      const postKeys = [...new Set(productsData.data
-        .map(p => p.post_key)
-        .filter(Boolean)
-      )];
+      // 고유한 band_key와 post_key 조합 추출
+      const postKeyPairs = productsData.data
+        .filter(p => p.band_key && p.post_key)
+        .map(p => ({ band_key: p.band_key, post_key: p.post_key }));
+      
+      // 중복 제거를 위한 고유 키 생성
+      const uniquePairs = Array.from(
+        new Map(postKeyPairs.map(item => [`${item.band_key}_${item.post_key}`, item])).values()
+      );
       
       // posts 테이블에서 이미지 데이터 가져오기
-      if (postKeys.length > 0) {
-        fetchPostsImages(postKeys);
+      if (uniquePairs.length > 0) {
+        fetchPostsImages(uniquePairs);
       }
     } else if (productsError) {
       setProducts([]);
@@ -885,19 +889,28 @@ export default function ProductsPage() {
   };
 
   // posts 테이블에서 이미지 데이터 가져오기
-  const fetchPostsImages = async (postKeys) => {
+  const fetchPostsImages = async (postKeyPairs) => {
     try {
-      const { data, error } = await supabase
+      // OR 조건으로 각 band_key와 post_key 조합 매칭
+      let query = supabase
         .from('posts')
-        .select('post_key, photos_data, image_urls')
-        .in('post_key', postKeys);
+        .select('band_key, post_key, photos_data, image_urls');
+      
+      // OR 조건 생성
+      const orConditions = postKeyPairs.map(pair => 
+        `band_key.eq.${pair.band_key},post_key.eq.${pair.post_key}`
+      ).join(',');
+      
+      query = query.or(orConditions);
+      
+      const { data, error } = await query;
       
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
         return;
       }
       
-      // post_key를 키로 하는 이미지 맵 생성
+      // band_key_post_key를 키로 하는 이미지 맵 생성
       const imageMap = {};
       data?.forEach(post => {
         let imageUrl = null;
@@ -915,7 +928,9 @@ export default function ProductsPage() {
         }
         
         if (imageUrl) {
-          imageMap[post.post_key] = imageUrl;
+          // band_key와 post_key 조합으로 키 생성
+          const key = `${post.band_key}_${post.post_key}`;
+          imageMap[key] = imageUrl;
         }
       });
       
@@ -1649,9 +1664,9 @@ export default function ProductsPage() {
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
                           <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
-                            {(product.post_key && postsImages[product.post_key]) ? (
+                            {(product.band_key && product.post_key && postsImages[`${product.band_key}_${product.post_key}`]) ? (
                               <img
-                                src={postsImages[product.post_key]}
+                                src={postsImages[`${product.band_key}_${product.post_key}`]}
                                 alt={product.title}
                                 className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
                                 onError={(e) => {
