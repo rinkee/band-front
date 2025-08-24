@@ -155,7 +155,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             ) : isSavedInDB ? (
               orderStatus === "주문취소" ? (
                 <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
-                  ✓ 취소 처리됨
+                  ✓ 주문취소
                 </span>
               ) : (
                 <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">

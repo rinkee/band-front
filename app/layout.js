@@ -328,9 +328,9 @@ function LayoutContent({ children }) {
                     <span className="text-sm text-gray-600">
                       로그인ID: {userData?.loginId}
                     </span>
-                    {userData?.storeAddress && (
+                    {userData?.store_name && (
                       <span className="text-sm text-gray-600">
-                        주소: {userData.storeAddress}
+                        매장: {userData.store_name}
                       </span>
                     )}
                     {process.env.NEXT_PUBLIC_DB_NAME && (
