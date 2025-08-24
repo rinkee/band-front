@@ -20,7 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // UpdateButton function_number 분산 버전
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -38,7 +38,7 @@ import {
   DocumentTextIcon, // DocumentTextIcon 다시 사용
   QrCodeIcon,
   LinkIcon,
-  PencilSquareIcon,
+  PencilIcon,
   ChevronUpIcon,
   ChevronDownIcon, // PencilSquareIcon 다시 사용
   ChevronUpDownIcon,
@@ -55,6 +55,7 @@ import {
   TagIcon,
   CheckIcon,
   CodeBracketIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 
 // 밴드 특수 태그 처리 함수
@@ -235,7 +236,7 @@ function StatusBadge({ status, processingMethod }) {
       case "pattern":
         return <FunnelIcon className="h-2.5 w-2.5 mr-1" />;
       case "manual":
-        return <PencilSquareIcon className="h-2.5 w-2.5 mr-1" />;
+        return <PencilIcon className="h-2.5 w-2.5 mr-1" />;
       default:
         return null;
     }
@@ -1756,18 +1757,7 @@ export default function OrdersPage() {
               <p className="text-sm text-gray-500 mb-2">
                 등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.
               </p>
-              <UpdateButton
-                onClick={async () => {
-                  console.log("🔄 수동 업데이트 버튼 클릭");
-                  await mutateOrders(undefined, { revalidate: true });
-                  await mutateProducts(undefined, { revalidate: true });
-                }}
-                loading={isDataLoading}
-                disabled={isDataLoading}
-                className="w-full md:w-auto" // w-full md:w-auto
-              >
-                업데이트
-              </UpdateButton>
+              <UpdateButton pageType="orders" />
               {/* <p className="text-sm md:text-base text-gray-600">
               최근 업데이트:
               {userDataFromHook?.last_crawl_at
@@ -2061,11 +2051,7 @@ export default function OrdersPage() {
                   <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
                     서브상태
                   </th>
-                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
-                    게시물
-                  </th>
-                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
-                    작업
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-44">
                   </th>
                 </tr>
               </thead>
@@ -2188,15 +2174,11 @@ export default function OrdersPage() {
                                     </div>
                                     {date && (
                                       <div
-                                        className={`text-xs mt-0.5 ${
-                                          isAvailable
-                                            ? "text-orange-500 font-medium"
-                                            : "text-gray-500"
-                                        }`}
+                                        className="text-xs mt-0.5 text-gray-500"
                                       >
                                         [{date}]
                                         {isAvailable && (
-                                          <span className="ml-1 text-orange-600 font-bold">
+                                          <span className="ml-1 text-gray-500">
                                             ✓ 수령가능
                                           </span>
                                         )}
@@ -2353,76 +2335,72 @@ export default function OrdersPage() {
                           })()}
                         </td>
 
-                        {/* 게시물 버튼 셀 */}
-                        <td className="py-2 pr-2 text-center w-20">
-                          {(() => {
+                        {/* 작업 버튼들 */}
+                        <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center space-x-1">
+                            {/* 게시물 보기 버튼 */}
+                            {(() => {
+                              // 주문 ID에서 게시물 키 추출 시도
+                              const extractedPostKey = extractPostKeyFromOrderId(
+                                order.order_id
+                              );
+                              const hasPostInfo =
+                                order.post_key ||
+                                order.post_number ||
+                                extractedPostKey;
 
-                            // 주문 ID에서 게시물 키 추출 시도
-                            const extractedPostKey = extractPostKeyFromOrderId(
-                              order.order_id
-                            );
-                            const hasPostInfo =
-                              order.post_key ||
-                              order.post_number ||
-                              extractedPostKey;
-
-
-                            // console.log(
-                            //   `주문 ${order.order_id} 댓글 버튼 표시:`,
-                            //   !!hasPostInfo
-                            // );
-                            return hasPostInfo;
-                          })() ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation(); // 행 클릭 이벤트 방지
-                                openCommentsModal(order);
-                              }}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
-                              title="게시물 보기"
-                            >
-                              <span className="text-xs">보기</span>
-                            </button>
-                          ) : (
-                            <button
-                              disabled
-                              className="inline-flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-400 cursor-not-allowed"
-                              title="게시물 정보 없음"
-                            >
-                              <span className="text-xs">-</span>
-                            </button>
-                          )}
-                        </td>
-                        {/* 편집 버튼 */}
-                        <td className="py-2 pr-2 text-center w-24" onClick={(e) => e.stopPropagation()}>
-                          {editingOrderId === order.order_id ? (
-                            <div className="flex justify-center space-x-1 animate-pulse">
+                              return hasPostInfo;
+                            })() ? (
                               <button
-                                onClick={() => handleEditSave(order)}
-                                disabled={savingEdit}
-                                className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
-                                title="저장"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // 행 클릭 이벤트 방지
+                                  openCommentsModal(order);
+                                }}
+                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                                title="게시물 보기"
                               >
-                                {savingEdit ? '저장중...' : '저장'}
+                                <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
                               </button>
+                            ) : (
                               <button
-                                onClick={handleEditCancel}
-                                disabled={savingEdit}
-                                className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
-                                title="취소"
+                                disabled
+                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 cursor-not-allowed rounded-md"
+                                title="게시물 정보 없음"
                               >
-                                취소
+                                <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
                               </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleEditStart(order)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium shadow transform hover:scale-105 transition-all duration-200"
-                              title="수정"
-                            >
-                              수정
-                            </button>
-                          )}
+                            )}
+                            
+                            {/* 편집 버튼 */}
+                            {editingOrderId === order.order_id ? (
+                              <div className="flex space-x-1 animate-pulse">
+                                <button
+                                  onClick={() => handleEditSave(order)}
+                                  disabled={savingEdit}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-r-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
+                                  title="저장"
+                                >
+                                  {savingEdit ? '저장중...' : '저장'}
+                                </button>
+                                <button
+                                  onClick={handleEditCancel}
+                                  disabled={savingEdit}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200 ml-1"
+                                  title="취소"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleEditStart(order)}
+                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                                title="수정"
+                              >
+                                <PencilIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
 
@@ -2680,15 +2658,11 @@ export default function OrdersPage() {
                         </div>
                         {date && (
                           <div
-                            className={`text-sm mt-1 ${
-                              isAvailable
-                                ? "text-orange-500 font-medium"
-                                : "text-gray-500"
-                            }`}
+                            className="text-sm mt-1 text-gray-500"
                           >
                             [{date}]
                             {isAvailable && (
-                              <span className="ml-1 text-orange-600 font-bold">
+                              <span className="ml-1 text-gray-500">
                                 ✓ 수령가능
                               </span>
                             )}
@@ -2952,15 +2926,11 @@ export default function OrdersPage() {
                                 </div>
                                 {date && (
                                   <div
-                                    className={`text-sm mt-1 ${
-                                      isAvailable
-                                        ? "text-orange-500 font-medium"
-                                        : "text-gray-500"
-                                    }`}
+                                    className="text-sm mt-1 text-gray-500"
                                   >
                                     [{date}]
                                     {isAvailable && (
-                                      <span className="ml-1 text-orange-600 font-bold">
+                                      <span className="ml-1 text-gray-500">
                                         ✓ 수령가능
                                       </span>
                                     )}

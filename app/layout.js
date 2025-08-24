@@ -7,13 +7,16 @@ import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
 import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< ScrollContext 임포트
+import { UpdateProgressProvider } from "./contexts/UpdateProgressContext"; // UpdateProgressContext 추가
 
 export default function RootLayoutWrapper({ children }) {
   // Provider를 사용하기 위해 래퍼 컴포넌트
   return (
-    <ScrollProvider>
-      <LayoutContent>{children}</LayoutContent>
-    </ScrollProvider>
+    <UpdateProgressProvider>
+      <ScrollProvider>
+        <LayoutContent>{children}</LayoutContent>
+      </ScrollProvider>
+    </UpdateProgressProvider>
   );
 }
 
@@ -236,6 +239,19 @@ function LayoutContent({ children }) {
                     >
                       상품 관리
                     </Link>
+                    {/* <Link
+                      href="/products-test"
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                        pathname === "/products-test"
+                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      상품 관리{" "}
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
+                        beta
+                      </span>
+                    </Link> */}
                     <Link
                       href="/posts"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -256,8 +272,7 @@ function LayoutContent({ children }) {
                     >
                       주문 관리
                     </Link>
-                    {/* 주문관리 beta 메뉴 - 임시 숨김 처리 */}
-                    {/* <Link
+                    <Link
                       href="/orders-test"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/orders-test"
@@ -269,7 +284,7 @@ function LayoutContent({ children }) {
                       <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
                         beta
                       </span>
-                    </Link> */}
+                    </Link>
                     {/* <Link
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -313,6 +328,11 @@ function LayoutContent({ children }) {
                     <span className="text-sm text-gray-600">
                       로그인ID: {userData?.loginId}
                     </span>
+                    {userData?.storeAddress && (
+                      <span className="text-sm text-gray-600">
+                        주소: {userData.storeAddress}
+                      </span>
+                    )}
                     {process.env.NEXT_PUBLIC_DB_NAME && (
                       <span className="text-sm text-gray-600">
                         DB: {process.env.NEXT_PUBLIC_DB_NAME}
@@ -458,8 +478,7 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  {/* 주문관리 beta 메뉴 - 임시 숨김 처리 */}
-                  {/* <Link
+                  <Link
                     href="/orders-test"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/orders-test"
@@ -486,7 +505,7 @@ function LayoutContent({ children }) {
                         [beta]
                       </span>
                     </span>
-                  </Link> */}
+                  </Link>
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${

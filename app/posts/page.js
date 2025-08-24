@@ -9,7 +9,7 @@ import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
-import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // 업데이트 버튼 추가
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
 
 export default function PostsPage() {
   const router = useRouter();
@@ -342,6 +342,7 @@ export default function PostsPage() {
       accessToken: userData.band_access_token,
       backupAccessToken: userData.band_backup_access_token, // 백업 토큰 추가
       postContent: post.content || "",
+      post: post, // 재처리를 위한 post 정보 추가
     });
     setIsCommentsModalOpen(true);
   };
@@ -539,12 +540,12 @@ export default function PostsPage() {
           </div>
 
           {/* 업데이트 버튼 */}
-          <div className="mt-6">
-            <UpdateButton />
+          <div className="mt-3">
+            <UpdateButton pageType="posts" />
           </div>
 
           {/* 검색 바 */}
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-3 flex items-center justify-between">
             <form
               onSubmit={handleSearch}
               className="flex items-center space-x-3"
@@ -693,6 +694,12 @@ export default function PostsPage() {
         accessToken={selectedPostForComments?.accessToken}
         backupAccessToken={selectedPostForComments?.backupAccessToken}
         postContent={selectedPostForComments?.postContent}
+        onEnableReprocess={() => {
+          if (selectedPostForComments?.post) {
+            handleToggleReprocess(selectedPostForComments.post, true);
+            handleCloseCommentsModal();
+          }
+        }}
       />
 
       {/* 토스트 알림 컨테이너 */}

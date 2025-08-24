@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -147,7 +147,12 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed }) => 
           )}
           {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
           {!isExcludedCustomer && (
-            isSavedInDB ? (
+            isDbDataLoading ? (
+              // DB 데이터 로딩 중
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
+                <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+              </span>
+            ) : isSavedInDB ? (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
                 ✓ 주문 처리됨
               </span>
@@ -206,8 +211,40 @@ const CommentsList = ({
   shouldScrollToBottom = false,
   excludedCustomers = [],
   savedComments = {},
+  onEnableReprocess, // 재처리 활성화 콜백 추가
 }) => {
   const commentsEndRef = useRef(null);
+  
+  // DB 데이터 로딩 상태 추적
+  const [isDbDataLoading, setIsDbDataLoading] = useState(true);
+  
+  // 누락 주문 여부 확인 - DB 데이터 로딩 완료 후에만 실행
+  const hasMissedOrders = useMemo(() => {
+    if (!comments || comments.length === 0 || isDbDataLoading) return false;
+    
+    const sortedComments = [...comments].sort((a, b) => a.created_at - b.created_at);
+    
+    return sortedComments.some((comment, currentIndex) => {
+      const authorName = comment.author?.name;
+      const isExcludedCustomer = excludedCustomers.some(
+        (excluded) => {
+          if (typeof excluded === 'string') {
+            return excluded === authorName;
+          }
+          return excluded.name === authorName;
+        }
+      );
+      
+      if (isExcludedCustomer) return false;
+      
+      const isSavedInDB = savedComments[comment.comment_key] || false;
+      const isMissed = !isSavedInDB && sortedComments.some(
+        (c, idx) => idx > currentIndex && savedComments[c.comment_key]
+      );
+      
+      return isMissed;
+    });
+  }, [comments, savedComments, excludedCustomers, isDbDataLoading]);
   
   // 가장 이른 저장된 댓글의 시간 찾기
   const earliestSavedCommentTime = useMemo(() => {
@@ -218,6 +255,20 @@ const CommentsList = ({
     if (savedTimes.length === 0) return null;
     return Math.min(...savedTimes);
   }, [comments, savedComments]);
+
+  // savedComments가 변경되면 DB 데이터 로딩 완료로 설정
+  useEffect(() => {
+    if (savedComments && Object.keys(savedComments).length >= 0) {
+      setIsDbDataLoading(false);
+    }
+  }, [savedComments]);
+
+  // 새로운 댓글이 로드되면 DB 데이터 로딩 상태 초기화
+  useEffect(() => {
+    if (comments && comments.length > 0) {
+      setIsDbDataLoading(true);
+    }
+  }, [comments]);
 
   // 댓글이 업데이트될 때 조건부로 스크롤 이동
   useEffect(() => {
@@ -269,6 +320,26 @@ const CommentsList = ({
 
   return (
     <div>
+      {/* 누락 주문 발견 시 재처리 알림 */}
+      {hasMissedOrders && onEnableReprocess && (
+        <div className="p-4 border-b border-gray-100 bg-orange-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-orange-600 font-medium">⚠ 누락된 주문이 발견되었습니다</span>
+              <span className="text-sm text-orange-500">
+                자동 재처리를 활성화하여 누락 주문을 복구할 수 있습니다
+              </span>
+            </div>
+            <button
+              onClick={onEnableReprocess}
+              className="px-3 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 font-medium transition-colors"
+            >
+              재처리 활성화
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* 더보기 버튼 - 댓글 리스트 위에 위치 */}
       {showLoadMore && (
         <div className="p-4 border-b border-gray-100 bg-gray-50">
@@ -291,7 +362,7 @@ const CommentsList = ({
 
       {/* 댓글 목록 */}
       <div className="divide-y divide-gray-100">
-        {sortedComments.map((comment) => {
+        {sortedComments.map((comment, currentIndex) => {
           // 제외 고객 여부 확인
           const authorName = comment.author?.name;
           const isExcludedCustomer = excludedCustomers.some(
@@ -308,9 +379,10 @@ const CommentsList = ({
           // DB 저장 여부 확인
           const isSavedInDB = savedComments[comment.comment_key] || false;
           
-          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중에 작성된 댓글이 DB에 있는 경우
-          const isMissed = !isSavedInDB && earliestSavedCommentTime && 
-                           comment.created_at < earliestSavedCommentTime;
+          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
+          const isMissed = !isSavedInDB && sortedComments.some(
+            (c, idx) => idx > currentIndex && savedComments[c.comment_key]
+          );
           
           return (
             <CommentItem 
@@ -319,6 +391,7 @@ const CommentsList = ({
               isExcludedCustomer={isExcludedCustomer}
               isSavedInDB={isSavedInDB}
               isMissed={isMissed}
+              isDbDataLoading={isDbDataLoading}
             />
           );
         })}
@@ -342,6 +415,7 @@ const CommentsModal = ({
   tryKeyIndex = 0,
   order,
   onFailover,
+  onEnableReprocess, // 재처리 활성화 콜백 추가
 }) => {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -653,6 +727,7 @@ const CommentsModal = ({
                 shouldScrollToBottom={shouldScrollToBottom}
                 excludedCustomers={excludedCustomers}
                 savedComments={savedComments}
+                onEnableReprocess={onEnableReprocess}
               />
             </div>
           </div>
