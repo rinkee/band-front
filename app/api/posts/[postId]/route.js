@@ -58,7 +58,7 @@ export async function GET(request, { params }) {
       return Response.json({ error: "Post not found" }, { status: 404 });
     }
 
-    // 2. 관련 상품들 조회
+    // 2. 관련 상품들 조회 - band_key도 함께 필터링
     const { data: products, error: productsError } = await supabase
       .from("products")
       .select(
@@ -78,7 +78,8 @@ export async function GET(request, { params }) {
       `
       )
       .eq("user_id", userId)
-      .eq("post_key", post.post_key);
+      .eq("post_key", post.post_key)
+      .eq("band_key", post.band_key);
 
     if (productsError) {
       console.error("Products query error:", productsError);
