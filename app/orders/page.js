@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, forwardRef, useMemo, useCallback } from "react"; // React Fragment 사용을 위해 React 추가
+import React, { useState, useEffect, useRef, forwardRef, useMemo } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -20,14 +20,11 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonWithPersistentState"; // Realtime 상태 관리가 통합된 버전
+import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
-import OrderStatsBar from "../components/OrderStatsBar"; // 새로운 통계 바 컴포넌트
-import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
-import OrderStatsSidebar from "../components/OrderStatsSidebar"; // 사이드바 통계 컴포넌트
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -48,8 +45,6 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowUturnLeftIcon, // 추가: 검색 초기화 아이콘
   ArrowPathIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   UserCircleIcon,
   ChatBubbleBottomCenterTextIcon,
   ArrowTopRightOnSquareIcon,
@@ -60,7 +55,6 @@ import {
   TagIcon,
   CheckIcon,
   CodeBracketIcon,
-  ClockIcon,
   ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 
@@ -286,9 +280,7 @@ const Barcode = ({ value, width = 2, height = 100, fontSize = 16 }) => {
           background: "transparent",
         });
       } catch (error) {
-        if (process.env.NODE_ENV === "development") {
-          console.error("Barcode Error:", error);
-        }
+        console.error("Barcode Error:", error);
         if (barcodeRef.current) barcodeRef.current.innerHTML = "";
       }
     } else if (barcodeRef.current) barcodeRef.current.innerHTML = "";
@@ -345,8 +337,6 @@ const getStatusIcon = (status) => {
 
 // --- 메인 페이지 컴포넌트 ---
 export default function OrdersPage() {
-  // Feature flag: 새로운 통계 바 사용 여부
-  const useNewStatsBar = true; // false로 변경하면 기존 UI 사용
   const router = useRouter();
   const searchParams = useSearchParams();
   const { scrollToTop } = useScroll();
@@ -355,10 +345,6 @@ export default function OrdersPage() {
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [inputValue, setInputValue] = useState(""); // 검색 입력값 상태
-
-  // 토글 상태 추가
-  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
-  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -371,30 +357,25 @@ export default function OrdersPage() {
   const [products, setProducts] = useState([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [activeTab, setActiveTab] = useState("status");
   
   // 편집 관련 상태들
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editValues, setEditValues] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [availableProducts, setAvailableProducts] = useState({});
-  
+  const [activeTab, setActiveTab] = useState("status");
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
-  const [filterDateType, setFilterDateType] = useState("created"); // 날짜 필터 타입: created(주문일시) or updated(수령/변경일시)
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // 사이드바 토글 상태
-  const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
-  const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
 
   // --- 주문 정보 수정 관련 상태 복구 ---
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [tempItemNumber, setTempItemNumber] = useState(1);
   const [tempQuantity, setTempQuantity] = useState(1);
   const [tempPrice, setTempPrice] = useState(0);
+
 
   // --- 바코드 저장 관련 상태 및 함수 ---
   const [newBarcodeValue, setNewBarcodeValue] = useState("");
@@ -415,7 +396,7 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  const displayOrders = useMemo(() => orders || [], [orders]);
+  const displayOrders = orders || [];
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
@@ -460,9 +441,29 @@ export default function OrdersPage() {
     revalidateOnReconnect: true, // 네트워크 재연결 시 재검증 (유지 권장)
     refreshInterval: 600000, // <<<--- 10분(600,000ms)마다 자동 재검증 추가
     dedupingInterval: 30000, // 중복 요청 방지 간격 (기존 유지 또는 조정)
-    onError: (err) => {
-      if (process.env.NODE_ENV === "development") {
-        console.error("SWR Error:", err);
+    onError: (err, key) => {
+      // 에러가 실제로 있을 때만 로그
+      if (err) {
+        // 문자열인 경우와 객체인 경우를 구분하여 처리
+        if (typeof err === 'string') {
+          console.error("SWR Error (string):", err);
+          console.error("Error occurred for key:", key);
+        } else if (typeof err === 'object' && err !== null) {
+          console.error("SWR Error Details:", {
+            key: key,
+            message: err?.message || "Unknown error",
+            status: err?.status,
+            data: err?.data,
+            type: typeof err,
+            errorKeys: Object.keys(err)
+          });
+          
+          // 401 에러인 경우 로그인 페이지로 리다이렉트 고려
+          if (err?.status === 401) {
+          }
+        } else {
+          console.error("SWR Unknown Error Type:", typeof err, err);
+        }
       }
     },
     keepPreviousData: true, // 이전 데이터 유지 (기존 유지)
@@ -473,6 +474,60 @@ export default function OrdersPage() {
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
   // useOrdersClient 훅 호출 부분 수정
+  
+  // 날짜 필터 파라미터 계산
+  const dateFilterParams = calculateDateFilterParams(
+    filterDateRange,
+    customStartDate,
+    customEndDate
+  );
+  
+  // 필터 객체 생성
+  const filters = {
+    // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+    limit: searchTerm ? 10000 : itemsPerPage,
+    sortBy,
+    sortOrder,
+    // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
+    status: (() => {
+      // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
+      // 주 상태(status) 필터는 적용하지 않음 (undefined)
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return undefined;
+      }
+      // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
+      if (filterSelection === "all") {
+        return undefined;
+      }
+      // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
+      return filterSelection;
+    })(),
+    subStatus: (() => {
+      // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return filterSelection;
+      }
+      // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
+      return undefined;
+    })(),
+    // --- 파라미터 동적 결정 로직 끝 ---
+    // --- 👇 검색 관련 파라미터 수정 👇 ---
+    search: searchTerm.trim() || undefined, // 일반 검색어
+    exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
+    // --- 👆 검색 관련 파라미터 수정 👆 ---
+    startDate: dateFilterParams.startDate,
+    endDate: dateFilterParams.endDate,
+  };
+  
+  
   const {
     data: ordersData,
     error: ordersError,
@@ -481,58 +536,7 @@ export default function OrdersPage() {
   } = useOrdersClient(
     userData?.userId,
     currentPage,
-    {
-      // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
-      limit: searchTerm ? 10000 : itemsPerPage,
-      sortBy,
-      sortOrder,
-      // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
-      status: (() => {
-        // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
-        // 주 상태(status) 필터는 적용하지 않음 (undefined)
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return undefined;
-        }
-        // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
-        if (filterSelection === "all") {
-          return undefined;
-        }
-        // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
-        return filterSelection;
-      })(),
-      subStatus: (() => {
-        // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection;
-        }
-        // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
-        return undefined;
-      })(),
-      // --- 파라미터 동적 결정 로직 끝 ---
-      // --- 👇 검색 관련 파라미터 수정 👇 ---
-      search: searchTerm.trim() || undefined, // 일반 검색어
-      exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
-      // --- 👆 검색 관련 파라미터 수정 👆 ---
-      startDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).startDate,
-      endDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).endDate,
-      dateType: filterDateType, // 날짜 필터 타입 추가
-    },
+    filters,
     swrOptions
   );
 
@@ -550,74 +554,18 @@ export default function OrdersPage() {
       refreshInterval: 300000, // 상품 데이터는 5분마다 업데이트 (주문보다 자주)
     }
   );
-  // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
-  const globalStatsDateParams = calculateDateFilterParams(
-    filterDateRange,
-    customStartDate,
-    customEndDate
-  );
   
+  // 전체 주문 통계를 위한 hook 사용 - 날짜 필터만 적용
   const {
-    data: globalStatsData,
-    error: globalStatsError,
-    isLoading: isGlobalStatsLoading,
-    mutate: mutateGlobalStats,
+    data: statsData,
+    error: statsError,
+    isLoading: isStatsLoading,
   } = useOrderStatsClient(
     userData?.userId,
     {
       // 날짜 필터만 적용 (상태 필터는 제외)
-      startDate: globalStatsDateParams.startDate,
-      endDate: globalStatsDateParams.endDate,
-      dateType: filterDateType, // 날짜 필터 타입 추가
-    },
-    swrOptions
-  );
-
-  // 필터된 통계 데이터 (현재 필터 적용) - 필요시 사용
-  const {
-    data: filteredStatsData,
-    error: filteredStatsError,
-    isLoading: isFilteredStatsLoading,
-  } = useOrderStatsClient(
-    userData?.userId,
-    {
-      // 현재 적용된 필터를 전달하여 정확한 통계를 얻기
-      status: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return undefined;
-        }
-        if (filterSelection === "all") return undefined;
-        // 주문완료 상태일 때도 명시적으로 전달
-        if (filterSelection === "주문완료") return "주문완료";
-        return filterSelection;
-      })(),
-      subStatus: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection;
-        }
-        return undefined;
-      })(),
-      search: searchTerm.trim() || undefined,
-      exactCustomerName: exactCustomerFilter || undefined,
-      dateType: filterDateType, // 날짜 필터 타입 추가
-      startDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).startDate,
-      endDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).endDate,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
     },
     swrOptions
   );
@@ -626,8 +574,7 @@ export default function OrdersPage() {
   const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
     useOrderClientMutations();
 
-  const isDataLoading =
-    isUserLoading || isOrdersLoading || isGlobalStatsLoading;
+  const isDataLoading = isUserLoading || isOrdersLoading;
   const displayedOrderIds = displayOrders.map((o) => o.order_id);
   const isAllDisplayedSelected =
     displayedOrderIds.length > 0 &&
@@ -664,7 +611,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!isUserLoading) {
-      // User data loaded
     }
   }, [isUserLoading, userDataFromHook]);
 
@@ -681,28 +627,25 @@ export default function OrdersPage() {
         : prev.filter((id) => id !== orderId)
     );
   };
-  const handleSelectAllChange = useCallback((e) => {
+  const handleSelectAllChange = (e) => {
     const isChecked = e.target.checked;
     const currentIds = displayOrders.map((order) => order.order_id);
     setSelectedOrderIds((prev) => {
       const others = prev.filter((id) => !currentIds.includes(id));
       return isChecked ? [...new Set([...others, ...currentIds])] : others;
     });
-  }, [displayOrders]);
+  };
 
   // --- 검색창 업데이트 및 검색 실행 함수 ---
-  const handleCellClickToSearch = useCallback((searchValue) => {
+  const handleCellClickToSearch = (searchValue) => {
     if (!searchValue) return; // 빈 값은 무시
     const trimmedValue = searchValue.trim();
     setInputValue(trimmedValue); // 검색창 UI 업데이트
     setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
-    // 검색 후 맨 위로 스크롤
-    if (scrollToTop) {
-      setTimeout(() => scrollToTop(), 100);
-    }
-  }, [scrollToTop]);
+    // 필요하다면 검색 후 맨 위로 스크롤
+  };
 
   // 편집 관련 함수들
   const fetchProductsForPost = async (postId) => {
@@ -754,14 +697,18 @@ export default function OrdersPage() {
     setEditValues({});
   };
 
+  // 토스트 알림 함수
+  const addToast = (message, type = 'info') => {
+    alert(message); // 임시로 alert 사용, 나중에 토스트 라이브러리로 교체 가능
+  };
+
   const handleEditSave = async (order) => {
     setSavingEdit(true);
     
-    // product_name이 없다면 기존 값을 사용하고, 총 금액도 계산
+    // product_name이 없다면 기존 값을 사용
     const updateData = {
       ...editValues,
-      product_name: editValues.product_name || order.product_name || '상품명 없음',
-      total_amount: (editValues.quantity || 1) * (editValues.product_price || 0)
+      product_name: editValues.product_name || order.product_name || '상품명 없음'
     };
 
     console.log('저장할 데이터:', updateData);
@@ -787,12 +734,12 @@ export default function OrdersPage() {
       setEditingOrderId(null);
       setEditValues({});
       
-      // 성공 알림
-      alert('주문 정보가 성공적으로 업데이트되었습니다.');
+      // Toast 알림 표시
+      addToast('주문 정보가 성공적으로 업데이트되었습니다.');
       
     } catch (error) {
       console.error('주문 업데이트 에러:', error);
-      alert('주문 정보 업데이트에 실패했습니다: ' + error.message);
+      addToast('주문 정보 업데이트에 실패했습니다: ' + error.message);
     } finally {
       setSavingEdit(false);
     }
@@ -804,6 +751,7 @@ export default function OrdersPage() {
     // [날짜] 패턴 제거 (예: [8월18일], [08월18일], [8/18] 등)
     return productName.replace(/^\[[\d월일/\s]+\]\s*/g, '').trim();
   };
+
 
   const handleProductSelect = (productId, order) => {
     const postKey = order.post_key;
@@ -827,11 +775,10 @@ export default function OrdersPage() {
     }));
   };
 
-  const handleBulkStatusUpdate = useCallback(async (newStatus) => {
+  const handleBulkStatusUpdate = async (newStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkUpdateLoading(true);
 
-    // orders 배열에서 필터링 (orders 페이지와 동일하게)
     const ordersToUpdateFilter = orders.filter(
       (order) =>
         selectedOrderIds.includes(order.order_id) && order.status !== newStatus
@@ -860,7 +807,6 @@ export default function OrdersPage() {
       return;
     }
 
-    // Attempting to bulk update orders
 
     let successCount = 0;
     let failCount = 0;
@@ -872,12 +818,10 @@ export default function OrdersPage() {
         userData.userId
       );
       successCount = orderIdsToProcess.length;
-      // 일괄 업데이트 성공
 
       // 즉시 주문 리스트 새로고침
-      // 일괄 상태 변경 후 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
-      
+
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
         (key) =>
@@ -887,28 +831,10 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
-      
-      // 통계 캐시 무효화 - 모든 필터 조합에 대해
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orderStats" &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      
-      // 통계 데이터 강제 새로고침
-      await mutateGlobalStats();
-      
-      // 성공 메시지
-      console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
     } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to bulk update orders (client-side):", err);
-      }
+      console.error("Failed to bulk update orders (client-side):", err);
       failCount = orderIdsToProcess.length;
-      alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
+      alert(`일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
@@ -917,21 +843,23 @@ export default function OrdersPage() {
       if (successCount > 0) message += `${successCount}건 성공. `;
       if (failCount > 0) message += `${failCount}건 실패. `;
       if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`;
-      
-      // 추가 피드백 제공
-      if (skippedCount > 0 && successCount === 0) {
-        console.log(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`);
-      } else if (failCount > 0) {
-        console.log(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`);
-      }
-      
-      // 최종 일괄 처리 결과
+      if (
+        !message &&
+        successCount === 0 &&
+        failCount === 0 &&
+        skippedCount === 0
+      )
+        message = "변경 대상 없음.";
+      else if (!message) message = "일괄 처리 완료.";
+
     }
-  }, [selectedOrderIds, orders, userData, bulkUpdateOrderStatus, mutateOrders, globalMutate]);
+  };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
+    
     let startDate = new Date();
     const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
     
     if (range === "custom" && customStart) {
       const start = new Date(customStart);
@@ -943,43 +871,30 @@ export default function OrdersPage() {
     
     switch (range) {
       case "today":
-        // 로컬 시간으로 오늘의 시작과 끝 설정
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(now);
-        todayEnd.setHours(23, 59, 59, 999);
-        
-        console.log("Today filter debug:", {
-          localNow: now.toString(),
-          startDate: todayStart.toISOString(),
-          endDate: todayEnd.toISOString()
-        });
-        
-        return { startDate: todayStart.toISOString(), endDate: todayEnd.toISOString() };
+        startDate.setHours(0, 0, 0, 0);
         break;
       case "7days":
         startDate.setDate(now.getDate() - 7);
         startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
         break;
       case "30days":
         startDate.setMonth(now.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
         break;
       case "90days":
         startDate.setMonth(now.getMonth() - 3);
         startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(23, 59, 59, 999);
         break;
       default:
         return { startDate: undefined, endDate: undefined };
     }
     
-    return {
+    const result = {
       startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
+      endDate: endDate.toISOString()
     };
+    
+    return result;
   }
   const CustomDateInputButton = forwardRef(
     ({ value, onClick, isActive, disabled }, ref) => (
@@ -1023,9 +938,7 @@ export default function OrdersPage() {
         if (!o?.userId) throw new Error("Invalid session");
         setUserData(o);
       } catch (err) {
-        if (process.env.NODE_ENV === "development") {
-          console.error("Auth Error:", err);
-        }
+        console.error("Auth Error:", err);
         setError("Auth Error");
         sessionStorage.clear();
         localStorage.removeItem("userId");
@@ -1040,16 +953,13 @@ export default function OrdersPage() {
   }, [userData, isDataLoading]);
   useEffect(() => {
     if (productsData?.data) setProducts(productsData.data);
-    if (productsError && process.env.NODE_ENV === "development") {
-      console.error("Product Error:", productsError);
-    }
+    if (productsError) console.error("Product Error:", productsError);
   }, [productsData, productsError]);
 
   // URL 파라미터에서 검색어 처리하는 useEffect 추가
   useEffect(() => {
     const searchParam = searchParams.get("search");
     if (searchParam) {
-      // Auto-searching from URL parameter
       setInputValue(searchParam);
       setSearchTerm(searchParam);
       setCurrentPage(1);
@@ -1067,14 +977,12 @@ export default function OrdersPage() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && userData?.userId) {
-        // Page became visible, refreshing products data
         mutateProducts(); // 상품 데이터 새로고침
       }
     };
 
     const handleWindowFocus = () => {
       if (userData?.userId) {
-        // Window focused, refreshing products data
         mutateProducts(); // 윈도우 포커스 시에도 상품 데이터 새로고침
       }
     };
@@ -1091,7 +999,6 @@ export default function OrdersPage() {
   // 페이지 로드 시 상품 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
   useEffect(() => {
     if (userData?.userId) {
-      // Orders page mounted, refreshing products data
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
     }
   }, [userData?.userId, mutateProducts]);
@@ -1105,7 +1012,6 @@ export default function OrdersPage() {
         const now = Date.now();
         // 5분 이내의 업데이트만 유효하다고 간주
         if (now - updateTime < 5 * 60 * 1000) {
-          // Barcode options were updated, refreshing products data
           mutateProducts();
           // 플래그 제거하여 중복 업데이트 방지
           localStorage.removeItem("barcodeOptionsUpdated");
@@ -1123,37 +1029,42 @@ export default function OrdersPage() {
       window.removeEventListener("storage", checkBarcodeOptionsUpdate);
     };
   }, [mutateProducts, userData?.userId]);
-
-  // 통계 데이터 변경 감지하여 새 주문 수 계산
-  useEffect(() => {
-    if (globalStatsData?.총주문수 && previousOrderCount > 0) {
-      const currentCount = globalStatsData.총주문수;
-      const addedOrders = Math.max(0, currentCount - previousOrderCount);
-      if (addedOrders > 0) {
-        setNewOrdersCount(addedOrders);
-        // 이전 주문 수 업데이트
-        setPreviousOrderCount(currentCount);
-      }
-    }
-  }, [globalStatsData?.총주문수, previousOrderCount]);
-
   useEffect(() => {
     if (ordersData?.data) {
+      
+      // 날짜 분석
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+      
+      
+      // 오늘 주문된 건수
+      const todayOrderedCount = ordersData.data.filter(order => {
+        const orderDate = new Date(order.ordered_at);
+        return orderDate >= today && orderDate <= todayEnd;
+      }).length;
+      
+      // 오늘 수령완료된 건수
+      const todayCompletedCount = ordersData.data.filter(order => {
+        if (!order.completed_at) return false;
+        const completedDate = new Date(order.completed_at);
+        return completedDate >= today && completedDate <= todayEnd;
+      }).length;
+      
+      
       setOrders(ordersData.data);
     }
     if (ordersError) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Order Error:", ordersError);
-      }
+      console.error("Order Error:", ordersError);
       setError("Order Fetch Error");
     }
     if (
       ordersData?.pagination &&
       currentPage > ordersData.pagination.totalPages
-    ) {
+    )
       setCurrentPage(1);
-    }
-  }, [ordersData, ordersError, currentPage]);
+  }, [ordersData, ordersError, currentPage, searchTerm]);
   // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -1226,9 +1137,7 @@ export default function OrdersPage() {
 
       return null;
     } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("날짜 파싱 오류:", error);
-      }
+      console.error("날짜 파싱 오류:", error);
       return null;
     }
   };
@@ -1284,9 +1193,7 @@ export default function OrdersPage() {
         mi = String(d.getMinutes()).padStart(2, "0");
       return `${mo}.${da} ${hr}:${mi}`;
     } catch (e) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Date Format Err:", e);
-      }
+      console.error("Date Format Err:", e);
       return "Error";
     }
   };
@@ -1327,17 +1234,18 @@ export default function OrdersPage() {
         updateData.canceled_at = null;
       }
 
-      // Updating order status via client-side
+      console.log("Updating order status via client-side:", {
+        orderId,
+        updateData,
+      });
 
       await updateOrderStatus(orderId, updateData, userData.userId);
 
-      // Order status updated successfully
+      console.log("Order status updated successfully via client-side");
 
       // 즉시 주문 리스트 새로고침
-      // 주문 상태 변경 후 리스트 새로고침
+      console.log("🔄 주문 상태 변경 후 리스트 새로고침 중...");
       await mutateOrders(undefined, { revalidate: true });
-      // 통계 데이터도 갱신
-      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
@@ -1348,20 +1256,10 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orderStats" &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
 
       setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Status Change Error (client-side):", err);
-      }
+      console.error("Status Change Error (client-side):", err);
       alert(err.message || "주문 상태 업데이트에 실패했습니다.");
     }
   };
@@ -1374,13 +1272,14 @@ export default function OrdersPage() {
     setTempPrice(order.price ?? 0);
     setIsEditingDetails(false); // 편집 모드 비활성화로 시작
     setActiveTab("status");
+    
     setIsDetailModalOpen(true);
   };
   const closeDetailModal = () => {
     setIsDetailModalOpen(false);
     setSelectedOrder(null);
     setIsEditingDetails(false);
-  }; // isEditingDetails 리셋 추가
+  };
   const handleLogout = () => {
     sessionStorage.clear();
     localStorage.removeItem("userId");
@@ -1391,55 +1290,23 @@ export default function OrdersPage() {
     setInputValue("");
   };
 
-  // 개별 필터 해제 함수들
-  const clearStatusFilter = () => {
-    setFilterSelection("all");
-    setCurrentPage(1);
-    setSelectedOrderIds([]);
-  };
-
-  const clearSearchFilter = () => {
-    setInputValue("");
-    setSearchTerm("");
-    setCurrentPage(1);
-    setSelectedOrderIds([]);
-  };
-
-  const clearCustomerFilter = () => {
-    setExactCustomerFilter(null);
-    setCurrentPage(1);
-    setSelectedOrderIds([]);
-  };
-
-  const clearDateRangeFilter = () => {
-    setFilterDateRange("30days");
-    setCustomStartDate(null);
-    setCustomEndDate(null);
-    setCurrentPage(1);
-    setSelectedOrderIds([]);
-  };
-
   // 검색 입력 시 inputValue 상태만 업데이트
   const handleSearchChange = (e) => {
     setInputValue(e.target.value);
   };
 
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
-  const handleSearch = useCallback(() => {
+  const handleSearch = () => {
     const trimmedInput = inputValue.trim();
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     if (trimmedInput !== searchTerm) {
-      // New search triggered
+      console.log(`[Search] New search triggered: "${trimmedInput}"`);
       setSearchTerm(trimmedInput);
       setCurrentPage(1); // 검색 시 항상 1페이지로
       setExactCustomerFilter(null); // 일반 검색 시 정확 고객명 필터 초기화
       setSelectedOrderIds([]); // 선택 초기화
-      // 검색 후 맨 위로 스크롤
-      if (scrollToTop) {
-        setTimeout(() => scrollToTop(), 100);
-      }
     }
-  }, [inputValue, searchTerm, scrollToTop]);
+  };
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -1450,14 +1317,13 @@ export default function OrdersPage() {
 
   // 검색 초기화 함수
   const handleClearSearch = () => {
-    // Clearing search and filters
+    console.log("[Search] Clearing search and filters.");
     setInputValue("");
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
     setFilterDateRange("30days"); // 기본 날짜로 복귀
-    setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
@@ -1467,7 +1333,7 @@ export default function OrdersPage() {
   const handleExactCustomerSearch = (customerName) => {
     if (!customerName || customerName === "-") return;
     const trimmedName = customerName.trim();
-    // Exact customer search
+    console.log(`[Search] Exact customer search: "${trimmedName}"`);
     setInputValue(trimmedName);
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
@@ -1512,7 +1378,6 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    // Page changed, scrolling to top
     if (scrollToTop) {
       // scrollToTop 함수가 존재할 때만 호출
       // 약간의 지연을 주어 DOM 업데이트 후 스크롤 시도
@@ -1568,16 +1433,18 @@ export default function OrdersPage() {
     };
 
     try {
-      // Updating order details via client-side
+      console.log("Updating order details via client-side:", {
+        order_id,
+        updateData,
+      });
 
       await updateOrderDetails(order_id, updateData, userData.userId);
 
-      // Order details updated successfully
+      console.log("Order details updated successfully via client-side");
 
       // 즉시 주문 리스트 새로고침
+      console.log("🔄 주문 정보 수정 후 리스트 새로고침 중...");
       await mutateOrders(undefined, { revalidate: true });
-      // 통계 데이터도 갱신
-      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
@@ -1588,21 +1455,11 @@ export default function OrdersPage() {
         undefined,
         { revalidate: true }
       );
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orderStats" &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
 
       setIsEditingDetails(false); // 편집 모드 종료
       setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Update Error (client-side):", err);
-      }
+      console.error("Update Error (client-side):", err);
       alert(err.message || "주문 정보 업데이트에 실패했습니다.");
     }
   };
@@ -1610,9 +1467,7 @@ export default function OrdersPage() {
   // --- 바코드 옵션 변경 핸들러 ---
   const handleBarcodeOptionChange = async (orderId, selectedOption) => {
     if (!userData?.userId) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("User ID is missing");
-      }
+      console.error("User ID is missing");
       return;
     }
 
@@ -1632,13 +1487,14 @@ export default function OrdersPage() {
         }) - ₩${selectedOption.price.toLocaleString()}`,
       };
 
-      // Updating order barcode option
+      console.log("Updating order barcode option:", { orderId, updateData });
 
       await updateOrderDetails(orderId, updateData, userData.userId);
 
-      // Barcode option updated successfully
+      console.log("Barcode option updated successfully");
 
       // 주문 목록과 상품 목록 새로고침
+      console.log("🔄 바코드 옵션 변경 후 리스트 새로고침 중...");
       await mutateOrders(undefined, { revalidate: true });
       await mutateProducts(undefined, { revalidate: true }); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
 
@@ -1660,9 +1516,7 @@ export default function OrdersPage() {
         { revalidate: true }
       );
     } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to update barcode option:", error);
-      }
+      console.error("Failed to update barcode option:", error);
       alert("바코드 옵션 변경에 실패했습니다.");
     }
   };
@@ -1723,7 +1577,6 @@ export default function OrdersPage() {
   };
 
   const handleSaveBarcode = async (productId, barcodeValue) => {
-    // handleSaveBarcode called
 
     if (!barcodeValue.trim()) {
       return;
@@ -1733,12 +1586,10 @@ export default function OrdersPage() {
     if (!userData || !userData.userId) {
       // userData.id 였던 부분을 userData.userId로 변경
       alert("사용자 정보가 유효하지 않습니다. 다시 로그인해주세요."); // 사용자에게 피드백
-      if (process.env.NODE_ENV === "development") {
-        console.error(
-          "User data or userId is missing. Current userData:",
-          userData
-        );
-      }
+      console.error(
+        "User data or userId is missing. Current userData:",
+        userData
+      );
       return;
     }
     const userId = userData.userId; // userId 사용
@@ -1746,18 +1597,20 @@ export default function OrdersPage() {
 
     setIsSavingBarcode(true);
     // <<< --- 디버깅 로그 추가 --- >>>
-    // Starting barcode save process
+    console.log("setIsSavingBarcode(true) executed. Proceeding to fetch.");
+    // <<< --- 디버깅 로그 추가 끝 --- >>>
 
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      // Supabase configuration validated
+      // <<< --- 디버깅 로그 추가 --- >>>
+      console.log("Supabase URL:", supabaseUrl);
+      console.log("Supabase Anon Key (exists):", !!supabaseAnonKey); // 실제 키 값은 로깅하지 않음
+      // <<< --- 디버깅 로그 추가 끝 --- >>>
 
       if (!supabaseUrl || !supabaseAnonKey) {
-        if (process.env.NODE_ENV === "development") {
-          console.error("Supabase URL 또는 Anon Key가 설정되지 않았습니다.");
-        }
+        console.error("Supabase URL 또는 Anon Key가 설정되지 않았습니다.");
         throw new Error("애플리케이션 설정 오류가 발생했습니다.");
       }
 
@@ -1766,7 +1619,10 @@ export default function OrdersPage() {
         productId
       )}&userId=${encodeURIComponent(userId)}`;
 
-      // Function URL and request prepared
+      // <<< --- 디버깅 로그 추가 --- >>>
+      console.log("Constructed Function URL:", functionUrl);
+      console.log("Request Body:", { barcode: barcodeValue });
+      // <<< --- 디버깅 로그 추가 끝 --- >>>
 
       const response = await fetch(functionUrl, {
         method: "PATCH", // 백엔드 API가 PATCH 메소드를 사용하므로 변경
@@ -1791,24 +1647,24 @@ export default function OrdersPage() {
         );
       }
 
-      // 바코드 저장 성공
+      console.log("바코드 저장 성공:", responseData);
 
       // --- !!! 수정된 부분 !!! ---
       // refreshOrdersAndProducts() 대신 SWR의 mutate 함수를 사용합니다.
       if (mutateProducts) {
         await mutateProducts(); // 상품 목록 SWR 캐시 갱신
-        // Products list revalidated via SWR mutate
+        console.log("Products list revalidated via SWR mutate.");
       } else {
-        // mutateProducts is not available
+        console.warn(
+          "mutateProducts is not available. Product list might not be up-to-date."
+        );
       }
       // --- !!! 수정된 부분 끝 !!! ---
 
       // 성공 시
       setNewBarcodeValue(""); // 입력 필드 초기화
     } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to save barcode:", error);
-      }
+      console.error("Failed to save barcode:", error);
     } finally {
       setIsSavingBarcode(false);
     }
@@ -1863,73 +1719,24 @@ export default function OrdersPage() {
   // 현재 검색된 주문 데이터에서 직접 통계 계산
   const currentOrders = ordersData?.data || [];
 
-  // 클라이언트 사이드에서 통계 계산 함수
-  const calculateClientStats = (orders) => {
-    const statusCounts = {};
-    const subStatusCounts = {};
-    let completedCount = 0;
-    let pendingCount = 0;
+  // 전체 통계 데이터 사용 (useOrderStatsClient hook에서 가져온 데이터)
+  const totalStatsOrders = statsData?.data?.totalOrders || 0;
+  const totalCompletedOrders = statsData?.data?.statusCounts?.["수령완료"] || 0;
+  const totalPendingOrders = statsData?.data?.subStatusCounts?.["미수령"] || 0;
+  const statusCounts = statsData?.data?.statusCounts || {};
+  const subStatusCounts = statsData?.data?.subStatusCounts || {};
 
-    orders.forEach((order) => {
-      // Status 카운트
-      statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
-
-      // Sub_status 카운트
-      if (order.sub_status) {
-        subStatusCounts[order.sub_status] =
-          (subStatusCounts[order.sub_status] || 0) + 1;
-      }
-
-      // 완료/미완료 카운트
-      if (order.status === "수령완료") {
-        completedCount++;
-      } else if (order.sub_status === "미수령") {
-        pendingCount++;
-      }
-    });
-
-    return {
-      totalOrders: orders.length,
-      completedOrders: completedCount,
-      pendingOrders: pendingCount,
-      statusCounts,
-      subStatusCounts,
-    };
-  };
-
-  // 현재 페이지의 통계 (UI 표시용)
-  const clientStats = calculateClientStats(currentOrders);
-
-  // 전체 통계 데이터 사용 - globalStatsData 사용 (날짜 필터만 적용된 통계)
-  // 직접 globalStatsData를 OrderStatsSidebar에 전달하므로 여기서는 제거
-
-  // 클라이언트 측 통계 계산 완료
 
   const completionRate =
-    globalStatsData?.data?.totalOrders > 0
-      ? Math.round((globalStatsData?.data?.statusCounts?.["수령완료"] / globalStatsData?.data?.totalOrders) * 100)
+    totalStatsOrders > 0
+      ? Math.round((totalCompletedOrders / totalStatsOrders) * 100)
       : 0;
-
-  // 개발 환경에서만 날짜 범위 로그 출력
-  if (process.env.NODE_ENV === "development" && globalStatsData) {
-    console.log("=== 통계 날짜 필터 ===");
-    console.log("filterDateRange:", filterDateRange);
-    console.log("startDate:", globalStatsDateParams.startDate);
-    console.log("endDate:", globalStatsDateParams.endDate);
-    console.log("globalStatsData:", globalStatsData);
-    console.log("totalOrders:", globalStatsData?.data?.totalOrders);
-    console.log("statusCounts:", globalStatsData?.data?.statusCounts);
-    console.log("subStatusCounts:", globalStatsData?.data?.subStatusCounts);
-    console.log("===================");
-    // 디버깅용 전역 변수 설정
-    if (typeof window !== 'undefined') {
-      window.globalStatsDataDebug = globalStatsData;
-    }
-  }
 
   // --- 메인 UI ---
   return (
-    <div className="h-full bg-gray-100 text-gray-900 flex overflow-hidden">
+    <div
+      className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto px-4 py-2 sm:px-6 sm:py-4  pb-[300px]" // 패딩 추가
+    >
       {/* 일괄 처리 중 로딩 오버레이 */}
       {bulkUpdateLoading && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
@@ -1939,1011 +1746,839 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
-
-      {/* 모바일 사이드바 오버레이 */}
-      {isMobileSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setIsMobileSidebarOpen(false)}
-        />
-      )}
-
-      {/* 좌측 사이드바 - 토스 스타일 */}
-      <aside
-        className={`
-        ${isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0 fixed lg:relative 
-        ${isSidebarCollapsed ? "w-12" : "w-64"} bg-white
-        flex flex-col h-full overflow-hidden z-50 lg:z-auto
-        transition-all duration-300 ease-in-out
-        border-r border-gray-100
-      `}
-      >
-        <div className="flex-1 overflow-y-auto">
-          {/* 모바일 헤더 */}
-          <div className="lg:hidden flex items-center justify-between p-4 border-b border-gray-100">
-            <h2 className="text-base font-medium text-gray-900">필터</h2>
-            <button
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="p-1.5  rounded-md hover:bg-gray-100 transition-colors"
-            >
-              <XMarkIcon className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-
-          {/* 데스크톭 사이드바 헤더 (토글 버튼 포함) */}
-          <div className="hidden lg:flex items-center justify-between p-4 border-b border-gray-100">
-            {!isSidebarCollapsed && (
-              <h2 className="text-base font-medium text-gray-900">필터</h2>
-            )}
-            <button
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-1.5 rounded-md bg-gray-100 hover:bg-gray-100 transition-colors ml-auto"
-              title={isSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
-            >
-              {isSidebarCollapsed ? (
-                <ChevronRightIcon className="w-5 h-5 text-gray-500 " />
-              ) : (
-                <ChevronLeftIcon className="w-5 h-5 text-gray-500" />
-              )}
-            </button>
-          </div>
-
-          {!isSidebarCollapsed && (
-            <div className="p-4 space-y-6">
-              {/* 업데이트 섹션 */}
-              <div className="space-y-2">
-                <UpdateButton
-                  pageType="orders"
-                  totalItems={globalStatsData?.총주문수 || 0}
-                  onSuccess={() => {
-                    console.log("🔄 주문 업데이트 완료");
-                    setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                    mutateOrders(undefined, { revalidate: true });
-                    mutateProducts(undefined, { revalidate: true });
-                  }}
-                  className="w-full"
+      <main className="max-w-[1440px] mx-auto">
+        {/* 헤더 */}
+        <div className="mb-4 flex flex-col md:flex-row justify-between items-start gap-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 mb-1">
+                주문 관리
+              </h1>
+              <p className="text-sm text-gray-500 mb-2">
+                등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.
+              </p>
+              <UpdateButton pageType="orders" />
+              {/* <p className="text-sm md:text-base text-gray-600">
+              최근 업데이트:
+              {userDataFromHook?.last_crawl_at
+                ? getTimeDifferenceInMinutes(userDataFromHook.last_crawl_at)
+                : "알 수 없음"}
+              {isUserLoading && (
+                <LoadingSpinner
+                  className="inline-block ml-2 h-4 w-4"
+                  color="text-gray-400"
                 />
-                <div className="flex items-center justify-center text-xs text-gray-500">
-                  <ClockIcon className="w-3.5 h-3.5 mr-1" />
-                  {userDataFromHook?.data?.last_crawl_at
-                    ? getTimeDifferenceInMinutes(
-                        userDataFromHook.data.last_crawl_at
-                      )
-                    : "알 수 없음"}
-                </div>
+              )}
+            </p> */}
+
+              <p className="text-xs md:text-sm text-gray-600">
+                최근 업데이트 :
+                {userDataFromHook?.data?.last_crawl_at // Change this line! Access via .data
+                  ? getTimeDifferenceInMinutes(
+                      userDataFromHook.data.last_crawl_at
+                    ) // Also change here
+                  : "알 수 없음"}
+                {isUserLoading && (
+                  <LoadingSpinner
+                    className="inline-block ml-2 h-4 w-4"
+                    color="text-gray-400"
+                  />
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="w-full md:w-auto relative ">
+            {/* statsLoading 제거 - 클라이언트 계산으로 즉시 반영 */}
+            <div className="grid grid-cols-4 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm w-full md:w-auto">
+              {/* --- 총 주문 --- */}
+              <div
+                className="flex flex-col items-start cursor-pointer p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
+                onClick={() => handleFilterChange("all")} // 클릭 시 전체 필터 적용
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    handleFilterChange("all");
+                }}
+                title="전체 주문 보기" // 툴팁 추가
+              >
+                <dt className="text-sm text-gray-500 uppercase">
+                  {searchTerm ||
+                  filterSelection !== "all" ||
+                  filterDateRange !== "30days" || // 기본값 변경 반영
+                  (filterDateRange === "custom" &&
+                    (customStartDate || customEndDate))
+                    ? "필터된 주문"
+                    : "총 주문"}
+                </dt>
+                <dd className="font-semibold text-lg mt-0.5">
+                  {filteredTotalItems.toLocaleString()}
+                </dd>
               </div>
-
-              {/* 주문 통계 섹션 */}
-              <OrderStatsSidebar
-                stats={globalStatsData}
-                isLoading={isGlobalStatsLoading}
-                newOrdersCount={newOrdersCount}
-                onFilterChange={handleFilterChange}
-                filterDateRange={filterDateRange}
-                currentFilter={filterSelection}
-              />
-
-              {/* 필터 섹션 - 토글 */}
-              <div className="space-y-3">
-                {/* 날짜 필터 - 토글 */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => setIsDateFilterOpen(!isDateFilterOpen)}
-                    className="w-full px-4 py-3 flex items-center justify-between text-sm hover:bg-gray-50 transition-colors"
-                  >
-                    <span className="text-gray-700">조회 기간</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-900 font-medium">
-                        {dateRangeOptions.find(
-                          (opt) => opt.value === filterDateRange
-                        )?.label || "30일"}
-                      </span>
-                      <ChevronDownIcon
-                        className={`w-4 h-4 text-gray-400 transition-transform ${
-                          isDateFilterOpen ? "rotate-180" : ""
-                        }`}
-                      />
-                    </div>
-                  </button>
-                  {isDateFilterOpen && (
-                    <div className="border-t border-gray-200 p-4 bg-gray-50">
-                      {/* 날짜 필터 타입 선택 */}
-                      <div className="mb-3 flex gap-2">
-                        <button
-                          onClick={() => setFilterDateType("created")}
-                          className={`flex-1 py-2 px-3 text-xs rounded-lg transition-colors ${
-                            filterDateType === "created"
-                              ? "bg-blue-500 text-white"
-                              : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
-                          }`}
-                        >
-                          주문일시 기준
-                        </button>
-                        <button
-                          onClick={() => setFilterDateType("updated")}
-                          className={`flex-1 py-2 px-3 text-xs rounded-lg transition-colors ${
-                            filterDateType === "updated"
-                              ? "bg-blue-500 text-white"
-                              : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
-                          }`}
-                        >
-                          수령/변경일시 기준
-                        </button>
-                      </div>
-                      
-                      <DatePicker
-                        selectsRange={true}
-                        startDate={customStartDate}
-                        endDate={customEndDate}
-                        onChange={handleCustomDateChange}
-                        locale={ko}
-                        dateFormat="yyyy.MM.dd"
-                        maxDate={new Date()}
-                        isClearable={true}
-                        placeholderText="날짜 선택"
-                        disabled={isDataLoading}
-                        className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg
-                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent 
-                        hover:bg-gray-50 transition-colors"
-                      />
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        {dateRangeOptions.map((option) => (
-                          <button
-                            key={option.value}
-                            onClick={() => {
-                              handleDateRangeChange(option.value);
-                              setIsDateFilterOpen(false);
-                            }}
-                            className={`
-                            py-2 px-3 text-xs rounded-lg transition-colors
-                            ${
-                              filterDateRange === option.value
-                                ? "bg-blue-500 text-white"
-                                : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
-                            }
-                          `}
-                            disabled={isDataLoading}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 상태 필터 - 토글 */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
-                    className="w-full px-4 py-3 flex items-center justify-between text-sm hover:bg-gray-50 transition-colors"
-                  >
-                    <span className="text-gray-700">주문 상태</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-900 font-medium">
-                        {orderStatusOptions.find(
-                          (opt) => opt.value === filterSelection
-                        )?.label || "전체"}
-                      </span>
-                      <ChevronDownIcon
-                        className={`w-4 h-4 text-gray-400 transition-transform ${
-                          isStatusFilterOpen ? "rotate-180" : ""
-                        }`}
-                      />
-                    </div>
-                  </button>
-                  {isStatusFilterOpen && (
-                    <div className="border-t border-gray-200 bg-gray-50">
-                      {orderStatusOptions.map((option) => {
-                        const isSelected = filterSelection === option.value;
-                        return (
-                          <button
-                            key={option.value}
-                            onClick={() => {
-                              handleFilterChange(option.value);
-                              setIsStatusFilterOpen(false);
-                            }}
-                            className={`
-                            w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gray-100 last:border-b-0
-                            ${
-                              isSelected
-                                ? "bg-blue-50 text-blue-700 font-medium"
-                                : "text-gray-700 hover:bg-white"
-                            }
-                          `}
-                            disabled={isDataLoading}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+              <div
+                className="flex flex-col items-start cursor-pointer p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
+                onClick={() => handleFilterChange("수령완료")} // 클릭 시 수령완료 필터 적용
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    handleFilterChange("수령완료");
+                }}
+                title="수령완료 주문 필터링" // 툴팁 추가
+              >
+                <dt className="text-sm text-gray-500 uppercase">수령완료</dt>
+                <dd className="font-semibold text-lg mt-0.5">
+                  {totalCompletedOrders.toLocaleString()}
+                </dd>
+              </div>
+              {/* --- 미수령 (여기가 핵심 수정 부분) --- */}
+              <div
+                className="flex flex-col items-start cursor-pointer p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
+                onClick={() => handleFilterChange("미수령")} // 클릭 시 미수령 필터 적용
+                role="button" // 접근성을 위해 role 추가
+                tabIndex={0} // 키보드 포커스 가능하도록 설정
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ")
+                    handleFilterChange("미수령");
+                }} // Enter/Space 키로도 동작하도록
+                title="미수령 주문 필터링" // 툴팁 추가
+              >
+                <dt className="text-sm text-gray-500 uppercase">미수령</dt>
+                <dd className="font-semibold text-lg mt-0.5">
+                  {totalPendingOrders.toLocaleString()}
+                </dd>
+              </div>
+              <div className="flex flex-col items-start">
+                <dt className="text-sm text-gray-500 uppercase">완료율</dt>
+                <dd className="font-semibold text-lg mt-0.5">
+                  {completionRate}%
+                </dd>
               </div>
             </div>
-          )}
+          </div>
         </div>
-      </aside>
 
-      {/* 모바일 메뉴 버튼 - 절대 위치 */}
-      <button
-        onClick={() => setIsMobileSidebarOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-30 p-2 bg-white rounded-lg shadow-md hover:shadow-lg"
-      >
-        <FunnelIcon className="w-6 h-6 text-gray-600" />
-      </button>
-
-      {/* 우측 메인 컨텐츠 영역 - 스크롤 최적화 */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* 필터 섹션 - 임시로 숨김 */}
-        <div className="hidden">
-          <LightCard padding="p-0" className="mb-6 md:mb-8 overflow-hidden">
-            <div className="divide-y divide-gray-200">
-              {/* 조회 기간 */}
-              <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                  <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                  조회 기간
-                </div>
-                <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
-                  <DatePicker
-                    selectsRange={true}
-                    startDate={customStartDate}
-                    endDate={customEndDate}
-                    onChange={handleCustomDateChange}
-                    locale={ko}
-                    dateFormat="yyyy.MM.dd"
-                    maxDate={new Date()}
-                    isClearable={true}
-                    placeholderText="날짜 선택"
-                    disabled={isDataLoading}
-                    popperPlacement="bottom-start"
-                    customInput={
-                      <CustomDateInputButton
-                        isActive={filterDateRange === "custom"}
-                        disabled={isDataLoading}
-                        value={
-                          customStartDate
-                            ? `${formatDateForPicker(customStartDate)}${
-                                customEndDate
-                                  ? ` ~ ${formatDateForPicker(customEndDate)}`
-                                  : ""
-                              }`
-                            : ""
-                        }
-                      />
-                    }
-                  />
-                  <CustomRadioGroup
-                    name="dateRange"
-                    options={dateRangeOptions}
-                    selectedValue={
-                      filterDateRange === "custom" ? "" : filterDateRange
-                    }
-                    onChange={handleDateRangeChange}
-                    disabled={isDataLoading}
-                  />
-                </div>
+        {/* 필터 섹션 */}
+        <LightCard padding="p-0" className="mb-6 md:mb-8 overflow-hidden">
+          <div className="divide-y divide-gray-200">
+            {/* 조회 기간 */}
+            <div className="grid grid-cols-[max-content_1fr] items-center">
+              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                조회 기간
               </div>
-              {/* 상태 필터 */}
-              <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                  <FunnelIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                  상태
-                </div>
-                <div className="bg-white px-4 py-3">
-                  <CustomRadioGroup
-                    name="orderStatus"
-                    options={orderStatusOptions}
-                    selectedValue={filterSelection}
-                    onChange={handleFilterChange}
-                    disabled={isDataLoading}
-                  />
-                </div>
-              </div>
-              {/* 검색 필터 */}
-              <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                  <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                  검색
-                </div>
-                {/* 검색 입력 및 버튼들 - 반응형 레이아웃 재조정 */}
-                <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2">
-                  {/* 검색 입력 */}
-                  <div className="relative w-full md:flex-grow md:max-w-sm order-1">
-                    {" "}
-                    {/* order-1 */}
-                    <input
-                      type="text"
-                      placeholder="고객명, 상품명, 바코드, post_key..."
-                      value={inputValue}
-                      onChange={handleSearchChange}
-                      onKeyDown={handleKeyDown}
-                      className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+              <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
+                <DatePicker
+                  selectsRange={true}
+                  startDate={customStartDate}
+                  endDate={customEndDate}
+                  onChange={handleCustomDateChange}
+                  locale={ko}
+                  dateFormat="yyyy.MM.dd"
+                  maxDate={new Date()}
+                  isClearable={true}
+                  placeholderText="날짜 선택"
+                  disabled={isDataLoading}
+                  popperPlacement="bottom-start"
+                  customInput={
+                    <CustomDateInputButton
+                      isActive={filterDateRange === "custom"}
                       disabled={isDataLoading}
+                      value={
+                        customStartDate
+                          ? `${formatDateForPicker(customStartDate)}${
+                              customEndDate
+                                ? ` ~ ${formatDateForPicker(customEndDate)}`
+                                : ""
+                            }`
+                          : ""
+                      }
                     />
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                      <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                    </div>
-                    {/* --- 👇 X 버튼 추가 👇 --- */}
-                    {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
-                      <button
-                        type="button"
-                        onClick={clearInputValue}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                        aria-label="검색 내용 지우기"
-                      >
-                        <XMarkIcon className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                  {/* 검색/초기화 버튼 그룹 */}
-                  <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
-                    {" "}
-                    {/* order-2, sm:w-auto */}
-                    <button
-                      onClick={handleSearch}
-                      className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
-                      disabled={isDataLoading}
-                    >
-                      검색
-                    </button>
-                    <button
-                      onClick={handleClearSearch}
-                      disabled={isDataLoading}
-                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
-                      aria-label="검색 초기화"
-                      title="검색 및 필터 초기화"
-                    >
-                      <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
-                      초기화
-                    </button>
-                  </div>
-                </div>
+                  }
+                />
+                <CustomRadioGroup
+                  name="dateRange"
+                  options={dateRangeOptions}
+                  selectedValue={
+                    filterDateRange === "custom" ? "" : filterDateRange
+                  }
+                  onChange={handleDateRangeChange}
+                  disabled={isDataLoading}
+                />
               </div>
             </div>
-          </LightCard>
-        </div>
-
-        {/* 검색 및 일괄 처리 영역 - 고정 */}
-        <div className="flex-shrink-0 p-4 lg:p-6">
-          <div className="max-w-7xl mx-auto">
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex flex-wrap gap-3 items-center">
-                {/* 검색 영역 */}
-                <div className="flex gap-2 items-center">
-                  <div className="relative w-64">
-                    <input
-                      type="text"
-                      placeholder="검색"
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          handleSearch();
-                        }
-                      }}
-                      className="w-full px-3 py-2 pl-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                      <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                    </div>
+            {/* 상태 필터 */}
+            <div className="grid grid-cols-[max-content_1fr] items-center">
+              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                <FunnelIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                상태
+              </div>
+              <div className="bg-white px-4 py-3">
+                <CustomRadioGroup
+                  name="orderStatus"
+                  options={orderStatusOptions}
+                  selectedValue={filterSelection}
+                  onChange={handleFilterChange}
+                  disabled={isDataLoading}
+                />
+              </div>
+            </div>
+            {/* 검색 필터 */}
+            <div className="grid grid-cols-[max-content_1fr] items-center">
+              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                검색
+              </div>
+              {/* 검색 입력 및 버튼들 - 반응형 레이아웃 재조정 */}
+              <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2">
+                {/* 검색 입력 */}
+                <div className="relative w-full md:flex-grow md:max-w-sm order-1">
+                  {" "}
+                  {/* order-1 */}
+                  <input
+                    type="text"
+                    placeholder="고객명, 상품명, 바코드, post_key..."
+                    value={inputValue}
+                    onChange={handleSearchChange}
+                    onKeyDown={handleKeyDown}
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    disabled={isDataLoading}
+                  />
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
+                  {/* --- 👇 X 버튼 추가 👇 --- */}
+                  {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
+                    <button
+                      type="button"
+                      onClick={clearInputValue}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      aria-label="검색 내용 지우기"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+                {/* 검색/초기화 버튼 그룹 */}
+                <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
+                  {" "}
+                  {/* order-2, sm:w-auto */}
                   <button
                     onClick={handleSearch}
-                    className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap"
+                    className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
+                    disabled={isDataLoading}
                   >
                     검색
                   </button>
-                  {(searchTerm || exactCustomerFilter) && (
-                    <button
-                      onClick={() => {
-                        setSearchTerm("");
-                        setInputValue("");
-                        setExactCustomerFilter("");
-                      }}
-                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
-                    >
-                      초기화
-                    </button>
-                  )}
-                </div>
-
-                {/* 선택된 항목 총계 및 일괄 처리 버튼 */}
-                <div className="flex items-center gap-6 flex-shrink-0 ml-auto">
-                  {/* 총계 표시 - 배경과 보더 제거 */}
-                  {displayOrders.length > 0 && (
-                    <div className="flex items-center gap-4">
-                      {selectedOrderIds.length > 0 ? (
-                        <>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">선택</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedOrderIds.length}개
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">수량</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {selectedOrderTotals.totalQuantity.toLocaleString()}개
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">금액</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              ₩{selectedOrderTotals.totalAmount.toLocaleString()}
-                            </span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">전체</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {displayOrders.length}개
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">총수량</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {currentPageTotalQuantity.toLocaleString()}개
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">총금액</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              ₩{currentPageTotalAmount.toLocaleString()}
-                            </span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* 일괄 처리 버튼 */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleBulkStatusUpdate("주문취소")}
-                      disabled={selectedOrderIds.length === 0 || isDataLoading}
-                      className="px-3 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <XCircleIcon className="w-4 h-4 inline-block mr-1" />
-                      일괄취소
-                    </button>
-                    <button
-                      onClick={() => handleBulkStatusUpdate("결제완료")}
-                      disabled={selectedOrderIds.length === 0 || isDataLoading}
-                      className="px-3 py-2 text-sm font-medium text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
-                      일괄결제
-                    </button>
-                    <button
-                      onClick={() => handleBulkStatusUpdate("수령완료")}
-                      disabled={selectedOrderIds.length === 0 || isDataLoading}
-                      className="px-3 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
-                      일괄수령
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleClearSearch}
+                    disabled={isDataLoading}
+                    className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
+                    aria-label="검색 초기화"
+                    title="검색 및 필터 초기화"
+                  >
+                    <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
+                    초기화
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </LightCard>
 
-        {/* 주문 리스트 영역 - 스크롤 가능 */}
-        <div className="flex-1 min-h-0 pb-4 px-4 lg:px-6 pt-0">
-          <div className="h-full bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-            {/* 테이블 컨테이너 - 한 번에 스크롤 */}
-            <div className="flex-1 overflow-auto relative">
-              <table className="min-w-full ">
-                <thead className="bg-black sticky top-0 z-10">
-                  <tr>
-                    <th
-                      scope="col"
-                      className="relative w-20 px-6 sm:w-16 sm:px-8 py-3 bg-gray-50"
+        {/* 주문 테이블 */}
+        <LightCard padding="p-0" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th
+                    scope="col"
+                    className="relative w-20 px-6 sm:w-16 sm:px-8 py-3"
+                  >
+                    <input
+                      type="checkbox"
+                      className="absolute left-4 top-1/2 -mt-2 h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 sm:left-6 cursor-pointer"
+                      ref={checkbox}
+                      checked={isAllDisplayedSelected}
+                      onChange={handleSelectAllChange}
+                      disabled={isDataLoading || displayOrders.length === 0}
+                    />
+                  </th>
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40">
+                    상품명
+                  </th>
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    <button
+                      onClick={() => handleSortChange("customer_name")} // 정렬 함수
+                      className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isDataLoading}
                     >
-                      <input
-                        type="checkbox"
-                        className="absolute left-4 top-1/2 -mt-2 h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 sm:left-6 cursor-pointer"
-                        ref={checkbox}
-                        checked={isAllDisplayedSelected}
-                        onChange={handleSelectAllChange}
-                        disabled={isDataLoading || displayOrders.length === 0}
-                      />
-                    </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
-                      상품명
-                    </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      <button
-                        onClick={() => handleSortChange("customer_name")} // 정렬 함수
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isDataLoading}
-                      >
-                        고객명 {getSortIcon("customer_name")}
-                      </button>
-                    </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-60 bg-gray-50">
-                      고객 댓글
-                    </th>
+                      고객명 {getSortIcon("customer_name")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-60">
+                    고객 댓글
+                  </th>
 
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16 bg-gray-50">
-                      수량
-                    </th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      <button
-                        onClick={() => handleSortChange("total_amount")}
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isDataLoading}
-                      >
-                        금액 {getSortIcon("total_amount")}
-                      </button>
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
-                      <button
-                        onClick={() => handleSortChange("ordered_at")}
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isDataLoading}
-                      >
-                        주문일시 {getSortIcon("ordered_at")}
-                      </button>
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-32 bg-gray-50">
-                      바코드
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      상태
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      서브상태
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-44 bg-gray-50">
-                    </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
+                    수량
+                  </th>
+                  <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    <button
+                      onClick={() => handleSortChange("total_amount")}
+                      className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isDataLoading}
+                    >
+                      금액 {getSortIcon("total_amount")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">
+                    <button
+                      onClick={() => handleSortChange("ordered_at")}
+                      className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isDataLoading}
+                    >
+                      주문일시 {getSortIcon("ordered_at")}
+                    </button>
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-32">
+                    바코드
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    상태
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                    서브상태
+                  </th>
+                  <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-44">
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {isOrdersLoading && !ordersData && (
+                  <tr>
+                    <td colSpan="13" className="px-6 py-10 text-center">
+                      <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
+                      <span className="text-sm text-gray-500 mt-2 block">
+                        주문 목록 로딩 중...
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {isOrdersLoading && !ordersData && (
-                    <tr>
-                      <td colSpan="14" className="px-6 py-10 text-center">
-                        <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
-                        <span className="text-sm text-gray-500 mt-2 block">
-                          주문 목록 로딩 중...
-                        </span>
-                      </td>
-                    </tr>
-                  )}
-                  {!isOrdersLoading && displayOrders.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan="13"
-                        className="px-6 py-10 text-center text-sm text-gray-500"
+                )}
+                {!isOrdersLoading && displayOrders.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan="13"
+                      className="px-6 py-10 text-center text-sm text-gray-500"
+                    >
+                      {searchTerm ||
+                      filterSelection !== "all" ||
+                      filterDateRange !== "30days" || // 기본값 변경 반영
+                      (filterDateRange === "custom" &&
+                        (customStartDate || customEndDate))
+                        ? "조건에 맞는 주문이 없습니다."
+                        : "표시할 주문이 없습니다."}
+                    </td>
+                  </tr>
+                )}
+                {displayOrders.map((order) => {
+                  const isSelected = selectedOrderIds.includes(order.order_id);
+                  const product = getProductById(order.product_id);
+                  const hasMultipleBarcodeOptions =
+                    product?.barcode_options?.options?.length > 1;
+
+                  return (
+                    <React.Fragment key={order.order_id}>
+                      <tr
+                        className={`${
+                          editingOrderId === order.order_id 
+                            ? "bg-blue-50 border-l-4 border-blue-400" 
+                            : isSelected 
+                              ? "bg-orange-50" 
+                              : "hover:bg-gray-50"
+                        } transition-colors group cursor-pointer ${
+                          isOrdersLoading ? "opacity-70" : ""
+                        }`}
+                        onClick={() => editingOrderId === order.order_id ? null : openDetailModal(order)}
                       >
-                        {searchTerm ||
-                        filterSelection !== "all" ||
-                        filterDateRange !== "30days" || // 기본값 변경 반영
-                        (filterDateRange === "custom" &&
-                          (customStartDate || customEndDate))
-                          ? "조건에 맞는 주문이 없습니다."
-                          : "표시할 주문이 없습니다."}
-                      </td>
-                    </tr>
-                  )}
-                  {displayOrders.map((order) => {
-                    const isSelected = selectedOrderIds.includes(
-                      order.order_id
-                    );
-                    const product = getProductById(order.product_id);
-                    const hasMultipleBarcodeOptions =
-                      product?.barcode_options?.options?.length > 1;
-
-                    return (
-                      <React.Fragment key={order.order_id}>
-                        <tr
-                          className={`${
-                            editingOrderId === order.order_id 
-                              ? "bg-blue-50 border-l-4 border-blue-400" 
-                              : isSelected 
-                                ? "bg-orange-50" 
-                                : "hover:bg-gray-50"
-                          } transition-colors group cursor-pointer ${
-                            isOrdersLoading ? "opacity-70" : ""
-                          }`}
-                          onClick={() => editingOrderId === order.order_id ? null : openDetailModal(order)}
+                        <td
+                          onClick={(e) => e.stopPropagation()}
+                          className="relative w-12 px-6 sm:w-16 sm:px-8"
                         >
-                          <td
-                            onClick={(e) => e.stopPropagation()}
-                            className="relative w-12 px-6 sm:w-16 sm:px-8"
-                          >
-                            <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
-                              <input
-                                type="checkbox"
-                                className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                                value={order.order_id}
-                                checked={isSelected}
-                                onChange={(e) =>
-                                  handleCheckboxChange(e, order.order_id)
-                                }
-                              />
-                            </div>
-                          </td>
-                          <td
-                            className="py-2 pr-4 text-sm text-gray-700 font-medium w-44" 
-                            title={getProductNameById(order.product_id)}
-                          >
-                            {editingOrderId === order.order_id ? (
-                              // 편집 모드
-                              <select
-                                value={editValues.product_id}
-                                onChange={(e) => handleProductSelect(e.target.value, order)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <option value="">상품을 선택하세요</option>
-                                {(availableProducts[order.post_key] || []).map(product => (
-                                  <option key={product.product_id} value={product.product_id}>
-                                    {cleanProductName(product.title)}
-                                    {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              // 일반 표시 모드
-                              <div 
-                                className="hover:text-orange-600 hover:underline cursor-pointer"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCellClickToSearch(
-                                    getProductNameById(order.product_id)
-                                  );
-                                  setFilterSelection("all");
-                                }}
-                              >
-                                {(() => {
-                                  const productName = getProductNameById(
-                                    order.product_id
-                                  );
-                                  const { name, date } =
-                                    parseProductName(productName);
-                                  const isAvailable =
-                                    isClient && date
-                                      ? isPickupAvailable(date)
-                                      : false;
-
-                                  return (
-                                    <div className="flex flex-col">
-                                      <div
-                                        className={`font-medium ${
-                                          isAvailable
-                                            ? "text-orange-600 font-bold"
-                                            : ""
-                                        }`}
-                                      >
-                                        {name}
-                                      </div>
-                                      {date && (
-                                        <div className="text-xs mt-0.5 text-gray-500">
-                                          [{date}]
-                                          {isAvailable && (
-                                            <span className="ml-1 text-gray-500">
-                                              ✓ 수령가능
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            )}
-                          </td>
-                          <td
-                            className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
-                            title={order.customer_name}
-                            onClick={(e) => {
-                              e.stopPropagation(); // 행 전체 onClick(모달) 방지
-                              handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
-                            }}
-                          >
-                            {order.customer_name || "-"}
-                          </td>
-                          <td
-                            className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
-                            title={processBandTags(order.comment) || ""}
-                          >
-                            <div className="line-clamp-3 break-words leading-tight">
-                              {processBandTags(order.comment) || "-"}
-                            </div>
-                          </td>
-
-                          <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
-                            {editingOrderId === order.order_id ? (
-                              <input
-                                type="number"
-                                min="1"
-                                value={editValues.quantity}
-                                onChange={(e) => handleQuantityChange(e.target.value)}
-                                className="w-12 px-1 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            ) : (
-                              order.quantity || 0
-                            )}
-                          </td>
-                          <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
-                            {editingOrderId === order.order_id ? (
-                              <span className="text-orange-600 font-semibold">
-                                ₩{((editValues.quantity || 1) * (editValues.product_price || 0)).toLocaleString()}
-                              </span>
-                            ) : (
-                              formatCurrency(order.total_amount)
-                            )}
-                          </td>
-                          <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
-                            {formatDate(order.ordered_at)}
-                          </td>
-                          <td className="py-2 pr-2 text-center hidden md:table-cell w-32">
-                            {(() => {
-                              // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
-                              const selectedOption =
-                                order.selected_barcode_option;
-                              const displayBarcode =
-                                selectedOption?.barcode ||
-                                getProductBarcode(order.product_id);
-
-                              return displayBarcode ? (
-                                <Barcode
-                                  value={displayBarcode}
-                                  height={30}
-                                  width={1.2}
-                                  fontSize={12}
-                                />
-                              ) : (
-                                <span className="text-xs text-gray-400">
-                                  없음
-                                </span>
-                              );
-                            })()}
-                          </td>
-
-                          <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
-                            <StatusBadge
-                              status={order.status}
-                              processingMethod={order.processing_method}
+                          <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                              value={order.order_id}
+                              checked={isSelected}
+                              onChange={(e) =>
+                                handleCheckboxChange(e, order.order_id)
+                              }
                             />
-                          </td>
+                          </div>
+                        </td>
+                        <td
+                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44" 
+                          title={getProductNameById(order.product_id)}
+                        >
+                          {editingOrderId === order.order_id ? (
+                            // 편집 모드
+                            <select
+                              value={editValues.product_id}
+                              onChange={(e) => handleProductSelect(e.target.value, order)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">상품을 선택하세요</option>
+                              {(availableProducts[order.post_key] || []).map(product => (
+                                <option key={product.product_id} value={product.product_id}>
+                                  {cleanProductName(product.title)}
+                                  {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            // 일반 표시 모드
+                            <div 
+                              className="hover:text-orange-600 hover:underline cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCellClickToSearch(
+                                  getProductNameById(order.product_id)
+                                );
+                                setFilterSelection("all");
+                              }}
+                            >
+                              {(() => {
+                                const productName = getProductNameById(
+                                  order.product_id
+                                );
+                                const { name, date } =
+                                  parseProductName(productName);
+                                const isAvailable =
+                                  isClient && date
+                                    ? isPickupAvailable(date)
+                                    : false;
 
-                          {/* 서브상태 셀 */}
-                          <td className="py-2 pr-2 text-center w-24">
-                            {(() => {
-                              const actualStatus = order.status;
-                              const actualSubStatus = order.sub_status;
-
-                              if (
-                                actualStatus !== "수령완료" &&
-                                actualSubStatus === "확인필요"
-                              ) {
                                 return (
+                                  <div className="flex flex-col">
+                                    <div
+                                      className={`font-medium ${
+                                        isAvailable
+                                          ? "text-orange-600 font-bold"
+                                          : ""
+                                      }`}
+                                    >
+                                      {name}
+                                    </div>
+                                    {date && (
+                                      <div
+                                        className="text-xs mt-0.5 text-gray-500"
+                                      >
+                                        [{date}]
+                                        {isAvailable && (
+                                          <span className="ml-1 text-gray-500">
+                                            ✓ 수령가능
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
+                          title={order.customer_name}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 행 전체 onClick(모달) 방지
+                            handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
+                          }}
+                        >
+                          {order.customer_name || "-"}
+                        </td>
+                        <td
+                          className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
+                          title={processBandTags(order.comment) || ""}
+                        >
+                          <div className="line-clamp-3 break-words leading-tight">
+                            {processBandTags(order.comment) || "-"}
+                          </div>
+                        </td>
+
+                        <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
+                          {editingOrderId === order.order_id ? (
+                            <input
+                              type="number"
+                              min="1"
+                              value={editValues.quantity}
+                              onChange={(e) => handleQuantityChange(e.target.value)}
+                              className="w-12 px-1 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            order.quantity || 0
+                          )}
+                        </td>
+                        <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
+                          {editingOrderId === order.order_id ? (
+                            <span className="text-orange-600 font-semibold">
+                              ₩{((editValues.quantity || 1) * (editValues.product_price || 0)).toLocaleString()}
+                            </span>
+                          ) : (
+                            formatCurrency(order.total_amount)
+                          )}
+                        </td>
+                        <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
+                          {formatDate(order.ordered_at)}
+                        </td>
+                        <td className="py-2 pr-2 text-center hidden md:table-cell w-32">
+                          {(() => {
+                            // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
+                            const selectedOption =
+                              order.selected_barcode_option;
+                            const displayBarcode =
+                              selectedOption?.barcode ||
+                              getProductBarcode(order.product_id);
+
+                            return displayBarcode ? (
+                              <Barcode
+                                value={displayBarcode}
+                                height={30}
+                                width={1.2}
+                                fontSize={12}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-400">
+                                없음
+                              </span>
+                            );
+                          })()}
+                        </td>
+
+                        <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
+                          <StatusBadge
+                            status={order.status}
+                            processingMethod={order.processing_method}
+                          />
+                        </td>
+
+                        {/* 서브상태 셀 */}
+                        <td className="py-2 pr-2 text-center w-24">
+                          {(() => {
+                            const actualStatus = order.status;
+                            const actualSubStatus = order.sub_status;
+
+                            // 확인필요 상태 - updated_at 시간 표시
+                            if (
+                              actualStatus !== "수령완료" &&
+                              actualSubStatus === "확인필요"
+                            ) {
+                              return (
+                                <div>
                                   <span className="inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white">
                                     확인필요
                                   </span>
-                                );
-                              }
-
-                              if (
-                                actualStatus !== "수령완료" &&
-                                actualSubStatus === "미수령"
-                              ) {
-                                return (
-                                  <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
-                                    미수령
-                                  </span>
-                                );
-                              }
-
-                              if (
-                                actualStatus === "수령완료" &&
-                                order.completed_at
-                              ) {
-                                return (
-                                  <span className="text-xs text-gray-600">
-                                    {formatDate(order.completed_at)}
-                                  </span>
-                                );
-                              }
-
-                              return "-";
-                            })()}
-                          </td>
-                          {/* 작업 버튼들 */}
-                          <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center space-x-1">
-                              {/* 게시물 보기 버튼 */}
-                              {(() => {
-                                // 주문 ID에서 게시물 키 추출 시도
-                                const extractedPostKey =
-                                  extractPostKeyFromOrderId(order.order_id);
-                                const hasPostInfo =
-                                  order.post_key ||
-                                  order.post_number ||
-                                  extractedPostKey;
-
-                                return hasPostInfo;
-                              })() ? (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation(); // 행 클릭 이벤트 방지
-                                    openCommentsModal(order);
-                                  }}
-                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                                  title="게시물 보기"
-                                >
-                                  <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
-                                </button>
-                              ) : (
-                                <button
-                                  disabled
-                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 cursor-not-allowed rounded-md"
-                                  title="게시물 정보 없음"
-                                >
-                                  <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
-                                </button>
-                              )}
-                              
-                              {editingOrderId === order.order_id ? (
-                                <div className="flex space-x-1 animate-pulse">
-                                  <button
-                                    onClick={() => handleEditSave(order)}
-                                    disabled={savingEdit}
-                                    className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-r-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
-                                    title="저장"
-                                  >
-                                    {savingEdit ? '저장중...' : '저장'}
-                                  </button>
-                                  <button
-                                    onClick={handleEditCancel}
-                                    disabled={savingEdit}
-                                    className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200 ml-1"
-                                    title="취소"
-                                  >
-                                    취소
-                                  </button>
+                                  {order.updated_at && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {formatDate(order.updated_at)}
+                                    </div>
+                                  )}
                                 </div>
-                              ) : (
+                              );
+                            }
+
+                            // 주문취소 상태 - updated_at 시간 표시
+                            if (actualStatus === "주문취소") {
+                              return (
+                                <div>
+                                  <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                                    취소
+                                  </span>
+                                  {order.updated_at && (
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {formatDate(order.updated_at)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            // 미수령 상태
+                            if (
+                              actualStatus !== "수령완료" &&
+                              actualSubStatus === "미수령"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                                  미수령
+                                </span>
+                              );
+                            }
+
+                            // 수령완료 상태
+                            if (
+                              actualStatus === "수령완료" &&
+                              order.completed_at
+                            ) {
+                              return (
+                                <span className="text-xs text-gray-600">
+                                  {formatDate(order.completed_at)}
+                                </span>
+                              );
+                            }
+
+                            return "-";
+                          })()}
+                        </td>
+
+                        {/* 작업 버튼들 */}
+                        <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center space-x-1">
+                            {/* 게시물 보기 버튼 */}
+                            {(() => {
+                              // 주문 ID에서 게시물 키 추출 시도
+                              const extractedPostKey = extractPostKeyFromOrderId(
+                                order.order_id
+                              );
+                              const hasPostInfo =
+                                order.post_key ||
+                                order.post_number ||
+                                extractedPostKey;
+
+                              return hasPostInfo;
+                            })() ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation(); // 행 클릭 이벤트 방지
+                                  openCommentsModal(order);
+                                }}
+                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                                title="게시물 보기"
+                              >
+                                <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                disabled
+                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 cursor-not-allowed rounded-md"
+                                title="게시물 정보 없음"
+                              >
+                                <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
+                              </button>
+                            )}
+                            
+                            {/* 편집 버튼 */}
+                            {editingOrderId === order.order_id ? (
+                              <div className="flex space-x-1 animate-pulse">
                                 <button
-                                  onClick={() => handleEditStart(order)}
-                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                                  title="수정"
+                                  onClick={() => handleEditSave(order)}
+                                  disabled={savingEdit}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-r-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
+                                  title="저장"
                                 >
-                                  <PencilIcon className="w-4 h-4" />
+                                  {savingEdit ? '저장중...' : '저장'}
                                 </button>
-                              )}
+                                <button
+                                  onClick={handleEditCancel}
+                                  disabled={savingEdit}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200 ml-1"
+                                  title="취소"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleEditStart(order)}
+                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                                title="수정"
+                              >
+                                <PencilIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
+                      {hasMultipleBarcodeOptions && (
+                        <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
+                          <td colSpan="13" className="py-2 pr-2">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <BarcodeOptionSelector
+                                order={order}
+                                product={product}
+                                onOptionChange={handleBarcodeOptionChange}
+                              />
                             </div>
                           </td>
                         </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-                        {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
-                        {hasMultipleBarcodeOptions && (
-                          <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                            <td colSpan="14" className="py-2 pr-2">
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <BarcodeOptionSelector
-                                  order={order}
-                                  product={product}
-                                  onOptionChange={handleBarcodeOptionChange}
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 페이지네이션 - 검색어가 없을 때만 표시, 하단 고정 */}
-            {!searchTerm && totalItems > itemsPerPage && (
-              <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white">
-                <div>
-                  <p className="text-sm text-gray-700">
-                    총
-                    <span className="font-medium">
-                      {totalItems.toLocaleString()}
-                    </span>
-                    개 중
-                    <span className="font-medium">
-                      {(currentPage - 1) * itemsPerPage + 1}-
-                      {Math.min(currentPage * itemsPerPage, totalItems)}
-                    </span>
-                    표시
-                  </p>
-                </div>
-                <nav
-                  className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                  aria-label="Pagination"
-                >
-                  <button
-                    onClick={goToPreviousPage}
-                    disabled={currentPage === 1 || isDataLoading}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ArrowLongLeftIcon className="h-5 w-5" />
-                  </button>
-                  {(() => {
-                    const pageNumbers = [];
-                    const maxPagesToShow = 5;
-                    const halfMaxPages = Math.floor(maxPagesToShow / 2);
-                    let startPage = Math.max(1, currentPage - halfMaxPages);
-                    let endPage = Math.min(
-                      totalPages,
-                      startPage + maxPagesToShow - 1
-                    );
-                    if (endPage - startPage + 1 < maxPagesToShow)
-                      startPage = Math.max(1, endPage - maxPagesToShow + 1);
-                    if (startPage > 1) {
-                      pageNumbers.push(1);
-                      if (startPage > 2) pageNumbers.push("...");
-                    }
-                    for (let i = startPage; i <= endPage; i++)
-                      pageNumbers.push(i);
-                    if (endPage < totalPages) {
-                      if (endPage < totalPages - 1) pageNumbers.push("...");
-                      pageNumbers.push(totalPages);
-                    }
-                    return pageNumbers.map((page, idx) =>
-                      typeof page === "number" ? (
-                        <button
-                          key={page}
-                          onClick={() => paginate(page)}
-                          disabled={isDataLoading}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                            currentPage === page
-                              ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
-                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                          }`}
-                          aria-current={
-                            currentPage === page ? "page" : undefined
-                          }
-                        >
-                          {page}
-                        </button>
-                      ) : (
-                        <span
-                          key={`ellipsis-${idx}`}
-                          className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
-                        >
-                          ...
-                        </span>
-                      )
-                    );
-                  })()}
-                  <button
-                    onClick={goToNextPage}
-                    disabled={currentPage === totalPages || isDataLoading}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ArrowLongRightIcon className="h-5 w-5" />
-                  </button>
-                </nav>
+          {/* 페이지네이션 - 검색어가 없을 때만 표시 */}
+          {!searchTerm && totalItems > itemsPerPage && (
+            <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white sm:px-6 rounded-b-xl">
+              <div>
+                <p className="text-sm text-gray-700">
+                  총
+                  <span className="font-medium">
+                    {totalItems.toLocaleString()}
+                  </span>
+                  개 중
+                  <span className="font-medium">
+                    {(currentPage - 1) * itemsPerPage + 1}-
+                    {Math.min(currentPage * itemsPerPage, totalItems)}
+                  </span>
+                  표시
+                </p>
               </div>
+              <nav
+                className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                aria-label="Pagination"
+              >
+                <button
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1 || isDataLoading}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ArrowLongLeftIcon className="h-5 w-5" />
+                </button>
+                {(() => {
+                  const pageNumbers = [];
+                  const maxPagesToShow = 5;
+                  const halfMaxPages = Math.floor(maxPagesToShow / 2);
+                  let startPage = Math.max(1, currentPage - halfMaxPages);
+                  let endPage = Math.min(
+                    totalPages,
+                    startPage + maxPagesToShow - 1
+                  );
+                  if (endPage - startPage + 1 < maxPagesToShow)
+                    startPage = Math.max(1, endPage - maxPagesToShow + 1);
+                  if (startPage > 1) {
+                    pageNumbers.push(1);
+                    if (startPage > 2) pageNumbers.push("...");
+                  }
+                  for (let i = startPage; i <= endPage; i++)
+                    pageNumbers.push(i);
+                  if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) pageNumbers.push("...");
+                    pageNumbers.push(totalPages);
+                  }
+                  return pageNumbers.map((page, idx) =>
+                    typeof page === "number" ? (
+                      <button
+                        key={page}
+                        onClick={() => paginate(page)}
+                        disabled={isDataLoading}
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                          currentPage === page
+                            ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
+                            : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                        }`}
+                        aria-current={currentPage === page ? "page" : undefined}
+                      >
+                        {page}
+                      </button>
+                    ) : (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                      >
+                        ...
+                      </span>
+                    )
+                  );
+                })()}
+                <button
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages || isDataLoading}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ArrowLongRightIcon className="h-5 w-5" />
+                </button>
+              </nav>
+            </div>
+          )}
+        </LightCard>
+
+        <div className="pt-[100px]"></div>
+
+        {/* 일괄 처리 버튼 */}
+        <div className="fixed flex justify-between items-center bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
+          {/* 왼쪽 영역 - 안내 메시지 */}
+          <div className="flex items-center">
+            {selectedOrderIds.length === 0 && !isDataLoading && (
+              <span className="text-sm text-gray-500 italic">
+                항목을 선택하여 일괄 처리하세요
+              </span>
             )}
           </div>
-        </div>
-
-        {/* 일괄 처리 버튼 - 우측 하단 고정 (이 부분은 추후 수정 필요) */}
-        <div className="hidden">
-          {selectedOrderIds.length === 0 && !isDataLoading && (
-            <span className="text-sm text-gray-500 italic h-[38px] flex items-center mr-2">
-              항목을 선택하여 일괄 처리하세요.
-            </span>
-          )}
-          <button
+          
+          {/* 오른쪽 영역 - 총계 및 버튼 */}
+          <div className="flex items-center gap-4">
+            {/* 총계 표시 */}
+            {selectedOrderIds.length > 0 ? (
+              <>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 항목</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedOrderIds.length}개 선택됨
+                  </span>
+                </div>
+                <div className="h-10 w-px bg-gray-300"></div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 수량</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {selectedOrderTotals.totalQuantity.toLocaleString()}개
+                  </span>
+                </div>
+                <div className="h-10 w-px bg-gray-300"></div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 금액</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    ₩{selectedOrderTotals.totalAmount.toLocaleString()}
+                  </span>
+                </div>
+              </>
+            ) : (
+              displayOrders.length > 0 && (
+                <>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">현재 페이지</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {displayOrders.length}개 항목
+                    </span>
+                  </div>
+                  <div className="h-10 w-px bg-gray-300"></div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">총 수량</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {currentPageTotalQuantity.toLocaleString()}개
+                    </span>
+                  </div>
+                  <div className="h-10 w-px bg-gray-300"></div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">총 금액</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      ₩{currentPageTotalAmount.toLocaleString()}
+                    </span>
+                  </div>
+                </>
+              )
+            )}
+            
+            {/* 일괄 처리 버튼들 */}
+            <button
             onClick={() => handleBulkStatusUpdate("주문취소")}
             disabled={
               selectedOrderIds.length === 0 ||
@@ -2967,7 +2602,7 @@ export default function OrdersPage() {
               isDataLoading ||
               bulkUpdateLoading
             }
-            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-yellow-600 text-white hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
+            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
               selectedOrderIds.length === 0
                 ? "opacity-0 scale-95 pointer-events-none"
                 : "opacity-100 scale-100"
@@ -2994,193 +2629,794 @@ export default function OrdersPage() {
             <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
             {selectedOrderIds.length})
           </button>
+          </div>
         </div>
-      </main>
 
-      {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
-      {isDetailModalOpen && selectedOrder && (
-        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
-          <div className="bg-white rounded-xl max-w-2xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* 모달 헤더 */}
-            <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {(() => {
-                  const productName = getProductNameById(
-                    selectedOrder.product_id
-                  );
-                  const { name, date } = parseProductName(productName);
-                  const isAvailable =
-                    isClient && date ? isPickupAvailable(date) : false;
+        {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
+        {isDetailModalOpen && selectedOrder && (
+          <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
+            <div className="bg-white rounded-xl max-w-4xl w-full shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
+              {/* 모달 헤더 */}
+              <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {(() => {
+                    const productName = getProductNameById(
+                      selectedOrder.product_id
+                    );
+                    const { name, date } = parseProductName(productName);
+                    const isAvailable =
+                      isClient && date ? isPickupAvailable(date) : false;
 
-                  return (
-                    <div className="flex flex-col">
-                      <div
-                        className={`${
-                          isAvailable ? "text-orange-600 font-bold" : ""
-                        }`}
-                      >
-                        {name}
-                      </div>
-                      {date && (
+                    return (
+                      <div className="flex flex-col">
                         <div
-                          className={`text-sm mt-1 ${
-                            isAvailable
-                              ? "text-orange-500 font-medium"
-                              : "text-gray-500"
+                          className={`${
+                            isAvailable ? "text-orange-600 font-bold" : ""
                           }`}
                         >
-                          [{date}]
-                          {isAvailable && (
-                            <span className="ml-1 text-orange-600 font-bold">
-                              ✓ 수령가능
-                            </span>
-                          )}
+                          {name}
                         </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </h3>
-              <button
-                onClick={closeDetailModal}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200 transition-colors"
-                aria-label="Close"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-            {/* 모달 본문 */}
-            <div className="flex-grow overflow-y-auto p-4 sm:p-6">
-              {/* 탭 네비게이션 */}
-              <div className="border-b border-gray-200 mb-6">
-                <div className="flex -mb-px space-x-6 sm:space-x-8">
-                  {/* 상태 관리 탭 */}
-                  <button
-                    onClick={() => handleTabChange("status")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                      activeTab === "status"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
-                  >
-                    <QrCodeIcon className="w-5 h-5 mr-1.5" /> 상태 관리
-                  </button>
-                  {/* 주문 정보 탭 (복구) */}
-                  <button
-                    onClick={() => handleTabChange("info")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                      activeTab === "info"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
-                  >
-                    <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
-                  </button>
-                  {/* 주문 처리 탭 */}
-                  <button
-                    onClick={() => handleTabChange("processing")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                      activeTab === "processing"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
-                  >
-                    <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
-                  </button>
-                  {/* 주문 보러가기 탭 */}
-                  {getPostUrlByProductId(selectedOrder.product_id) && (
-                    <a
-                      href={getPostUrlByProductId(selectedOrder.product_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => {
-                        e.stopPropagation(); // 모달 닫힘 방지
-                        // handleTabChange("go"); // 탭 상태 변경 (선택사항)
-                      }}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`} // 'go' 탭은 활성 상태를 시각적으로 표시하지 않음
-                    >
-                      <ArrowTopRightOnSquareIcon className="w-5 h-5 mr-1.5" />
-                      주문 보러가기
-                    </a>
-                  )}
-
-                  {/* 댓글 보기 탭 */}
-                  {selectedOrder.post_number && (
-                    <button
-                      onClick={() => openCommentsModal(selectedOrder)}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
-                    >
-                      <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-1.5" />
-                      댓글 보기
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* 탭 콘텐츠 */}
-              <div className="space-y-6">
-                {/* 상태 관리 탭 내용 */}
-                {activeTab === "status" && (
-                  <div className="space-y-5">
-                    <LightCard padding="p-4" className="text-center bg-gray-50">
-                      <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
-                        상품 바코드
-                      </label>
-                      <div className="max-w-xs mx-auto h-[70px] flex items-center justify-center">
-                        {" "}
-                        {/* 세로 정렬 및 최소 높이 보장 */}
-                        {getProductBarcode(selectedOrder.product_id) ? (
-                          <Barcode
-                            value={getProductBarcode(selectedOrder.product_id)}
-                            width={1.8}
-                            height={45}
-                            fontSize={12}
-                          />
-                        ) : (
-                          // 바코드가 없을 때 입력 필드와 저장 버튼 표시
-                          <div className="flex flex-col items-center space-y-2 w-full px-2 py-2">
-                            <input
-                              type="text"
-                              placeholder="바코드 입력"
-                              value={newBarcodeValue}
-                              onChange={(e) =>
-                                setNewBarcodeValue(e.target.value)
-                              }
-                              className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900"
-                            />
-                            <button
-                              onClick={() =>
-                                handleSaveBarcode(
-                                  selectedOrder.product_id,
-                                  newBarcodeValue
-                                )
-                              }
-                              disabled={
-                                !newBarcodeValue.trim() || isSavingBarcode
-                              }
-                              className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed w-full"
-                            >
-                              {isSavingBarcode ? (
-                                <LoadingSpinner className="h-4 w-4 mr-1 text-white" />
-                              ) : null}{" "}
-                              {/* 로딩 스피너 색상 및 간격 조정 */}
-                              저장
-                            </button>
+                        {date && (
+                          <div
+                            className="text-sm mt-1 text-gray-500"
+                          >
+                            [{date}]
+                            {isAvailable && (
+                              <span className="ml-1 text-gray-500">
+                                ✓ 수령가능
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
-                    </LightCard>
-                    <LightCard padding="p-4" className="">
-                      <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
-                        고객 주문 정보
-                      </label>
-                      <div className="flex items-start space-x-3">
-                        <UserCircleIcon className="w-6 h-6 text-gray-400 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-800 font-semibold">
-                            {selectedOrder.customer_name || "이름 없음"}
-                          </p>
-                          <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap break-words">
+                    );
+                  })()}
+                </h3>
+                <button
+                  onClick={closeDetailModal}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200 transition-colors"
+                  aria-label="Close"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+              {/* 모달 본문 */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
+                {/* 탭 네비게이션 */}
+                <div className="border-b border-gray-200 mb-6">
+                  <div className="flex -mb-px space-x-6 sm:space-x-8">
+                    {/* 상태 관리 탭 */}
+                    <button
+                      onClick={() => handleTabChange("status")}
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
+                        activeTab === "status"
+                          ? "border-orange-500 text-orange-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <QrCodeIcon className="w-5 h-5 mr-1.5" /> 상태 관리
+                    </button>
+                    {/* 주문 정보 탭 (복구) */}
+                    <button
+                      onClick={() => handleTabChange("info")}
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
+                        activeTab === "info"
+                          ? "border-orange-500 text-orange-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
+                    </button>
+                    {/* 주문 처리 탭 */}
+                    <button
+                      onClick={() => handleTabChange("processing")}
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
+                        activeTab === "processing"
+                          ? "border-orange-500 text-orange-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
+                    </button>
+                    {/* 주문 보러가기 탭 */}
+                    {getPostUrlByProductId(selectedOrder.product_id) && (
+                      <a
+                        href={getPostUrlByProductId(selectedOrder.product_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          e.stopPropagation(); // 모달 닫힘 방지
+                          // handleTabChange("go"); // 탭 상태 변경 (선택사항)
+                        }}
+                        className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`} // 'go' 탭은 활성 상태를 시각적으로 표시하지 않음
+                      >
+                        <ArrowTopRightOnSquareIcon className="w-5 h-5 mr-1.5" />
+                        주문 보러가기
+                      </a>
+                    )}
+
+                    {/* 댓글 보기 탭 */}
+                    {selectedOrder.post_number && (
+                      <button
+                        onClick={() => openCommentsModal(selectedOrder)}
+                        className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
+                      >
+                        <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-1.5" />
+                        댓글 보기
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 탭 콘텐츠 */}
+                <div className="space-y-6">
+                  {/* 상태 관리 탭 내용 - 토스 디자인 스타일 */}
+                  {activeTab === "status" && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {/* 왼쪽 열 */}
+                      <div className="space-y-5">
+                        {/* 고객 정보 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">고객 정보</h3>
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
+                              <span className="text-xl">👤</span>
+                            </div>
+                            <div>
+                              <p className="text-base font-semibold text-gray-900">{selectedOrder.customer_name}</p>
+                              <p className="text-sm text-gray-500 mt-0.5">{selectedOrder.product_names || '2팩'}</p>
+                            </div>
+                          </div>
+                          {selectedOrder.status === 'completed' && (
+                            <div className="mt-4 px-3 py-2 bg-green-50 rounded-xl">
+                              <p className="text-xs font-semibold text-green-700">✓ 수령 완료</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 바코드 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">상품 바코드</h3>
+                          <div className="bg-gray-50 rounded-xl p-4">
+                            {getProductBarcode(selectedOrder.product_id) ? (
+                              <Barcode
+                                value={getProductBarcode(selectedOrder.product_id)}
+                                width={1.3}
+                                height={35}
+                                fontSize={10}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                placeholder="바코드를 입력하세요"
+                                value={newBarcodeValue}
+                                onChange={(e) => setNewBarcodeValue(e.target.value)}
+                                className="w-full bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none"
+                              />
+                            )}
+                          </div>
+                          {!getProductBarcode(selectedOrder.product_id) && (
+                            <button 
+                              onClick={() => handleSaveBarcode(selectedOrder.product_id, newBarcodeValue)}
+                              disabled={!newBarcodeValue.trim() || isSavingBarcode}
+                              className="w-full mt-3 px-4 py-3 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-all disabled:bg-gray-300"
+                            >
+                              저장
+                            </button>
+                          )}
+                        </div>
+
+                        {/* 주문 상태 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 상태 변경</h3>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "주문완료")}
+                              className="px-3 py-3 bg-blue-100 text-blue-700 text-sm font-semibold rounded-xl hover:bg-blue-200 transition-all"
+                            >
+                              주문완료
+                            </button>
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "주문취소")}
+                              className="px-3 py-3 bg-red-100 text-red-700 text-sm font-semibold rounded-xl hover:bg-red-200 transition-all"
+                            >
+                              주문취소
+                            </button>
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "확인필요")}
+                              className="px-3 py-3 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 transition-all"
+                            >
+                              확인필요
+                            </button>
+                            <button 
+                              onClick={() => handleStatusChange(selectedOrder.order_id, "수령완료")}
+                              disabled={selectedOrder.status === '수령완료'}
+                              className={`px-3 py-3 text-sm font-semibold rounded-xl transition-all ${
+                                selectedOrder.status === '수령완료' 
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                            >
+                              수령완료
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 오른쪽 열 */}
+                      <div className="space-y-5">
+                        {/* 주문 정보 수정 카드 - 토스 스타일 */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                          <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 정보</h3>
+                          
+                          <div className="space-y-4">
+                            {/* 상품 표시 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">상품</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                                <span className="text-base font-semibold text-gray-900">
+                                  {cleanProductName(getProductNameById(selectedOrder.product_id))}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 수량 표시 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">수량</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center">
+                                <span className="flex-1 text-base font-semibold text-gray-900">
+                                  {selectedOrder.quantity}
+                                </span>
+                                <span className="text-sm text-gray-500">개</span>
+                              </div>
+                            </div>
+                            
+                            {/* 단가 표시 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">단가</label>
+                              <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center">
+                                <span className="flex-1 text-base font-semibold text-gray-900">
+                                  ₩{(selectedOrder.price || 0).toLocaleString()}
+                                </span>
+                                <span className="text-sm text-gray-500">원</span>
+                              </div>
+                            </div>
+                            
+                            {/* 총 금액 표시 */}
+                            <div>
+                              <label className="text-xs font-semibold text-gray-500 mb-2 block">총 금액</label>
+                              <div className="bg-orange-50 rounded-xl px-4 py-3 flex items-center justify-between border border-orange-200">
+                                <span className="text-base font-semibold text-orange-700">
+                                  ₩{(selectedOrder.total_amount || 0).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* 주문 정보 탭 내용 (복구) */}
+                  {activeTab === "info" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                      {[
+                        {
+                          label: "상품명",
+                          value: (() => {
+                            const productName = getProductNameById(
+                              selectedOrder.product_id
+                            );
+                            const { name, date } =
+                              parseProductName(productName);
+                            const isAvailable =
+                              isClient && date
+                                ? isPickupAvailable(date)
+                                : false;
+
+                            return (
+                              <div className="flex flex-col">
+                                <div
+                                  className={`${
+                                    isAvailable
+                                      ? "text-orange-600 font-bold"
+                                      : ""
+                                  }`}
+                                >
+                                  {name}
+                                </div>
+                                {date && (
+                                  <div
+                                    className="text-sm mt-1 text-gray-500"
+                                  >
+                                    [{date}]
+                                    {isAvailable && (
+                                      <span className="ml-1 text-gray-500">
+                                        ✓ 수령가능
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })(),
+                          readOnly: true,
+                        },
+                        // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
+                        // {
+                        //   label: "상품명", // This was incorrect
+                        //   value: getProductNameById(
+                        //     selectedOrder.price_option_description
+                        //   ),
+                        //   readOnly: true,
+                        // },
+                        // --- END REMOVAL ---
+
+                        {
+                          label: "고객명",
+                          value: selectedOrder.customer_name || "-",
+                          readOnly: true,
+                        },
+
+                        // --- ADD PRICE OPTION DESCRIPTION HERE ---
+                        {
+                          label: "선택 옵션", // Or "가격 옵션 설명"
+                          value: selectedOrder.price_option_description || "-",
+                          readOnly: true,
+                          colSpan: 2, // Make it full width as it might be long
+                          preWrap: true, // Allow line breaks if needed
+                        },
+                        // --- ADD PRODUCT PICKUP DATE HERE ---
+                        {
+                          label: "상품 픽업 예정일",
+                          // Use the new helper function
+                          value: formatDate(selectedOrder.product_pickup_date),
+                          readOnly: true,
+                        },
+                        {
+                          label: "주문 일시",
+                          value: formatDate(selectedOrder.ordered_at),
+                          readOnly: true,
+                        },
+                        {
+                          label: "수령 일시",
+                          value: formatDate(selectedOrder.completed_at),
+                          readOnly: true,
+                        },
+                        {
+                          label: "주문 ID",
+                          value: selectedOrder.order_id,
+                          readOnly: true,
+                          smallText: true,
+                          colSpan: 2,
+                        },
+                        {
+                          label: "고객 댓글",
+                          value: processBandTags(selectedOrder.comment) || (
+                            <span className="italic text-gray-400">
+                              댓글 없음
+                            </span>
+                          ),
+                          colSpan: 2,
+                          readOnly: true,
+                          preWrap: true,
+                        },
+                        // --- Editable fields below ---
+                        {
+                          label: "상품 번호",
+                          field: "itemNumber",
+                          type: "number",
+                          value: tempItemNumber,
+                          min: 1,
+                        },
+                        {
+                          label: "수량",
+                          value: selectedOrder.quantity + "개",
+                          readOnly: true,
+                        },
+                        {
+                          label: "단가 (원)",
+                          value: "₩" + (selectedOrder.price || 0).toLocaleString(),
+                          readOnly: true,
+                        },
+                        {
+                          label: "총 금액 (계산됨)",
+                          value: formatCurrency(
+                            calculateTotalAmount(
+                              parseInt(tempQuantity, 10) || 0,
+                              selectedOrder?.product?.price_options || [
+                                { price: tempPrice, quantity: 1 },
+                              ],
+                              parseFloat(tempPrice) || 0
+                            )
+                          ),
+                          readOnly: true,
+                          highlight: true,
+                        },
+                      ].map((item, index) => (
+                        // ... The existing rendering logic for each item ...
+                        <div
+                          key={item.label + index}
+                          className={item.colSpan === 2 ? "md:col-span-2" : ""}
+                        >
+                          <label
+                            htmlFor={item.field}
+                            className="block text-sm font-medium text-gray-700 mb-1"
+                          >
+                            {item.label}
+                          </label>
+                          {item.readOnly ? (
+                            <div
+                              className={`px-3 py-2 rounded-md border ${
+                                item.highlight
+                                  ? "bg-orange-50 border-orange-200 text-orange-700 font-semibold text-lg"
+                                  : "bg-gray-100 border-gray-200 text-gray-800"
+                              } ${
+                                item.smallText ? "text-xs break-all" : "text-sm"
+                              } ${
+                                item.preWrap // Apply preWrap style if needed
+                                  ? "whitespace-pre-wrap break-words"
+                                  : ""
+                              } min-h-[38px] flex items-center`}
+                            >
+                              {/* Display simple value or React node */}
+                              {typeof item.value === "string" ||
+                              typeof item.value === "number" ||
+                              React.isValidElement(item.value)
+                                ? item.value
+                                : String(item.value)}
+                            </div>
+                          ) : (
+                            <input
+                              id={item.field}
+                              type={item.type || "text"}
+                              min={item.min}
+                              step={item.step}
+                              value={item.value}
+                              onChange={(e) =>
+                                handleTempInputChange(
+                                  item.field,
+                                  e.target.value
+                                )
+                              }
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              disabled={item.readOnly}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 주문 처리 탭 내용 */}
+                  {activeTab === "processing" && (
+                    <div className="space-y-5">
+                      {/* 처리 방법 카드 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          주문 처리 방법
+                        </label>
+                        <div className="flex items-center space-x-3">
+                          {selectedOrder.processing_method === "pattern" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-green-700">
+                                  패턴 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  숫자나 수량 단위가 감지되어 자동
+                                  처리되었습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {selectedOrder.processing_method === "ai" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <SparklesIcon className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-blue-700">
+                                  AI 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  AI가 댓글을 분석하여 주문을 추출했습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {selectedOrder.processing_method === "fallback" && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                <ExclamationCircleIcon className="w-5 h-5 text-yellow-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-yellow-700">
+                                  Fallback 처리
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  패턴이나 AI로 처리되지 않아 기본값으로
+                                  처리되었습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          {!selectedOrder.processing_method && (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                                <XCircleIcon className="w-5 h-5 text-gray-400" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-500">
+                                  처리 방법 없음
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  처리 방법이 기록되지 않았습니다.
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </LightCard>
+
+                      {/* 패턴 처리 상세 정보 */}
+                      {selectedOrder.processing_method === "pattern" && (
+                        <LightCard padding="p-4">
+                          <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                            패턴 처리 상세
+                          </label>
+                          <div className="space-y-3">
+                            {/* 감지된 패턴 */}
+                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <span className="text-sm font-medium text-gray-700">
+                                감지된 패턴
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                {(() => {
+                                  const comment =
+                                    processBandTags(selectedOrder.comment) ||
+                                    "";
+                                  const quantity = selectedOrder.quantity || 1;
+
+                                  // 숫자만 있는 경우 (패턴 1)
+                                  if (/^\s*\d+\s*$/.test(comment)) {
+                                    return (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                                          숫자 패턴
+                                        </span>
+                                        <span className="text-sm text-gray-600">
+                                          &quot;{comment.trim()}&quot;
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  // 숫자 + 단위가 있는 경우 (패턴 2)
+                                  if (/\d+\s*[가-힣]+/.test(comment)) {
+                                    return (
+                                      <div className="flex items-center space-x-1">
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                                          수량 단위
+                                        </span>
+                                        <span className="text-sm text-gray-600">
+                                          &quot;{comment.trim()}&quot;
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="flex items-center space-x-1">
+                                      <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                        기타 패턴
+                                      </span>
+                                      <span className="text-sm text-gray-600">
+                                        &quot;{comment.trim()}&quot;
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* 추출된 수량 */}
+                            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                              <span className="text-sm font-medium text-gray-700">
+                                추출된 수량
+                              </span>
+                              <span className="text-sm text-gray-900 font-semibold">
+                                {selectedOrder.quantity}개
+                              </span>
+                            </div>
+
+                            {/* 처리 속도 */}
+                            <div className="flex items-center justify-between py-2">
+                              <span className="text-sm font-medium text-gray-700">
+                                처리 속도
+                              </span>
+                              <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-sm text-green-600 font-medium">
+                                  즉시 처리
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </LightCard>
+                      )}
+
+                      {/* AI 추출 결과 카드 */}
+                      {selectedOrder.processing_method === "ai" &&
+                        selectedOrder.ai_extraction_result && (
+                          <LightCard padding="p-4">
+                            <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                              AI 추출 결과
+                            </label>
+
+                            {(() => {
+                              try {
+                                const aiResult =
+                                  typeof selectedOrder.ai_extraction_result ===
+                                  "string"
+                                    ? JSON.parse(
+                                        selectedOrder.ai_extraction_result
+                                      )
+                                    : selectedOrder.ai_extraction_result;
+
+                                return (
+                                  <div className="space-y-4">
+                                    {/* 추출된 수량 */}
+                                    {aiResult.quantity !== undefined && (
+                                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          추출된 수량
+                                        </span>
+                                        <span className="text-sm text-gray-900 font-semibold">
+                                          {aiResult.quantity}개
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* AI 추론 과정 */}
+                                    {aiResult.reason && (
+                                      <div>
+                                        <span className="text-sm font-medium text-gray-700 block mb-2">
+                                          AI 추론 과정
+                                        </span>
+                                        <div className="bg-gray-50 rounded-md p-3">
+                                          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                            {aiResult.reason}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* 상품 매칭 정보 */}
+                                    {aiResult.productItemNumber && (
+                                      <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          매칭된 상품 번호
+                                        </span>
+                                        <span className="text-sm text-gray-900 font-semibold">
+                                          #{aiResult.productItemNumber}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* 가격 정보 */}
+                                    {aiResult.actualUnitPrice && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between py-1">
+                                          <span className="text-sm text-gray-600">
+                                            단가
+                                          </span>
+                                          <span className="text-sm text-gray-900">
+                                            {formatCurrency(
+                                              aiResult.actualUnitPrice
+                                            )}
+                                          </span>
+                                        </div>
+                                        {aiResult.actualTotalPrice && (
+                                          <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-2">
+                                            <span className="text-sm font-medium text-gray-700">
+                                              총 금액
+                                            </span>
+                                            <span className="text-sm text-gray-900 font-semibold">
+                                              {formatCurrency(
+                                                aiResult.actualTotalPrice
+                                              )}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* 처리 상태 */}
+                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                                      <span className="text-sm font-medium text-gray-700">
+                                        처리 상태
+                                      </span>
+                                      <div className="flex items-center space-x-2">
+                                        {aiResult.isOrder ? (
+                                          <>
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span className="text-sm text-green-600 font-medium">
+                                              주문 확인
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                            <span className="text-sm text-red-600 font-medium">
+                                              주문 아님
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* 모호성 여부 */}
+                                    {aiResult.isAmbiguous !== undefined && (
+                                      <div className="flex items-center justify-between py-2">
+                                        <span className="text-sm font-medium text-gray-700">
+                                          모호성 여부
+                                        </span>
+                                        <div className="flex items-center space-x-2">
+                                          {aiResult.isAmbiguous ? (
+                                            <>
+                                              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                              <span className="text-sm text-yellow-600 font-medium">
+                                                모호함
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                              <span className="text-sm text-green-600 font-medium">
+                                                명확함
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } catch (error) {
+                                return (
+                                  <div className="bg-red-50 rounded-md p-3">
+                                    <p className="text-xs text-red-700">
+                                      AI 결과 파싱 오류: {error.message}
+                                    </p>
+                                    <details className="mt-2">
+                                      <summary className="text-xs text-red-600 cursor-pointer">
+                                        원본 데이터 보기
+                                      </summary>
+                                      <pre className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-all">
+                                        {JSON.stringify(
+                                          selectedOrder.ai_extraction_result,
+                                          null,
+                                          2
+                                        )}
+                                      </pre>
+                                    </details>
+                                  </div>
+                                );
+                              }
+                            })()}
+                          </LightCard>
+                        )}
+
+                      {/* 원본 댓글 카드 */}
+                      <LightCard padding="p-4">
+                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                          원본 고객 댓글
+                        </label>
+                        <div className="bg-gray-50 rounded-md p-3">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
                             {processBandTags(selectedOrder.comment) || (
                               <span className="italic text-gray-400">
                                 댓글 없음
@@ -3188,718 +3424,101 @@ export default function OrdersPage() {
                             )}
                           </p>
                         </div>
-                      </div>
-                    </LightCard>
-                    <LightCard padding="p-4" className="">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        주문 상태 변경
-                      </label>
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div>
-                          <span className="text-sm font-medium text-gray-500 mr-2">
-                            현재:
-                          </span>
-                          <StatusBadge
-                            status={selectedOrder.status}
-                            processingMethod={selectedOrder.processing_method}
-                          />
-                        </div>
-                        <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">
-                          {["주문완료", "주문취소", "확인필요"].map(
-                            (status) => {
-                              const isCurrent = selectedOrder.status === status;
-                              return (
-                                <div
-                                  key={status}
-                                  className="flex items-center gap-1"
-                                >
-                                  <button
-                                    onClick={() =>
-                                      handleStatusChange(
-                                        selectedOrder.order_id,
-                                        status
-                                      )
-                                    }
-                                    disabled={isCurrent}
-                                    className={getStatusButtonStyle(status)}
-                                  >
-                                    {getStatusIcon(status)} {status} 처리
-                                  </button>
-                                  {/* AI/패턴 처리 아이콘 - 주문완료 버튼 옆에만 표시 */}
-                                  {status === "주문완료" &&
-                                    selectedOrder.processing_method && (
-                                      <div className="flex items-center">
-                                        {selectedOrder.processing_method ===
-                                          "ai" && (
-                                          <div
-                                            className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
-                                            title="AI 처리된 주문"
-                                          >
-                                            <SparklesIcon className="w-3 h-3" />
-                                            <span>AI</span>
-                                          </div>
-                                        )}
-                                        {selectedOrder.processing_method ===
-                                          "pattern" && (
-                                          <div
-                                            className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
-                                            title="패턴 처리된 주문"
-                                          >
-                                            <FunnelIcon className="w-3 h-3" />
-                                            <span>패턴</span>
-                                          </div>
-                                        )}
-                                        {selectedOrder.processing_method ===
-                                          "manual" && (
-                                          <div
-                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
-                                            title="수동 처리된 주문"
-                                          >
-                                            <PencilIcon className="w-3 h-3" />
-                                            <span>수동</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                </div>
-                              );
-                            }
-                          )}
-                        </div>
-                      </div>
-                    </LightCard>
-                  </div>
-                )}
-                {/* 주문 정보 탭 내용 (복구) */}
-                {activeTab === "info" && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                    {[
-                      {
-                        label: "상품명",
-                        value: (() => {
-                          const productName = getProductNameById(
-                            selectedOrder.product_id
-                          );
-                          const { name, date } = parseProductName(productName);
-                          const isAvailable =
-                            isClient && date ? isPickupAvailable(date) : false;
+                      </LightCard>
 
-                          return (
-                            <div className="flex flex-col">
-                              <div
-                                className={`${
-                                  isAvailable ? "text-orange-600 font-bold" : ""
-                                }`}
-                              >
-                                {name}
-                              </div>
-                              {date && (
-                                <div
-                                  className={`text-sm mt-1 ${
-                                    isAvailable
-                                      ? "text-orange-500 font-medium"
-                                      : "text-gray-500"
-                                  }`}
-                                >
-                                  [{date}]
-                                  {isAvailable && (
-                                    <span className="ml-1 text-orange-600 font-bold">
-                                      ✓ 수령가능
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })(),
-                        readOnly: true,
-                      },
-                      // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
-                      // {
-                      //   label: "상품명", // This was incorrect
-                      //   value: getProductNameById(
-                      //     selectedOrder.price_option_description
-                      //   ),
-                      //   readOnly: true,
-                      // },
-                      // --- END REMOVAL ---
-
-                      {
-                        label: "고객명",
-                        value: selectedOrder.customer_name || "-",
-                        readOnly: true,
-                      },
-
-                      // --- ADD PRICE OPTION DESCRIPTION HERE ---
-                      {
-                        label: "선택 옵션", // Or "가격 옵션 설명"
-                        value: selectedOrder.price_option_description || "-",
-                        readOnly: true,
-                        colSpan: 2, // Make it full width as it might be long
-                        preWrap: true, // Allow line breaks if needed
-                      },
-                      // --- ADD PRODUCT PICKUP DATE HERE ---
-                      {
-                        label: "상품 픽업 예정일",
-                        // Use the new helper function
-                        value: formatDate(selectedOrder.product_pickup_date),
-                        readOnly: true,
-                      },
-                      {
-                        label: "주문 일시",
-                        value: formatDate(selectedOrder.ordered_at),
-                        readOnly: true,
-                      },
-                      {
-                        label: "수령 일시",
-                        value: formatDate(selectedOrder.completed_at),
-                        readOnly: true,
-                      },
-                      {
-                        label: "주문 ID",
-                        value: selectedOrder.order_id,
-                        readOnly: true,
-                        smallText: true,
-                        colSpan: 2,
-                      },
-                      {
-                        label: "고객 댓글",
-                        value: processBandTags(selectedOrder.comment) || (
-                          <span className="italic text-gray-400">
-                            댓글 없음
-                          </span>
-                        ),
-                        colSpan: 2,
-                        readOnly: true,
-                        preWrap: true,
-                      },
-                      // --- Editable fields below ---
-                      {
-                        label: "상품 번호",
-                        field: "itemNumber",
-                        type: "number",
-                        value: tempItemNumber,
-                        min: 1,
-                      },
-                      {
-                        label: "수량",
-                        field: "quantity",
-                        type: "number",
-                        value: tempQuantity,
-                        min: 1,
-                      },
-                      {
-                        label: "단가 (원)",
-                        field: "price",
-                        type: "number",
-                        value: tempPrice,
-                        min: 0,
-                        step: 100,
-                      },
-                      {
-                        label: "총 금액 (계산됨)",
-                        value: formatCurrency(
-                          calculateTotalAmount(
-                            parseInt(tempQuantity, 10) || 0,
-                            selectedOrder?.product?.price_options || [
-                              { price: tempPrice, quantity: 1 },
-                            ],
-                            parseFloat(tempPrice) || 0
-                          )
-                        ),
-                        readOnly: true,
-                        highlight: true,
-                      },
-                    ].map((item, index) => (
-                      // ... The existing rendering logic for each item ...
-                      <div
-                        key={item.label + index}
-                        className={item.colSpan === 2 ? "md:col-span-2" : ""}
-                      >
-                        <label
-                          htmlFor={item.field}
-                          className="block text-sm font-medium text-gray-700 mb-1"
-                        >
-                          {item.label}
-                        </label>
-                        {item.readOnly ? (
-                          <div
-                            className={`px-3 py-2 rounded-md border ${
-                              item.highlight
-                                ? "bg-orange-50 border-orange-200 text-orange-700 font-semibold text-lg"
-                                : "bg-gray-100 border-gray-200 text-gray-800"
-                            } ${
-                              item.smallText ? "text-xs break-all" : "text-sm"
-                            } ${
-                              item.preWrap // Apply preWrap style if needed
-                                ? "whitespace-pre-wrap break-words"
-                                : ""
-                            } min-h-[38px] flex items-center`}
-                          >
-                            {/* Display simple value or React node */}
-                            {typeof item.value === "string" ||
-                            typeof item.value === "number" ||
-                            React.isValidElement(item.value)
-                              ? item.value
-                              : String(item.value)}
-                          </div>
-                        ) : (
-                          <input
-                            id={item.field}
-                            type={item.type || "text"}
-                            min={item.min}
-                            step={item.step}
-                            value={item.value}
-                            onChange={(e) =>
-                              handleTempInputChange(item.field, e.target.value)
-                            }
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            // Disable editing for readOnly fields conceptually,
-                            // though we render a div above for readOnly=true
-                            disabled={item.readOnly}
-                          />
-                        )}
-                      </div>
-                    ))}
-                    {/* 저장 버튼 */}
-                    <div className="md:col-span-2 flex justify-end pt-2">
-                      <StatusButton
-                        onClick={saveOrderDetails}
-                        variant="primary"
-                        icon={PencilIcon}
-                        isLoading={false /* 필요 시 로딩 상태 추가 */}
-                      >
-                        변경사항 저장
-                      </StatusButton>
-                    </div>
-                  </div>
-                )}
-
-                {/* 주문 처리 탭 내용 */}
-                {activeTab === "processing" && (
-                  <div className="space-y-5">
-                    {/* 처리 방법 카드 */}
-                    <LightCard padding="p-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        주문 처리 방법
-                      </label>
-                      <div className="flex items-center space-x-3">
-                        {selectedOrder.processing_method === "pattern" && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                              <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-green-700">
-                                패턴 처리
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                숫자나 수량 단위가 감지되어 자동 처리되었습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                        {selectedOrder.processing_method === "ai" && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                              <SparklesIcon className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-blue-700">
-                                AI 처리
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                AI가 댓글을 분석하여 주문을 추출했습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                        {selectedOrder.processing_method === "fallback" && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                              <ExclamationCircleIcon className="w-5 h-5 text-yellow-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-yellow-700">
-                                Fallback 처리
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                패턴이나 AI로 처리되지 않아 기본값으로
-                                처리되었습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                        {!selectedOrder.processing_method && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                              <XCircleIcon className="w-5 h-5 text-gray-400" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-500">
-                                처리 방법 없음
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                처리 방법이 기록되지 않았습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </LightCard>
-
-                    {/* 패턴 처리 상세 정보 */}
-                    {selectedOrder.processing_method === "pattern" && (
+                      {/* 처리 시간 정보 */}
                       <LightCard padding="p-4">
                         <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                          패턴 처리 상세
+                          처리 시간 정보
                         </label>
-                        <div className="space-y-3">
-                          {/* 감지된 패턴 */}
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-medium text-gray-700">
-                              감지된 패턴
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">
+                              주문 생성
                             </span>
-                            <div className="flex items-center space-x-2">
-                              {(() => {
-                                const comment =
-                                  processBandTags(selectedOrder.comment) || "";
-                                const quantity = selectedOrder.quantity || 1;
-
-                                // 숫자만 있는 경우 (패턴 1)
-                                if (/^\s*\d+\s*$/.test(comment)) {
-                                  return (
-                                    <div className="flex items-center space-x-1">
-                                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
-                                        숫자 패턴
-                                      </span>
-                                      <span className="text-sm text-gray-600">
-                                        &quot;{comment.trim()}&quot;
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                // 숫자 + 단위가 있는 경우 (패턴 2)
-                                if (/\d+\s*[가-힣]+/.test(comment)) {
-                                  return (
-                                    <div className="flex items-center space-x-1">
-                                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
-                                        수량 단위
-                                      </span>
-                                      <span className="text-sm text-gray-600">
-                                        &quot;{comment.trim()}&quot;
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="flex items-center space-x-1">
-                                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                                      기타 패턴
-                                    </span>
-                                    <span className="text-sm text-gray-600">
-                                      &quot;{comment.trim()}&quot;
-                                    </span>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* 추출된 수량 */}
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-medium text-gray-700">
-                              추출된 수량
-                            </span>
-                            <span className="text-sm text-gray-900 font-semibold">
-                              {selectedOrder.quantity}개
+                            <span className="text-sm text-gray-600">
+                              {formatDate(selectedOrder.ordered_at)}
                             </span>
                           </div>
-
-                          {/* 처리 속도 */}
-                          <div className="flex items-center justify-between py-2">
-                            <span className="text-sm font-medium text-gray-700">
-                              처리 속도
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">
+                              처리 소요시간
                             </span>
-                            <div className="flex items-center space-x-2">
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                              <span className="text-sm text-green-600 font-medium">
-                                즉시 처리
-                              </span>
-                            </div>
+                            <span className="text-sm text-gray-600">
+                              {selectedOrder.ordered_at
+                                ? (() => {
+                                    const minutes = getTimeDifferenceInMinutes(
+                                      selectedOrder.ordered_at
+                                    );
+                                    if (minutes < 60) {
+                                      return `${minutes}분 전`;
+                                    } else if (minutes < 1440) {
+                                      return `${Math.floor(
+                                        minutes / 60
+                                      )}시간 전`;
+                                    } else {
+                                      return `${Math.floor(
+                                        minutes / 1440
+                                      )}일 전`;
+                                    }
+                                  })()
+                                : "N/A"}
+                            </span>
                           </div>
                         </div>
                       </LightCard>
-                    )}
-
-                    {/* AI 추출 결과 카드 */}
-                    {selectedOrder.processing_method === "ai" &&
-                      selectedOrder.ai_extraction_result && (
-                        <LightCard padding="p-4">
-                          <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                            AI 추출 결과
-                          </label>
-
-                          {(() => {
-                            try {
-                              const aiResult =
-                                typeof selectedOrder.ai_extraction_result ===
-                                "string"
-                                  ? JSON.parse(
-                                      selectedOrder.ai_extraction_result
-                                    )
-                                  : selectedOrder.ai_extraction_result;
-
-                              return (
-                                <div className="space-y-4">
-                                  {/* 추출된 수량 */}
-                                  {aiResult.quantity !== undefined && (
-                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        추출된 수량
-                                      </span>
-                                      <span className="text-sm text-gray-900 font-semibold">
-                                        {aiResult.quantity}개
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {/* AI 추론 과정 */}
-                                  {aiResult.reason && (
-                                    <div>
-                                      <span className="text-sm font-medium text-gray-700 block mb-2">
-                                        AI 추론 과정
-                                      </span>
-                                      <div className="bg-gray-50 rounded-md p-3">
-                                        <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                          {aiResult.reason}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* 상품 매칭 정보 */}
-                                  {aiResult.productItemNumber && (
-                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        매칭된 상품 번호
-                                      </span>
-                                      <span className="text-sm text-gray-900 font-semibold">
-                                        #{aiResult.productItemNumber}
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {/* 가격 정보 */}
-                                  {aiResult.actualUnitPrice && (
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between py-1">
-                                        <span className="text-sm text-gray-600">
-                                          단가
-                                        </span>
-                                        <span className="text-sm text-gray-900">
-                                          {formatCurrency(
-                                            aiResult.actualUnitPrice
-                                          )}
-                                        </span>
-                                      </div>
-                                      {aiResult.actualTotalPrice && (
-                                        <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-2">
-                                          <span className="text-sm font-medium text-gray-700">
-                                            총 금액
-                                          </span>
-                                          <span className="text-sm text-gray-900 font-semibold">
-                                            {formatCurrency(
-                                              aiResult.actualTotalPrice
-                                            )}
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* 처리 상태 */}
-                                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                    <span className="text-sm font-medium text-gray-700">
-                                      처리 상태
-                                    </span>
-                                    <div className="flex items-center space-x-2">
-                                      {aiResult.isOrder ? (
-                                        <>
-                                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                          <span className="text-sm text-green-600 font-medium">
-                                            주문 확인
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                          <span className="text-sm text-red-600 font-medium">
-                                            주문 아님
-                                          </span>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* 모호성 여부 */}
-                                  {aiResult.isAmbiguous !== undefined && (
-                                    <div className="flex items-center justify-between py-2">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        모호성 여부
-                                      </span>
-                                      <div className="flex items-center space-x-2">
-                                        {aiResult.isAmbiguous ? (
-                                          <>
-                                            <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                            <span className="text-sm text-yellow-600 font-medium">
-                                              모호함
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                            <span className="text-sm text-green-600 font-medium">
-                                              명확함
-                                            </span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            } catch (error) {
-                              return (
-                                <div className="bg-red-50 rounded-md p-3">
-                                  <p className="text-xs text-red-700">
-                                    AI 결과 파싱 오류: {error.message}
-                                  </p>
-                                  <details className="mt-2">
-                                    <summary className="text-xs text-red-600 cursor-pointer">
-                                      원본 데이터 보기
-                                    </summary>
-                                    <pre className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-all">
-                                      {JSON.stringify(
-                                        selectedOrder.ai_extraction_result,
-                                        null,
-                                        2
-                                      )}
-                                    </pre>
-                                  </details>
-                                </div>
-                              );
-                            }
-                          })()}
-                        </LightCard>
-                      )}
-
-                    {/* 원본 댓글 카드 */}
-                    <LightCard padding="p-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        원본 고객 댓글
-                      </label>
-                      <div className="bg-gray-50 rounded-md p-3">
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                          {processBandTags(selectedOrder.comment) || (
-                            <span className="italic text-gray-400">
-                              댓글 없음
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </LightCard>
-
-                    {/* 처리 시간 정보 */}
-                    <LightCard padding="p-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        처리 시간 정보
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-sm font-medium text-gray-700 block">
-                            주문 생성
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            {formatDate(selectedOrder.ordered_at)}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium text-gray-700 block">
-                            처리 소요시간
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            {selectedOrder.ordered_at
-                              ? (() => {
-                                  const minutes = getTimeDifferenceInMinutes(
-                                    selectedOrder.ordered_at
-                                  );
-                                  if (minutes < 60) {
-                                    return `${minutes}분 전`;
-                                  } else if (minutes < 1440) {
-                                    return `${Math.floor(minutes / 60)}시간 전`;
-                                  } else {
-                                    return `${Math.floor(minutes / 1440)}일 전`;
-                                  }
-                                })()
-                              : "N/A"}
-                          </span>
-                        </div>
-                      </div>
-                    </LightCard>
-                  </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* 모달 푸터 */}
+              <div className="flex justify-between items-center p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                <button
+                  onClick={closeDetailModal}
+                  className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition"
+                >
+                  닫기
+                </button>
+                {/* 푸터에는 수령완료 버튼만 표시 (info 탭에서는 저장 버튼이 본문에 있음) */}
+                {activeTab === "status" && (
+                  <button
+                    onClick={() =>
+                      handleStatusChange(selectedOrder.order_id, "수령완료")
+                    }
+                    disabled={selectedOrder.status === "수령완료"}
+                    className={`${getStatusButtonStyle(
+                      "수령완료"
+                    )} px-4 py-2 text-sm`}
+                  >
+                    {getStatusIcon("수령완료")} 수령완료 처리
+                  </button>
+                )}
+                {/* info, processing 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
+                {(activeTab === "info" || activeTab === "processing") && (
+                  <div className="w-[130px]"></div>
                 )}
               </div>
             </div>
-            {/* 모달 푸터 */}
-            <div className="flex justify-between items-center p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
-              <button
-                onClick={closeDetailModal}
-                className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition"
-              >
-                닫기
-              </button>
-              {/* 푸터에는 수령완료 버튼만 표시 (info 탭에서는 저장 버튼이 본문에 있음) */}
-              {activeTab === "status" && (
-                <button
-                  onClick={() =>
-                    handleStatusChange(selectedOrder.order_id, "수령완료")
-                  }
-                  disabled={selectedOrder.status === "수령완료"}
-                  className={`${getStatusButtonStyle(
-                    "수령완료"
-                  )} px-4 py-2 text-sm`}
-                >
-                  {getStatusIcon("수령완료")} 수령완료 처리
-                </button>
-              )}
-              {/* info, processing 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
-              {(activeTab === "info" || activeTab === "processing") && (
-                <div className="w-[130px]"></div>
-              )}
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* 댓글 모달 */}
-      <CommentsModal
-        isOpen={isCommentsModalOpen}
-        onClose={closeCommentsModal}
-        postKey={selectedPostForComments?.postKey}
-        bandKey={selectedPostForComments?.bandKey}
-        postTitle={selectedPostForComments?.productName}
-        accessToken={selectedPostForComments?.accessToken}
-        postContent={selectedPostForComments?.postContent}
-        tryKeyIndex={selectedPostForComments?.tryKeyIndex || 0}
-        order={selectedPostForComments?.order}
-        onFailover={handleCommentsFailover}
-      />
+        {/* 댓글 모달 */}
+        <CommentsModal
+          isOpen={isCommentsModalOpen}
+          onClose={closeCommentsModal}
+          postKey={selectedPostForComments?.postKey}
+          bandKey={selectedPostForComments?.bandKey}
+          postTitle={selectedPostForComments?.productName}
+          accessToken={selectedPostForComments?.accessToken}
+          postContent={selectedPostForComments?.postContent}
+          tryKeyIndex={selectedPostForComments?.tryKeyIndex || 0}
+          order={selectedPostForComments?.order}
+          onFailover={handleCommentsFailover}
+        />
 
-      {/* 토스트 알림 컨테이너 */}
-      <ToastContainer toasts={toasts} hideToast={hideToast} />
+        {/* 토스트 알림 컨테이너 */}
+        <ToastContainer toasts={toasts} hideToast={hideToast} />
+      </main>
     </div>
   );
 }
@@ -3947,7 +3566,9 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
         return optionName.includes(aiOption) || aiOption.includes(optionName);
       });
       if (matchedOption) {
-        // AI 매칭 성공
+        console.log(
+          `[바코드 옵션] AI 매칭: "${aiSelectedOption}" → "${matchedOption.name}"`
+        );
         return matchedOption;
       }
     }
@@ -3968,7 +3589,9 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
             return keywords.some((keyword) => optionName.includes(keyword));
           });
           if (matchedOption) {
-            // 댓글 매칭 성공
+            console.log(
+              `[바코드 옵션] 댓글 매칭: "${customerComment}" → "${matchedOption.name}"`
+            );
             return matchedOption;
           }
         }
