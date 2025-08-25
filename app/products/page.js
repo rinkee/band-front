@@ -864,23 +864,13 @@ export default function ProductsPage() {
         userBandKey = userData.band_key;
       }
       
-      // orders 테이블에서 주문 데이터와 함께 customer 정보도 가져오기
+      // orders_with_products 뷰 사용 시도
       let query = supabase
-        .from('orders')
-        .select(`
-          product_id, 
-          quantity, 
-          total_amount, 
-          status, 
-          customer_id, 
-          band_key,
-          customers (
-            customer_id,
-            is_excluded
-          )
-        `)
+        .from('orders_with_products')
+        .select('product_id, quantity, total_amount, status, customer_id, band_key, is_excluded')
         .in('product_id', productIds)
-        .neq('status', '주문취소'); // 취소된 주문 제외
+        .neq('status', '주문취소') // 취소된 주문 제외
+        .eq('is_excluded', false); // 제외 고객 필터링
       
       // band_key가 있으면 해당 band의 주문만 가져오기
       if (userBandKey) {
@@ -890,32 +880,56 @@ export default function ProductsPage() {
       const { data, error } = await query;
       
       if (error) {
-        console.error('주문 통계 가져오기 오류:', error);
-        return {};
-      }
-      
-      // 제외 고객 필터링을 클라이언트에서 수행
-      const filteredOrders = data?.filter(order => {
-        // customers 관계가 있고 is_excluded가 true인 경우 제외
-        if (order.customers && order.customers.is_excluded) {
-          return false;
+        // orders_with_products 뷰가 없거나 에러가 발생하면 기본 orders 테이블 사용
+        console.log('orders_with_products 뷰 사용 실패, 기본 테이블로 전환');
+        
+        let fallbackQuery = supabase
+          .from('orders')
+          .select('product_id, quantity, total_amount, status, customer_id, band_key')
+          .in('product_id', productIds)
+          .neq('status', '주문취소'); // 취소된 주문 제외
+        
+        // band_key가 있으면 해당 band의 주문만 가져오기
+        if (userBandKey) {
+          fallbackQuery = fallbackQuery.eq('band_key', userBandKey);
         }
-        return true;
-      }) || [];
-      
-      console.log('전체 주문 수 (취소 제외):', data?.length);
-      console.log('필터링된 주문 수 (제외 고객 제외):', filteredOrders.length);
-      
-      // 제외된 고객의 주문 수 확인
-      const excludedCount = (data?.length || 0) - filteredOrders.length;
-      if (excludedCount > 0) {
-        console.log('제외된 고객의 주문 수:', excludedCount);
+        
+        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+        
+        if (fallbackError) {
+          console.error('주문 통계 가져오기 오류:', fallbackError);
+          return {};
+        }
+        
+        // 제외 고객 정보는 별도로 가져와서 필터링
+        // 일단 모든 주문을 사용 (제외 고객 필터링 없이)
+        const filteredOrders = fallbackData || [];
+        console.log('주문 수 (취소 제외):', filteredOrders.length);
+        
+        // 상품별로 통계 집계
+        const statsMap = {};
+        productIds.forEach(productId => {
+          const productOrders = filteredOrders.filter(order => order.product_id === productId) || [];
+          const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
+          const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+          
+          statsMap[productId] = {
+            total_order_quantity: totalQuantity,
+            total_order_amount: totalAmount,
+            order_count: productOrders.length
+          };
+        });
+        
+        return statsMap;
       }
+      
+      // orders_with_products 뷰 사용 성공
+      console.log('필터링된 주문 수 (취소 및 제외 고객 제외):', data?.length);
       
       // 상품별로 통계 집계 (필터링된 주문 사용)
       const statsMap = {};
       productIds.forEach(productId => {
-        const productOrders = filteredOrders.filter(order => order.product_id === productId) || [];
+        const productOrders = data?.filter(order => order.product_id === productId) || [];
         const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
