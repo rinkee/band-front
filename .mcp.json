@@ -1,0 +1,51 @@
+{
+  "autoApprovedTools": {
+    "Read": true
+  },
+  "mcpServers": {
+    "shared-server": {
+      "type": "stdio",
+      "command": "/path/to/server",
+      "args": [],
+      "env": {}
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+
+    "supabase-production": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=fqumpgpsxhzsqvfjqgzx"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_ed9d547b982d7fd46a6fb1514c8c118aa6211d1c"
+      }
+    },
+    "supabase-development": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=hxjywmbivdhettlumvbb"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_ed9d547b982d7fd46a6fb1514c8c118aa6211d1c"
+      }
+    }
+  }
+}

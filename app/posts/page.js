@@ -752,29 +752,95 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
   // 이미지 URL 파싱 개선
   const getImageUrls = () => {
-    // image_urls 필드에서 이미지 URL 배열 가져오기
-    if (post.image_urls && Array.isArray(post.image_urls)) {
-      return post.image_urls;
+    // 디버깅을 위한 로그 (개발 환경에서만)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Post image data:', {
+        post_key: post.post_key,
+        image_urls: post.image_urls,
+        photos_data: post.photos_data,
+        image_urls_type: typeof post.image_urls,
+        photos_data_type: typeof post.photos_data
+      });
     }
 
-    // photos_data가 있으면 URL 추출
-    if (post.photos_data && Array.isArray(post.photos_data)) {
-      const urls = post.photos_data
-        .map((photo) => photo.url)
-        .filter((url) => url);
-      return urls;
-    }
-
-    // 혹시 image_urls가 JSON 문자열로 저장되어 있다면
-    if (typeof post.image_urls === "string") {
-      try {
-        const parsed = JSON.parse(post.image_urls);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
+    // 1. image_urls 필드 확인 (가장 우선순위)
+    if (post.image_urls) {
+      // 배열인 경우
+      if (Array.isArray(post.image_urls) && post.image_urls.length > 0) {
+        // 빈 배열이 아니고, 실제 URL이 있는지 확인
+        const validUrls = post.image_urls.filter(url => url && typeof url === 'string');
+        if (validUrls.length > 0) {
+          return validUrls;
+        }
+      }
+      
+      // 문자열로 저장된 JSON인 경우
+      if (typeof post.image_urls === 'string' && post.image_urls !== 'null' && post.image_urls !== '[]') {
+        try {
+          const parsed = JSON.parse(post.image_urls);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const validUrls = parsed.filter(url => url && typeof url === 'string');
+            if (validUrls.length > 0) {
+              return validUrls;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse image_urls:', e, post.post_key);
+        }
       }
     }
 
+    // 2. photos_data 필드 확인 (두 번째 우선순위)
+    if (post.photos_data) {
+      // 배열인 경우
+      if (Array.isArray(post.photos_data) && post.photos_data.length > 0) {
+        const urls = post.photos_data
+          .map((photo) => {
+            // photo가 객체이고 url 속성이 있는 경우
+            if (photo && typeof photo === 'object' && photo.url) {
+              return photo.url;
+            }
+            // photo가 직접 URL 문자열인 경우
+            if (typeof photo === 'string') {
+              return photo;
+            }
+            return null;
+          })
+          .filter((url) => url && typeof url === 'string');
+        
+        if (urls.length > 0) {
+          return urls;
+        }
+      }
+      
+      // 문자열로 저장된 JSON인 경우
+      if (typeof post.photos_data === 'string' && post.photos_data !== 'null' && post.photos_data !== '[]') {
+        try {
+          const parsed = JSON.parse(post.photos_data);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const urls = parsed
+              .map((photo) => {
+                if (photo && typeof photo === 'object' && photo.url) {
+                  return photo.url;
+                }
+                if (typeof photo === 'string') {
+                  return photo;
+                }
+                return null;
+              })
+              .filter((url) => url && typeof url === 'string');
+            
+            if (urls.length > 0) {
+              return urls;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse photos_data:', e, post.post_key);
+        }
+      }
+    }
+
+    // 3. 이미지가 없는 경우
     return [];
   };
 
@@ -825,25 +891,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             </div>
           </div>
           
-          {/* 댓글 AI 처리 뱃지 */}
-          {post.order_needs_ai && (
-            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-              <svg
-                className="w-3 h-3 mr-1"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                />
-              </svg>
-              댓글 AI 처리
-            </div>
-          )}
         </div>
 
         {/* 게시물 제목 */}
@@ -907,7 +954,21 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             alt={post.title || "게시물 이미지"}
             className="w-full h-full object-cover"
             onError={(e) => {
-              e.target.src = "/default-avatar.png"; // fallback 이미지
+              // 이미지 로드 실패 시 이미지 없음 표시로 대체
+              e.target.style.display = 'none';
+              const parent = e.target.parentElement;
+              if (parent) {
+                parent.innerHTML = `
+                  <div class="w-full h-full flex items-center justify-center bg-gray-50">
+                    <div class="text-center">
+                      <svg class="mx-auto h-12 w-12 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span class="text-gray-400 text-sm">이미지 로드 실패</span>
+                    </div>
+                  </div>
+                `;
+              }
             }}
           />
         ) : (
