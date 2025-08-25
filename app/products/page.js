@@ -855,12 +855,19 @@ export default function ProductsPage() {
   // 상품별 주문 통계 가져오기
   const fetchProductOrderStats = async (productIds) => {
     try {
-      // orders 테이블에서 상품별 주문 통계 계산
+      // orders 테이블에서 상품별 주문 통계 계산 (제외 고객 필터링 포함)
       const { data, error } = await supabase
         .from('orders')
-        .select('product_id, quantity, total_amount, status')
+        .select(`
+          product_id, 
+          quantity, 
+          total_amount, 
+          status,
+          customers!inner(is_excluded)
+        `)
         .in('product_id', productIds)
-        .neq('status', '주문취소'); // 취소된 주문 제외
+        .neq('status', '주문취소') // 취소된 주문 제외
+        .eq('customers.is_excluded', false); // 제외 고객 필터링
       
       if (error) {
         console.error('주문 통계 가져오기 오류:', error);
