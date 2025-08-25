@@ -855,22 +855,24 @@ export default function ProductsPage() {
   // 상품별 주문 통계 가져오기
   const fetchProductOrderStats = async (productIds) => {
     try {
-      // sessionStorage에서 band_key 가져오기
+      // sessionStorage에서 band_key와 user_id 가져오기
       const sessionData = sessionStorage.getItem("userData");
       let userBandKey = null;
+      let userId = null;
       
       if (sessionData) {
         const userData = JSON.parse(sessionData);
         userBandKey = userData.band_key;
+        userId = userData.userId;
       }
       
       // 1. 먼저 제외 고객 이름 목록 가져오기 (users 테이블에서)
       let excludedCustomerNames = [];
-      if (userBandKey) {
+      if (userId) {
         const { data: userData, error: userError } = await supabase
           .from('users')
           .select('excluded_customers')
-          .eq('band_key', userBandKey)
+          .eq('user_id', userId)
           .single();
         
         if (userError) {
