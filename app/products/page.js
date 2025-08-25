@@ -855,20 +855,31 @@ export default function ProductsPage() {
   // 상품별 주문 통계 가져오기
   const fetchProductOrderStats = async (productIds) => {
     try {
-      // orders 테이블에서 상품별 주문 통계 계산 (제외 고객 필터링 포함)
-      const { data, error } = await supabase
+      // 먼저 제외된 고객 ID 목록 가져오기
+      const { data: excludedCustomers, error: excludedError } = await supabase
+        .from('customers')
+        .select('customer_id')
+        .eq('is_excluded', true);
+      
+      if (excludedError) {
+        console.error('제외 고객 가져오기 오류:', excludedError);
+      }
+      
+      const excludedCustomerIds = excludedCustomers?.map(c => c.customer_id) || [];
+      
+      // orders 테이블에서 상품별 주문 통계 계산
+      let query = supabase
         .from('orders')
-        .select(`
-          product_id, 
-          quantity, 
-          total_amount, 
-          status,
-          customer_id,
-          customers!customer_id(is_excluded)
-        `)
+        .select('product_id, quantity, total_amount, status, customer_id')
         .in('product_id', productIds)
-        .neq('status', '주문취소') // 취소된 주문 제외
-        .eq('customers.is_excluded', false); // 제외 고객 필터링
+        .neq('status', '주문취소'); // 취소된 주문 제외
+      
+      // 제외된 고객이 있으면 필터링
+      if (excludedCustomerIds.length > 0) {
+        query = query.not('customer_id', 'in', `(${excludedCustomerIds.join(',')})`);
+      }
+      
+      const { data, error } = await query;
       
       if (error) {
         console.error('주문 통계 가져오기 오류:', error);
