@@ -869,7 +869,7 @@ export default function ProductsPage() {
       if (userBandKey) {
         const { data: excludedCustomers, error: excludedError } = await supabase
           .from('customers')
-          .select('customer_id, name')
+          .select('customer_id, customer_name')  // name이 아니라 customer_name
           .eq('is_excluded', true)
           .eq('band_key', userBandKey);
         
@@ -880,7 +880,7 @@ export default function ProductsPage() {
           console.log(`제외 고객 수: ${excludedCustomerIds.length}`);
           if (excludedCustomerIds.length > 0) {
             console.log('제외 고객 ID 목록:', excludedCustomerIds);
-            console.log('제외 고객 이름:', excludedCustomers?.map(c => c.name));
+            console.log('제외 고객 이름:', excludedCustomers?.map(c => c.customer_name));
           }
         }
       }
