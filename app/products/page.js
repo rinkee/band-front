@@ -869,7 +869,7 @@ export default function ProductsPage() {
       if (userBandKey) {
         const { data: excludedCustomers, error: excludedError } = await supabase
           .from('customers')
-          .select('customer_id')
+          .select('customer_id, name')
           .eq('is_excluded', true)
           .eq('band_key', userBandKey);
         
@@ -878,6 +878,10 @@ export default function ProductsPage() {
         } else {
           excludedCustomerIds = excludedCustomers?.map(c => c.customer_id) || [];
           console.log(`제외 고객 수: ${excludedCustomerIds.length}`);
+          if (excludedCustomerIds.length > 0) {
+            console.log('제외 고객 ID 목록:', excludedCustomerIds);
+            console.log('제외 고객 이름:', excludedCustomers?.map(c => c.name));
+          }
         }
       }
       
@@ -901,9 +905,17 @@ export default function ProductsPage() {
       }
       
       // 3. 클라이언트 측에서 제외 고객 필터링
+      console.log('필터링 전 주문 샘플:', allOrders?.slice(0, 5).map(o => ({
+        customer_id: o.customer_id,
+        quantity: o.quantity,
+        product_id: o.product_id
+      })));
+      
       const filteredOrders = allOrders?.filter(order => {
         // 제외 고객 ID 목록에 포함되어 있으면 필터링
-        if (excludedCustomerIds.includes(order.customer_id)) {
+        const isExcluded = excludedCustomerIds.includes(order.customer_id);
+        if (isExcluded) {
+          console.log(`제외됨: customer_id ${order.customer_id}, quantity ${order.quantity}`);
           return false;
         }
         return true;
@@ -915,6 +927,16 @@ export default function ProductsPage() {
       const excludedOrdersCount = (allOrders?.length || 0) - filteredOrders.length;
       if (excludedOrdersCount > 0) {
         console.log(`제외 고객의 주문 ${excludedOrdersCount}개 필터링됨`);
+        
+        // 제외된 주문들의 상세 정보
+        const excludedOrders = allOrders?.filter(order => 
+          excludedCustomerIds.includes(order.customer_id)
+        );
+        console.log('제외된 주문들:', excludedOrders?.map(o => ({
+          customer_id: o.customer_id,
+          quantity: o.quantity,
+          product_id: o.product_id
+        })));
       }
       
       // 4. 상품별로 통계 집계 (필터링된 데이터 사용)
