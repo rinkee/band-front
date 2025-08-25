@@ -863,7 +863,8 @@ export default function ProductsPage() {
           quantity, 
           total_amount, 
           status,
-          customers!inner(is_excluded)
+          customer_id,
+          customers!customer_id(is_excluded)
         `)
         .in('product_id', productIds)
         .neq('status', '주문취소') // 취소된 주문 제외
