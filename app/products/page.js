@@ -858,7 +858,7 @@ export default function ProductsPage() {
       // 먼저 제외된 고객 ID 목록 가져오기
       const { data: excludedCustomers, error: excludedError } = await supabase
         .from('customers')
-        .select('customer_id')
+        .select('customer_id, name')
         .eq('is_excluded', true);
       
       if (excludedError) {
@@ -866,6 +866,8 @@ export default function ProductsPage() {
       }
       
       const excludedCustomerIds = excludedCustomers?.map(c => c.customer_id) || [];
+      console.log('제외된 고객 수:', excludedCustomerIds.length);
+      console.log('제외된 고객 ID 목록:', excludedCustomerIds);
       
       // orders 테이블에서 상품별 주문 통계 계산
       let query = supabase
@@ -884,6 +886,25 @@ export default function ProductsPage() {
       if (error) {
         console.error('주문 통계 가져오기 오류:', error);
         return {};
+      }
+      
+      // 디버깅: 전체 주문과 필터링된 주문 비교
+      const { data: allOrders } = await supabase
+        .from('orders')
+        .select('product_id, quantity, customer_id')
+        .in('product_id', productIds)
+        .neq('status', '주문취소');
+      
+      console.log('전체 주문 수 (취소 제외):', allOrders?.length);
+      console.log('필터링된 주문 수 (제외 고객 제외):', data?.length);
+      
+      // 제외된 고객의 주문 확인
+      const excludedOrders = allOrders?.filter(order => 
+        excludedCustomerIds.includes(order.customer_id)
+      );
+      console.log('제외된 고객의 주문 수:', excludedOrders?.length);
+      if (excludedOrders?.length > 0) {
+        console.log('제외된 고객의 주문 예시:', excludedOrders.slice(0, 3));
       }
       
       // 상품별로 통계 집계
