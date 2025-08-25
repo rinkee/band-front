@@ -864,23 +864,22 @@ export default function ProductsPage() {
         userBandKey = userData.band_key;
       }
       
-      // 1. 먼저 제외 고객 ID 목록 가져오기
-      let excludedCustomerIds = [];
+      // 1. 먼저 제외 고객 이름 목록 가져오기 (users 테이블에서)
+      let excludedCustomerNames = [];
       if (userBandKey) {
-        const { data: excludedCustomers, error: excludedError } = await supabase
-          .from('customers')
-          .select('customer_id, customer_name')  // name이 아니라 customer_name
-          .eq('is_excluded', true)
-          .eq('band_key', userBandKey);
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('excluded_customers')
+          .eq('band_key', userBandKey)
+          .single();
         
-        if (excludedError) {
-          console.log('제외 고객 목록 가져오기 실패:', excludedError);
-        } else {
-          excludedCustomerIds = excludedCustomers?.map(c => c.customer_id) || [];
-          console.log(`제외 고객 수: ${excludedCustomerIds.length}`);
-          if (excludedCustomerIds.length > 0) {
-            console.log('제외 고객 ID 목록:', excludedCustomerIds);
-            console.log('제외 고객 이름:', excludedCustomers?.map(c => c.customer_name));
+        if (userError) {
+          console.log('사용자 데이터 가져오기 실패:', userError);
+        } else if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
+          excludedCustomerNames = userData.excluded_customers;
+          console.log(`제외 고객 수: ${excludedCustomerNames.length}`);
+          if (excludedCustomerNames.length > 0) {
+            console.log('제외 고객 이름 목록:', excludedCustomerNames);
           }
         }
       }
@@ -888,7 +887,7 @@ export default function ProductsPage() {
       // 2. 주문 데이터 가져오기 (orders 테이블 직접 사용)
       let ordersQuery = supabase
         .from('orders')
-        .select('product_id, quantity, total_amount, status, customer_id, band_key')
+        .select('product_id, quantity, total_amount, status, customer_id, customer_name, band_key')
         .in('product_id', productIds)
         .neq('status', '주문취소'); // 취소된 주문 제외
       
@@ -904,18 +903,18 @@ export default function ProductsPage() {
         return {};
       }
       
-      // 3. 클라이언트 측에서 제외 고객 필터링
+      // 3. 클라이언트 측에서 제외 고객 필터링 (이름으로 필터링)
       console.log('필터링 전 주문 샘플:', allOrders?.slice(0, 5).map(o => ({
-        customer_id: o.customer_id,
+        customer_name: o.customer_name,
         quantity: o.quantity,
         product_id: o.product_id
       })));
       
       const filteredOrders = allOrders?.filter(order => {
-        // 제외 고객 ID 목록에 포함되어 있으면 필터링
-        const isExcluded = excludedCustomerIds.includes(order.customer_id);
+        // 제외 고객 이름 목록에 포함되어 있으면 필터링
+        const isExcluded = excludedCustomerNames.includes(order.customer_name);
         if (isExcluded) {
-          console.log(`제외됨: customer_id ${order.customer_id}, quantity ${order.quantity}`);
+          console.log(`제외됨: customer_name "${order.customer_name}", quantity ${order.quantity}`);
           return false;
         }
         return true;
@@ -930,10 +929,10 @@ export default function ProductsPage() {
         
         // 제외된 주문들의 상세 정보
         const excludedOrders = allOrders?.filter(order => 
-          excludedCustomerIds.includes(order.customer_id)
+          excludedCustomerNames.includes(order.customer_name)
         );
         console.log('제외된 주문들:', excludedOrders?.map(o => ({
-          customer_id: o.customer_id,
+          customer_name: o.customer_name,
           quantity: o.quantity,
           product_id: o.product_id
         })));
