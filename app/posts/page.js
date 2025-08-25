@@ -825,25 +825,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             </div>
           </div>
           
-          {/* 댓글 AI 처리 뱃지 */}
-          {post.order_needs_ai && (
-            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-              <svg
-                className="w-3 h-3 mr-1"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                />
-              </svg>
-              댓글 AI 처리
-            </div>
-          )}
         </div>
 
         {/* 게시물 제목 */}
