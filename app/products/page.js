@@ -855,41 +855,95 @@ export default function ProductsPage() {
   // 상품별 주문 통계 가져오기
   const fetchProductOrderStats = async (productIds) => {
     try {
-      // 먼저 제외된 고객 ID 목록 가져오기
-      const { data: excludedCustomers, error: excludedError } = await supabase
-        .from('customers')
-        .select('customer_id')
-        .eq('is_excluded', true);
+      // sessionStorage에서 band_key와 user_id 가져오기
+      const sessionData = sessionStorage.getItem("userData");
+      let userBandKey = null;
+      let userId = null;
       
-      if (excludedError) {
-        console.error('제외 고객 가져오기 오류:', excludedError);
+      if (sessionData) {
+        const userData = JSON.parse(sessionData);
+        userBandKey = userData.band_key;
+        userId = userData.userId;
       }
       
-      const excludedCustomerIds = excludedCustomers?.map(c => c.customer_id) || [];
+      // 1. 먼저 제외 고객 이름 목록 가져오기 (users 테이블에서)
+      let excludedCustomerNames = [];
+      if (userId) {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('excluded_customers')
+          .eq('user_id', userId)
+          .single();
+        
+        if (userError) {
+          console.log('사용자 데이터 가져오기 실패:', userError);
+        } else if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
+          excludedCustomerNames = userData.excluded_customers;
+          console.log(`제외 고객 수: ${excludedCustomerNames.length}`);
+          if (excludedCustomerNames.length > 0) {
+            console.log('제외 고객 이름 목록:', excludedCustomerNames);
+          }
+        }
+      }
       
-      // orders 테이블에서 상품별 주문 통계 계산
-      let query = supabase
+      // 2. 주문 데이터 가져오기 (orders 테이블 직접 사용)
+      let ordersQuery = supabase
         .from('orders')
-        .select('product_id, quantity, total_amount, status, customer_id')
+        .select('product_id, quantity, total_amount, status, customer_id, customer_name, band_key')
         .in('product_id', productIds)
         .neq('status', '주문취소'); // 취소된 주문 제외
       
-      // 제외된 고객이 있으면 필터링
-      if (excludedCustomerIds.length > 0) {
-        query = query.not('customer_id', 'in', `(${excludedCustomerIds.join(',')})`);
+      // band_key가 있으면 해당 band의 주문만 가져오기
+      if (userBandKey) {
+        ordersQuery = ordersQuery.eq('band_key', userBandKey);
       }
       
-      const { data, error } = await query;
+      const { data: allOrders, error: ordersError } = await ordersQuery;
       
-      if (error) {
-        console.error('주문 통계 가져오기 오류:', error);
+      if (ordersError) {
+        console.error('주문 데이터 가져오기 오류:', ordersError);
         return {};
       }
       
-      // 상품별로 통계 집계
+      // 3. 클라이언트 측에서 제외 고객 필터링 (이름으로 필터링)
+      console.log('필터링 전 주문 샘플:', allOrders?.slice(0, 5).map(o => ({
+        customer_name: o.customer_name,
+        quantity: o.quantity,
+        product_id: o.product_id
+      })));
+      
+      const filteredOrders = allOrders?.filter(order => {
+        // 제외 고객 이름 목록에 포함되어 있으면 필터링
+        const isExcluded = excludedCustomerNames.includes(order.customer_name);
+        if (isExcluded) {
+          console.log(`제외됨: customer_name "${order.customer_name}", quantity ${order.quantity}`);
+          return false;
+        }
+        return true;
+      }) || [];
+      
+      console.log(`전체 주문 수: ${allOrders?.length || 0}, 필터링 후: ${filteredOrders.length}`);
+      
+      // 디버깅: 제외된 주문 수 확인
+      const excludedOrdersCount = (allOrders?.length || 0) - filteredOrders.length;
+      if (excludedOrdersCount > 0) {
+        console.log(`제외 고객의 주문 ${excludedOrdersCount}개 필터링됨`);
+        
+        // 제외된 주문들의 상세 정보
+        const excludedOrders = allOrders?.filter(order => 
+          excludedCustomerNames.includes(order.customer_name)
+        );
+        console.log('제외된 주문들:', excludedOrders?.map(o => ({
+          customer_name: o.customer_name,
+          quantity: o.quantity,
+          product_id: o.product_id
+        })));
+      }
+      
+      // 4. 상품별로 통계 집계 (필터링된 데이터 사용)
       const statsMap = {};
       productIds.forEach(productId => {
-        const productOrders = data?.filter(order => order.product_id === productId) || [];
+        const productOrders = filteredOrders.filter(order => order.product_id === productId) || [];
         const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
