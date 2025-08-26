@@ -129,34 +129,29 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 
 // --- 상태 배지 (판매 상태용) ---
 function StatusBadge({ status }) {
-  let bgColor, textColor, Icon;
+  let bgColor, textColor;
   switch (status) {
     case "판매중":
       bgColor = "bg-green-100";
       textColor = "text-green-600";
-      Icon = CheckCircleIcon;
       break;
     case "마감":
       bgColor = "bg-red-100";
       textColor = "text-red-600";
-      Icon = XCircleIconOutline;
       break;
     // case "판매중지":
     //   bgColor = "bg-yellow-100";
     //   textColor = "text-yellow-600";
-    //   Icon = SparklesIcon;
     //   break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-500";
-      Icon = ExclamationCircleIcon;
       break;
   }
   return (
     <span
       className={`inline-flex items-center gap-x-1 rounded-full px-2.5 py-1 text-xs font-medium ${bgColor} ${textColor}`}
     >
-      <Icon className="h-3.5 w-3.5" />
       {status}
     </span>
   );
@@ -1920,10 +1915,9 @@ export default function ProductsPage() {
                               e.stopPropagation();
                               handleViewProductOrders(product.title);
                             }}
-                            className="inline-flex items-center px-2 py-1 border border-blue-300 shadow-sm text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            className="inline-flex items-center px-2 py-1 text-xs font-medium rounded text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
                             title="상품명으로 주문 검색"
                           >
-                            <ClipboardDocumentListIcon className="w-3 h-3 mr-1" />
                             상품주문
                           </button>
 
@@ -1934,10 +1928,9 @@ export default function ProductsPage() {
                                 e.stopPropagation();
                                 handleViewPostOrders(product.post_key);
                               }}
-                              className="inline-flex items-center px-2 py-1 border border-green-300 shadow-sm text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                              className="inline-flex items-center px-2 py-1 text-xs font-medium rounded text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
                               title="게시물로 주문 검색"
                             >
-                              <DocumentTextIcon className="w-3 h-3 mr-1" />
                               게시물주문
                             </button>
                           )}
