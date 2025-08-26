@@ -805,19 +805,28 @@ export default function ProductsPage() {
       
       // 주문 통계 가져오기
       if (productIds.length > 0) {
-        fetchProductOrderStats(productIds).then(statsMap => {
-          // 주문 통계를 상품 데이터에 추가
-          const productsWithStats = productsData.data.map(p => ({
-            ...p,
-            barcode: p.barcode || "",
-            total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
-            total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
-            order_count: statsMap[p.product_id]?.order_count || 0,
-            unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
-          }));
-          
-          setProducts(productsWithStats);
-        });
+        fetchProductOrderStats(productIds)
+          .then(statsMap => {
+            console.log('받아온 statsMap:', statsMap);
+            
+            // 주문 통계를 상품 데이터에 추가
+            const productsWithStats = productsData.data.map(p => ({
+              ...p,
+              barcode: p.barcode || "",
+              total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
+              total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
+              order_count: statsMap[p.product_id]?.order_count || 0,
+              unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
+            }));
+            
+            console.log('productsWithStats 샘플:', productsWithStats[0]);
+            setProducts(productsWithStats);
+          })
+          .catch(error => {
+            console.error('fetchProductOrderStats 오류:', error);
+            // 오류 발생 시에도 products는 설정
+            setProducts(productsData.data.map(p => ({ ...p, barcode: p.barcode || "" })));
+          });
       } else {
         setProducts(
           productsData.data
@@ -949,9 +958,9 @@ export default function ProductsPage() {
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
         // 미수령 수량 계산 (sub_status가 '미수령'인 주문들의 수량 합계)
-        const unpickedQuantity = productOrders
-          .filter(order => order.sub_status === '미수령')
-          .reduce((sum, order) => sum + (order.quantity || 0), 0);
+        const unpickedOrders = productOrders.filter(order => order.sub_status === '미수령');
+        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 미수령 주문: ${unpickedOrders.length}개`);
+        const unpickedQuantity = unpickedOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         
         statsMap[productId] = {
           total_order_quantity: totalQuantity,
