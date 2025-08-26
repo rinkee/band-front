@@ -993,24 +993,28 @@ export default function ProductsPage() {
   // posts 테이블에서 이미지 데이터 가져오기
   const fetchPostsImages = async (postKeyPairs) => {
     try {
-      // 현재 페이지의 상품들에 대해서만 이미지를 가져옴
-      console.log(`🎯 현재 페이지 상품 ${postKeyPairs.length}개의 이미지 조회 시작`);
+      // 하이브리드 전략: 초기 100개 로드, 이후 필요시 추가
+      const INITIAL_LOAD_SIZE = 100;  // 초기 로드 사이즈 (5페이지 분량)
+      const loadSize = postKeyPairs.length > INITIAL_LOAD_SIZE ? postKeyPairs.length : INITIAL_LOAD_SIZE;
+      
+      console.log(`🎯 이미지 조회: 요청 ${postKeyPairs.length}개, 실제 로드 ${Math.min(postKeyPairs.length, loadSize)}개`);
       
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
         .select('band_key, post_key, photos_data, image_urls');
       
-      // OR 조건 생성 - 현재 페이지의 상품들만
-      const orConditions = postKeyPairs.map(pair => 
+      // 처음 100개까지는 모두 가져오고, 그 이후는 현재 필요한 것만
+      const keysToLoad = postKeyPairs.slice(0, loadSize);
+      const orConditions = keysToLoad.map(pair => 
         `band_key.eq.${pair.band_key},post_key.eq.${pair.post_key}`
       ).join(',');
       
-      query = query.or(orConditions);  // limit 제거 - 현재 페이지 상품들만 가져옴
+      query = query.or(orConditions);
       
       const { data, error } = await query;
       
-      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 (현재 페이지 상품들만)`);
+      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 로드 완료`);
       
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
@@ -1080,8 +1084,13 @@ export default function ProductsPage() {
       console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
       console.log('🗺️ 이미지 맵 내용:', imageMap);
       console.log('🔄 setPostsImages 호출 직전, imageMap 키 샘플:', Object.keys(imageMap).slice(0, 5));
-      setPostsImages(imageMap);
-      console.log('✅ setPostsImages 호출 완료');
+      
+      // 기존 이미지와 새로운 이미지 병합 (캐싱 효과)
+      setPostsImages(prevImages => ({
+        ...prevImages,  // 기존에 로드된 이미지 유지
+        ...imageMap     // 새로운 이미지 추가/업데이트
+      }));
+      console.log('✅ setPostsImages 호출 완료 (기존 이미지 유지)');
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
     }
