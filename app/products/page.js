@@ -1756,10 +1756,10 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-2 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                  <th className="px-1 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     주문수량
                   </th>
-                  <th className="px-2 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                  <th className="px-1 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     미수령
                   </th>
                   <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
@@ -1939,7 +1939,7 @@ export default function ProductsPage() {
                       <td className="px-2 py-5 whitespace-nowrap text-base text-gray-800 font-semibold">
                         {formatCurrency(product.base_price)}
                       </td>
-                      <td className="px-2 py-5 whitespace-nowrap text-center">
+                      <td className="px-1 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity && product.total_order_quantity > 0 ? (
                           <span className="text-green-600 font-bold text-lg">
                             {product.total_order_quantity}
@@ -1950,7 +1950,7 @@ export default function ProductsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-2 py-5 whitespace-nowrap text-center">
+                      <td className="px-1 py-5 whitespace-nowrap text-center">
                         {product.unpicked_quantity > 0 ? (
                           <button
                             onClick={(e) => {
