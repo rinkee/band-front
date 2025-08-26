@@ -996,16 +996,21 @@ export default function ProductsPage() {
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
-        .select('band_key, post_key, photos_data, image_urls');
+        .select('band_key, post_key, photos_data, image_urls, posted_at');
       
       // OR 조건 생성
       const orConditions = postKeyPairs.map(pair => 
         `band_key.eq.${pair.band_key},post_key.eq.${pair.post_key}`
       ).join(',');
       
-      query = query.or(orConditions);
+      query = query
+        .or(orConditions)
+        .order('posted_at', { ascending: false })  // 최신순 정렬
+        .limit(200);  // 최신 200개만 가져오기
       
       const { data, error } = await query;
+      
+      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 (최신 200개 제한)`);
       
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
