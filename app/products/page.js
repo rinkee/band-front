@@ -961,9 +961,11 @@ export default function ProductsPage() {
         const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
-        // 미수령 수량 계산 (sub_status가 '미수령'인 주문들의 수량 합계)
-        const unpickedOrders = productOrders.filter(order => order.sub_status === '미수령');
-        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 미수령 주문: ${unpickedOrders.length}개`);
+        // 미수령 수량 계산 (sub_status가 '미수령'이고 status가 '수령완료'가 아닌 주문들의 수량 합계)
+        const unpickedOrders = productOrders.filter(order => 
+          order.sub_status === '미수령' && order.status !== '수령완료'
+        );
+        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 실제 미수령 주문: ${unpickedOrders.length}개`);
         const unpickedQuantity = unpickedOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         
         statsMap[productId] = {
@@ -1626,19 +1628,6 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-16">
                     #
                   </th>
-                  {/* Item Number 정렬 컬럼 추가 */}
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-20">
-                    <button
-                      onClick={() => handleSortChange("item_number")}
-                      className="flex items-center justify-center focus:outline-none group text-gray-700 hover:text-gray-900"
-                      disabled={isDataLoading}
-                    >
-                      번호
-                      <span className="inline-block">
-                        {getSortIcon("item_number")}
-                      </span>
-                    </button>
-                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider sm:pl-6">
                     <button
                       onClick={() => handleSortChange("title")}
@@ -1758,10 +1747,6 @@ export default function ProductsPage() {
                       <td className="px-4 py-5 text-center text-base font-medium text-gray-600">
                         {rowNum}
                       </td>
-                      {/* Item Number 표시 셀 추가 */}
-                      <td className="px-4 py-5 text-center text-base font-semibold text-gray-700">
-                        {product.item_number || "-"}
-                      </td>
                       <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
@@ -1833,13 +1818,13 @@ export default function ProductsPage() {
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
-                        {product.total_order_quantity && product.total_order_quantity > 0 ? (
+                        {product.total_order_quantity > 0 ? (
                           <span className="text-lg font-bold text-green-600">
                             {product.total_order_quantity}
                           </span>
                         ) : (
                           <span className="text-sm text-gray-400">
-                            -
+                            0
                           </span>
                         )}
                       </td>
