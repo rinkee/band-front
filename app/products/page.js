@@ -1672,6 +1672,9 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     주문수량
                   </th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    미수령
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
                     바코드
                   </th>
@@ -1720,7 +1723,7 @@ export default function ProductsPage() {
                 {isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="10"
+                      colSpan="11"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
@@ -1731,7 +1734,7 @@ export default function ProductsPage() {
                 {!isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="10"
+                      colSpan="11"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
@@ -1838,16 +1841,9 @@ export default function ProductsPage() {
                         <div className="flex flex-col items-center">
                           {product.total_order_quantity && product.total_order_quantity > 0 ? (
                             <>
-                              <div className="flex items-center gap-2">
-                                <span className="text-lg font-bold text-orange-600">
-                                  {product.total_order_quantity}개
-                                </span>
-                                {product.unpicked_quantity > 0 && (
-                                  <span className="text-sm font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded">
-                                    미수령 {product.unpicked_quantity}개
-                                  </span>
-                                )}
-                              </div>
+                              <span className="text-lg font-bold text-orange-600">
+                                {product.total_order_quantity}개
+                              </span>
                               {product.total_order_amount && (
                                 <span className="text-xs text-gray-500 mt-1">
                                   {formatCurrency(product.total_order_amount)}
@@ -1856,10 +1852,21 @@ export default function ProductsPage() {
                             </>
                           ) : (
                             <span className="text-sm text-gray-400">
-                              주문 없음
+                              -
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-5 whitespace-nowrap text-center">
+                        {product.unpicked_quantity > 0 ? (
+                          <span className="text-lg font-bold text-red-600">
+                            {product.unpicked_quantity}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">
+                            -
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}>
