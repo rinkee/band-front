@@ -1016,24 +1016,37 @@ export default function ProductsPage() {
       const imageMap = {};
       console.log('🔍 이미지 맵 생성 시작, 전체 posts 데이터:', data?.length || 0, '개');
       
+      // 디버깅용 특정 post_key
+      const TARGET_KEYS = ['AAAGboFXPEpAlEd6-cosWbC8', 'AAAdVHI9ITOQosrGuaN7ttqJ'];
+      
       data?.forEach(post => {
         let imageUrl = null;
         const key = `${post.band_key}_${post.post_key}`;
         
-        console.log(`📸 Post ${key}:`, {
-          has_photos_data: !!post.photos_data,
-          photos_data_length: post.photos_data?.length,
-          has_image_urls: !!post.image_urls,
-          image_urls_length: post.image_urls?.length
-        });
+        // 타겟 키만 디버깅
+        const isTarget = TARGET_KEYS.includes(post.post_key);
+        
+        if (isTarget) {
+          console.log(`🎯🎯🎯 타겟 Post 발견: ${post.post_key}`);
+          console.log(`📸 Post ${key}:`, {
+            band_key: post.band_key,
+            post_key: post.post_key,
+            has_photos_data: !!post.photos_data,
+            photos_data_length: post.photos_data?.length,
+            first_photo_data: post.photos_data?.[0],
+            has_image_urls: !!post.image_urls,
+            image_urls_length: post.image_urls?.length,
+            first_image_url: post.image_urls?.[0]
+          });
+        }
         
         // photos_data에서 첫 번째 이미지 추출 시도
         if (post.photos_data && Array.isArray(post.photos_data) && post.photos_data.length > 0) {
           const firstPhoto = post.photos_data[0];
           if (firstPhoto) {
             imageUrl = typeof firstPhoto === 'string' ? firstPhoto : firstPhoto.url;
-            if (imageUrl) {
-              console.log(`✅ ${key}: photos_data에서 이미지 추출:`, imageUrl);
+            if (imageUrl && isTarget) {
+              console.log(`✅ 타겟 ${post.post_key}: photos_data에서 이미지 추출:`, imageUrl);
             }
           }
         }
@@ -1041,15 +1054,21 @@ export default function ProductsPage() {
         // photos_data에서 이미지를 찾지 못한 경우 image_urls에서 추출 시도
         if (!imageUrl && post.image_urls && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
           imageUrl = post.image_urls[0];
-          console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
+          if (isTarget) {
+            console.log(`✅ 타겟 ${post.post_key}: image_urls에서 이미지 추출:`, imageUrl);
+          }
         }
         
         if (imageUrl) {
           // band_key와 post_key 조합으로 키 생성
           imageMap[key] = imageUrl;
-          console.log(`💾 ${key}: 이미지 맵에 저장됨`);
+          if (isTarget) {
+            console.log(`💾💾💾 타겟 ${post.post_key}: 이미지 맵에 저장됨 - key: ${key}, url: ${imageUrl}`);
+          }
         } else {
-          console.log(`❌ ${key}: 이미지 URL 없음`);
+          if (isTarget) {
+            console.log(`❌❌❌ 타겟 ${post.post_key}: 이미지 URL 없음`);
+          }
         }
       });
       
@@ -1081,31 +1100,33 @@ export default function ProductsPage() {
     return () => clearTimeout(handler);
   }, [editedProduct.barcode]);
 
-  // postsImages 상태 변경 모니터링
+  // postsImages 상태 변경 모니터링 - 타겟 키만 확인
   useEffect(() => {
+    const TARGET_KEYS = ['AAAGboFXPEpAlEd6-cosWbC8', 'AAAdVHI9ITOQosrGuaN7ttqJ'];
     const imageCount = Object.keys(postsImages).length;
-    console.log('🔍 postsImages 상태 변경 감지:', {
-      imageCount,
-      isEmpty: imageCount === 0,
-      sampleKeys: Object.keys(postsImages).slice(0, 5),
-      timestamp: new Date().toISOString()
-    });
     
     if (imageCount > 0) {
-      console.log('✅ 이미지 데이터 준비 완료, 리렌더링 예상');
-      // 샘플로 첫 번째 상품의 이미지 키 확인
-      if (products && products.length > 0) {
-        const firstProduct = products[0];
-        const testKey = `${firstProduct.band_key}_${firstProduct.post_key}`;
-        console.log('🧪 테스트 - 첫 번째 상품 이미지 확인:', {
-          product: firstProduct.title,
-          testKey,
-          hasImage: !!postsImages[testKey],
-          imageUrl: postsImages[testKey]
-        });
-      }
+      console.log('🎯🎯🎯 타겟 키 이미지 상태 최종 확인:');
+      console.log(`전체 이미지 개수: ${imageCount}`);
+      
+      TARGET_KEYS.forEach(postKey => {
+        // postsImages의 키들을 확인하여 해당 post_key를 포함하는 키 찾기
+        const matchingKeys = Object.keys(postsImages).filter(key => key.includes(postKey));
+        console.log(`\n📍 post_key: ${postKey}`);
+        console.log(`  매칭된 키 개수: ${matchingKeys.length}`);
+        if (matchingKeys.length > 0) {
+          matchingKeys.forEach(key => {
+            console.log(`  ✅ ${key} => ${postsImages[key]}`);
+          });
+        } else {
+          console.log(`  ❌ 매칭된 키 없음`);
+        }
+      });
+      
+      // 전체 postsImages 키 목록 확인
+      console.log('\n📋 전체 postsImages 키 목록:', Object.keys(postsImages));
     }
-  }, [postsImages, products]);
+  }, [postsImages]);
 
   // 옵션 바코드 디바운스 useEffect
   useEffect(() => {
@@ -1817,29 +1838,25 @@ export default function ProductsPage() {
                           {/* 상품 이미지 - 크기 증가 */}
                           <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
                             {(() => {
+                              const TARGET_KEYS = ['AAAGboFXPEpAlEd6-cosWbC8', 'AAAdVHI9ITOQosrGuaN7ttqJ'];
+                              const isTarget = TARGET_KEYS.includes(product.post_key);
+                              
                               const imageKey = `${product.band_key}_${product.post_key}`;
                               const imageUrl = postsImages[imageKey];
                               const hasKeys = product.band_key && product.post_key;
                               const postsImagesCount = Object.keys(postsImages).length;
                               
-                              console.log(`🖼️ 상품 ${product.title} (${product.id}):`, {
-                                band_key: product.band_key,
-                                post_key: product.post_key,
-                                hasKeys: hasKeys,
-                                imageKey: imageKey,
-                                has_imageUrl: !!imageUrl,
-                                imageUrl: imageUrl,
-                                postsImagesCount: postsImagesCount,
-                                postsImagesKeys: postsImagesCount > 0 ? Object.keys(postsImages).slice(0, 3) : []
-                              });
-                              
-                              // 키 형식 검증
-                              if (!hasKeys) {
-                                console.log(`⚠️ 상품 ${product.title}에 band_key 또는 post_key가 없음`);
-                              } else if (postsImagesCount > 0 && !imageUrl) {
-                                console.log(`🔍 키 불일치 검증: imageKey="${imageKey}"가 postsImages에 없음. 유사한 키:`, 
-                                  Object.keys(postsImages).filter(k => k.includes(product.band_key || '') || k.includes(product.post_key || '')).slice(0, 3)
-                                );
+                              // 타겟 키만 디버깅
+                              if (isTarget) {
+                                console.log(`🎯🎯🎯 렌더링 - 타겟 상품 ${product.title} (post_key: ${product.post_key}):`, {
+                                  band_key: product.band_key,
+                                  post_key: product.post_key,
+                                  imageKey: imageKey,
+                                  has_imageUrl: !!imageUrl,
+                                  imageUrl: imageUrl,
+                                  postsImages_keys: Object.keys(postsImages),
+                                  postsImages_has_this_key: imageKey in postsImages
+                                });
                               }
                               
                               if (product.band_key && product.post_key && imageUrl) {
