@@ -152,16 +152,14 @@ function StatusBadge({ status }) {
   }
   return (
     <span
-      className={`inline-flex items-center justify-center gap-x-1 
+      className={`inline-flex items-center justify-center 
                   ${bgColor} ${hoverBgColor} ${textColor}
-                  px-3 py-1.5 
+                  px-2 py-1.5 
                   text-sm font-medium 
                   rounded-md
                   transition-all duration-200
-                  shadow-sm
                   min-w-[5rem]`}
     >
-      <Icon className="h-4 w-4" />
       {status}
     </span>
   );
@@ -1945,12 +1943,11 @@ export default function ProductsPage() {
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity && product.total_order_quantity > 0 ? (
                           <span className="inline-flex items-center justify-center 
-                                       px-3 py-1.5 
+                                       px-2 py-1.5 
                                        bg-green-50
                                        text-green-600 
                                        font-bold text-lg
                                        rounded-md 
-                                       shadow-sm
                                        min-w-[3rem]">
                             {product.total_order_quantity}
                           </span>
@@ -1971,13 +1968,12 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="inline-flex items-center justify-center px-3 py-1.5 
+                            className="inline-flex items-center justify-center px-2 py-1.5 
                                      bg-red-50 hover:bg-red-100 
                                      text-red-600 hover:text-red-700 
                                      font-bold text-lg
                                      rounded-md 
                                      transition-all duration-200
-                                     shadow-sm hover:shadow-md
                                      cursor-pointer
                                      min-w-[3rem]"
                             title="미수령 주문 보기"
@@ -2067,17 +2063,15 @@ export default function ProductsPage() {
                               handleViewProductOrders(product.title);
                             }}
                             className="inline-flex items-center justify-center 
-                                     px-3 py-1.5 
+                                     px-2 py-1.5 
                                      bg-blue-50 hover:bg-blue-100 
                                      text-blue-600 hover:text-blue-700 
                                      font-medium text-sm
                                      rounded-md 
                                      transition-all duration-200
-                                     shadow-sm hover:shadow-md
                                      min-w-[5.5rem]"
                             title="상품명으로 주문 검색"
                           >
-                            <ClipboardDocumentListIcon className="w-4 h-4 mr-1" />
                             상품주문
                           </button>
 
@@ -2089,17 +2083,15 @@ export default function ProductsPage() {
                                 handleViewPostOrders(product.post_key);
                               }}
                               className="inline-flex items-center justify-center 
-                                       px-3 py-1.5 
+                                       px-2 py-1.5 
                                        bg-purple-50 hover:bg-purple-100 
                                        text-purple-600 hover:text-purple-700 
                                        font-medium text-sm
                                        rounded-md 
                                        transition-all duration-200
-                                       shadow-sm hover:shadow-md
                                        min-w-[6rem]"
                               title="게시물로 주문 검색"
                             >
-                              <DocumentTextIcon className="w-4 h-4 mr-1" />
                               게시물주문
                             </button>
                           )}
