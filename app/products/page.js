@@ -129,34 +129,36 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 
 // --- 상태 배지 (판매 상태용) ---
 function StatusBadge({ status }) {
-  let bgColor, textColor, Icon;
+  let bgColor, hoverBgColor, textColor, Icon;
   switch (status) {
     case "판매중":
-      bgColor = "bg-green-100";
-      textColor = "text-green-600";
+      bgColor = "bg-green-50";
+      hoverBgColor = "hover:bg-green-100";
+      textColor = "text-green-600 hover:text-green-700";
       Icon = CheckCircleIcon;
       break;
     case "마감":
-      bgColor = "bg-red-100";
-      textColor = "text-red-600";
+      bgColor = "bg-gray-50";
+      hoverBgColor = "hover:bg-gray-100";
+      textColor = "text-gray-600 hover:text-gray-700";
       Icon = XCircleIconOutline;
       break;
-    // case "판매중지":
-    //   bgColor = "bg-yellow-100";
-    //   textColor = "text-yellow-600";
-    //   Icon = SparklesIcon;
-    //   break;
     default:
-      bgColor = "bg-gray-100";
+      bgColor = "bg-gray-50";
+      hoverBgColor = "hover:bg-gray-100";
       textColor = "text-gray-500";
       Icon = ExclamationCircleIcon;
       break;
   }
   return (
     <span
-      className={`inline-flex items-center gap-x-1 rounded-full px-2.5 py-1 text-xs font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center justify-center 
+                  ${bgColor} ${hoverBgColor} ${textColor}
+                  px-1.5 py-1 
+                  text-sm font-medium 
+                  rounded-md
+                  transition-all duration-200`}
     >
-      <Icon className="h-3.5 w-3.5" />
       {status}
     </span>
   );
@@ -638,6 +640,7 @@ export default function ProductsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
+  const [isDataReady, setIsDataReady] = useState(false); // 데이터가 준비되었는지 추적
   const [postsImages, setPostsImages] = useState({}); // band_key_post_key를 키로 하는 이미지 맵
   const [editingBarcodes, setEditingBarcodes] = useState({}); // 편집 중인 바코드 상태
   const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
@@ -821,11 +824,13 @@ export default function ProductsPage() {
             
             console.log('productsWithStats 샘플:', productsWithStats[0]);
             setProducts(productsWithStats);
+            setIsDataReady(true); // 데이터 준비 완료 표시
           })
           .catch(error => {
             console.error('fetchProductOrderStats 오류:', error);
             // 오류 발생 시에도 products는 설정
             setProducts(productsData.data.map(p => ({ ...p, barcode: p.barcode || "" })));
+            setIsDataReady(true); // 데이터 준비 완료 표시
           });
       } else {
         setProducts(
@@ -833,6 +838,7 @@ export default function ProductsPage() {
             .slice()
             .map((p) => ({ ...p, barcode: p.barcode || "" }))
         );
+        setIsDataReady(true); // 데이터 준비 완료 표시
       }
       
       // 고유한 band_key와 post_key 조합 추출
@@ -873,7 +879,7 @@ export default function ProductsPage() {
     ) {
       setCurrentPage(1);
     }
-  }, [productsData, productsError, currentPage, searchTerm]); // currentPage 의존성 추가
+  }, [productsData, productsError]); // searchTerm과 currentPage 제거 - 무한 루프 방지
 
   // 상품별 주문 통계 가져오기
   const fetchProductOrderStats = async (productIds) => {
@@ -993,19 +999,28 @@ export default function ProductsPage() {
   // posts 테이블에서 이미지 데이터 가져오기
   const fetchPostsImages = async (postKeyPairs) => {
     try {
+      // 하이브리드 전략: 초기 100개 로드, 이후 필요시 추가
+      const INITIAL_LOAD_SIZE = 100;  // 초기 로드 사이즈 (5페이지 분량)
+      const loadSize = postKeyPairs.length > INITIAL_LOAD_SIZE ? postKeyPairs.length : INITIAL_LOAD_SIZE;
+      
+      console.log(`🎯 이미지 조회: 요청 ${postKeyPairs.length}개, 실제 로드 ${Math.min(postKeyPairs.length, loadSize)}개`);
+      
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
         .select('band_key, post_key, photos_data, image_urls');
       
-      // OR 조건 생성
-      const orConditions = postKeyPairs.map(pair => 
+      // 처음 100개까지는 모두 가져오고, 그 이후는 현재 필요한 것만
+      const keysToLoad = postKeyPairs.slice(0, loadSize);
+      const orConditions = keysToLoad.map(pair => 
         `band_key.eq.${pair.band_key},post_key.eq.${pair.post_key}`
       ).join(',');
       
       query = query.or(orConditions);
       
       const { data, error } = await query;
+      
+      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 로드 완료`);
       
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
@@ -1075,8 +1090,13 @@ export default function ProductsPage() {
       console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
       console.log('🗺️ 이미지 맵 내용:', imageMap);
       console.log('🔄 setPostsImages 호출 직전, imageMap 키 샘플:', Object.keys(imageMap).slice(0, 5));
-      setPostsImages(imageMap);
-      console.log('✅ setPostsImages 호출 완료');
+      
+      // 기존 이미지와 새로운 이미지 병합 (캐싱 효과)
+      setPostsImages(prevImages => ({
+        ...prevImages,  // 기존에 로드된 이미지 유지
+        ...imageMap     // 새로운 이미지 추가/업데이트
+      }));
+      console.log('✅ setPostsImages 호출 완료 (기존 이미지 유지)');
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
     }
@@ -1222,6 +1242,7 @@ export default function ProductsPage() {
   };
 
   const handleSortChange = (field) => {
+    setIsDataReady(false); // 데이터 재로딩 전 리셋
     if (sortBy === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
@@ -1231,6 +1252,7 @@ export default function ProductsPage() {
     setCurrentPage(1);
   };
   const handleFilterChange = (status) => {
+    setIsDataReady(false); // 데이터 재로딩 전 리셋
     setFilterStatus(status);
     setCurrentPage(1);
   };
@@ -1593,7 +1615,7 @@ export default function ProductsPage() {
   return (
     <div
       ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto px-4 py-2 sm:px-6 sm:py-4"
+      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto px-2 py-2 sm:px-6 sm:py-4"
     >
       <div className="max-w-[1440px] mx-auto">
         <div className="mb-4 md:mb-4">
@@ -1608,11 +1630,11 @@ export default function ProductsPage() {
         <LightCard padding="p-0" className="mb-4 md:mb-4 overflow-hidden">
           <div className="divide-y divide-gray-200">
             <div className="grid grid-cols-[max-content_1fr] items-center">
-              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+              <div className="bg-gray-50 px-2 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                 <FunnelIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 상태
               </div>
-              <div className="bg-white px-4 py-3">
+              <div className="bg-white px-2 py-3">
                 <CustomRadioGroup
                   name="productStatus"
                   options={statusFilterOptions}
@@ -1623,12 +1645,12 @@ export default function ProductsPage() {
               </div>
             </div>
             <div className="grid grid-cols-[max-content_1fr] items-center">
-              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+              <div className="bg-gray-50 px-2 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                 <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
                 검색
               </div>
               {/* --- 👇 OrdersPage와 유사하게 검색창 및 버튼 레이아웃 수정 👇 --- */}
-              <div className="bg-white flex-grow w-full px-4 py-2 flex flex-wrap md:flex-nowrap md:items-center gap-2">
+              <div className="bg-white flex-grow w-full px-2 py-2 flex flex-wrap md:flex-nowrap md:items-center gap-2">
                 {/* 검색 입력 */}
                 <div className="relative w-full md:flex-grow md:max-w-lg order-1 ">
                   {" "}
@@ -1694,11 +1716,11 @@ export default function ProductsPage() {
               <thead className="bg-gray-50">
                 <tr>
                   {/* Index 컬럼 추가 */}
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-16">
+                  <th className="px-2 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-16">
                     #
                   </th>
                   {/* Item Number 정렬 컬럼 추가 */}
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-20">
+                  <th className="px-2 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-20">
                     <button
                       onClick={() => handleSortChange("item_number")}
                       className="flex items-center justify-center focus:outline-none group text-gray-700 hover:text-gray-900"
@@ -1710,7 +1732,7 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider sm:pl-6">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider sm:pl-6">
                     <button
                       onClick={() => handleSortChange("title")}
                       className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
@@ -1722,7 +1744,7 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("base_price")}
                       className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
@@ -1734,16 +1756,16 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-1 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     주문수량
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-1 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     미수령
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
                     바코드
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("created_at")}
                       className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
@@ -1755,7 +1777,7 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("pickup_date")}
                       className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
@@ -1767,7 +1789,7 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     <button
                       onClick={() => handleSortChange("status")}
                       className="flex items-center focus:outline-none group text-gray-700 hover:text-gray-900"
@@ -1779,28 +1801,32 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-2 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     작업
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {isProductsLoading && products.length === 0 && (
+                {/* 초기 로딩 또는 데이터 로딩 중일 때 스피너 표시 */}
+                {(initialLoading || (isProductsLoading && products.length === 0)) && (
                   <tr>
                     <td
                       colSpan="11"
-                      className="px-4 py-16 text-center text-gray-500"
+                      className="px-2 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
                     </td>
                   </tr>
                 )}
-                {/* colspan 수정 */}
-                {!isProductsLoading && products.length === 0 && (
+                {/* 데이터가 준비되고 실제로 상품이 없을 때만 표시 */}
+                {isDataReady && 
+                 !isProductsLoading && 
+                 !initialLoading && 
+                 products.length === 0 && (
                   <tr>
                     <td
                       colSpan="11"
-                      className="px-4 py-16 text-center text-gray-500"
+                      className="px-2 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
                     </td>
@@ -1826,14 +1852,14 @@ export default function ProductsPage() {
                       onClick={() => handleProductClick(product.product_id)}
                     >
                       {/* Index 표시 셀 추가 */}
-                      <td className="px-4 py-5 text-center text-base font-medium text-gray-600">
+                      <td className="px-2 py-5 text-center text-base font-medium text-gray-600">
                         {rowNum}
                       </td>
                       {/* Item Number 표시 셀 추가 */}
-                      <td className="px-4 py-5 text-center text-base font-semibold text-gray-700">
+                      <td className="px-2 py-5 text-center text-base font-semibold text-gray-700">
                         {product.item_number || "-"}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
+                      <td className="px-2 py-4 whitespace-nowrap sm:pl-6">
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
                           <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
@@ -1910,21 +1936,21 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-5 whitespace-nowrap text-base text-gray-800 font-semibold">
+                      <td className="px-2 py-5 whitespace-nowrap text-base text-gray-800 font-semibold">
                         {formatCurrency(product.base_price)}
                       </td>
-                      <td className="px-4 py-5 whitespace-nowrap text-center">
+                      <td className="px-1 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity && product.total_order_quantity > 0 ? (
-                          <span className="text-lg font-bold text-green-600">
+                          <span className="text-green-600 font-bold text-lg">
                             {product.total_order_quantity}
                           </span>
                         ) : (
-                          <span className="text-sm text-gray-400">
+                          <span className="text-gray-400 text-lg">
                             -
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-5 whitespace-nowrap text-center">
+                      <td className="px-1 py-5 whitespace-nowrap text-center">
                         {product.unpicked_quantity > 0 ? (
                           <button
                             onClick={(e) => {
@@ -1932,18 +1958,28 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="text-lg font-bold text-red-600 hover:text-red-700 hover:underline transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center px-2 py-1.5 
+                                     bg-red-50 hover:bg-red-100 
+                                     text-red-600 hover:text-red-700 
+                                     font-bold text-lg
+                                     rounded-md 
+                                     transition-all duration-200
+                                     cursor-pointer
+                                     min-w-[3rem]"
                             title="미수령 주문 보기"
                           >
                             {product.unpicked_quantity}
                           </button>
                         ) : (
-                          <span className="text-sm text-gray-400">
+                          <span className="inline-flex items-center justify-center 
+                                         px-3 py-1.5 
+                                         text-sm text-gray-400
+                                         min-w-[3rem]">
                             -
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap"
+                      <td className="px-2 py-4 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}>
                         <div className="space-y-2" style={{ width: "180px" }}>
                           {/* 바코드 미리보기 - 위로 이동 */}
@@ -1988,7 +2024,7 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-2 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-col">
                           <span>{formatDate(product.posted_at)}</span>
                           <span className="text-xs">
@@ -1996,7 +2032,7 @@ export default function ProductsPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-2 py-4 whitespace-nowrap text-sm text-gray-500">
                         {product.pickup_date ? (
                           <span className="font-medium">
                             {formatDatePickup(product.pickup_date)}
@@ -2005,10 +2041,10 @@ export default function ProductsPage() {
                           "-"
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-2 py-4 whitespace-nowrap">
                         <StatusBadge status={product.status} />
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-2 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           {/* 상품 주문보기 버튼 */}
                           <button
@@ -2016,10 +2052,15 @@ export default function ProductsPage() {
                               e.stopPropagation();
                               handleViewProductOrders(product.title);
                             }}
-                            className="inline-flex items-center px-2 py-1 border border-blue-300 shadow-sm text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            className="inline-flex items-center justify-center 
+                                     px-1.5 py-1 
+                                     bg-blue-50 hover:bg-blue-100 
+                                     text-blue-600 hover:text-blue-700 
+                                     font-medium text-sm
+                                     rounded-md 
+                                     transition-all duration-200"
                             title="상품명으로 주문 검색"
                           >
-                            <ClipboardDocumentListIcon className="w-3 h-3 mr-1" />
                             상품주문
                           </button>
 
@@ -2030,10 +2071,15 @@ export default function ProductsPage() {
                                 e.stopPropagation();
                                 handleViewPostOrders(product.post_key);
                               }}
-                              className="inline-flex items-center px-2 py-1 border border-green-300 shadow-sm text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                              className="inline-flex items-center justify-center 
+                                       px-1.5 py-1 
+                                       bg-purple-50 hover:bg-purple-100 
+                                       text-purple-600 hover:text-purple-700 
+                                       font-medium text-sm
+                                       rounded-md 
+                                       transition-all duration-200"
                               title="게시물로 주문 검색"
                             >
-                              <DocumentTextIcon className="w-3 h-3 mr-1" />
                               게시물주문
                             </button>
                           )}
@@ -2047,7 +2093,7 @@ export default function ProductsPage() {
           </div>
           {/* 페이지네이션 UI */}
           {totalItems > itemsPerPage && (
-            <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white sm:px-6 rounded-b-xl">
+            <div className="px-2 py-3 flex items-center justify-between border-t border-gray-200 bg-white sm:px-6 rounded-b-xl">
               <div>
                 <p className="text-sm text-gray-700">
                   총
@@ -2100,7 +2146,7 @@ export default function ProductsPage() {
                         key={page}
                         onClick={() => paginate(page)}
                         disabled={isDataLoading}
-                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                        className={`relative inline-flex items-center px-2 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
                           currentPage === page
                             ? "z-10 bg-orange-50 border-orange-500 text-orange-600"
                             : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
@@ -2112,7 +2158,7 @@ export default function ProductsPage() {
                     ) : (
                       <span
                         key={`ellipsis-${idx}`}
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                        className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
                       >
                         ...
                       </span>
@@ -2338,21 +2384,21 @@ export default function ProductsPage() {
               <div className="flex justify-between items-center p-5 border-t border-gray-200 bg-gray-50 rounded-b-xl flex-shrink-0">
                 <button
                   onClick={deleteProduct}
-                  className="flex items-center gap-1 px-4 py-2 bg-red-100 text-red-600 text-sm font-medium rounded-lg hover:bg-red-200 hover:text-red-700 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  className="flex items-center gap-1 px-2 py-2 bg-red-100 text-red-600 text-sm font-medium rounded-lg hover:bg-red-200 hover:text-red-700 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                 >
                   <TrashIcon className="w-4 h-4" /> 삭제
                 </button>
                 <div className="flex space-x-3">
                   <button
                     onClick={handleCloseModal}
-                    className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                    className="px-2 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
                   >
                     취소
                   </button>
                   <button
                     onClick={updateProduct}
                     disabled={isLoadingProductDetail}
-                    className={`px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-70 disabled:cursor-not-allowed`}
+                    className={`px-2 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-70 disabled:cursor-not-allowed`}
                   >
                     {isLoadingProductDetail ? (
                       <LoadingSpinner
