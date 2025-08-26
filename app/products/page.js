@@ -1021,7 +1021,6 @@ export default function ProductsPage() {
       const { data, error } = await query;
       
       console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 로드 완료`);
-      
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
         return;
