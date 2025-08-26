@@ -847,7 +847,20 @@ export default function ProductsPage() {
       
       // posts 테이블에서 이미지 데이터 가져오기
       if (uniquePairs.length > 0) {
+        console.log('🔑 이미지 가져오기를 위한 키 페어:', {
+          totalPairs: uniquePairs.length,
+          samplePairs: uniquePairs.slice(0, 5),
+          allProductsHaveKeys: productsData.data.every(p => p.band_key && p.post_key),
+          productsWithoutKeys: productsData.data.filter(p => !p.band_key || !p.post_key).map(p => ({
+            id: p.id,
+            title: p.title,
+            band_key: p.band_key,
+            post_key: p.post_key
+          }))
+        });
         fetchPostsImages(uniquePairs);
+      } else {
+        console.log('⚠️ 이미지를 가져올 키 페어가 없습니다. products:', productsData?.data?.slice(0, 3));
       }
     } else if (productsError) {
       setProducts([]);
@@ -1039,7 +1052,9 @@ export default function ProductsPage() {
       
       console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
       console.log('🗺️ 이미지 맵 내용:', imageMap);
+      console.log('🔄 setPostsImages 호출 직전, imageMap 키 샘플:', Object.keys(imageMap).slice(0, 5));
       setPostsImages(imageMap);
+      console.log('✅ setPostsImages 호출 완료');
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
     }
@@ -1062,6 +1077,32 @@ export default function ProductsPage() {
     }, 1000);
     return () => clearTimeout(handler);
   }, [editedProduct.barcode]);
+
+  // postsImages 상태 변경 모니터링
+  useEffect(() => {
+    const imageCount = Object.keys(postsImages).length;
+    console.log('🔍 postsImages 상태 변경 감지:', {
+      imageCount,
+      isEmpty: imageCount === 0,
+      sampleKeys: Object.keys(postsImages).slice(0, 5),
+      timestamp: new Date().toISOString()
+    });
+    
+    if (imageCount > 0) {
+      console.log('✅ 이미지 데이터 준비 완료, 리렌더링 예상');
+      // 샘플로 첫 번째 상품의 이미지 키 확인
+      if (products && products.length > 0) {
+        const firstProduct = products[0];
+        const testKey = `${firstProduct.band_key}_${firstProduct.post_key}`;
+        console.log('🧪 테스트 - 첫 번째 상품 이미지 확인:', {
+          product: firstProduct.title,
+          testKey,
+          hasImage: !!postsImages[testKey],
+          imageUrl: postsImages[testKey]
+        });
+      }
+    }
+  }, [postsImages, products]);
 
   // 옵션 바코드 디바운스 useEffect
   useEffect(() => {
@@ -1775,13 +1816,28 @@ export default function ProductsPage() {
                             {(() => {
                               const imageKey = `${product.band_key}_${product.post_key}`;
                               const imageUrl = postsImages[imageKey];
+                              const hasKeys = product.band_key && product.post_key;
+                              const postsImagesCount = Object.keys(postsImages).length;
+                              
                               console.log(`🖼️ 상품 ${product.title} (${product.id}):`, {
                                 band_key: product.band_key,
                                 post_key: product.post_key,
+                                hasKeys: hasKeys,
                                 imageKey: imageKey,
                                 has_imageUrl: !!imageUrl,
-                                imageUrl: imageUrl
+                                imageUrl: imageUrl,
+                                postsImagesCount: postsImagesCount,
+                                postsImagesKeys: postsImagesCount > 0 ? Object.keys(postsImages).slice(0, 3) : []
                               });
+                              
+                              // 키 형식 검증
+                              if (!hasKeys) {
+                                console.log(`⚠️ 상품 ${product.title}에 band_key 또는 post_key가 없음`);
+                              } else if (postsImagesCount > 0 && !imageUrl) {
+                                console.log(`🔍 키 불일치 검증: imageKey="${imageKey}"가 postsImages에 없음. 유사한 키:`, 
+                                  Object.keys(postsImages).filter(k => k.includes(product.band_key || '') || k.includes(product.post_key || '')).slice(0, 3)
+                                );
+                              }
                               
                               if (product.band_key && product.post_key && imageUrl) {
                                 return (
