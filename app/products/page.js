@@ -1027,16 +1027,19 @@ export default function ProductsPage() {
           image_urls_length: post.image_urls?.length
         });
         
-        // photos_data에서 첫 번째 이미지 추출
-        if (post.photos_data && Array.isArray(post.photos_data)) {
+        // photos_data에서 첫 번째 이미지 추출 시도
+        if (post.photos_data && Array.isArray(post.photos_data) && post.photos_data.length > 0) {
           const firstPhoto = post.photos_data[0];
           if (firstPhoto) {
             imageUrl = typeof firstPhoto === 'string' ? firstPhoto : firstPhoto.url;
-            console.log(`✅ ${key}: photos_data에서 이미지 추출:`, imageUrl);
+            if (imageUrl) {
+              console.log(`✅ ${key}: photos_data에서 이미지 추출:`, imageUrl);
+            }
           }
         }
-        // image_urls에서 첫 번째 이미지 추출
-        else if (post.image_urls && Array.isArray(post.image_urls)) {
+        
+        // photos_data에서 이미지를 찾지 못한 경우 image_urls에서 추출 시도
+        if (!imageUrl && post.image_urls && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
           imageUrl = post.image_urls[0];
           console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
         }
