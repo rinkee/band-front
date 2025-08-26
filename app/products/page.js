@@ -1915,7 +1915,7 @@ export default function ProductsPage() {
                               e.stopPropagation();
                               handleViewProductOrders(product.title);
                             }}
-                            className="inline-flex items-center px-2 py-1 text-xs font-medium rounded text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
+                            className="inline-flex items-center px-2 py-1 text-xs font-medium rounded text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
                             title="상품명으로 주문 검색"
                           >
                             상품주문
@@ -1928,7 +1928,7 @@ export default function ProductsPage() {
                                 e.stopPropagation();
                                 handleViewPostOrders(product.post_key);
                               }}
-                              className="inline-flex items-center px-2 py-1 text-xs font-medium rounded text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
+                              className="inline-flex items-center px-2 py-1 text-xs font-medium rounded text-gray-500 group-hover:text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
                               title="게시물로 주문 검색"
                             >
                               게시물주문
