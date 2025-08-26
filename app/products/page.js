@@ -805,18 +805,28 @@ export default function ProductsPage() {
       
       // 주문 통계 가져오기
       if (productIds.length > 0) {
-        fetchProductOrderStats(productIds).then(statsMap => {
-          // 주문 통계를 상품 데이터에 추가
-          const productsWithStats = productsData.data.map(p => ({
-            ...p,
-            barcode: p.barcode || "",
-            total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
-            total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
-            order_count: statsMap[p.product_id]?.order_count || 0
-          }));
-          
-          setProducts(productsWithStats);
-        });
+        fetchProductOrderStats(productIds)
+          .then(statsMap => {
+            console.log('받아온 statsMap:', statsMap);
+            
+            // 주문 통계를 상품 데이터에 추가
+            const productsWithStats = productsData.data.map(p => ({
+              ...p,
+              barcode: p.barcode || "",
+              total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
+              total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
+              order_count: statsMap[p.product_id]?.order_count || 0,
+              unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
+            }));
+            
+            console.log('productsWithStats 샘플:', productsWithStats[0]);
+            setProducts(productsWithStats);
+          })
+          .catch(error => {
+            console.error('fetchProductOrderStats 오류:', error);
+            // 오류 발생 시에도 products는 설정
+            setProducts(productsData.data.map(p => ({ ...p, barcode: p.barcode || "" })));
+          });
       } else {
         setProducts(
           productsData.data
@@ -889,7 +899,7 @@ export default function ProductsPage() {
       // 2. 주문 데이터 가져오기 (orders 테이블 직접 사용)
       let ordersQuery = supabase
         .from('orders')
-        .select('product_id, quantity, total_amount, status, customer_id, customer_name, band_key')
+        .select('product_id, quantity, total_amount, status, sub_status, customer_id, customer_name, band_key')
         .in('product_id', productIds)
         .neq('status', '주문취소'); // 취소된 주문 제외
       
@@ -947,10 +957,16 @@ export default function ProductsPage() {
         const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
+        // 미수령 수량 계산 (sub_status가 '미수령'인 주문들의 수량 합계)
+        const unpickedOrders = productOrders.filter(order => order.sub_status === '미수령');
+        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 미수령 주문: ${unpickedOrders.length}개`);
+        const unpickedQuantity = unpickedOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
+        
         statsMap[productId] = {
           total_order_quantity: totalQuantity,
           total_order_amount: totalAmount,
-          order_count: productOrders.length
+          order_count: productOrders.length,
+          unpicked_quantity: unpickedQuantity
         };
       });
       
@@ -985,28 +1001,44 @@ export default function ProductsPage() {
       
       // band_key_post_key를 키로 하는 이미지 맵 생성
       const imageMap = {};
+      console.log('🔍 이미지 맵 생성 시작, 전체 posts 데이터:', data?.length || 0, '개');
+      
       data?.forEach(post => {
         let imageUrl = null;
+        const key = `${post.band_key}_${post.post_key}`;
+        
+        console.log(`📸 Post ${key}:`, {
+          has_photos_data: !!post.photos_data,
+          photos_data_length: post.photos_data?.length,
+          has_image_urls: !!post.image_urls,
+          image_urls_length: post.image_urls?.length
+        });
         
         // photos_data에서 첫 번째 이미지 추출
         if (post.photos_data && Array.isArray(post.photos_data)) {
           const firstPhoto = post.photos_data[0];
           if (firstPhoto) {
             imageUrl = typeof firstPhoto === 'string' ? firstPhoto : firstPhoto.url;
+            console.log(`✅ ${key}: photos_data에서 이미지 추출:`, imageUrl);
           }
         }
         // image_urls에서 첫 번째 이미지 추출
         else if (post.image_urls && Array.isArray(post.image_urls)) {
           imageUrl = post.image_urls[0];
+          console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
         }
         
         if (imageUrl) {
           // band_key와 post_key 조합으로 키 생성
-          const key = `${post.band_key}_${post.post_key}`;
           imageMap[key] = imageUrl;
+          console.log(`💾 ${key}: 이미지 맵에 저장됨`);
+        } else {
+          console.log(`❌ ${key}: 이미지 URL 없음`);
         }
       });
       
+      console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
+      console.log('🗺️ 이미지 맵 내용:', imageMap);
       setPostsImages(imageMap);
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
@@ -1640,6 +1672,9 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     주문수량
                   </th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    미수령
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
                     바코드
                   </th>
@@ -1688,7 +1723,7 @@ export default function ProductsPage() {
                 {isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="10"
+                      colSpan="11"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       <LoadingSpinner className="h-6 w-6 mx-auto" />
@@ -1699,7 +1734,7 @@ export default function ProductsPage() {
                 {!isProductsLoading && products.length === 0 && (
                   <tr>
                     <td
-                      colSpan="10"
+                      colSpan="11"
                       className="px-4 py-16 text-center text-gray-500"
                     >
                       조건에 맞는 상품이 없습니다.
@@ -1737,33 +1772,50 @@ export default function ProductsPage() {
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
                           <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
-                            {(product.band_key && product.post_key && postsImages[`${product.band_key}_${product.post_key}`]) ? (
-                              <img
-                                src={postsImages[`${product.band_key}_${product.post_key}`]}
-                                alt={product.title}
-                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
-                                onError={(e) => {
-                                  e.target.onerror = null;
-                                  e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239CA3AF'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E";
-                                }}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-                                <svg
-                                  className="w-10 h-10 text-gray-300"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="1.5"
-                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                            {(() => {
+                              const imageKey = `${product.band_key}_${product.post_key}`;
+                              const imageUrl = postsImages[imageKey];
+                              console.log(`🖼️ 상품 ${product.title} (${product.id}):`, {
+                                band_key: product.band_key,
+                                post_key: product.post_key,
+                                imageKey: imageKey,
+                                has_imageUrl: !!imageUrl,
+                                imageUrl: imageUrl
+                              });
+                              
+                              if (product.band_key && product.post_key && imageUrl) {
+                                return (
+                                  <img
+                                    src={imageUrl}
+                                    alt={product.title}
+                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                    onError={(e) => {
+                                      console.error(`❌ 이미지 로드 실패: ${imageUrl}`);
+                                      e.target.onerror = null;
+                                      e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239CA3AF'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E";
+                                    }}
                                   />
-                                </svg>
-                              </div>
-                            )}
+                                );
+                              } else {
+                                return (
+                                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+                                    <svg
+                                      className="w-10 h-10 text-gray-300"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth="1.5"
+                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                      />
+                                    </svg>
+                                  </div>
+                                );
+                              }
+                            })()}
                           </div>
                           {/* 상품명 */}
                           <div className="flex-1">
@@ -1786,24 +1838,26 @@ export default function ProductsPage() {
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
-                        <div className="flex flex-col items-center">
-                          {product.total_order_quantity && product.total_order_quantity > 0 ? (
-                            <>
-                              <span className="text-lg font-bold text-orange-600">
-                                {product.total_order_quantity}개
-                              </span>
-                              {product.total_order_amount && (
-                                <span className="text-xs text-gray-500 mt-1">
-                                  {formatCurrency(product.total_order_amount)}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-sm text-gray-400">
-                              주문 없음
-                            </span>
-                          )}
-                        </div>
+                        {product.total_order_quantity && product.total_order_quantity > 0 ? (
+                          <span className="text-lg font-bold text-green-600">
+                            {product.total_order_quantity}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">
+                            -
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-5 whitespace-nowrap text-center">
+                        {product.unpicked_quantity > 0 ? (
+                          <span className="text-lg font-bold text-red-600">
+                            {product.unpicked_quantity}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">
+                            -
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}>

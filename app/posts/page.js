@@ -470,7 +470,7 @@ export default function PostsPage() {
       <div className="p-6">
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <h3 className="text-red-800 font-medium">오류가 발생했습니다</h3>
-          <p className="text-red-600 text-sm mt-1">{error.message}</p>
+          <p className="text-red-600 text-base mt-1">{error.message}</p>
         </div>
       </div>
     );
@@ -516,7 +516,7 @@ export default function PostsPage() {
 
             {/* 통계 요약 */}
             <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-6 text-sm">
+              <div className="flex items-center space-x-6 text-base">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-900">
                     {totalStats.totalPosts}
@@ -553,7 +553,7 @@ export default function PostsPage() {
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
-                    className="h-5 w-5 text-gray-400"
+                    className="h-6 w-6 text-gray-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -571,12 +571,12 @@ export default function PostsPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="게시물 제목, 내용, 작성자로 검색..."
-                  className="block w-96 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-96 pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-base"
                 />
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="inline-flex items-center px-4 py-2.5 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 검색
               </button>
@@ -584,10 +584,10 @@ export default function PostsPage() {
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <svg
-                    className="h-4 w-4 mr-2"
+                    className="h-5 w-5 mr-2"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -629,12 +629,12 @@ export default function PostsPage() {
                 <div className="text-gray-500 text-lg mb-2">
                   &quot;{searchQuery}&quot;에 대한 검색 결과가 없습니다.
                 </div>
-                <div className="text-gray-400 text-sm mb-4">
+                <div className="text-gray-400 text-base mb-4">
                   다른 검색어를 시도해보세요.
                 </div>
                 <button
                   onClick={handleClearSearch}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   모든 게시물 보기
                 </button>
@@ -876,16 +876,16 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                   post.author_profile ? "hidden" : ""
                 }`}
               >
-                <span className="text-white font-medium text-xs">
+                <span className="text-white font-medium text-sm">
                   {post.author_name ? post.author_name.charAt(0) : "?"}
                 </span>
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900 truncate">
+              <div className="text-base font-medium text-gray-900 truncate">
                 {post.author_name || "알 수 없음"}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-sm text-gray-500">
                 {formatDate(post.posted_at)}
               </div>
             </div>
@@ -895,14 +895,14 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
         {/* 게시물 제목 */}
         {post.title && (
-          <h3 className="font-medium text-gray-900 mb-2 line-clamp-2 text-sm leading-snug">
+          <h3 className="font-medium text-gray-900 mb-2 line-clamp-2 text-base leading-snug">
             {post.title}
           </h3>
         )}
 
         {/* 게시물 내용 */}
         {post.content && (
-          <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed mb-3">
+          <p className="text-gray-600 text-base line-clamp-3 leading-relaxed mb-3">
             {post.content}
           </p>
         )}
@@ -924,11 +924,11 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                   d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
                 />
               </svg>
-              <span className="text-xs font-medium text-blue-900">
+              <span className="text-sm font-medium text-blue-900">
                 상품 {post.products.length}개
               </span>
             </div>
-            <div className="text-xs text-blue-800 line-clamp-2">
+            <div className="text-sm text-blue-800 line-clamp-2">
               {post.products.slice(0, 1).map((product, index) => (
                 <div key={product.product_id || index}>
                   {product.title || product.name}{" "}
@@ -964,7 +964,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                       <svg class="mx-auto h-12 w-12 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      <span class="text-gray-400 text-sm">이미지 로드 실패</span>
+                      <span class="text-gray-400 text-base">이미지 로드 실패</span>
                     </div>
                   </div>
                 `;
@@ -987,7 +987,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                   d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                 />
               </svg>
-              <span className="text-gray-400 text-sm">이미지 없음</span>
+              <span className="text-gray-400 text-base">이미지 없음</span>
             </div>
           </div>
         )}
@@ -1006,7 +1006,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className="w-5 h-5 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1018,7 +1018,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
               />
             </svg>
-            <span className="text-xs text-gray-600 mt-0.5">바코드</span>
+            <span className="text-sm text-gray-600 mt-0.5">바코드</span>
           </button>
 
           {/* 주문보기 버튼 */}
@@ -1030,7 +1030,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className="w-5 h-5 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1042,7 +1042,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
               />
             </svg>
-            <span className="text-xs text-gray-600 mt-0.5">주문</span>
+            <span className="text-sm text-gray-600 mt-0.5">주문</span>
           </button>
 
           {/* 실시간 댓글 버튼 */}
@@ -1054,7 +1054,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className="w-5 h-5 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1066,7 +1066,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
-            <span className="text-xs text-gray-600 mt-0.5">실시간 댓글</span>
+            <span className="text-sm text-gray-600 mt-0.5">실시간 댓글</span>
           </button>
         </div>
         
@@ -1082,7 +1082,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 onToggleReprocess(post, !isCurrentlyPending);
               }}
               disabled={!post.is_product}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 !post.is_product
                   ? 'bg-gray-100 cursor-not-allowed'
                   : post.comment_sync_status === 'pending'
@@ -1100,7 +1100,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 }`}
               />
             </button>
-            <span className={`text-xs ${
+            <span className={`text-sm ${
               !post.is_product
                 ? 'text-gray-300'
                 : post.comment_sync_status === 'pending'
@@ -1126,7 +1126,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             title="삭제"
           >
             <svg
-              className="w-4 h-4"
+              className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1178,12 +1178,12 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
           <>
             <button
               onClick={() => onPageChange(1)}
-              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+              className="px-3 py-2 text-base text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
             >
               1
             </button>
             {startPage > 2 && (
-              <span className="px-2 py-2 text-sm text-gray-400">...</span>
+              <span className="px-2 py-2 text-base text-gray-400">...</span>
             )}
           </>
         )}
@@ -1192,7 +1192,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
         <button
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
-          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
+          className="px-3 py-2 text-base text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
         >
           ← 이전
         </button>
@@ -1202,7 +1202,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
           <button
             key={page}
             onClick={() => onPageChange(page)}
-            className={`px-3 py-2 text-sm rounded-md transition-colors ${
+            className={`px-3 py-2 text-base rounded-md transition-colors ${
               page === currentPage
                 ? "bg-blue-600 text-white font-medium"
                 : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
@@ -1216,7 +1216,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
         <button
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
-          className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
+          className="px-3 py-2 text-base text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
         >
           다음 →
         </button>
@@ -1225,11 +1225,11 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
         {endPage < totalPages && (
           <>
             {endPage < totalPages - 1 && (
-              <span className="px-2 py-2 text-sm text-gray-400">...</span>
+              <span className="px-2 py-2 text-base text-gray-400">...</span>
             )}
             <button
               onClick={() => onPageChange(totalPages)}
-              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+              className="px-3 py-2 text-base text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
             >
               {totalPages}
             </button>
@@ -1239,7 +1239,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
 
       {/* 페이지 정보 */}
       <div className="mt-3 text-center">
-        <span className="text-xs text-gray-500">
+        <span className="text-sm text-gray-500">
           {currentPage} / {totalPages} 페이지
         </span>
       </div>
