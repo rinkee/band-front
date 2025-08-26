@@ -129,34 +129,29 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 
 // --- 상태 배지 (판매 상태용) ---
 function StatusBadge({ status }) {
-  let bgColor, textColor, Icon;
+  let bgColor, textColor;
   switch (status) {
     case "판매중":
       bgColor = "bg-green-100";
       textColor = "text-green-600";
-      Icon = CheckCircleIcon;
       break;
     case "마감":
       bgColor = "bg-red-100";
       textColor = "text-red-600";
-      Icon = XCircleIconOutline;
       break;
     // case "판매중지":
     //   bgColor = "bg-yellow-100";
     //   textColor = "text-yellow-600";
-    //   Icon = SparklesIcon;
     //   break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-500";
-      Icon = ExclamationCircleIcon;
       break;
   }
   return (
     <span
       className={`inline-flex items-center gap-x-1 rounded-full px-2.5 py-1 text-xs font-medium ${bgColor} ${textColor}`}
     >
-      <Icon className="h-3.5 w-3.5" />
       {status}
     </span>
   );
@@ -961,9 +956,11 @@ export default function ProductsPage() {
         const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
-        // 미수령 수량 계산 (sub_status가 '미수령'인 주문들의 수량 합계)
-        const unpickedOrders = productOrders.filter(order => order.sub_status === '미수령');
-        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 미수령 주문: ${unpickedOrders.length}개`);
+        // 미수령 수량 계산 (sub_status가 '미수령'이고 status가 '수령완료'가 아닌 주문들의 수량 합계)
+        const unpickedOrders = productOrders.filter(order => 
+          order.sub_status === '미수령' && order.status !== '수령완료'
+        );
+        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 실제 미수령 주문: ${unpickedOrders.length}개`);
         const unpickedQuantity = unpickedOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         
         statsMap[productId] = {
@@ -1626,19 +1623,6 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-16">
                     #
                   </th>
-                  {/* Item Number 정렬 컬럼 추가 */}
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider w-20">
-                    <button
-                      onClick={() => handleSortChange("item_number")}
-                      className="flex items-center justify-center focus:outline-none group text-gray-700 hover:text-gray-900"
-                      disabled={isDataLoading}
-                    >
-                      번호
-                      <span className="inline-block">
-                        {getSortIcon("item_number")}
-                      </span>
-                    </button>
-                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider sm:pl-6">
                     <button
                       onClick={() => handleSortChange("title")}
@@ -1758,10 +1742,6 @@ export default function ProductsPage() {
                       <td className="px-4 py-5 text-center text-base font-medium text-gray-600">
                         {rowNum}
                       </td>
-                      {/* Item Number 표시 셀 추가 */}
-                      <td className="px-4 py-5 text-center text-base font-semibold text-gray-700">
-                        {product.item_number || "-"}
-                      </td>
                       <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
@@ -1833,13 +1813,13 @@ export default function ProductsPage() {
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
-                        {product.total_order_quantity && product.total_order_quantity > 0 ? (
+                        {product.total_order_quantity > 0 ? (
                           <span className="text-lg font-bold text-green-600">
                             {product.total_order_quantity}
                           </span>
                         ) : (
                           <span className="text-sm text-gray-400">
-                            -
+                            0
                           </span>
                         )}
                       </td>
@@ -1851,14 +1831,14 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="text-lg font-bold text-red-600 hover:text-red-700 hover:underline transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-lg font-bold text-red-600 group-hover:bg-red-100 hover:bg-red-200 hover:text-red-700 transition-all duration-200 cursor-pointer"
                             title="미수령 주문 보기"
                           >
                             {product.unpicked_quantity}
                           </button>
                         ) : (
                           <span className="text-sm text-gray-400">
-                            -
+                            0
                           </span>
                         )}
                       </td>
@@ -1935,10 +1915,9 @@ export default function ProductsPage() {
                               e.stopPropagation();
                               handleViewProductOrders(product.title);
                             }}
-                            className="inline-flex items-center px-2 py-1 border border-blue-300 shadow-sm text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
                             title="상품명으로 주문 검색"
                           >
-                            <ClipboardDocumentListIcon className="w-3 h-3 mr-1" />
                             상품주문
                           </button>
 
@@ -1949,10 +1928,9 @@ export default function ProductsPage() {
                                 e.stopPropagation();
                                 handleViewPostOrders(product.post_key);
                               }}
-                              className="inline-flex items-center px-2 py-1 border border-green-300 shadow-sm text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
                               title="게시물로 주문 검색"
                             >
-                              <DocumentTextIcon className="w-3 h-3 mr-1" />
                               게시물주문
                             </button>
                           )}
