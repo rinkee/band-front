@@ -1754,10 +1754,10 @@ export default function ProductsPage() {
                       </span>
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     주문수량
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     미수령
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider w-48">
