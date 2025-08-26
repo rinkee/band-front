@@ -968,19 +968,31 @@ export default function OrdersPage() {
     if (productsError) console.error("Product Error:", productsError);
   }, [productsData, productsError]);
 
-  // URL 파라미터에서 검색어 처리하는 useEffect 추가
+  // URL 파라미터에서 검색어 및 필터 처리하는 useEffect 추가
   useEffect(() => {
     const searchParam = searchParams.get("search");
+    const filterParam = searchParams.get("filter");
+    
     if (searchParam) {
       setInputValue(searchParam);
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
       setSelectedOrderIds([]);
+    }
+    
+    // 미수령 필터 파라미터 처리
+    if (filterParam === "unpicked") {
+      setFilterSelection("미수령");
+      setCurrentPage(1);
+      setSelectedOrderIds([]);
+    }
 
-      // URL에서 검색 파라미터 제거 (한 번만 실행되도록)
+    // URL에서 파라미터 제거 (한 번만 실행되도록)
+    if (searchParam || filterParam) {
       const newUrl = new URL(window.location);
       newUrl.searchParams.delete("search");
+      newUrl.searchParams.delete("filter");
       window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
@@ -2106,9 +2118,11 @@ export default function OrdersPage() {
                         className={`${
                           editingOrderId === order.order_id 
                             ? "bg-blue-50 border-l-4 border-blue-400" 
-                            : isSelected 
-                              ? "bg-orange-50" 
-                              : "hover:bg-gray-50"
+                            : order.sub_status === "미수령"
+                              ? "bg-red-50 border-l-4 border-red-400"
+                              : isSelected 
+                                ? "bg-orange-50" 
+                                : "hover:bg-gray-50"
                         } transition-colors group cursor-pointer ${
                           isOrdersLoading ? "opacity-70" : ""
                         }`}
