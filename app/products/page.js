@@ -638,6 +638,7 @@ export default function ProductsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
+  const [isDataReady, setIsDataReady] = useState(false); // 데이터가 준비되었는지 추적
   const [postsImages, setPostsImages] = useState({}); // band_key_post_key를 키로 하는 이미지 맵
   const [editingBarcodes, setEditingBarcodes] = useState({}); // 편집 중인 바코드 상태
   const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
@@ -821,11 +822,13 @@ export default function ProductsPage() {
             
             console.log('productsWithStats 샘플:', productsWithStats[0]);
             setProducts(productsWithStats);
+            setIsDataReady(true); // 데이터 준비 완료 표시
           })
           .catch(error => {
             console.error('fetchProductOrderStats 오류:', error);
             // 오류 발생 시에도 products는 설정
             setProducts(productsData.data.map(p => ({ ...p, barcode: p.barcode || "" })));
+            setIsDataReady(true); // 데이터 준비 완료 표시
           });
       } else {
         setProducts(
@@ -833,6 +836,7 @@ export default function ProductsPage() {
             .slice()
             .map((p) => ({ ...p, barcode: p.barcode || "" }))
         );
+        setIsDataReady(true); // 데이터 준비 완료 표시
       }
       
       // 고유한 band_key와 post_key 조합 추출
@@ -1236,6 +1240,7 @@ export default function ProductsPage() {
   };
 
   const handleSortChange = (field) => {
+    setIsDataReady(false); // 데이터 재로딩 전 리셋
     if (sortBy === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
@@ -1245,6 +1250,7 @@ export default function ProductsPage() {
     setCurrentPage(1);
   };
   const handleFilterChange = (status) => {
+    setIsDataReady(false); // 데이터 재로딩 전 리셋
     setFilterStatus(status);
     setCurrentPage(1);
   };
@@ -1810,8 +1816,11 @@ export default function ProductsPage() {
                     </td>
                   </tr>
                 )}
-                {/* colspan 수정 - 초기 로딩이 완전히 끝나고 데이터가 없을 때만 표시 */}
-                {!isProductsLoading && !initialLoading && productsData && products.length === 0 && (
+                {/* 데이터가 준비되고 실제로 상품이 없을 때만 표시 */}
+                {isDataReady && 
+                 !isProductsLoading && 
+                 !initialLoading && 
+                 products.length === 0 && (
                   <tr>
                     <td
                       colSpan="11"
