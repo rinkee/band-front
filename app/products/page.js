@@ -129,34 +129,39 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 
 // --- 상태 배지 (판매 상태용) ---
 function StatusBadge({ status }) {
-  let bgColor, textColor, Icon;
+  let bgColor, hoverBgColor, textColor, Icon;
   switch (status) {
     case "판매중":
-      bgColor = "bg-green-100";
-      textColor = "text-green-600";
+      bgColor = "bg-green-50";
+      hoverBgColor = "hover:bg-green-100";
+      textColor = "text-green-600 hover:text-green-700";
       Icon = CheckCircleIcon;
       break;
     case "마감":
-      bgColor = "bg-red-100";
-      textColor = "text-red-600";
+      bgColor = "bg-gray-50";
+      hoverBgColor = "hover:bg-gray-100";
+      textColor = "text-gray-600 hover:text-gray-700";
       Icon = XCircleIconOutline;
       break;
-    // case "판매중지":
-    //   bgColor = "bg-yellow-100";
-    //   textColor = "text-yellow-600";
-    //   Icon = SparklesIcon;
-    //   break;
     default:
-      bgColor = "bg-gray-100";
+      bgColor = "bg-gray-50";
+      hoverBgColor = "hover:bg-gray-100";
       textColor = "text-gray-500";
       Icon = ExclamationCircleIcon;
       break;
   }
   return (
     <span
-      className={`inline-flex items-center gap-x-1 rounded-full px-2.5 py-1 text-xs font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center justify-center gap-x-1 
+                  ${bgColor} ${hoverBgColor} ${textColor}
+                  px-3 py-1.5 
+                  text-sm font-medium 
+                  rounded-md
+                  transition-all duration-200
+                  shadow-sm
+                  min-w-[5rem]`}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-4 w-4" />
       {status}
     </span>
   );
@@ -1939,11 +1944,21 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity && product.total_order_quantity > 0 ? (
-                          <span className="text-lg font-bold text-green-600">
+                          <span className="inline-flex items-center justify-center 
+                                       px-3 py-1.5 
+                                       bg-green-50
+                                       text-green-600 
+                                       font-bold text-lg
+                                       rounded-md 
+                                       shadow-sm
+                                       min-w-[3rem]">
                             {product.total_order_quantity}
                           </span>
                         ) : (
-                          <span className="text-sm text-gray-400">
+                          <span className="inline-flex items-center justify-center 
+                                         px-3 py-1.5 
+                                         text-sm text-gray-400
+                                         min-w-[3rem]">
                             -
                           </span>
                         )}
@@ -1956,13 +1971,24 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="text-lg font-bold text-red-600 hover:text-red-700 hover:underline transition-colors cursor-pointer"
+                            className="inline-flex items-center justify-center px-3 py-1.5 
+                                     bg-red-50 hover:bg-red-100 
+                                     text-red-600 hover:text-red-700 
+                                     font-bold text-lg
+                                     rounded-md 
+                                     transition-all duration-200
+                                     shadow-sm hover:shadow-md
+                                     cursor-pointer
+                                     min-w-[3rem]"
                             title="미수령 주문 보기"
                           >
                             {product.unpicked_quantity}
                           </button>
                         ) : (
-                          <span className="text-sm text-gray-400">
+                          <span className="inline-flex items-center justify-center 
+                                         px-3 py-1.5 
+                                         text-sm text-gray-400
+                                         min-w-[3rem]">
                             -
                           </span>
                         )}
@@ -2040,10 +2066,18 @@ export default function ProductsPage() {
                               e.stopPropagation();
                               handleViewProductOrders(product.title);
                             }}
-                            className="inline-flex items-center px-2 py-1 border border-blue-300 shadow-sm text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            className="inline-flex items-center justify-center 
+                                     px-3 py-1.5 
+                                     bg-blue-50 hover:bg-blue-100 
+                                     text-blue-600 hover:text-blue-700 
+                                     font-medium text-sm
+                                     rounded-md 
+                                     transition-all duration-200
+                                     shadow-sm hover:shadow-md
+                                     min-w-[5.5rem]"
                             title="상품명으로 주문 검색"
                           >
-                            <ClipboardDocumentListIcon className="w-3 h-3 mr-1" />
+                            <ClipboardDocumentListIcon className="w-4 h-4 mr-1" />
                             상품주문
                           </button>
 
@@ -2054,10 +2088,18 @@ export default function ProductsPage() {
                                 e.stopPropagation();
                                 handleViewPostOrders(product.post_key);
                               }}
-                              className="inline-flex items-center px-2 py-1 border border-green-300 shadow-sm text-xs font-medium rounded text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                              className="inline-flex items-center justify-center 
+                                       px-3 py-1.5 
+                                       bg-purple-50 hover:bg-purple-100 
+                                       text-purple-600 hover:text-purple-700 
+                                       font-medium text-sm
+                                       rounded-md 
+                                       transition-all duration-200
+                                       shadow-sm hover:shadow-md
+                                       min-w-[6rem]"
                               title="게시물로 주문 검색"
                             >
-                              <DocumentTextIcon className="w-3 h-3 mr-1" />
+                              <DocumentTextIcon className="w-4 h-4 mr-1" />
                               게시물주문
                             </button>
                           )}
