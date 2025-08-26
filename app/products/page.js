@@ -1941,16 +1941,11 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-2 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity && product.total_order_quantity > 0 ? (
-                          <span className="inline-flex items-center justify-center 
-                                       text-green-600 
-                                       font-bold text-lg">
+                          <span className="text-green-600 font-bold text-lg">
                             {product.total_order_quantity}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center justify-center 
-                                         px-3 py-1.5 
-                                         text-sm text-gray-400
-                                         min-w-[3rem]">
+                          <span className="text-gray-400 text-lg">
                             -
                           </span>
                         )}
