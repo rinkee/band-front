@@ -847,7 +847,11 @@ export default function ProductsPage() {
       
       // posts 테이블에서 이미지 데이터 가져오기
       if (uniquePairs.length > 0) {
-        fetchPostsImages(uniquePairs);
+        fetchPostsImages(uniquePairs).then(() => {
+          console.log('✅ 이미지 데이터 로드 완료');
+        }).catch(error => {
+          console.error('❌ 이미지 로드 실패:', error);
+        });
       }
     } else if (productsError) {
       setProducts([]);
@@ -980,6 +984,9 @@ export default function ProductsPage() {
   // posts 테이블에서 이미지 데이터 가져오기
   const fetchPostsImages = async (postKeyPairs) => {
     try {
+      console.log('🔄 fetchPostsImages 시작, 요청 수:', postKeyPairs.length);
+      console.log('📝 요청 샘플:', postKeyPairs.slice(0, 3));
+      
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
@@ -1017,6 +1024,7 @@ export default function ProductsPage() {
       });
       
       console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
+      console.log('🗺️ 이미지 맵 키 샘플:', Object.keys(imageMap).slice(0, 5));
       setPostsImages(imageMap);
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
@@ -1753,12 +1761,13 @@ export default function ProductsPage() {
                             {(() => {
                               const imageKey = `${product.band_key}_${product.post_key}`;
                               const imageUrl = postsImages[imageKey];
-                              console.log(`🖼️ 상품 ${product.title} (${product.id}):`, {
+                              console.log(`🖼️ 상품 ${product.title}:`, {
                                 band_key: product.band_key,
                                 post_key: product.post_key,
                                 imageKey: imageKey,
                                 has_imageUrl: !!imageUrl,
-                                imageUrl: imageUrl
+                                imageUrl: imageUrl,
+                                postsImagesKeys: Object.keys(postsImages).slice(0, 5) // 디버깅용
                               });
                               
                               if (product.band_key && product.post_key && imageUrl) {
