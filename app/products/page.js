@@ -1836,7 +1836,7 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-lg font-bold text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer"
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-lg font-bold text-red-600 group-hover:bg-red-50 hover:bg-red-100 hover:text-red-700 transition-all duration-200 cursor-pointer"
                             title="미수령 주문 보기"
                           >
                             {product.unpicked_quantity}
