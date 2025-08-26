@@ -1006,11 +1006,11 @@ export default function ProductsPage() {
       query = query
         .or(orConditions)
         .order('posted_at', { ascending: false })  // 최신순 정렬
-        .limit(200);  // 최신 200개만 가져오기
+        .limit(50);  // 최신 50개만 가져오기
       
       const { data, error } = await query;
       
-      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 (최신 200개 제한)`);
+      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 (최신 50개 제한)`);
       
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
