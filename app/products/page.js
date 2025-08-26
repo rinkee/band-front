@@ -873,7 +873,7 @@ export default function ProductsPage() {
     ) {
       setCurrentPage(1);
     }
-  }, [productsData, productsError, currentPage, searchTerm]); // currentPage 의존성 추가
+  }, [productsData, productsError]); // searchTerm과 currentPage 제거 - 무한 루프 방지
 
   // 상품별 주문 통계 가져오기
   const fetchProductOrderStats = async (productIds) => {
@@ -993,24 +993,24 @@ export default function ProductsPage() {
   // posts 테이블에서 이미지 데이터 가져오기
   const fetchPostsImages = async (postKeyPairs) => {
     try {
+      // 현재 페이지의 상품들에 대해서만 이미지를 가져옴
+      console.log(`🎯 현재 페이지 상품 ${postKeyPairs.length}개의 이미지 조회 시작`);
+      
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
-        .select('band_key, post_key, photos_data, image_urls, posted_at');
+        .select('band_key, post_key, photos_data, image_urls');
       
-      // OR 조건 생성
+      // OR 조건 생성 - 현재 페이지의 상품들만
       const orConditions = postKeyPairs.map(pair => 
         `band_key.eq.${pair.band_key},post_key.eq.${pair.post_key}`
       ).join(',');
       
-      query = query
-        .or(orConditions)
-        .order('posted_at', { ascending: false })  // 최신순 정렬
-        .limit(50);  // 최신 50개만 가져오기
+      query = query.or(orConditions);  // limit 제거 - 현재 페이지 상품들만 가져옴
       
       const { data, error } = await query;
       
-      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 (최신 50개 제한)`);
+      console.log(`📊 Posts 조회 결과: ${data?.length || 0}개 (현재 페이지 상품들만)`);
       
       if (error) {
         console.error('Posts 이미지 가져오기 오류:', error);
