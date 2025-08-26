@@ -983,7 +983,7 @@ export default function ProductsPage() {
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
-        .select('band_key, post_key, photos_data, image_urls');
+        .select('band_key, post_key, image_urls');
       
       // OR 조건 생성
       const orConditions = postKeyPairs.map(pair => 
@@ -1004,41 +1004,19 @@ export default function ProductsPage() {
       console.log('🔍 이미지 맵 생성 시작, 전체 posts 데이터:', data?.length || 0, '개');
       
       data?.forEach(post => {
-        let imageUrl = null;
         const key = `${post.band_key}_${post.post_key}`;
         
-        console.log(`📸 Post ${key}:`, {
-          has_photos_data: !!post.photos_data,
-          photos_data_length: post.photos_data?.length,
-          has_image_urls: !!post.image_urls,
-          image_urls_length: post.image_urls?.length
-        });
-        
-        // photos_data에서 첫 번째 이미지 추출
-        if (post.photos_data && Array.isArray(post.photos_data)) {
-          const firstPhoto = post.photos_data[0];
-          if (firstPhoto) {
-            imageUrl = typeof firstPhoto === 'string' ? firstPhoto : firstPhoto.url;
-            console.log(`✅ ${key}: photos_data에서 이미지 추출:`, imageUrl);
-          }
-        }
-        // image_urls에서 첫 번째 이미지 추출
-        else if (post.image_urls && Array.isArray(post.image_urls)) {
-          imageUrl = post.image_urls[0];
-          console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
-        }
-        
-        if (imageUrl) {
-          // band_key와 post_key 조합으로 키 생성
+        // image_urls에서 첫 번째 이미지만 추출
+        if (post.image_urls && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
+          const imageUrl = post.image_urls[0];
           imageMap[key] = imageUrl;
-          console.log(`💾 ${key}: 이미지 맵에 저장됨`);
+          console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
         } else {
-          console.log(`❌ ${key}: 이미지 URL 없음`);
+          console.log(`❌ ${key}: image_urls 없음 또는 빈 배열`);
         }
       });
       
       console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
-      console.log('🗺️ 이미지 맵 내용:', imageMap);
       setPostsImages(imageMap);
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
