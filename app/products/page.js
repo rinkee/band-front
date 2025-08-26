@@ -1838,24 +1838,15 @@ export default function ProductsPage() {
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
-                        <div className="flex flex-col items-center">
-                          {product.total_order_quantity && product.total_order_quantity > 0 ? (
-                            <>
-                              <span className="text-lg font-bold text-orange-600">
-                                {product.total_order_quantity}개
-                              </span>
-                              {product.total_order_amount && (
-                                <span className="text-xs text-gray-500 mt-1">
-                                  {formatCurrency(product.total_order_amount)}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-sm text-gray-400">
-                              -
-                            </span>
-                          )}
-                        </div>
+                        {product.total_order_quantity && product.total_order_quantity > 0 ? (
+                          <span className="text-lg font-bold text-green-600">
+                            {product.total_order_quantity}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">
+                            -
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         {product.unpicked_quantity > 0 ? (
