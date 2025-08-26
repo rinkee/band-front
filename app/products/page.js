@@ -154,11 +154,10 @@ function StatusBadge({ status }) {
     <span
       className={`inline-flex items-center justify-center 
                   ${bgColor} ${hoverBgColor} ${textColor}
-                  px-2 py-1.5 
+                  px-1.5 py-1 
                   text-sm font-medium 
                   rounded-md
-                  transition-all duration-200
-                  min-w-[5rem]`}
+                  transition-all duration-200`}
     >
       {status}
     </span>
@@ -2063,13 +2062,12 @@ export default function ProductsPage() {
                               handleViewProductOrders(product.title);
                             }}
                             className="inline-flex items-center justify-center 
-                                     px-2 py-1.5 
+                                     px-1.5 py-1 
                                      bg-blue-50 hover:bg-blue-100 
                                      text-blue-600 hover:text-blue-700 
                                      font-medium text-sm
                                      rounded-md 
-                                     transition-all duration-200
-                                     min-w-[5.5rem]"
+                                     transition-all duration-200"
                             title="상품명으로 주문 검색"
                           >
                             상품주문
@@ -2083,13 +2081,12 @@ export default function ProductsPage() {
                                 handleViewPostOrders(product.post_key);
                               }}
                               className="inline-flex items-center justify-center 
-                                       px-2 py-1.5 
+                                       px-1.5 py-1 
                                        bg-purple-50 hover:bg-purple-100 
                                        text-purple-600 hover:text-purple-700 
                                        font-medium text-sm
                                        rounded-md 
-                                       transition-all duration-200
-                                       min-w-[6rem]"
+                                       transition-all duration-200"
                               title="게시물로 주문 검색"
                             >
                               게시물주문
