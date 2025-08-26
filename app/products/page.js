@@ -987,10 +987,17 @@ export default function ProductsPage() {
       console.log('🔄 fetchPostsImages 시작, 요청 수:', postKeyPairs.length);
       console.log('📝 요청 샘플:', postKeyPairs.slice(0, 3));
       
+      // 30일 이내 게시물로 제한 (필요시 조정 가능)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
       // OR 조건으로 각 band_key와 post_key 조합 매칭
       let query = supabase
         .from('posts')
-        .select('band_key, post_key, image_urls');
+        .select('band_key, post_key, image_urls, posted_at')
+        .gte('posted_at', thirtyDaysAgo.toISOString())
+        .order('posted_at', { ascending: false })
+        .limit(1000); // 최대 1000개로 제한
       
       // OR 조건 생성
       const orConditions = postKeyPairs.map(pair => 
@@ -1025,6 +1032,7 @@ export default function ProductsPage() {
       
       console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
       console.log('🗺️ 이미지 맵 키 샘플:', Object.keys(imageMap).slice(0, 5));
+      console.log('📅 30일 이내 게시물만 조회 (최대 1000개)');
       setPostsImages(imageMap);
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);
