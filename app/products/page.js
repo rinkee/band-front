@@ -1799,7 +1799,8 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {isProductsLoading && products.length === 0 && (
+                {/* 초기 로딩 또는 데이터 로딩 중일 때 스피너 표시 */}
+                {(initialLoading || (isProductsLoading && products.length === 0)) && (
                   <tr>
                     <td
                       colSpan="11"
@@ -1809,8 +1810,8 @@ export default function ProductsPage() {
                     </td>
                   </tr>
                 )}
-                {/* colspan 수정 */}
-                {!isProductsLoading && products.length === 0 && (
+                {/* colspan 수정 - 초기 로딩이 완전히 끝나고 데이터가 없을 때만 표시 */}
+                {!isProductsLoading && !initialLoading && productsData && products.length === 0 && (
                   <tr>
                     <td
                       colSpan="11"
