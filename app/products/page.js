@@ -812,7 +812,8 @@ export default function ProductsPage() {
             barcode: p.barcode || "",
             total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
             total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
-            order_count: statsMap[p.product_id]?.order_count || 0
+            order_count: statsMap[p.product_id]?.order_count || 0,
+            unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
           }));
           
           setProducts(productsWithStats);
@@ -889,7 +890,7 @@ export default function ProductsPage() {
       // 2. 주문 데이터 가져오기 (orders 테이블 직접 사용)
       let ordersQuery = supabase
         .from('orders')
-        .select('product_id, quantity, total_amount, status, customer_id, customer_name, band_key')
+        .select('product_id, quantity, total_amount, status, sub_status, customer_id, customer_name, band_key')
         .in('product_id', productIds)
         .neq('status', '주문취소'); // 취소된 주문 제외
       
@@ -947,10 +948,16 @@ export default function ProductsPage() {
         const totalQuantity = productOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         const totalAmount = productOrders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
         
+        // 미수령 수량 계산 (sub_status가 '미수령'인 주문들의 수량 합계)
+        const unpickedQuantity = productOrders
+          .filter(order => order.sub_status === '미수령')
+          .reduce((sum, order) => sum + (order.quantity || 0), 0);
+        
         statsMap[productId] = {
           total_order_quantity: totalQuantity,
           total_order_amount: totalAmount,
-          order_count: productOrders.length
+          order_count: productOrders.length,
+          unpicked_quantity: unpickedQuantity
         };
       });
       
@@ -1822,9 +1829,16 @@ export default function ProductsPage() {
                         <div className="flex flex-col items-center">
                           {product.total_order_quantity && product.total_order_quantity > 0 ? (
                             <>
-                              <span className="text-lg font-bold text-orange-600">
-                                {product.total_order_quantity}개
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg font-bold text-orange-600">
+                                  {product.total_order_quantity}개
+                                </span>
+                                {product.unpicked_quantity > 0 && (
+                                  <span className="text-sm font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                                    미수령 {product.unpicked_quantity}개
+                                  </span>
+                                )}
+                              </div>
                               {product.total_order_amount && (
                                 <span className="text-xs text-gray-500 mt-1">
                                   {formatCurrency(product.total_order_amount)}
