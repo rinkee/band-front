@@ -3,37 +3,22 @@
 import { useState, useEffect } from 'react';
 import AdminGuard from './components/AdminGuard';
 import AdminLayout from './components/AdminLayout';
-import StatsCards from './components/StatsCards';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 import { useAdminApi } from './hooks/useAdminApi';
 import ErrorMessage from './components/ErrorMessage';
 import RefreshButton from './components/RefreshButton';
-import { ChartBarIcon, ShoppingCartIcon, UsersIcon, DocumentTextIcon, ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
-import { Line, Bar } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+import { 
+  ChartBarIcon, 
+  ShoppingCartIcon, 
+  UsersIcon, 
+  DocumentTextIcon, 
+  ArrowUpIcon, 
+  ArrowDownIcon,
+  FireIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  CurrencyDollarIcon
+} from '@heroicons/react/24/outline';
 
 /**
  * 관리자 대시보드 메인 페이지
@@ -42,6 +27,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [recentBands, setRecentBands] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [popularProducts, setPopularProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -59,7 +45,7 @@ export default function AdminDashboard() {
       // 병렬로 모든 데이터 가져오기
       const [statsData, bandsData, ordersData] = await Promise.allSettled([
         fetchAdminApi('/api/admin/stats'),
-        fetchAdminApi('/api/admin/bands?limit=5&sortBy=last_post_at'),
+        fetchAdminApi('/api/admin/bands?limit=10&sortBy=last_post_at'),
         fetchAdminApi('/api/admin/orders?limit=10')
       ]);
 
@@ -74,7 +60,14 @@ export default function AdminDashboard() {
           total_orders: 0,
           total_sales: 0,
           today_orders: 0,
-          today_sales: 0
+          today_sales: 0,
+          yesterday_orders: 0,
+          yesterday_sales: 0,
+          pending_orders: 0,
+          inactive_bands: 0,
+          new_users_today: 0,
+          active_bands: 0,
+          today_posts: 0
         });
       }
 
@@ -83,9 +76,29 @@ export default function AdminDashboard() {
         setRecentBands(bandsData.value.bands || []);
       }
 
-      // 주문 데이터 처리
+      // 주문 데이터 처리 및 인기 상품 추출
       if (ordersData.status === 'fulfilled') {
         setRecentOrders(ordersData.value.orders || []);
+        
+        // 주문 데이터에서 인기 상품 추출
+        const productCounts = {};
+        (ordersData.value.orders || []).forEach(order => {
+          const productName = order.product_name || '상품명 없음';
+          if (!productCounts[productName]) {
+            productCounts[productName] = {
+              name: productName,
+              count: 0,
+              total_amount: 0
+            };
+          }
+          productCounts[productName].count += (order.quantity || 1);
+          productCounts[productName].total_amount += (order.total_amount || 0);
+        });
+        
+        const popular = Object.values(productCounts)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+        setPopularProducts(popular);
       }
 
       setLastUpdated(new Date());
@@ -103,76 +116,21 @@ export default function AdminDashboard() {
     }
   };
 
-  // 차트 데이터 생성
-  const salesChartData = {
-    labels: ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'],
-    datasets: [
-      {
-        label: '2024',
-        data: [65, 78, 66, 44, 56, 67, 75, 82, 72, 85, 92, 88],
-        borderColor: 'rgb(16, 185, 129)',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        tension: 0.4,
-        fill: true,
-      },
-      {
-        label: '2023',
-        data: [45, 52, 38, 24, 33, 46, 52, 48, 55, 62, 68, 72],
-        borderColor: 'rgb(156, 163, 175)',
-        backgroundColor: 'rgba(156, 163, 175, 0.1)',
-        tension: 0.4,
-        fill: true,
-      }
-    ],
+  // 오늘의 통계 계산
+  const todayStats = {
+    todayOrders: stats?.today_orders || 0,
+    todaySales: stats?.today_sales || 0,
+    yesterdayOrders: stats?.yesterday_orders || 0,
+    yesterdaySales: stats?.yesterday_sales || 0,
   };
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        padding: 12,
-        cornerRadius: 8,
-        titleFont: {
-          size: 14,
-        },
-        bodyFont: {
-          size: 13,
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: '#6b7280',
-          font: {
-            size: 12,
-          },
-        },
-      },
-      y: {
-        grid: {
-          borderDash: [3, 3],
-          color: '#e5e7eb',
-        },
-        ticks: {
-          color: '#6b7280',
-          font: {
-            size: 12,
-          },
-          callback: function(value) {
-            return value + '만';
-          },
-        },
-      },
-    },
+  const calculateChange = (today, yesterday) => {
+    if (!yesterday || yesterday === 0) return { value: 0, isIncrease: true };
+    const change = ((today - yesterday) / yesterday * 100).toFixed(1);
+    return { 
+      value: Math.abs(change), 
+      isIncrease: change >= 0 
+    };
   };
 
   return (
@@ -224,16 +182,25 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">방문자 수</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total_users?.toLocaleString() || '0'}</p>
+                    <p className="text-sm font-medium text-gray-500">오늘 주문</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{todayStats.todayOrders.toLocaleString()}</p>
                     <div className="flex items-center mt-3">
-                      <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
-                      <span className="text-sm font-medium text-emerald-500">13.77%</span>
+                      {calculateChange(todayStats.todayOrders, todayStats.yesterdayOrders).isIncrease ? (
+                        <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
+                      ) : (
+                        <ArrowDownIcon className="w-4 h-4 text-red-500 mr-1" />
+                      )}
+                      <span className={`text-sm font-medium ${
+                        calculateChange(todayStats.todayOrders, todayStats.yesterdayOrders).isIncrease 
+                          ? 'text-emerald-500' : 'text-red-500'
+                      }`}>
+                        {calculateChange(todayStats.todayOrders, todayStats.yesterdayOrders).value}%
+                      </span>
                       <span className="text-sm text-gray-400 ml-2">전일 대비</span>
                     </div>
                   </div>
                   <div className="p-3 bg-emerald-50 rounded-lg">
-                    <UsersIcon className="w-6 h-6 text-emerald-600" />
+                    <ShoppingCartIcon className="w-6 h-6 text-emerald-600" />
                   </div>
                 </div>
               </div>
@@ -241,16 +208,30 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">문의내역</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total_orders?.toLocaleString() || '0'}</p>
+                    <p className="text-sm font-medium text-gray-500">오늘 매출</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">
+                      {todayStats.todaySales >= 10000 
+                        ? `${(todayStats.todaySales / 10000).toFixed(1)}만원`
+                        : `${todayStats.todaySales.toLocaleString()}원`
+                      }
+                    </p>
                     <div className="flex items-center mt-3">
-                      <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
-                      <span className="text-sm font-medium text-emerald-500">32.5%</span>
+                      {calculateChange(todayStats.todaySales, todayStats.yesterdaySales).isIncrease ? (
+                        <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
+                      ) : (
+                        <ArrowDownIcon className="w-4 h-4 text-red-500 mr-1" />
+                      )}
+                      <span className={`text-sm font-medium ${
+                        calculateChange(todayStats.todaySales, todayStats.yesterdaySales).isIncrease 
+                          ? 'text-emerald-500' : 'text-red-500'
+                      }`}>
+                        {calculateChange(todayStats.todaySales, todayStats.yesterdaySales).value}%
+                      </span>
                       <span className="text-sm text-gray-400 ml-2">전일 대비</span>
                     </div>
                   </div>
                   <div className="p-3 bg-blue-50 rounded-lg">
-                    <ShoppingCartIcon className="w-6 h-6 text-blue-600" />
+                    <CurrencyDollarIcon className="w-6 h-6 text-blue-600" />
                   </div>
                 </div>
               </div>
@@ -258,12 +239,10 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">등록매물</p>
+                    <p className="text-sm font-medium text-gray-500">총 게시물</p>
                     <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total_posts?.toLocaleString() || '0'}</p>
                     <div className="flex items-center mt-3">
-                      <ArrowDownIcon className="w-4 h-4 text-red-500 mr-1" />
-                      <span className="text-sm font-medium text-red-500">5.72%</span>
-                      <span className="text-sm text-gray-400 ml-2">전일 대비</span>
+                      <span className="text-sm text-gray-500">오늘 {stats?.today_posts || 0}건 추가</span>
                     </div>
                   </div>
                   <div className="p-3 bg-purple-50 rounded-lg">
@@ -275,12 +254,10 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm font-medium text-gray-500">거래완료</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total_bands?.toLocaleString() || '0'}</p>
+                    <p className="text-sm font-medium text-gray-500">활성 밴드</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.active_bands || stats?.total_bands || '0'}</p>
                     <div className="flex items-center mt-3">
-                      <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
-                      <span className="text-sm font-medium text-emerald-500">3.18%</span>
-                      <span className="text-sm text-gray-400 ml-2">전일 대비</span>
+                      <span className="text-sm text-gray-500">총 {stats?.total_users || 0}개 등록</span>
                     </div>
                   </div>
                   <div className="p-3 bg-amber-50 rounded-lg">
@@ -290,109 +267,207 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* 차트와 테이블 영역 */}
+            {/* 주요 컨텐츠 영역 */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* 매출 그래프 - 2/3 너비 */}
+              {/* 최근 주문 - 2/3 너비 */}
               <div className="lg:col-span-2 bg-white rounded-xl p-6 border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">매물 거래량</h3>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center">
-                      <span className="w-3 h-3 bg-emerald-500 rounded-full mr-2"></span>
-                      <span className="text-sm text-gray-600">2024</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="w-3 h-3 bg-gray-400 rounded-full mr-2"></span>
-                      <span className="text-sm text-gray-600">2023</span>
-                    </div>
-                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">최근 주문 현황</h3>
+                  <button className="text-sm text-gray-500 hover:text-gray-700">
+                    전체보기
+                  </button>
                 </div>
-                <div className="h-64">
-                  <Line data={salesChartData} options={chartOptions} />
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 rounded-lg">
+                      <tr>
+                        <th className="px-4 py-3 text-left">시간</th>
+                        <th className="px-4 py-3 text-left">고객명</th>
+                        <th className="px-4 py-3 text-left">상품</th>
+                        <th className="px-4 py-3 text-center">수량</th>
+                        <th className="px-4 py-3 text-right">금액</th>
+                        <th className="px-4 py-3 text-center">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {recentOrders.slice(0, 8).map((order, index) => (
+                        <tr key={`order-${index}-${order.order_id}`} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {new Date(order.created_at).toLocaleTimeString('ko-KR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-medium text-gray-900">
+                              {order.customer_name}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-700 truncate max-w-[200px]">
+                              {order.product_name}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="text-sm font-medium text-gray-900">
+                              {order.quantity}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="text-sm font-semibold text-gray-900">
+                              {order.total_amount?.toLocaleString()}원
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
+                              완료
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {recentOrders.length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400 text-sm">최근 주문 내역이 없습니다</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* 실시간 인기 매물 - 1/3 너비 */}
+              {/* 인기 상품 TOP 5 - 1/3 너비 */}
               <div className="bg-white rounded-xl p-6 border border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">실시간 인기 매물</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">인기 상품 TOP 5</h3>
+                  <FireIcon className="w-5 h-5 text-orange-500" />
+                </div>
                 <div className="space-y-3">
-                  {recentBands.slice(0, 8).map((band, index) => (
-                    <div key={band.user_id} className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <span className="text-sm font-semibold text-gray-400 w-6">{index + 1}</span>
-                        <p className="text-sm font-medium text-gray-700 ml-3 truncate max-w-[150px]">
-                          {band.store_name}
-                        </p>
+                  {popularProducts.map((product, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                      <div className="flex items-center flex-1">
+                        <div className={`
+                          w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+                          ${
+                            index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                            index === 1 ? 'bg-gray-100 text-gray-700' :
+                            index === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-50 text-gray-600'
+                          }
+                        `}>
+                          {index + 1}
+                        </div>
+                        <div className="ml-3 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {product.total_amount ? `${(product.total_amount / 10000).toFixed(1)}만원` : ''}
+                          </p>
+                        </div>
                       </div>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {band.order_count || 0} 건
-                      </span>
+                      <div className="text-right">
+                        <span className="text-sm font-semibold text-gray-900">
+                          {product.count}건
+                        </span>
+                      </div>
                     </div>
                   ))}
-                  {recentBands.length === 0 && (
-                    <p className="text-gray-400 text-sm text-center py-4">데이터가 없습니다</p>
+                  {popularProducts.length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400 text-sm">주문 데이터가 없습니다</p>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* 페이지 분석 및 방문자 추이 */}
+            {/* 활성 밴드 및 주의 필요 사항 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 페이지 분석 */}
+              {/* 활성 밴드 현황 */}
               <div className="bg-white rounded-xl p-6 border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">페이지 분석</h3>
-                  <button className="text-sm text-gray-500 hover:text-gray-700">더보기</button>
+                  <h3 className="text-lg font-semibold text-gray-900">활성 밴드 현황</h3>
+                  <ClockIcon className="w-5 h-5 text-gray-400" />
                 </div>
-                <div className="space-y-4">
-                  {recentOrders.slice(0, 5).map((order, index) => (
-                    <div key={`page-${index}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-gray-700">{order.product_name || '상품명'}</span>
-                        <span className="text-sm font-semibold text-gray-900">
-                          {((index + 1) * 1237).toLocaleString()}
-                        </span>
+                <div className="space-y-3">
+                  {recentBands.slice(0, 5).map((band) => (
+                    <div key={band.user_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{band.store_name}</p>
+                        <p className="text-xs text-gray-500">
+                          게시물 {band.post_count} | 주문 {band.order_count}
+                        </p>
                       </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-emerald-400 to-emerald-600 h-2 rounded-full"
-                          style={{ width: `${100 - (index * 15)}%` }}
-                        ></div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">
+                          {band.last_post_at ? 
+                            `${Math.floor((Date.now() - new Date(band.last_post_at)) / (1000 * 60 * 60))}시간 전` : 
+                            '활동 없음'
+                          }
+                        </p>
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-1 ${
+                          band.function_number === 1 ? 'bg-blue-100 text-blue-700' :
+                          band.function_number === 2 ? 'bg-emerald-100 text-emerald-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          F#{band.function_number}
+                        </span>
                       </div>
                     </div>
                   ))}
-                  {recentOrders.length === 0 && (
-                    <p className="text-gray-400 text-sm text-center py-4">데이터가 없습니다</p>
+                  {recentBands.length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400 text-sm">활성 밴드가 없습니다</p>
+                    </div>
                   )}
                 </div>
               </div>
 
-              {/* 방문자 추이 */}
+              {/* 주의 필요 사항 */}
               <div className="bg-white rounded-xl p-6 border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">방문자 추이</h3>
-                  <div className="flex items-center gap-2">
-                    <button className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">신규방문</button>
-                    <button className="px-3 py-1 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">재방문</button>
-                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">주의 필요 사항</h3>
+                  <ExclamationCircleIcon className="w-5 h-5 text-amber-500" />
                 </div>
-                <div className="grid grid-cols-4 gap-2 mt-6">
-                  {['1일', '2일', '3일', '4일'].map((day, index) => (
-                    <div key={day} className="text-center">
-                      <div className="flex flex-col items-center">
-                        <div className="w-full bg-gray-100 rounded-lg h-32 relative mb-2">
-                          <div 
-                            className="absolute bottom-0 w-full bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-lg"
-                            style={{ height: `${60 + (index * 10)}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs text-gray-500">{day}</span>
-                        <span className="text-sm font-semibold text-gray-900 mt-1">
-                          {(15 + (index * 3))}k
-                        </span>
+                <div className="space-y-3">
+                  {/* 미처리 주문 */}
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-start">
+                      <ExclamationCircleIcon className="w-5 h-5 text-amber-600 mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">미처리 주문</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          24시간 이상 처리되지 않은 주문이 <span className="font-semibold">{stats?.pending_orders || 0}건</span> 있습니다
+                        </p>
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* 비활성 밴드 */}
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex items-start">
+                      <ClockIcon className="w-5 h-5 text-gray-600 mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">비활성 밴드</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          7일 이상 활동이 없는 밴드가 <span className="font-semibold">{stats?.inactive_bands || 0}개</span> 있습니다
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 신규 가입 */}
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <div className="flex items-start">
+                      <UsersIcon className="w-5 h-5 text-emerald-600 mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">오늘 신규 가입</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          오늘 <span className="font-semibold">{stats?.new_users_today || 0}명</span>의 새로운 사용자가 가입했습니다
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
