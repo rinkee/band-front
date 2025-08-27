@@ -1794,7 +1794,7 @@ export default function ProductsPage() {
                           </div>
                           {/* 상품명 */}
                           <div className="flex-1">
-                            <div className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
+                            <div className="text-base font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
                               {(() => {
                                 const parsed = parseProductName(product.title);
                                 // 날짜 부분을 제거하고 순수 상품명만 표시
@@ -1809,12 +1809,12 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-5 whitespace-nowrap text-base text-gray-800 font-semibold">
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-gray-800 font-semibold">
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity > 0 ? (
-                          <span className="text-lg font-bold text-green-600">
+                          <span className="text-xl font-bold text-green-600">
                             {product.total_order_quantity}
                           </span>
                         ) : (
@@ -1831,7 +1831,7 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-lg font-bold text-red-600 group-hover:bg-red-100 hover:bg-red-200 hover:text-red-700 transition-all duration-200 cursor-pointer"
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-xl font-bold text-red-600 group-hover:bg-red-100 hover:bg-red-200 hover:text-red-700 transition-all duration-200 cursor-pointer"
                             title="미수령 주문 보기"
                           >
                             {product.unpicked_quantity}
