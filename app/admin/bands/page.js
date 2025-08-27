@@ -118,15 +118,18 @@ export default function AdminBands() {
       <AdminLayout title="밴드 관리">
         <div className="space-y-6">
           {/* 헤더 영역 */}
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">밴드 관리</h2>
-            <div className="flex gap-2">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">밴드 관리</h1>
+              <p className="text-sm text-gray-500 mt-1">등록된 밴드들의 활동 현황을 관리합니다</p>
+            </div>
+            <div className="flex gap-3">
               <button
                 onClick={downloadCSV}
                 disabled={bands.length === 0}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                <ArrowDownTrayIcon className="h-4 w-4 mr-1.5" />
+                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
                 CSV 다운로드
               </button>
               <RefreshButton 
@@ -138,40 +141,52 @@ export default function AdminBands() {
 
           {/* 통계 카드 */}
           {!loading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="flex items-center">
-                  <ChartBarIcon className="h-8 w-8 text-blue-500 mr-3" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
+                <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm text-gray-500">활성 밴드</p>
-                    <p className="text-2xl font-bold">{stats.activeBands}</p>
+                    <p className="text-sm font-medium text-gray-500">활성 밴드</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats.activeBands}</p>
+                    <p className="text-xs text-gray-400 mt-2">최근 7일 활동</p>
+                  </div>
+                  <div className="p-3 bg-emerald-50 rounded-lg">
+                    <ChartBarIcon className="h-6 w-6 text-emerald-600" />
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="flex items-center">
-                  <ChartBarIcon className="h-8 w-8 text-green-500 mr-3" />
+              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
+                <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm text-gray-500">총 게시물</p>
-                    <p className="text-2xl font-bold">{stats.totalPosts.toLocaleString()}</p>
+                    <p className="text-sm font-medium text-gray-500">총 게시물</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalPosts.toLocaleString()}</p>
+                    <p className="text-xs text-gray-400 mt-2">누적 게시물 수</p>
+                  </div>
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <ChartBarIcon className="h-6 w-6 text-blue-600" />
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="flex items-center">
-                  <ChartBarIcon className="h-8 w-8 text-purple-500 mr-3" />
+              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
+                <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm text-gray-500">총 주문</p>
-                    <p className="text-2xl font-bold">{stats.totalOrders.toLocaleString()}</p>
+                    <p className="text-sm font-medium text-gray-500">총 주문</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalOrders.toLocaleString()}</p>
+                    <p className="text-xs text-gray-400 mt-2">누적 주문 수</p>
+                  </div>
+                  <div className="p-3 bg-purple-50 rounded-lg">
+                    <ChartBarIcon className="h-6 w-6 text-purple-600" />
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="flex items-center">
-                  <ChartBarIcon className="h-8 w-8 text-yellow-500 mr-3" />
+              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
+                <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm text-gray-500">총 매출</p>
-                    <p className="text-2xl font-bold">{stats.totalSales.toLocaleString()}원</p>
+                    <p className="text-sm font-medium text-gray-500">총 매출</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{(stats.totalSales / 10000).toFixed(0)}만원</p>
+                    <p className="text-xs text-gray-400 mt-2">누적 매출액</p>
+                  </div>
+                  <div className="p-3 bg-amber-50 rounded-lg">
+                    <ChartBarIcon className="h-6 w-6 text-amber-600" />
                   </div>
                 </div>
               </div>
@@ -188,7 +203,7 @@ export default function AdminBands() {
           )}
 
           {/* 검색 바 */}
-          <div className="bg-white shadow rounded-lg p-4">
+          <div className="bg-white rounded-xl p-5 border border-gray-100">
             <form onSubmit={handleSearch} className="flex gap-4">
               <div className="flex-1 relative">
                 <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -197,12 +212,12 @@ export default function AdminBands() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="상점명 또는 로그인 ID로 검색..."
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:bg-white transition-colors"
                 />
               </div>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                className="px-6 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors"
               >
                 검색
               </button>
@@ -210,7 +225,7 @@ export default function AdminBands() {
           </div>
 
           {/* 밴드 테이블 */}
-          <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <LoadingSpinner />
@@ -218,65 +233,75 @@ export default function AdminBands() {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th 
                           onClick={() => handleSort('store_name')}
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
                         >
-                          상점명
-                          {sortBy === 'store_name' && (
-                            <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                          )}
+                          <div className="flex items-center">
+                            상점명
+                            {sortBy === 'store_name' && (
+                              <span className="ml-1 text-emerald-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
                           로그인 ID
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
                           Function #
                         </th>
                         <th 
                           onClick={() => handleSort('post_count')}
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
                         >
-                          게시물
-                          {sortBy === 'post_count' && (
-                            <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                          )}
+                          <div className="flex items-center">
+                            게시물
+                            {sortBy === 'post_count' && (
+                              <span className="ml-1 text-emerald-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
                         </th>
                         <th 
                           onClick={() => handleSort('order_count')}
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
                         >
-                          주문
-                          {sortBy === 'order_count' && (
-                            <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                          )}
+                          <div className="flex items-center">
+                            주문
+                            {sortBy === 'order_count' && (
+                              <span className="ml-1 text-emerald-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
                         </th>
                         <th 
                           onClick={() => handleSort('total_sales')}
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
                         >
-                          총 매출
-                          {sortBy === 'total_sales' && (
-                            <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                          )}
+                          <div className="flex items-center">
+                            총 매출
+                            {sortBy === 'total_sales' && (
+                              <span className="ml-1 text-emerald-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
                         </th>
                         <th 
                           onClick={() => handleSort('last_post_at')}
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
                         >
-                          최근 활동
-                          {sortBy === 'last_post_at' && (
-                            <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                          )}
+                          <div className="flex items-center">
+                            최근 활동
+                            {sortBy === 'last_post_at' && (
+                              <span className="ml-1 text-emerald-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-white divide-y divide-gray-100">
                       {bands.map((band) => (
-                        <tr key={band.user_id} className="hover:bg-gray-50 cursor-pointer">
+                        <tr key={band.user_id} className="hover:bg-gray-50 transition-colors cursor-pointer">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
                               {band.store_name}
@@ -286,11 +311,11 @@ export default function AdminBands() {
                             <div className="text-sm text-gray-500">{band.login_id}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                              band.function_number === 1 ? 'bg-blue-100 text-blue-800' :
-                              band.function_number === 2 ? 'bg-green-100 text-green-800' :
-                              band.function_number === 3 ? 'bg-purple-100 text-purple-800' :
-                              'bg-gray-100 text-gray-800'
+                            <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-lg ${
+                              band.function_number === 1 ? 'bg-blue-100 text-blue-700' :
+                              band.function_number === 2 ? 'bg-emerald-100 text-emerald-700' :
+                              band.function_number === 3 ? 'bg-purple-100 text-purple-700' :
+                              'bg-gray-100 text-gray-700'
                             }`}>
                               #{band.function_number || '-'}
                             </span>
