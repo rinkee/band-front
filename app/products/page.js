@@ -1809,12 +1809,12 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-5 whitespace-nowrap text-sm text-gray-800 font-semibold">
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-gray-800">
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity > 0 ? (
-                          <span className="text-xl font-bold text-green-600">
+                          <span className="text-xl font-bold text-gray-900">
                             {product.total_order_quantity}
                           </span>
                         ) : (
