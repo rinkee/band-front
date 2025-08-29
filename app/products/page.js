@@ -1314,11 +1314,10 @@ export default function ProductsPage() {
   };
 
   // 바코드 자동생성 함수
-  const generateAutoBarcode = (product) => {
-    // 상품명 또는 상품ID를 기반으로 바코드 생성
-    const timestamp = Date.now().toString().slice(-6);
-    const productIdSuffix = product.product_id.slice(-4);
-    return `BC${productIdSuffix}${timestamp}`;
+  const generateAutoBarcode = () => {
+    // 55로 시작하는 13자리 바코드 생성 (55 + 11자리 랜덤숫자)
+    const randomNumber = Math.floor(Math.random() * 100000000000).toString().padStart(11, '0');
+    return `55${randomNumber}`;
   };
 
   // 바코드 자동생성 및 저장 핸들러
@@ -1326,7 +1325,7 @@ export default function ProductsPage() {
     try {
       setSavingBarcodes(prev => ({ ...prev, [product.product_id]: true }));
       
-      const autoBarcode = generateAutoBarcode(product);
+      const autoBarcode = generateAutoBarcode();
       
       // DB에 직접 저장
       const { error } = await supabase
@@ -1350,13 +1349,10 @@ export default function ProductsPage() {
         return newState;
       });
       
-      showSuccess('바코드가 자동생성되어 저장되었습니다.');
-      
       // 데이터 새로고침
       mutateProducts();
     } catch (error) {
       console.error('바코드 자동생성 오류:', error);
-      showError('바코드 자동생성에 실패했습니다.');
     } finally {
       setSavingBarcodes(prev => {
         const newState = { ...prev };
@@ -1958,9 +1954,9 @@ export default function ProductsPage() {
                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                 : 'bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 border border-blue-200'
                             }`}
-                            title="바코드 자동생성 및 저장"
+                            title="바코드 자동 생성"
                           >
-                            {savingBarcodes[product.product_id] ? '생성중...' : '자동생성'}
+                            {savingBarcodes[product.product_id] ? '생성중...' : '바코드 자동 생성'}
                           </button>
                         </div>
                       </td>
