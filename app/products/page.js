@@ -1315,9 +1315,10 @@ export default function ProductsPage() {
 
   // 바코드 자동생성 함수
   const generateAutoBarcode = () => {
-    // 55로 시작하는 13자리 바코드 생성 (55 + 11자리 랜덤숫자)
-    const randomNumber = Math.floor(Math.random() * 100000000000).toString().padStart(11, '0');
-    return `55${randomNumber}`;
+    // 55로 시작하는 13자리 바코드 생성 (55 + 타임스탬프 8자리 + 랜덤 3자리)
+    const timestamp = Date.now().toString().slice(-8); // 타임스탬프 마지막 8자리
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0'); // 랜덤 3자리
+    return `55${timestamp}${random}`;
   };
 
   // 바코드 자동생성 및 저장 핸들러
