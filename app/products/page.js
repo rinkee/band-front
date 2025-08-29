@@ -1313,6 +1313,59 @@ export default function ProductsPage() {
     }
   };
 
+  // 바코드 자동생성 함수
+  const generateAutoBarcode = (product) => {
+    // 상품명 또는 상품ID를 기반으로 바코드 생성
+    const timestamp = Date.now().toString().slice(-6);
+    const productIdSuffix = product.product_id.slice(-4);
+    return `BC${productIdSuffix}${timestamp}`;
+  };
+
+  // 바코드 자동생성 및 저장 핸들러
+  const handleAutoGenerateBarcode = async (product) => {
+    try {
+      setSavingBarcodes(prev => ({ ...prev, [product.product_id]: true }));
+      
+      const autoBarcode = generateAutoBarcode(product);
+      
+      // DB에 직접 저장
+      const { error } = await supabase
+        .from('products')
+        .update({ barcode: autoBarcode })
+        .eq('product_id', product.product_id);
+
+      if (error) throw error;
+
+      // 성공 시 상품 목록 업데이트
+      setProducts(prev => prev.map(p => 
+        p.product_id === product.product_id 
+          ? { ...p, barcode: autoBarcode }
+          : p
+      ));
+      
+      // 편집 상태도 업데이트
+      setEditingBarcodes(prev => {
+        const newState = { ...prev };
+        delete newState[product.product_id];
+        return newState;
+      });
+      
+      showSuccess('바코드가 자동생성되어 저장되었습니다.');
+      
+      // 데이터 새로고침
+      mutateProducts();
+    } catch (error) {
+      console.error('바코드 자동생성 오류:', error);
+      showError('바코드 자동생성에 실패했습니다.');
+    } finally {
+      setSavingBarcodes(prev => {
+        const newState = { ...prev };
+        delete newState[product.product_id];
+        return newState;
+      });
+    }
+  };
+
   // Enter 키로 다음 바코드 입력칸으로 이동
   const handleBarcodeKeyDown = (e, product, index) => {
     if (e.key === 'Enter') {
@@ -1893,6 +1946,22 @@ export default function ProductsPage() {
                               </div>
                             )}
                           </div>
+                          {/* 바코드 자동생성 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAutoGenerateBarcode(product);
+                            }}
+                            disabled={savingBarcodes[product.product_id]}
+                            className={`mt-1.5 w-full px-2 py-1 text-xs rounded transition-colors ${
+                              savingBarcodes[product.product_id]
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 border border-blue-200'
+                            }`}
+                            title="바코드 자동생성 및 저장"
+                          >
+                            {savingBarcodes[product.product_id] ? '생성중...' : '자동생성'}
+                          </button>
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
