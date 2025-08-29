@@ -1962,7 +1962,7 @@ export default function ProductsPage() {
                             className={`mt-1.5 w-full px-2 py-1 text-xs rounded transition-colors ${
                               savingBarcodes[product.product_id]
                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 border border-blue-200'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-700 border border-gray-300'
                             }`}
                             title="바코드 자동 생성"
                           >
