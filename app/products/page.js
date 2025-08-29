@@ -1324,6 +1324,15 @@ export default function ProductsPage() {
   // 바코드 자동생성 및 저장 핸들러
   const handleAutoGenerateBarcode = async (product) => {
     try {
+      // 기존 바코드 확인
+      const currentBarcode = editingBarcodes[product.product_id] || product.barcode;
+      if (currentBarcode && currentBarcode.trim()) {
+        const confirmMessage = `이미 바코드(${currentBarcode})가 있습니다.\n새로운 바코드로 교체하시겠습니까?`;
+        if (!confirm(confirmMessage)) {
+          return; // 사용자가 취소하면 함수 종료
+        }
+      }
+      
       setSavingBarcodes(prev => ({ ...prev, [product.product_id]: true }));
       
       const autoBarcode = generateAutoBarcode();
