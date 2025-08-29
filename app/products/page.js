@@ -1017,11 +1017,10 @@ export default function ProductsPage() {
       data?.forEach(post => {
         const key = `${post.band_key}_${post.post_key}`;
         
-        // image_urls에서 첫 번째 이미지만 추출
+        // image_urls 전체 배열 저장 (다중 상품 지원)
         if (post.image_urls && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
-          const imageUrl = post.image_urls[0];
-          imageMap[key] = imageUrl;
-          console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
+          imageMap[key] = post.image_urls; // 전체 배열 저장
+          console.log(`✅ ${key}: image_urls 배열 저장:`, post.image_urls.length, '개 이미지');
         } else {
           console.log(`❌ ${key}: image_urls 없음 또는 빈 배열`);
         }
@@ -1748,13 +1747,22 @@ export default function ProductsPage() {
                           <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
                             {(() => {
                               const imageKey = `${product.band_key}_${product.post_key}`;
-                              const imageUrl = postsImages[imageKey];
+                              const imageUrls = postsImages[imageKey]; // 배열로 받음
+                              
+                              // item_number에 따라 적절한 이미지 선택 (1-based -> 0-based 인덱스)
+                              const imageIndex = product.item_number ? product.item_number - 1 : 0;
+                              const imageUrl = Array.isArray(imageUrls) && imageUrls.length > imageIndex 
+                                ? imageUrls[imageIndex] 
+                                : (Array.isArray(imageUrls) ? imageUrls[0] : imageUrls);
+                                
                               console.log(`🖼️ 상품 ${product.title}:`, {
                                 band_key: product.band_key,
                                 post_key: product.post_key,
                                 imageKey: imageKey,
-                                has_imageUrl: !!imageUrl,
-                                imageUrl: imageUrl,
+                                item_number: product.item_number,
+                                imageIndex: imageIndex,
+                                imageUrls_length: Array.isArray(imageUrls) ? imageUrls.length : 0,
+                                selected_imageUrl: imageUrl,
                                 postsImagesKeys: Object.keys(postsImages).slice(0, 5) // 디버깅용
                               });
                               
