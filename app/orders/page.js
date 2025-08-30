@@ -410,6 +410,11 @@ export default function OrdersPage() {
       
       const lastNumber = getLastNumber(order.order_id);
       
+      // 디버깅: order_id와 lastNumber 확인
+      if (order.customer_name === '이경숙') {
+        console.log('이경숙 주문:', order.order_id, 'lastNumber:', lastNumber, 'showComment:', lastNumber === 0);
+      }
+      
       return {
         ...order,
         showComment: lastNumber === 0
