@@ -1800,7 +1800,7 @@ export default function ProductsPage() {
                       <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
-                          <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
+                          <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
                             {(() => {
                               const imageKey = `${product.band_key}_${product.post_key}`;
                               const imageUrls = postsImages[imageKey]; // 배열로 받음
@@ -1814,7 +1814,7 @@ export default function ProductsPage() {
                                   <img
                                     src={imageUrl}
                                     alt={product.title}
-                                    className="w-full h-full object-contain hover:scale-105 transition-transform duration-200"
+                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
                                     onError={(e) => {
                                       console.error(`❌ 이미지 로드 실패: ${imageUrl}`);
                                       e.target.onerror = null;
