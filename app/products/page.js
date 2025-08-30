@@ -793,7 +793,6 @@ export default function ProductsPage() {
   useEffect(() => {
     if (productsData?.data) {
       // 주문 수량 데이터 확인
-      console.log('상품 데이터 예시:', productsData.data[0]);
       
       // 상품 ID 추출
       const productIds = productsData.data.map(p => p.product_id).filter(Boolean);
@@ -814,7 +813,6 @@ export default function ProductsPage() {
               unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
             }));
             
-            console.log('productsWithStats 샘플:', productsWithStats[0]);
             setProducts(productsWithStats);
           })
           .catch(error => {
@@ -960,7 +958,6 @@ export default function ProductsPage() {
         const unpickedOrders = productOrders.filter(order => 
           order.sub_status === '미수령' && order.status !== '수령완료'
         );
-        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 실제 미수령 주문: ${unpickedOrders.length}개`);
         const unpickedQuantity = unpickedOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         
         statsMap[productId] = {
@@ -1808,22 +1805,9 @@ export default function ProductsPage() {
                               const imageKey = `${product.band_key}_${product.post_key}`;
                               const imageUrls = postsImages[imageKey]; // 배열로 받음
                               
-                              // item_number에 따라 적절한 이미지 선택 (1-based -> 0-based 인덱스)
-                              const imageIndex = product.item_number ? product.item_number - 1 : 0;
-                              const imageUrl = Array.isArray(imageUrls) && imageUrls.length > imageIndex 
-                                ? imageUrls[imageIndex] 
-                                : (Array.isArray(imageUrls) ? imageUrls[0] : imageUrls);
+                              // 모든 상품에 첫 번째 이미지(0번) 사용
+                              const imageUrl = Array.isArray(imageUrls) ? imageUrls[0] : imageUrls;
                                 
-                              console.log(`🖼️ 상품 ${product.title}:`, {
-                                band_key: product.band_key,
-                                post_key: product.post_key,
-                                imageKey: imageKey,
-                                item_number: product.item_number,
-                                imageIndex: imageIndex,
-                                imageUrls_length: Array.isArray(imageUrls) ? imageUrls.length : 0,
-                                selected_imageUrl: imageUrl,
-                                postsImagesKeys: Object.keys(postsImages).slice(0, 5) // 디버깅용
-                              });
                               
                               if (product.band_key && product.post_key && imageUrl) {
                                 return (
