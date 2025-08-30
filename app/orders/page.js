@@ -401,28 +401,28 @@ export default function OrdersPage() {
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    const seenCommentKeys = new Set();
+    const seenZeroOrders = new Set(); // _0 주문에서 댓글을 이미 표시한 comment_key 추적
     
     return orders.map(order => {
       const commentKey = order.comment_key || 'no-comment';
-      const isFirstOccurrence = !seenCommentKeys.has(commentKey);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
       
-      // comment_key의 첫 번째 출현이고 _0으로 끝나는 경우만 댓글 표시
-      const showComment = isFirstOccurrence && endsWithZero;
+      // _0으로 끝나고, 해당 comment_key에서 아직 댓글을 표시하지 않은 경우만 댓글 표시
+      const showComment = endsWithZero && !seenZeroOrders.has(commentKey);
       
       // 디버깅
       console.log(`주문 ${order.order_id}:`, {
         customer: order.customer_name,
         commentKey: commentKey,
-        isFirstOccurrence: isFirstOccurrence,
         endsWithZero: endsWithZero,
+        alreadyShown: seenZeroOrders.has(commentKey),
         showComment: showComment,
         comment: order.comment
       });
       
-      if (commentKey !== 'no-comment') {
-        seenCommentKeys.add(commentKey);
+      // _0 주문에서 댓글을 표시한 경우 기록
+      if (showComment && commentKey !== 'no-comment') {
+        seenZeroOrders.add(commentKey);
       }
       
       return {
