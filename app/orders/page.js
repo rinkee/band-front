@@ -401,18 +401,12 @@ export default function OrdersPage() {
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    // 먼저 전체 주문을 주문일시 기준으로 내림차순 정렬 (최신이 위로)
-    const sortedOrders = [...orders].sort((a, b) => {
-      const dateA = new Date(a.ordered_at);
-      const dateB = new Date(b.ordered_at);
-      return dateB.getTime() - dateA.getTime();
-    });
-    
+    // 서버에서 이미 정렬된 순서를 유지하면서 그룹화
     const grouped = {};
     const groupOrder = []; // 그룹 순서를 유지하기 위한 배열
     
-    // 정렬된 순서대로 그룹화 (순서 유지)
-    sortedOrders.forEach(order => {
+    // 원본 순서대로 그룹화 (서버 정렬 순서 유지)
+    orders.forEach(order => {
       const commentKey = order.comment_key || 'no-comment';
       
       if (!grouped[commentKey]) {
