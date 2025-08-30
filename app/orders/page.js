@@ -397,7 +397,38 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  const displayOrders = orders || [];
+  // comment_key로 주문들을 그룹화하고 첫 번째만 댓글 표시용 플래그 추가
+  const processOrdersForDisplay = (orders) => {
+    if (!orders || orders.length === 0) return [];
+    
+    const grouped = {};
+    
+    // 먼저 그룹화
+    orders.forEach(order => {
+      const commentKey = order.comment_key || 'no-comment';
+      
+      if (!grouped[commentKey]) {
+        grouped[commentKey] = [];
+      }
+      
+      grouped[commentKey].push(order);
+    });
+    
+    // 각 그룹의 첫 번째 주문에만 댓글 표시 플래그 추가
+    const processedOrders = [];
+    Object.values(grouped).forEach(groupOrders => {
+      groupOrders.forEach((order, index) => {
+        processedOrders.push({
+          ...order,
+          showComment: index === 0  // 첫 번째 주문만 댓글 표시
+        });
+      });
+    });
+    
+    return processedOrders;
+  };
+
+  const displayOrders = processOrdersForDisplay(orders);
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
@@ -2228,10 +2259,10 @@ export default function OrdersPage() {
                         </td>
                         <td
                           className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
-                          title={processBandTags(order.comment) || ""}
+                          title={order.showComment ? (processBandTags(order.comment) || "") : ""}
                         >
                           <div className="line-clamp-3 break-words leading-tight">
-                            {processBandTags(order.comment) || "-"}
+                            {order.showComment ? (processBandTags(order.comment) || "-") : ""}
                           </div>
                         </td>
 
