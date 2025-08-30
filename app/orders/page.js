@@ -2250,7 +2250,7 @@ export default function OrdersPage() {
                           className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
                           title={order.showComment ? (processBandTags(order.comment) || "") : ""}
                         >
-                          <div className="line-clamp-3 break-words leading-tight">
+                          <div className="line-clamp-3 break-words leading-tight whitespace-pre-line">
                             {order.showComment ? (processBandTags(order.comment) || "-") : ""}
                           </div>
                         </td>
