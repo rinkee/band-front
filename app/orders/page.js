@@ -442,7 +442,9 @@ export default function OrdersPage() {
         };
         const lastNumber = getLastNumber(order.order_id);
         
-        console.log(`주문: ${order.customer_name}, 끝번호: ${lastNumber}, index: ${index}, showComment: ${showComment}`);
+        if (order.customer_name === '샤이니' && lastNumber === 0) {
+          console.log(`샤이니 _0 주문 - showComment: ${showComment}, 댓글: "${order.comment}"`);
+        }
         
         processedOrders.push({
           ...order,
@@ -2288,7 +2290,9 @@ export default function OrdersPage() {
                           title={order.showComment ? (processBandTags(order.comment) || "") : ""}
                         >
                           <div className="line-clamp-3 break-words leading-tight whitespace-pre-line">
-                            {order.showComment ? (processBandTags(order.comment) || "-") : (
+                            {order.showComment ? (
+                              <span>{processBandTags(order.comment) || "댓글 없음"}</span>
+                            ) : (
                               <span className="text-gray-400 text-lg">⤷</span>
                             )}
                           </div>
