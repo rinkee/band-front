@@ -397,33 +397,60 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  // 서버 정렬 순서를 유지하면서 각 그룹의 첫 번째 _0 주문에만 댓글 표시
+  // 같은 고객 주문들을 순서 번호로 정렬하고 첫 번째 _0 주문에만 댓글 표시
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    // 1단계: 각 그룹별로 _0 주문들을 찾아서 미리 식별
+    // 1단계: 주문 그룹 키 생성 함수
     const getOrderGroupKey = (orderId) => {
       if (!orderId) return 'no-group';
       return orderId.replace(/_item\d+_\d+$/, '');
     };
     
-    // 각 그룹의 첫 번째 _0 주문 ID를 찾기
+    // 2단계: 주문 순서 번호 추출 함수 (_뒤의 숫자)
+    const getOrderNumber = (orderId) => {
+      if (!orderId) return 999;
+      const match = orderId.match(/_(\d+)$/);
+      return match ? parseInt(match[1], 10) : 999;
+    };
+    
+    // 3단계: 같은 고객별로 그룹화하고 순서 번호로 정렬
+    const groupedOrders = new Map();
+    
+    orders.forEach(order => {
+      const groupKey = getOrderGroupKey(order.order_id);
+      if (!groupedOrders.has(groupKey)) {
+        groupedOrders.set(groupKey, []);
+      }
+      groupedOrders.get(groupKey).push(order);
+    });
+    
+    // 각 그룹 내에서 순서 번호로 정렬
+    const sortedOrders = [];
+    groupedOrders.forEach((groupOrders, groupKey) => {
+      const sorted = groupOrders.sort((a, b) => {
+        return getOrderNumber(a.order_id) - getOrderNumber(b.order_id);
+      });
+      sortedOrders.push(...sorted);
+    });
+    
+    // 4단계: 각 그룹의 첫 번째 _0 주문 식별
     const groupFirstZeroOrders = new Map();
     
-    for (const order of orders) {
+    for (const order of sortedOrders) {
       const orderGroupKey = getOrderGroupKey(order.order_id);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
       
-      // _0으로 끝나고, 해당 그룹에서 아직 _0 주문을 기록하지 않은 경우
       if (endsWithZero && !groupFirstZeroOrders.has(orderGroupKey)) {
         groupFirstZeroOrders.set(orderGroupKey, order.order_id);
       }
     }
     
-    // 2단계: 실제 표시 로직 적용
-    return orders.map(order => {
+    // 5단계: 댓글 표시 로직 적용
+    return sortedOrders.map(order => {
       const orderGroupKey = getOrderGroupKey(order.order_id);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
+      const orderNumber = getOrderNumber(order.order_id);
       
       // 해당 주문이 그룹의 첫 번째 _0 주문인지 확인
       const showComment = endsWithZero && groupFirstZeroOrders.get(orderGroupKey) === order.order_id;
@@ -432,6 +459,7 @@ export default function OrdersPage() {
       console.log(`주문 ${order.order_id}:`, {
         customer: order.customer_name,
         orderGroupKey: orderGroupKey,
+        orderNumber: orderNumber,
         endsWithZero: endsWithZero,
         isFirstZero: groupFirstZeroOrders.get(orderGroupKey) === order.order_id,
         showComment: showComment,
