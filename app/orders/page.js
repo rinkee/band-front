@@ -2252,7 +2252,7 @@ export default function OrdersPage() {
                         >
                           <div className="line-clamp-3 break-words leading-tight whitespace-pre-line">
                             {order.showComment ? (processBandTags(order.comment) || "-") : (
-                              <span className="text-gray-400 text-lg">↵</span>
+                              <span className="text-gray-400 text-lg">⤷</span>
                             )}
                           </div>
                         </td>
