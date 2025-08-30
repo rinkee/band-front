@@ -2251,7 +2251,9 @@ export default function OrdersPage() {
                           title={order.showComment ? (processBandTags(order.comment) || "") : ""}
                         >
                           <div className="line-clamp-3 break-words leading-tight whitespace-pre-line">
-                            {order.showComment ? (processBandTags(order.comment) || "-") : ""}
+                            {order.showComment ? (processBandTags(order.comment) || "-") : (
+                              <span className="text-gray-400 text-lg">↵</span>
+                            )}
                           </div>
                         </td>
 
