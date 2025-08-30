@@ -397,40 +397,46 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  // 서버 정렬 순서를 유지하면서 댓글 표시 로직만 적용
+  // 서버 정렬 순서를 유지하면서 각 그룹의 첫 번째 _0 주문에만 댓글 표시
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    const seenZeroOrders = new Set();
+    // 1단계: 각 그룹별로 _0 주문들을 찾아서 미리 식별
+    const getOrderGroupKey = (orderId) => {
+      if (!orderId) return 'no-group';
+      return orderId.replace(/_item\d+_\d+$/, '');
+    };
     
-    return orders.map(order => {
-      // order_id에서 _item{숫자}_{숫자} 부분을 제거하여 그룹 키 생성
-      const getOrderGroupKey = (orderId) => {
-        if (!orderId) return 'no-group';
-        // _item{숫자}_{숫자} 패턴을 제거
-        return orderId.replace(/_item\d+_\d+$/, '');
-      };
-      
+    // 각 그룹의 첫 번째 _0 주문 ID를 찾기
+    const groupFirstZeroOrders = new Map();
+    
+    for (const order of orders) {
       const orderGroupKey = getOrderGroupKey(order.order_id);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
       
-      // _0으로 끝나고, 해당 그룹에서 아직 _0 주문의 댓글을 표시하지 않은 경우만 댓글 표시
-      const showComment = endsWithZero && !seenZeroOrders.has(orderGroupKey);
+      // _0으로 끝나고, 해당 그룹에서 아직 _0 주문을 기록하지 않은 경우
+      if (endsWithZero && !groupFirstZeroOrders.has(orderGroupKey)) {
+        groupFirstZeroOrders.set(orderGroupKey, order.order_id);
+      }
+    }
+    
+    // 2단계: 실제 표시 로직 적용
+    return orders.map(order => {
+      const orderGroupKey = getOrderGroupKey(order.order_id);
+      const endsWithZero = order.order_id && order.order_id.endsWith('_0');
+      
+      // 해당 주문이 그룹의 첫 번째 _0 주문인지 확인
+      const showComment = endsWithZero && groupFirstZeroOrders.get(orderGroupKey) === order.order_id;
       
       // 디버깅
       console.log(`주문 ${order.order_id}:`, {
         customer: order.customer_name,
         orderGroupKey: orderGroupKey,
         endsWithZero: endsWithZero,
-        alreadyShownZero: seenZeroOrders.has(orderGroupKey),
+        isFirstZero: groupFirstZeroOrders.get(orderGroupKey) === order.order_id,
         showComment: showComment,
         comment: order.comment
       });
-      
-      // _0 주문에서 댓글을 표시한 경우 기록
-      if (showComment && orderGroupKey !== 'no-group') {
-        seenZeroOrders.add(orderGroupKey);
-      }
       
       return {
         ...order,
