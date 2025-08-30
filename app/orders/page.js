@@ -414,9 +414,19 @@ export default function OrdersPage() {
       grouped[commentKey].push(order);
     });
     
-    // 각 그룹의 첫 번째 주문에만 댓글 표시 플래그 추가
+    // 각 그룹 내에서 order_id 맨 뒤 숫자로 정렬하고 첫 번째 주문에만 댓글 표시 플래그 추가
     const processedOrders = [];
     Object.values(grouped).forEach(groupOrders => {
+      // order_id 맨 뒤 숫자로 정렬
+      groupOrders.sort((a, b) => {
+        const getLastNumber = (orderId) => {
+          const match = orderId.match(/_(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
+        };
+        
+        return getLastNumber(a.order_id) - getLastNumber(b.order_id);
+      });
+      
       groupOrders.forEach((order, index) => {
         processedOrders.push({
           ...order,
