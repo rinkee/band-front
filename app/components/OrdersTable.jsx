@@ -38,6 +38,32 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
   const [saving, setSaving] = useState(false);
   const [availableProducts, setAvailableProducts] = useState({});
 
+  // comment_key로 주문들을 그룹화
+  const groupOrdersByComment = (orders) => {
+    const grouped = {};
+    
+    orders.forEach(order => {
+      const commentKey = order.comment_key || 'no-comment';
+      
+      if (!grouped[commentKey]) {
+        grouped[commentKey] = {
+          // 그룹의 대표 정보 (첫 번째 주문 기준)
+          comment_key: commentKey,
+          customer_name: order.customer_name,
+          comment: order.comment,
+          ordered_at: order.ordered_at,
+          status: order.status,
+          // 그룹에 속한 모든 주문들
+          orders: []
+        };
+      }
+      
+      grouped[commentKey].orders.push(order);
+    });
+    
+    return Object.values(grouped);
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("ko-KR", {
       style: "currency",
@@ -176,17 +202,22 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {orders.length > 0 ? (
-            orders.map((order) => {
-              const isEditing = editingOrder === order.order_id;
+            groupOrdersByComment(orders).map((orderGroup) => {
+              // 총 금액과 수량 계산
+              const totalAmount = orderGroup.orders.reduce((sum, order) => sum + (order.price || 0), 0);
+              const totalQuantity = orderGroup.orders.reduce((sum, order) => sum + (order.quantity || 0), 0);
+              const firstOrder = orderGroup.orders[0]; // 첫 번째 주문을 대표로 사용
+              const isEditing = editingOrder && orderGroup.orders.some(order => order.order_id === editingOrder);
+              
               return (
-                <tr key={order.order_id} className="hover:bg-gray-50">
+                <tr key={orderGroup.comment_key} className="hover:bg-gray-50">
                   {/* 고객명 */}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {order.customer_name}
+                    {orderGroup.customer_name}
                   </td>
                   
-                  {/* 상품명 - 편집 가능 */}
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {/* 상품명 - 여러 상품 표시 */}
+                  <td className="px-4 py-4 text-sm text-gray-500">
                     {isEditing ? (
                       <select
                         value={editValues.product_id}
@@ -194,7 +225,7 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                         className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">상품을 선택하세요</option>
-                        {(availableProducts[order.post_number] || []).map(product => (
+                        {(availableProducts[firstOrder.post_number] || []).map(product => (
                           <option key={product.product_id} value={product.product_id}>
                             {product.title}
                             {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
@@ -202,18 +233,23 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                         ))}
                       </select>
                     ) : (
-                      <span className="text-gray-900 font-medium">
-                        {order.product_name || '상품명 없음'}
-                      </span>
+                      <div className="space-y-1">
+                        {orderGroup.orders.map((order, index) => (
+                          <div key={index} className="text-gray-900 font-medium">
+                            {order.product_name || '상품명 없음'} 
+                            <span className="text-gray-500 text-xs ml-2">× {order.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </td>
                   
                   {/* 고객 댓글 */}
                   <td className="px-4 py-4 text-sm text-gray-500 max-w-xs truncate">
-                    {processBandTags(order.comment)}
+                    {processBandTags(orderGroup.comment)}
                   </td>
                   
-                  {/* 수량 - 편집 가능 */}
+                  {/* 총 수량 */}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {isEditing ? (
                       <input
@@ -224,18 +260,18 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                         className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     ) : (
-                      `${order.quantity}개`
+                      `${totalQuantity}개`
                     )}
                   </td>
                   
-                  {/* 금액 */}
+                  {/* 총 금액 */}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCurrency(order.total_amount)}
+                    {formatCurrency(totalAmount)}
                   </td>
                   
                   {/* 주문일시 */}
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(order.ordered_at)}
+                    {formatDate(orderGroup.ordered_at)}
                   </td>
                   
                   {/* 상태 */}
@@ -243,14 +279,14 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                     <span
                       className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full 
                       ${
-                        order.status === "주문완료"
+                        orderGroup.status === "주문완료"
                           ? "bg-blue-100 text-blue-800"
-                          : order.status === "수령완료"
+                          : orderGroup.status === "수령완료"
                           ? "bg-green-100 text-green-800"
                           : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {order.status || "주문완료"}
+                      {orderGroup.status || "주문완료"}
                     </span>
                   </td>
                   
@@ -259,7 +295,7 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                     {isEditing ? (
                       <div className="flex space-x-2">
                         <button
-                          onClick={() => handleEditSave(order)}
+                          onClick={() => handleEditSave(firstOrder)}
                           disabled={saving}
                           className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs font-medium disabled:opacity-50"
                         >
@@ -275,7 +311,7 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                       </div>
                     ) : (
                       <button
-                        onClick={() => handleEditStart(order)}
+                        onClick={() => handleEditStart(firstOrder)}
                         className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium"
                       >
                         수정
