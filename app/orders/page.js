@@ -401,20 +401,18 @@ export default function OrdersPage() {
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    const seenCommentKeys = new Set();
-    
-    // 서버에서 받은 순서 그대로 처리하면서 댓글 표시 여부만 결정
+    // order_id 맨 뒤 숫자가 0인 것만 댓글 표시
     return orders.map(order => {
-      const commentKey = order.comment_key || 'no-comment';
-      const isFirstInGroup = !seenCommentKeys.has(commentKey);
+      const getLastNumber = (orderId) => {
+        const match = orderId.match(/_(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      };
       
-      if (isFirstInGroup) {
-        seenCommentKeys.add(commentKey);
-      }
+      const lastNumber = getLastNumber(order.order_id);
       
       return {
         ...order,
-        showComment: isFirstInGroup
+        showComment: lastNumber === 0
       };
     });
   };
