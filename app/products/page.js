@@ -1815,6 +1815,10 @@ export default function ProductsPage() {
                                     src={imageUrl}
                                     alt={product.title}
                                     className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                    style={{ 
+                                      imageRendering: 'auto',
+                                      backfaceVisibility: 'hidden'
+                                    }}
                                     onError={(e) => {
                                       console.error(`❌ 이미지 로드 실패: ${imageUrl}`);
                                       e.target.onerror = null;
