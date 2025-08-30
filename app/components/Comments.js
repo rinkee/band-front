@@ -248,13 +248,23 @@ const CommentsList = ({
   // DB 데이터 로딩 상태 추적
   const [isDbDataLoading, setIsDbDataLoading] = useState(true);
   
-  // 누락 주문 여부 확인 - DB 데이터 로딩 완료 후에만 실행
+  // 누락 주문 여부 확인 - DB 데이터 로딩 완료 후에만 실행 (중복 제거된 댓글 기준)
   const hasMissedOrders = useMemo(() => {
     if (!comments || comments.length === 0 || isDbDataLoading) return false;
     
-    const sortedComments = [...comments].sort((a, b) => a.created_at - b.created_at);
+    // 중복 제거된 댓글 목록 생성
+    const uniqueCommentKeys = new Set();
+    const uniqueComments = [...comments]
+      .sort((a, b) => a.created_at - b.created_at)
+      .filter(comment => {
+        if (uniqueCommentKeys.has(comment.comment_key)) {
+          return false;
+        }
+        uniqueCommentKeys.add(comment.comment_key);
+        return true;
+      });
     
-    return sortedComments.some((comment, currentIndex) => {
+    return uniqueComments.some((comment, currentIndex) => {
       const authorName = comment.author?.name;
       const isExcludedCustomer = excludedCustomers.some(
         (excluded) => {
@@ -269,7 +279,7 @@ const CommentsList = ({
       
       const savedComment = savedComments[comment.comment_key];
       const isSavedInDB = savedComment?.isSaved || false;
-      const isMissed = !isSavedInDB && sortedComments.some(
+      const isMissed = !isSavedInDB && uniqueComments.some(
         (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
       );
       
@@ -277,9 +287,19 @@ const CommentsList = ({
     });
   }, [comments, savedComments, excludedCustomers, isDbDataLoading]);
   
-  // 가장 이른 저장된 댓글의 시간 찾기
+  // 가장 이른 저장된 댓글의 시간 찾기 (중복 제거된 댓글 기준)
   const earliestSavedCommentTime = useMemo(() => {
-    const savedTimes = comments
+    // 중복 제거된 댓글 목록 생성
+    const uniqueCommentKeys = new Set();
+    const uniqueComments = comments.filter(comment => {
+      if (uniqueCommentKeys.has(comment.comment_key)) {
+        return false;
+      }
+      uniqueCommentKeys.add(comment.comment_key);
+      return true;
+    });
+    
+    const savedTimes = uniqueComments
       .filter(comment => savedComments[comment.comment_key]?.isSaved)
       .map(comment => comment.created_at);
     
@@ -345,10 +365,20 @@ const CommentsList = ({
     );
   }
 
-  // 댓글을 시간순으로 정렬 (오래된 순)
-  const sortedComments = [...comments].sort(
-    (a, b) => a.created_at - b.created_at
-  );
+  // 댓글을 시간순으로 정렬하고 중복 제거 (comment_key 기준)
+  const uniqueComments = [];
+  const seenCommentKeys = new Set();
+  
+  const sortedComments = [...comments]
+    .sort((a, b) => a.created_at - b.created_at)
+    .filter(comment => {
+      if (seenCommentKeys.has(comment.comment_key)) {
+        return false; // 이미 본 댓글은 제외
+      }
+      seenCommentKeys.add(comment.comment_key);
+      uniqueComments.push(comment);
+      return true;
+    });
 
   return (
     <div>
