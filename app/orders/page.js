@@ -401,7 +401,7 @@ export default function OrdersPage() {
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    const seenOrderGroups = new Set();
+    const seenZeroOrders = new Set();
     
     return orders.map(order => {
       // order_id에서 _item{숫자}_{숫자} 부분을 제거하여 그룹 키 생성
@@ -413,24 +413,23 @@ export default function OrdersPage() {
       
       const orderGroupKey = getOrderGroupKey(order.order_id);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
-      const isFirstInGroup = !seenOrderGroups.has(orderGroupKey);
       
-      // 그룹의 첫 번째이면서 _0으로 끝나는 주문만 댓글 표시
-      const showComment = isFirstInGroup && endsWithZero;
+      // _0으로 끝나고, 해당 그룹에서 아직 _0 주문의 댓글을 표시하지 않은 경우만 댓글 표시
+      const showComment = endsWithZero && !seenZeroOrders.has(orderGroupKey);
       
       // 디버깅
       console.log(`주문 ${order.order_id}:`, {
         customer: order.customer_name,
         orderGroupKey: orderGroupKey,
         endsWithZero: endsWithZero,
-        isFirstInGroup: isFirstInGroup,
+        alreadyShownZero: seenZeroOrders.has(orderGroupKey),
         showComment: showComment,
         comment: order.comment
       });
       
-      // 그룹 키 추가
-      if (orderGroupKey !== 'no-group') {
-        seenOrderGroups.add(orderGroupKey);
+      // _0 주문에서 댓글을 표시한 경우 기록
+      if (showComment && orderGroupKey !== 'no-group') {
+        seenZeroOrders.add(orderGroupKey);
       }
       
       return {
