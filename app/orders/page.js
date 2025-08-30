@@ -409,22 +409,26 @@ export default function OrdersPage() {
     });
     
     const grouped = {};
+    const groupOrder = []; // 그룹 순서를 유지하기 위한 배열
     
-    // 정렬된 주문들을 그룹화
+    // 정렬된 순서대로 그룹화 (순서 유지)
     sortedOrders.forEach(order => {
       const commentKey = order.comment_key || 'no-comment';
       
       if (!grouped[commentKey]) {
         grouped[commentKey] = [];
+        groupOrder.push(commentKey); // 첫 번째 등장 순서 기록
       }
       
       grouped[commentKey].push(order);
     });
     
-    // 각 그룹 내에서 order_id 맨 뒤 숫자로 정렬하고 첫 번째 주문에만 댓글 표시 플래그 추가
+    // 그룹 순서를 유지하면서 처리
     const processedOrders = [];
-    Object.values(grouped).forEach(groupOrders => {
-      // order_id 맨 뒤 숫자로 정렬
+    groupOrder.forEach(commentKey => {
+      const groupOrders = grouped[commentKey];
+      
+      // 각 그룹 내에서 order_id 맨 뒤 숫자로 정렬
       groupOrders.sort((a, b) => {
         const getLastNumber = (orderId) => {
           const match = orderId.match(/_(\d+)$/);
@@ -434,10 +438,11 @@ export default function OrdersPage() {
         return getLastNumber(a.order_id) - getLastNumber(b.order_id);
       });
       
+      // 단일 주문이면 무조건 댓글 표시, 다중 주문이면 첫 번째만 댓글 표시
       groupOrders.forEach((order, index) => {
         processedOrders.push({
           ...order,
-          showComment: index === 0  // 첫 번째 주문만 댓글 표시
+          showComment: groupOrders.length === 1 ? true : index === 0
         });
       });
     });
