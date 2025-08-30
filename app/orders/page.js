@@ -433,9 +433,20 @@ export default function OrdersPage() {
       
       // 각 그룹의 첫 번째(가장 작은 번호)만 댓글 표시
       groupOrders.forEach((order, index) => {
+        const showComment = index === 0;
+        
+        // 디버깅
+        const getLastNumber = (orderId) => {
+          const match = orderId.match(/_(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
+        };
+        const lastNumber = getLastNumber(order.order_id);
+        
+        console.log(`주문: ${order.customer_name}, 끝번호: ${lastNumber}, index: ${index}, showComment: ${showComment}`);
+        
         processedOrders.push({
           ...order,
-          showComment: index === 0
+          showComment: showComment
         });
       });
     });
