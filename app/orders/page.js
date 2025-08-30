@@ -401,25 +401,46 @@ export default function OrdersPage() {
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    // order_id 맨 뒤 숫자가 0인 것만 댓글 표시
-    return orders.map(order => {
-      const getLastNumber = (orderId) => {
-        const match = orderId.match(/_(\d+)$/);
-        return match ? parseInt(match[1], 10) : 0;
-      };
+    // comment_key로 그룹화하되 서버 정렬 순서 유지
+    const grouped = {};
+    const groupOrder = [];
+    
+    orders.forEach(order => {
+      const commentKey = order.comment_key || 'no-comment';
       
-      const lastNumber = getLastNumber(order.order_id);
-      
-      // 디버깅: order_id와 lastNumber 확인
-      if (order.customer_name === '이경숙') {
-        console.log('이경숙 주문:', order.order_id, 'lastNumber:', lastNumber, 'showComment:', lastNumber === 0);
+      if (!grouped[commentKey]) {
+        grouped[commentKey] = [];
+        groupOrder.push(commentKey);
       }
       
-      return {
-        ...order,
-        showComment: lastNumber === 0
-      };
+      grouped[commentKey].push(order);
     });
+    
+    // 그룹 순서를 유지하면서 각 그룹 내에서 끝 번호로 정렬
+    const processedOrders = [];
+    groupOrder.forEach(commentKey => {
+      const groupOrders = grouped[commentKey];
+      
+      // 각 그룹 내에서 order_id 맨 뒤 숫자로 정렬 (_0, _1, _2...)
+      groupOrders.sort((a, b) => {
+        const getLastNumber = (orderId) => {
+          const match = orderId.match(/_(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
+        };
+        
+        return getLastNumber(a.order_id) - getLastNumber(b.order_id);
+      });
+      
+      // 각 그룹의 첫 번째(가장 작은 번호)만 댓글 표시
+      groupOrders.forEach((order, index) => {
+        processedOrders.push({
+          ...order,
+          showComment: index === 0
+        });
+      });
+    });
+    
+    return processedOrders;
   };
 
   const displayOrders = processOrdersForDisplay(orders);
