@@ -84,7 +84,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -193,6 +193,30 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                 width: "auto",
               }}
             />
+          </div>
+        )}
+
+        {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
+        {isSavedInDB && orderDetails && orderDetails.length > 0 && (
+          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+            <div className="text-xs font-medium text-green-700 mb-1">저장된 주문 정보</div>
+            <div className="space-y-1">
+              {orderDetails.map((order, index) => (
+                <div key={index} className="flex justify-between items-center text-xs text-gray-700">
+                  <div className="flex-1">
+                    <span className="font-medium">{order.product_name || '상품'}</span>
+                    {order.quantity && (
+                      <span className="text-gray-500 ml-1">× {order.quantity}</span>
+                    )}
+                  </div>
+                  {order.product_price && (
+                    <div className="text-green-600 font-medium">
+                      {order.product_price.toLocaleString()}원
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -387,6 +411,7 @@ const CommentsList = ({
           const savedComment = savedComments[comment.comment_key];
           const isSavedInDB = savedComment?.isSaved || false;
           const orderStatus = savedComment?.status || null;
+          const orderDetails = savedComment?.orders || [];
           
           // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
           const isMissed = !isSavedInDB && sortedComments.some(
@@ -402,6 +427,7 @@ const CommentsList = ({
               isMissed={isMissed}
               isDbDataLoading={isDbDataLoading}
               orderStatus={orderStatus}
+              orderDetails={orderDetails}
             />
           );
         })}

@@ -24,10 +24,10 @@ export async function POST(request) {
     }
     
 
-    // orders 테이블에서 band_key, post_key, comment_key로 조회 (status 포함)
+    // orders 테이블에서 band_key, post_key, comment_key로 조회 (주문 상세 정보 포함)
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('comment_key, status')
+      .select('comment_key, status, product_name, quantity, product_price, order_status')
       .eq('band_key', bandKey)
       .eq('post_key', postKey)
       .in('comment_key', commentKeys);
@@ -40,21 +40,29 @@ export async function POST(request) {
     }
 
     
-    // 각 댓글 키에 대해 DB 저장 여부 및 상태 확인
+    // 각 댓글 키에 대해 DB 저장 여부 및 상태 확인 (주문 상세 정보 포함)
     const savedComments = {};
     
     commentKeys.forEach(commentKey => {
-      // comment_key에 해당하는 주문 찾기
-      const order = orders?.find(order => order.comment_key === commentKey);
-      if (order) {
+      // comment_key에 해당하는 모든 주문 찾기 (한 댓글에 여러 주문 있을 수 있음)
+      const commentOrders = orders?.filter(order => order.comment_key === commentKey) || [];
+      
+      if (commentOrders.length > 0) {
         savedComments[commentKey] = {
           isSaved: true,
-          status: order.status
+          status: commentOrders[0].status, // 첫 번째 주문의 상태 사용
+          orders: commentOrders.map(order => ({
+            product_name: order.product_name,
+            quantity: order.quantity,
+            product_price: order.product_price,
+            order_status: order.order_status
+          }))
         };
       } else {
         savedComments[commentKey] = {
           isSaved: false,
-          status: null
+          status: null,
+          orders: []
         };
       }
     });
