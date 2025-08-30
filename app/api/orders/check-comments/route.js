@@ -27,10 +27,10 @@ export async function POST(request) {
     // orders 테이블에서 band_key, post_key, comment_key로 조회 (주문 상세 정보 포함)
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('comment_key, status, product_name, quantity, product_price, order_status')
-      .eq('band_key', bandKey)
-      .eq('post_key', postKey)
-      .in('comment_key', commentKeys);
+      .select('band_comment_id, status, product_name, quantity, price, order_status')
+      .eq('band_number', bandKey)
+      .eq('post_number', postKey)
+      .in('band_comment_id', commentKeys);
 
     if (error) {
       console.error('주문 확인 에러:', error);
@@ -39,13 +39,25 @@ export async function POST(request) {
       }, { status: 500 });
     }
 
+    console.log('🔍 주문 데이터 조회 결과:', {
+      commentKeysCount: commentKeys.length,
+      ordersFound: orders?.length || 0,
+      orders: orders?.map(o => ({
+        comment_key: o.band_comment_id,
+        product_name: o.product_name,
+        quantity: o.quantity,
+        price: o.price,
+        status: o.status
+      }))
+    });
+
     
     // 각 댓글 키에 대해 DB 저장 여부 및 상태 확인 (주문 상세 정보 포함)
     const savedComments = {};
     
     commentKeys.forEach(commentKey => {
       // comment_key에 해당하는 모든 주문 찾기 (한 댓글에 여러 주문 있을 수 있음)
-      const commentOrders = orders?.filter(order => order.comment_key === commentKey) || [];
+      const commentOrders = orders?.filter(order => order.band_comment_id === commentKey) || [];
       
       if (commentOrders.length > 0) {
         savedComments[commentKey] = {
@@ -54,7 +66,7 @@ export async function POST(request) {
           orders: commentOrders.map(order => ({
             product_name: order.product_name,
             quantity: order.quantity,
-            product_price: order.product_price,
+            product_price: order.price, // price -> product_price로 매핑
             order_status: order.order_status
           }))
         };
@@ -66,6 +78,8 @@ export async function POST(request) {
         };
       }
     });
+
+    console.log('📤 최종 응답 데이터:', { savedComments });
 
     return NextResponse.json({
       success: true,

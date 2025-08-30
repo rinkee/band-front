@@ -290,6 +290,7 @@ const CommentsList = ({
   // savedComments가 변경되면 DB 데이터 로딩 완료로 설정
   useEffect(() => {
     if (savedComments && Object.keys(savedComments).length >= 0) {
+      console.log('✅ DB 로딩 완료, savedComments:', savedComments);
       setIsDbDataLoading(false);
     }
   }, [savedComments]);
@@ -637,6 +638,13 @@ const CommentsModal = ({
     try {
       const commentKeys = commentsToCheck.map(c => c.comment_key);
       
+      console.log('📤 댓글 DB 확인 요청:', {
+        commentKeysCount: commentKeys.length,
+        postKey,
+        bandKey,
+        commentKeys: commentKeys.slice(0, 3) // 첫 3개만 로그
+      });
+      
       const response = await fetch('/api/orders/check-comments', {
         method: 'POST',
         headers: {
@@ -651,9 +659,13 @@ const CommentsModal = ({
       
       if (response.ok) {
         const data = await response.json();
+        console.log('📥 댓글 DB 확인 응답:', data);
+        
         if (data.success && data.savedComments) {
           setSavedComments(data.savedComments);
         }
+      } else {
+        console.error('API 응답 오류:', response.status, await response.text());
       }
     } catch (error) {
       console.error('DB 저장 상태 확인 오류:', error);
