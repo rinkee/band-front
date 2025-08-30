@@ -397,51 +397,26 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  // comment_key로 주문들을 그룹화하고 첫 번째만 댓글 표시용 플래그 추가
+  // 서버 정렬 순서를 유지하면서 댓글 표시 로직만 적용
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    // 서버에서 이미 정렬된 순서를 유지하면서 그룹화
-    const grouped = {};
-    const groupOrder = []; // 그룹 순서를 유지하기 위한 배열
+    const seenCommentKeys = new Set();
     
-    // 원본 순서대로 그룹화 (서버 정렬 순서 유지)
-    orders.forEach(order => {
+    // 서버에서 받은 순서 그대로 처리하면서 댓글 표시 여부만 결정
+    return orders.map(order => {
       const commentKey = order.comment_key || 'no-comment';
+      const isFirstInGroup = !seenCommentKeys.has(commentKey);
       
-      if (!grouped[commentKey]) {
-        grouped[commentKey] = [];
-        groupOrder.push(commentKey); // 첫 번째 등장 순서 기록
+      if (isFirstInGroup) {
+        seenCommentKeys.add(commentKey);
       }
       
-      grouped[commentKey].push(order);
+      return {
+        ...order,
+        showComment: isFirstInGroup
+      };
     });
-    
-    // 그룹 순서를 유지하면서 처리
-    const processedOrders = [];
-    groupOrder.forEach(commentKey => {
-      const groupOrders = grouped[commentKey];
-      
-      // 각 그룹 내에서 order_id 맨 뒤 숫자로 정렬
-      groupOrders.sort((a, b) => {
-        const getLastNumber = (orderId) => {
-          const match = orderId.match(/_(\d+)$/);
-          return match ? parseInt(match[1], 10) : 0;
-        };
-        
-        return getLastNumber(a.order_id) - getLastNumber(b.order_id);
-      });
-      
-      // 단일 주문이면 무조건 댓글 표시, 다중 주문이면 첫 번째만 댓글 표시
-      groupOrders.forEach((order, index) => {
-        processedOrders.push({
-          ...order,
-          showComment: groupOrders.length === 1 ? true : index === 0
-        });
-      });
-    });
-    
-    return processedOrders;
   };
 
   const displayOrders = processOrdersForDisplay(orders);
