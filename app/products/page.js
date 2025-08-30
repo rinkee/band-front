@@ -1814,7 +1814,7 @@ export default function ProductsPage() {
                                   <img
                                     src={imageUrl}
                                     alt={product.title}
-                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                    className="w-full h-full object-contain hover:scale-105 transition-transform duration-200"
                                     onError={(e) => {
                                       console.error(`❌ 이미지 로드 실패: ${imageUrl}`);
                                       e.target.onerror = null;
