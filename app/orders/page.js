@@ -401,56 +401,35 @@ export default function OrdersPage() {
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
     
-    // comment_key로 그룹화하되 서버 정렬 순서 유지
-    const grouped = {};
-    const groupOrder = [];
+    const seenCommentKeys = new Set();
     
-    orders.forEach(order => {
+    return orders.map(order => {
       const commentKey = order.comment_key || 'no-comment';
+      const isFirstOccurrence = !seenCommentKeys.has(commentKey);
+      const endsWithZero = order.order_id && order.order_id.endsWith('_0');
       
-      if (!grouped[commentKey]) {
-        grouped[commentKey] = [];
-        groupOrder.push(commentKey);
+      // comment_key의 첫 번째 출현이고 _0으로 끝나는 경우만 댓글 표시
+      const showComment = isFirstOccurrence && endsWithZero;
+      
+      // 디버깅
+      console.log(`주문 ${order.order_id}:`, {
+        customer: order.customer_name,
+        commentKey: commentKey,
+        isFirstOccurrence: isFirstOccurrence,
+        endsWithZero: endsWithZero,
+        showComment: showComment,
+        comment: order.comment
+      });
+      
+      if (commentKey !== 'no-comment') {
+        seenCommentKeys.add(commentKey);
       }
       
-      grouped[commentKey].push(order);
+      return {
+        ...order,
+        showComment: showComment
+      };
     });
-    
-    // 그룹 순서를 유지하면서 각 그룹 내에서 끝 번호로 정렬
-    const processedOrders = [];
-    groupOrder.forEach(commentKey => {
-      const groupOrders = grouped[commentKey];
-      
-      // 각 그룹 내에서 order_id 맨 뒤 숫자로 정렬 (_0, _1, _2...)
-      groupOrders.sort((a, b) => {
-        const getLastNumber = (orderId) => {
-          const match = orderId.match(/_(\d+)$/);
-          return match ? parseInt(match[1], 10) : 0;
-        };
-        
-        return getLastNumber(a.order_id) - getLastNumber(b.order_id);
-      });
-      
-      // _0으로 끝나는 주문만 댓글 표시
-      groupOrders.forEach((order, index) => {
-        const showComment = order.order_id && order.order_id.endsWith('_0');
-        
-        // 디버깅
-        console.log(`주문 ${order.order_id}:`, {
-          customer: order.customer_name,
-          showComment: showComment,
-          comment: order.comment,
-          comment_processed: processBandTags(order.comment)
-        });
-        
-        processedOrders.push({
-          ...order,
-          showComment: showComment
-        });
-      });
-    });
-    
-    return processedOrders;
   };
 
   const displayOrders = processOrdersForDisplay(orders);
