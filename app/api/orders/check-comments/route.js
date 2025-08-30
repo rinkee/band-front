@@ -31,25 +31,13 @@ export async function POST(request) {
     }
     
 
-    // 먼저 orders 테이블의 실제 구조와 데이터 확인
-    const { data: sampleOrders, error: sampleError } = await supabase
-      .from('orders')
-      .select('*')
-      .limit(1);
-      
-    console.log('🔍 Orders 테이블 샘플:', {
-      sampleError,
-      sampleData: sampleOrders?.[0],
-      columns: sampleOrders?.[0] ? Object.keys(sampleOrders[0]) : []
-    });
-
-    // orders 테이블에서 band_key, post_key, comment_key로 조회 (주문 상세 정보 포함)
+    // orders 테이블에서 올바른 컬럼명으로 조회 (주문 상세 정보 포함)
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('band_comment_id, status, product_name, quantity, price')
-      .eq('band_number', bandKey)
-      .eq('post_number', postKey)
-      .in('band_comment_id', commentKeys);
+      .select('comment_key, status, product_name, quantity, price')
+      .eq('band_key', bandKey)
+      .eq('post_key', postKey)
+      .in('comment_key', commentKeys);
 
     if (error) {
       console.error('주문 확인 에러:', error);
@@ -62,7 +50,7 @@ export async function POST(request) {
       commentKeysCount: commentKeys.length,
       ordersFound: orders?.length || 0,
       orders: orders?.map(o => ({
-        comment_key: o.band_comment_id,
+        comment_key: o.comment_key,
         product_name: o.product_name,
         quantity: o.quantity,
         price: o.price,
@@ -76,7 +64,7 @@ export async function POST(request) {
     
     commentKeys.forEach(commentKey => {
       // comment_key에 해당하는 모든 주문 찾기 (한 댓글에 여러 주문 있을 수 있음)
-      const commentOrders = orders?.filter(order => order.band_comment_id === commentKey) || [];
+      const commentOrders = orders?.filter(order => order.comment_key === commentKey) || [];
       
       if (commentOrders.length > 0) {
         savedComments[commentKey] = {
