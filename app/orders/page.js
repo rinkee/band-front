@@ -455,16 +455,6 @@ export default function OrdersPage() {
       // 해당 주문이 그룹의 첫 번째 _0 주문인지 확인
       const showComment = endsWithZero && groupFirstZeroOrders.get(orderGroupKey) === order.order_id;
       
-      // 디버깅
-      console.log(`주문 ${order.order_id}:`, {
-        customer: order.customer_name,
-        orderGroupKey: orderGroupKey,
-        orderNumber: orderNumber,
-        endsWithZero: endsWithZero,
-        isFirstZero: groupFirstZeroOrders.get(orderGroupKey) === order.order_id,
-        showComment: showComment,
-        comment: order.comment
-      });
       
       return {
         ...order,
