@@ -11,6 +11,13 @@ export async function POST(request) {
     const body = await request.json();
     const { commentKeys, postKey, bandKey } = body;
 
+    console.log('📥 API 요청 파라미터:', {
+      commentKeys: commentKeys?.slice(0, 3),
+      commentKeysCount: commentKeys?.length,
+      postKey,
+      bandKey
+    });
+
     if (!commentKeys || !Array.isArray(commentKeys)) {
       return NextResponse.json({
         error: 'commentKeys 배열이 필요합니다.'
@@ -24,10 +31,22 @@ export async function POST(request) {
     }
     
 
+    // 먼저 orders 테이블의 실제 구조와 데이터 확인
+    const { data: sampleOrders, error: sampleError } = await supabase
+      .from('orders')
+      .select('*')
+      .limit(1);
+      
+    console.log('🔍 Orders 테이블 샘플:', {
+      sampleError,
+      sampleData: sampleOrders?.[0],
+      columns: sampleOrders?.[0] ? Object.keys(sampleOrders[0]) : []
+    });
+
     // orders 테이블에서 band_key, post_key, comment_key로 조회 (주문 상세 정보 포함)
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('band_comment_id, status, product_name, quantity, price, order_status')
+      .select('band_comment_id, status, product_name, quantity, price')
       .eq('band_number', bandKey)
       .eq('post_number', postKey)
       .in('band_comment_id', commentKeys);
@@ -67,7 +86,7 @@ export async function POST(request) {
             product_name: order.product_name,
             quantity: order.quantity,
             product_price: order.price, // price -> product_price로 매핑
-            order_status: order.order_status
+            order_status: order.status // status를 order_status로 매핑
           }))
         };
       } else {
