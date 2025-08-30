@@ -431,20 +431,17 @@ export default function OrdersPage() {
         return getLastNumber(a.order_id) - getLastNumber(b.order_id);
       });
       
-      // 각 그룹의 첫 번째(가장 작은 번호)만 댓글 표시
+      // _0으로 끝나는 주문만 댓글 표시
       groupOrders.forEach((order, index) => {
-        const showComment = index === 0;
+        const showComment = order.order_id && order.order_id.endsWith('_0');
         
         // 디버깅
-        const getLastNumber = (orderId) => {
-          const match = orderId.match(/_(\d+)$/);
-          return match ? parseInt(match[1], 10) : 0;
-        };
-        const lastNumber = getLastNumber(order.order_id);
-        
-        if (order.customer_name === '샤이니' && lastNumber === 0) {
-          console.log(`샤이니 _0 주문 - showComment: ${showComment}, 댓글: "${order.comment}"`);
-        }
+        console.log(`주문 ${order.order_id}:`, {
+          customer: order.customer_name,
+          showComment: showComment,
+          comment: order.comment,
+          comment_processed: processBandTags(order.comment)
+        });
         
         processedOrders.push({
           ...order,
