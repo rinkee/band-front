@@ -947,7 +947,9 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           {post.latest_comments && Array.isArray(post.latest_comments) && post.latest_comments.length > 0 ? (
             <>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-500 font-medium">최근 댓글</span>
+                <span className="text-xs text-gray-500 font-medium">
+                  최근 댓글 ({post.comment_count || 0}개)
+                </span>
                 <span className="text-xs text-gray-400">
                   {post.latest_comments[0].created_at && formatDate(new Date(post.latest_comments[0].created_at))}
                 </span>
@@ -963,7 +965,9 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             </>
           ) : (
             <div className="text-center">
-              <span className="text-xs text-gray-400">댓글이 없습니다</span>
+              <span className="text-xs text-gray-400">
+                댓글이 없습니다 ({post.comment_count || 0}개)
+              </span>
             </div>
           )}
         </div>
