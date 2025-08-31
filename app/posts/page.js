@@ -857,8 +857,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       <div className="p-4 flex-grow">
         {/* 상품 타이틀 */}
         {post.products && Array.isArray(post.products) && post.products.length > 0 && (
-          <div className="mb-3">
-            <h3 className="font-bold text-gray-900 mb-1 line-clamp-2 text-lg leading-snug">
+          <div className="mb-1">
+            <h3 className="font-bold text-gray-900 line-clamp-2 text-lg leading-snug">
               {post.products.slice(0, 1).map((product, index) => (
                 <span key={product.product_id || index}>
                   {product.title || product.name}
@@ -875,13 +875,13 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
         {/* 게시물 제목 (상품이 없을 때만 표시) */}
         {(!post.products || post.products.length === 0) && post.title && (
-          <h3 className="font-bold text-gray-900 mb-3 line-clamp-2 text-lg leading-snug">
+          <h3 className="font-bold text-gray-900 mb-1 line-clamp-2 text-lg leading-snug">
             {post.title}
           </h3>
         )}
 
         {/* 업로드 날짜 */}
-        <div className="text-sm text-gray-500 mb-3">
+        <div className="text-sm text-gray-500 mb-2">
           {formatDate(post.posted_at)}
         </div>
       </div>
