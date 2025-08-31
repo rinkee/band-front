@@ -769,77 +769,6 @@ const CommentsModal = ({
               </p>
             </div>
             
-            {/* 관리 버튼들 */}
-            {post && (
-              <div className="flex items-center gap-4 mr-4">
-                {/* 재처리 스위치 */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      if (!post.is_product || !onToggleReprocess) return;
-                      const isCurrentlyPending = post.comment_sync_status === 'pending';
-                      onToggleReprocess(post, !isCurrentlyPending);
-                    }}
-                    disabled={!post.is_product || !onToggleReprocess}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      !post.is_product
-                        ? 'bg-gray-100 cursor-not-allowed'
-                        : post.comment_sync_status === 'pending'
-                        ? 'bg-amber-500'
-                        : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
-                        !post.is_product
-                          ? 'bg-gray-300'
-                          : post.comment_sync_status === 'pending'
-                          ? 'translate-x-5 bg-white'
-                          : 'translate-x-1 bg-white'
-                      }`}
-                    />
-                  </button>
-                  <span className={`text-sm whitespace-nowrap ${
-                    !post.is_product
-                      ? 'text-gray-300'
-                      : post.comment_sync_status === 'pending'
-                      ? 'text-amber-600 font-medium'
-                      : 'text-gray-600'
-                  }`}>
-                    {!post.is_product 
-                      ? '상품아님' 
-                      : post.comment_sync_status === 'pending' 
-                      ? '재처리중' 
-                      : '재처리'
-                    }
-                  </span>
-                </div>
-                
-                {/* 삭제 버튼 */}
-                {onDeletePost && (
-                  <button
-                    onClick={() => onDeletePost(post)}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="게시물 삭제"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
-            
             {/* 닫기 버튼 */}
             <button
               onClick={onClose}
@@ -852,9 +781,32 @@ const CommentsModal = ({
           {/* 메인 컨텐츠 영역 */}
           <div className="flex flex-1 overflow-hidden">
             {/* 왼쪽: 게시물 내용 */}
-            <div className="w-2/5 border-r border-gray-200 flex flex-col">
-              <div className="p-4 bg-gray-25">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">게시물 내용</h3>
+            <div className="w-1/2 border-r border-gray-200 flex flex-col">
+              <div className="p-4 bg-gray-25 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-700">게시물 내용</h3>
+                {/* 삭제 버튼 */}
+                {post && onDeletePost && (
+                  <button
+                    onClick={() => onDeletePost(post)}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="게시물 삭제"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                    삭제
+                  </button>
+                )}
               </div>
               <div className="flex-1 p-4 overflow-y-auto">
                 {postContent ? (
@@ -870,9 +822,53 @@ const CommentsModal = ({
             </div>
 
             {/* 오른쪽: 댓글 목록 */}
-            <div className="w-3/5 flex flex-col">
-              <div className="p-4 bg-gray-25">
+            <div className="w-1/2 flex flex-col">
+              <div className="p-4 bg-gray-25 flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-700">댓글 목록</h3>
+                {/* 재처리 스위치 */}
+                {post && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (!post.is_product || !onToggleReprocess) return;
+                        const isCurrentlyPending = post.comment_sync_status === 'pending';
+                        onToggleReprocess(post, !isCurrentlyPending);
+                      }}
+                      disabled={!post.is_product || !onToggleReprocess}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        !post.is_product
+                          ? 'bg-gray-100 cursor-not-allowed'
+                          : post.comment_sync_status === 'pending'
+                          ? 'bg-amber-500'
+                          : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
+                          !post.is_product
+                            ? 'bg-gray-300'
+                            : post.comment_sync_status === 'pending'
+                            ? 'translate-x-4 bg-white'
+                            : 'translate-x-1 bg-white'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-xs whitespace-nowrap ${
+                      !post.is_product
+                        ? 'text-gray-300'
+                        : post.comment_sync_status === 'pending'
+                        ? 'text-amber-600 font-medium'
+                        : 'text-gray-600'
+                    }`}>
+                      {!post.is_product 
+                        ? '상품아님' 
+                        : post.comment_sync_status === 'pending' 
+                        ? '재처리중' 
+                        : '재처리'
+                      }
+                    </span>
+                  </div>
+                )}
               </div>
               <div
                 ref={scrollContainerRef}
