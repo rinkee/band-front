@@ -943,20 +943,20 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         )}
 
         {/* 마지막 댓글 정보 */}
-        {post.last_comment && (
+        {post.latest_comments && Array.isArray(post.latest_comments) && post.latest_comments.length > 0 && (
           <div className="bg-gray-50 rounded-md p-2 mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-gray-500 font-medium">최근 댓글</span>
               <span className="text-xs text-gray-400">
-                {post.last_comment.created_at && formatDate(new Date(post.last_comment.created_at))}
+                {post.latest_comments[0].created_at && formatDate(new Date(post.latest_comments[0].created_at))}
               </span>
             </div>
             <div className="text-sm text-gray-700">
               <span className="font-medium text-gray-900">
-                {post.last_comment.author_name || '익명'}:
+                {post.latest_comments[0].author?.name || '익명'}:
               </span>
               <span className="ml-1 line-clamp-1">
-                {post.last_comment.content || ''}
+                {post.latest_comments[0].body || ''}
               </span>
             </div>
           </div>
