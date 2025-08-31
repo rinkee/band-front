@@ -851,7 +851,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   return (
     <div
       className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-gray-300 transition-all duration-200 cursor-pointer group"
-      onClick={() => onClick(post.post_id)}
+      onClick={() => onViewComments(post)}
     >
       {/* 이미지 섹션 - KREAM 스타일 정사각형 */}
       <div className="relative aspect-square bg-gray-50 overflow-hidden">
