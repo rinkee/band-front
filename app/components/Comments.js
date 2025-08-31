@@ -198,17 +198,17 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-xs font-medium text-green-700 mb-1">저장된 주문 정보</div>
+          <div className="mt-2 p-2 border rounded-lg">
+            <div className="text-xs font-bold mb-1">저장된 주문 정보</div>
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="text-xs text-gray-700">
+                <div key={index} className="text-xs">
                   <span className="font-medium">{order.product_name || '상품'}</span>
                   {order.quantity && (
-                    <span className="text-gray-500 ml-1">× {order.quantity}</span>
+                    <span className="ml-1">× {order.quantity}</span>
                   )}
                   {(order.total_amount || order.product_price) && (
-                    <span className="text-green-600 font-medium ml-2">
+                    <span className="font-bold ml-2">
                       {(() => {
                         const displayPrice = order.total_amount || order.product_price;
                         console.log(`🎯 화면 표시 가격:`, {
