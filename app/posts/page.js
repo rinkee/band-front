@@ -853,8 +853,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col"
       onClick={() => onClick(post.post_id)}
     >
-      {/* 내용 섹션 - 고정 높이 */}
-      <div className="p-4 flex-grow">
+      {/* 내용 섹션 */}
+      <div className="p-4">
         {/* 상품 타이틀 */}
         {post.products && Array.isArray(post.products) && post.products.length > 0 && (
           <div className="mb-1">
