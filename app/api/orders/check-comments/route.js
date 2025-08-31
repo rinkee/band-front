@@ -34,7 +34,7 @@ export async function POST(request) {
     // orders 테이블에서 올바른 컬럼명으로 조회 (주문 상세 정보 포함)
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('comment_key, status, product_name, quantity, price')
+      .select('comment_key, status, product_name, quantity, price, total_amount')
       .eq('band_key', bandKey)
       .eq('post_key', postKey)
       .in('comment_key', commentKeys);
