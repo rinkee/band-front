@@ -202,15 +202,13 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             <div className="text-xs font-medium text-green-700 mb-1">저장된 주문 정보</div>
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="flex justify-between items-center text-xs text-gray-700">
-                  <div className="flex-1">
-                    <span className="font-medium">{order.product_name || '상품'}</span>
-                    {order.quantity && (
-                      <span className="text-gray-500 ml-1">× {order.quantity}</span>
-                    )}
-                  </div>
+                <div key={index} className="text-xs text-gray-700">
+                  <span className="font-medium">{order.product_name || '상품'}</span>
+                  {order.quantity && (
+                    <span className="text-gray-500 ml-1">× {order.quantity}</span>
+                  )}
                   {(order.total_amount || order.product_price) && (
-                    <div className="text-green-600 font-medium">
+                    <span className="text-green-600 font-medium ml-2">
                       {(() => {
                         const displayPrice = order.total_amount || order.product_price;
                         console.log(`🎯 화면 표시 가격:`, {
@@ -222,7 +220,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                         });
                         return displayPrice.toLocaleString();
                       })()}원
-                    </div>
+                    </span>
                   )}
                 </div>
               ))}
