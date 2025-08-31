@@ -209,9 +209,9 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                       <span className="text-gray-500 ml-1">× {order.quantity}</span>
                     )}
                   </div>
-                  {order.product_price && (
+                  {(order.total_amount || order.product_price) && (
                     <div className="text-green-600 font-medium">
-                      {order.product_price.toLocaleString()}원
+                      {(order.total_amount || order.product_price).toLocaleString()}원
                     </div>
                   )}
                 </div>
