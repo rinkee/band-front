@@ -198,7 +198,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-2 p-2 border rounded-lg">
+          <div className="mt-2 p-2 bg-gray-100 rounded-lg">
             <div className="text-xs font-bold mb-1">저장된 주문 정보</div>
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
