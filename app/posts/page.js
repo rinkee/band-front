@@ -937,9 +937,29 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       <div className="p-3">
         {/* 게시물 내용 */}
         {post.content && (
-          <p className="text-gray-600 text-sm line-clamp-2 leading-relaxed mb-3">
+          <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed mb-3">
             {post.content}
           </p>
+        )}
+
+        {/* 마지막 댓글 정보 */}
+        {post.last_comment && (
+          <div className="bg-gray-50 rounded-md p-2 mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-500 font-medium">최근 댓글</span>
+              <span className="text-xs text-gray-400">
+                {post.last_comment.created_at && formatDate(new Date(post.last_comment.created_at))}
+              </span>
+            </div>
+            <div className="text-sm text-gray-700">
+              <span className="font-medium text-gray-900">
+                {post.last_comment.author_name || '익명'}:
+              </span>
+              <span className="ml-1 line-clamp-1">
+                {post.last_comment.content || ''}
+              </span>
+            </div>
+          </div>
         )}
         {/* 메인 액션 버튼들 - 더 작게 */}
         <div className="grid grid-cols-3 gap-1.5">
