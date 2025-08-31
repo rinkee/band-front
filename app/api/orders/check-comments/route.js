@@ -73,7 +73,7 @@ export async function POST(request) {
           orders: commentOrders.map(order => ({
             product_name: order.product_name,
             quantity: order.quantity,
-            product_price: order.price, // price -> product_price로 매핑
+            product_price: order.total_amount || order.price, // total_amount 우선 사용, 없으면 price
             order_status: order.status // status를 order_status로 매핑
           }))
         };
