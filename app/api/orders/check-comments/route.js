@@ -70,12 +70,23 @@ export async function POST(request) {
         savedComments[commentKey] = {
           isSaved: true,
           status: commentOrders[0].status, // 첫 번째 주문의 상태 사용
-          orders: commentOrders.map(order => ({
-            product_name: order.product_name,
-            quantity: order.quantity,
-            product_price: order.total_amount || order.price, // total_amount 우선 사용, 없으면 price
-            order_status: order.status // status를 order_status로 매핑
-          }))
+          orders: commentOrders.map(order => {
+            const finalPrice = order.total_amount || order.price;
+            console.log(`💰 주문 가격 매핑:`, {
+              customer: order.customer_name,
+              product: order.product_name,
+              quantity: order.quantity,
+              original_price: order.price,
+              total_amount: order.total_amount,
+              final_price: finalPrice
+            });
+            return {
+              product_name: order.product_name,
+              quantity: order.quantity,
+              product_price: finalPrice, // total_amount 우선 사용, 없으면 price
+              order_status: order.status // status를 order_status로 매핑
+            };
+          })
         };
       } else {
         savedComments[commentKey] = {

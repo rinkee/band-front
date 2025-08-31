@@ -211,7 +211,17 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                   </div>
                   {(order.total_amount || order.product_price) && (
                     <div className="text-green-600 font-medium">
-                      {(order.total_amount || order.product_price).toLocaleString()}원
+                      {(() => {
+                        const displayPrice = order.total_amount || order.product_price;
+                        console.log(`🎯 화면 표시 가격:`, {
+                          product: order.product_name,
+                          quantity: order.quantity,
+                          total_amount: order.total_amount,
+                          product_price: order.product_price,
+                          display_price: displayPrice
+                        });
+                        return displayPrice.toLocaleString();
+                      })()}원
                     </div>
                   )}
                 </div>
