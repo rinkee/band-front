@@ -855,95 +855,35 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
     >
       {/* 내용 섹션 - 고정 높이 */}
       <div className="p-4 flex-grow">
-        {/* 작성자 정보 */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            {/* 작성자 프로필 이미지 */}
-            <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
-              {post.author_profile ? (
-                <img
-                  src={post.author_profile}
-                  alt={post.author_name || "프로필"}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.style.display = "none";
-                    e.target.nextElementSibling.style.display = "flex";
-                  }}
-                />
-              ) : null}
-              <div
-                className={`w-full h-full bg-blue-500 flex items-center justify-center ${
-                  post.author_profile ? "hidden" : ""
-                }`}
-              >
-                <span className="text-white font-medium text-sm">
-                  {post.author_name ? post.author_name.charAt(0) : "?"}
+        {/* 상품 타이틀 */}
+        {post.products && Array.isArray(post.products) && post.products.length > 0 && (
+          <div className="mb-3">
+            <h3 className="font-bold text-gray-900 mb-1 line-clamp-2 text-lg leading-snug">
+              {post.products.slice(0, 1).map((product, index) => (
+                <span key={product.product_id || index}>
+                  {product.title || product.name}
                 </span>
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-base font-medium text-gray-900 truncate">
-                {post.author_name || "알 수 없음"}
-              </div>
-              <div className="text-sm text-gray-500">
-                {formatDate(post.posted_at)}
-              </div>
-            </div>
+              ))}
+              {post.products.length > 1 && (
+                <span className="text-gray-600 text-base ml-1">
+                  외 {post.products.length - 1}개
+                </span>
+              )}
+            </h3>
           </div>
-          
-        </div>
+        )}
 
-        {/* 게시물 제목 */}
-        {post.title && (
-          <h3 className="font-medium text-gray-900 mb-2 line-clamp-2 text-base leading-snug">
+        {/* 게시물 제목 (상품이 없을 때만 표시) */}
+        {(!post.products || post.products.length === 0) && post.title && (
+          <h3 className="font-bold text-gray-900 mb-3 line-clamp-2 text-lg leading-snug">
             {post.title}
           </h3>
         )}
 
-        {/* 게시물 내용 */}
-        {post.content && (
-          <p className="text-gray-600 text-base line-clamp-3 leading-relaxed mb-3">
-            {post.content}
-          </p>
-        )}
-
-        {/* 연관 상품 정보 */}
-        {post.products && Array.isArray(post.products) && post.products.length > 0 && (
-          <div className="bg-blue-50 rounded-md p-2 mb-3 border border-blue-100">
-            <div className="flex items-center space-x-1 mb-1">
-              <svg
-                className="w-3 h-3 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                />
-              </svg>
-              <span className="text-sm font-medium text-blue-900">
-                상품 {post.products.length}개
-              </span>
-            </div>
-            <div className="text-sm text-blue-800 line-clamp-2">
-              {post.products.slice(0, 1).map((product, index) => (
-                <div key={product.product_id || index}>
-                  {product.title || product.name}{" "}
-                  {(product.base_price || product.price) &&
-                    `${Number(product.base_price || product.price).toLocaleString()}원`}
-                </div>
-              ))}
-              {post.products.length > 1 && (
-                <div className="text-blue-600">
-                  외 {post.products.length - 1}개...
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* 업로드 날짜 */}
+        <div className="text-sm text-gray-500 mb-3">
+          {formatDate(post.posted_at)}
+        </div>
       </div>
 
       {/* 이미지 섹션 - 고정 높이 유지 */}
@@ -995,6 +935,12 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
       {/* 하단 섹션 - 컴팩트한 디자인 */}
       <div className="p-3">
+        {/* 게시물 내용 */}
+        {post.content && (
+          <p className="text-gray-600 text-sm line-clamp-2 leading-relaxed mb-3">
+            {post.content}
+          </p>
+        )}
         {/* 메인 액션 버튼들 - 더 작게 */}
         <div className="grid grid-cols-3 gap-1.5">
           {/* 바코드 등록 버튼 */}
