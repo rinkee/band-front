@@ -83,7 +83,7 @@ export async function POST(request) {
             return {
               product_name: order.product_name,
               quantity: order.quantity,
-              product_price: finalPrice, // total_amount 우선 사용, 없으면 price
+              total_amount: finalPrice, // total_amount로 필드명 변경
               order_status: order.status // status를 order_status로 매핑
             };
           })
