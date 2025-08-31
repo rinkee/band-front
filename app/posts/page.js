@@ -24,7 +24,7 @@ export default function PostsPage() {
     }
     return 1;
   });
-  const [limit] = useState(18); // 3x6 = 18개씩
+  const [limit] = useState(20); // 4줄 x 5개 = 20개씩 표시
 
   // 검색 관련 상태 - sessionStorage에서 복원
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -644,7 +644,7 @@ export default function PostsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {posts.map((post) => (
               <PostCard
                 key={post.post_key}
