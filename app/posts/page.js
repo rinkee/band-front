@@ -694,6 +694,9 @@ export default function PostsPage() {
         accessToken={selectedPostForComments?.accessToken}
         backupAccessToken={selectedPostForComments?.backupAccessToken}
         postContent={selectedPostForComments?.postContent}
+        post={selectedPostForComments?.post}
+        onToggleReprocess={handleToggleReprocess}
+        onDeletePost={handleDeletePost}
         onEnableReprocess={() => {
           if (selectedPostForComments?.post) {
             handleToggleReprocess(selectedPostForComments.post, true);

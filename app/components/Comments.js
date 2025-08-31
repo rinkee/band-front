@@ -491,6 +491,9 @@ const CommentsModal = ({
   order,
   onFailover,
   onEnableReprocess, // 재처리 활성화 콜백 추가
+  post, // 게시물 정보 추가
+  onToggleReprocess, // 재처리 토글 콜백
+  onDeletePost, // 삭제 콜백
 }) => {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -783,18 +786,91 @@ const CommentsModal = ({
           {/* 오른쪽: 댓글 */}
           <div className="w-1/2 flex flex-col">
             {/* 댓글 헤더 */}
-            <div className="flex items-center justify-between py-2 px-4 border-b border-gray-200">
-              <div>
-                <p className="text-lg text-gray-500">
-                  총 {comments.length}개의 댓글
-                </p>
+            <div className="py-2 px-4 border-b border-gray-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-lg text-gray-500">
+                    총 {comments.length}개의 댓글
+                  </p>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
               </div>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
+
+              {/* 게시물 관리 버튼들 */}
+              {post && (
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                  {/* 재처리 스위치 */}
+                  <div className="flex items-center gap-3 flex-1">
+                    <button
+                      onClick={() => {
+                        if (!post.is_product || !onToggleReprocess) return;
+                        const isCurrentlyPending = post.comment_sync_status === 'pending';
+                        onToggleReprocess(post, !isCurrentlyPending);
+                      }}
+                      disabled={!post.is_product || !onToggleReprocess}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        !post.is_product
+                          ? 'bg-gray-100 cursor-not-allowed'
+                          : post.comment_sync_status === 'pending'
+                          ? 'bg-amber-500'
+                          : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
+                          !post.is_product
+                            ? 'bg-gray-300'
+                            : post.comment_sync_status === 'pending'
+                            ? 'translate-x-5 bg-white'
+                            : 'translate-x-1 bg-white'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-sm ${
+                      !post.is_product
+                        ? 'text-gray-300'
+                        : post.comment_sync_status === 'pending'
+                        ? 'text-amber-600 font-medium'
+                        : 'text-gray-400'
+                    }`}>
+                      {!post.is_product 
+                        ? '상품이 아님' 
+                        : post.comment_sync_status === 'pending' 
+                        ? '재처리 예약됨' 
+                        : '누락주문 재처리'
+                      }
+                    </span>
+                  </div>
+                  
+                  {/* 삭제 버튼 */}
+                  {onDeletePost && (
+                    <button
+                      onClick={() => onDeletePost(post)}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="게시물 삭제"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 댓글 목록 */}
