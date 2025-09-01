@@ -960,41 +960,46 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         </div>
       )}
 
-      {/* 댓글/주문 통계 */}
-      <div className="px-4 pb-4 pt-2">
+      {/* 댓글 수와 작성 시간 정보 */}
+      <div className="px-4 pt-2 pb-3">
         <div className="flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center space-x-3">
-            <span>댓글 {post.comment_count || 0}개</span>
-            <span>작성: {formatDate(post.posted_at)}</span>
-          </div>
-          
-          {/* 처리 상태 및 주문보기 버튼 */}
-          <div className="flex items-center space-x-2">
-            {post.comment_sync_status && (
-              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                post.comment_sync_status === 'success' ? 'bg-green-100 text-green-800' :
-                post.comment_sync_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                post.comment_sync_status === 'failed' ? 'bg-red-100 text-red-800' :
-                'bg-gray-100 text-gray-800'
-              }`}>
-                {post.comment_sync_status === 'success' ? '완료' :
-                 post.comment_sync_status === 'pending' ? '대기' :
-                 post.comment_sync_status === 'failed' ? '실패' : '미처리'}
-              </div>
-            )}
-            
-            {/* 주문보기 버튼 */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation(); // 카드 클릭 이벤트 방지
-                onViewOrders(post.post_key);
-              }}
-              className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium hover:bg-blue-200 transition-colors"
-            >
-              주문보기
-            </button>
-          </div>
+          <span>댓글 {post.comment_count || 0}개</span>
+          <span>작성: {formatDate(post.posted_at)}</span>
         </div>
+      </div>
+
+      {/* 바코드 등록 및 주문보기 버튼 */}
+      <div className="grid grid-cols-2 gap-0 border-t border-gray-100">
+        {/* 바코드 등록 버튼 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // 카드 클릭 이벤트 방지
+            // 바코드 등록 모달 열기 로직 추가 필요
+            alert('바코드 등록 기능 준비 중');
+          }}
+          className="flex flex-col items-center justify-center py-3 hover:bg-gray-50 transition-colors border-r border-gray-100"
+        >
+          <svg className="w-6 h-6 text-gray-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" 
+              d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M8 7h8m-4 0V4m0 12v4m-4-4h.01M7 4h1m0 8h.01M21 12h-1m-2 0h-2.01M7 12h2m-2 0h-.01M3 12h.01M7 16h1m0 4h2m-6 0h2m12 0h2M8 20h8" />
+          </svg>
+          <span className="text-sm text-gray-700">바코드</span>
+        </button>
+
+        {/* 주문보기 버튼 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // 카드 클릭 이벤트 방지
+            onViewOrders(post.post_key);
+          }}
+          className="flex flex-col items-center justify-center py-3 hover:bg-gray-50 transition-colors"
+        >
+          <svg className="w-6 h-6 text-gray-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" 
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span className="text-sm text-gray-700">주문</span>
+        </button>
       </div>
     </div>
   );
