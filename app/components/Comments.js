@@ -553,6 +553,48 @@ const CommentsModal = ({
   // post prop 대신 currentPost 사용 (fallback으로 post 사용)
   const activePost = currentPost || post;
 
+  // 게시물의 추출된 상품 리스트 가져오기
+  const { data: products } = useSWR(
+    postKey ? `/api/products/${postKey}` : null,
+    async (url) => {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('post_key', postKey)
+        .order('created_at', { ascending: true });
+      
+      if (error) throw error;
+      return data;
+    },
+    {
+      revalidateOnFocus: false,
+      refreshInterval: 0
+    }
+  );
+
+  // 제외고객 숨김 상태를 고려한 댓글 수 계산
+  const visibleCommentsCount = useMemo(() => {
+    if (!comments || comments.length === 0) return 0;
+    
+    if (hideExcludedCustomers) {
+      // 제외고객이 숨김 상태일 때는 제외고객 댓글을 빼고 계산
+      return comments.filter((comment) => {
+        const isExcludedCustomer = excludedCustomers.some(
+          (customer) => customer.author_key === comment.author_key
+        );
+        return !isExcludedCustomer;
+      }).length;
+    }
+    
+    return comments.length;
+  }, [comments, hideExcludedCustomers, excludedCustomers]);
+
   // 스크롤 이벤트 핸들러 - 로직 수정
   const handleScroll = () => {
     if (!scrollContainerRef.current || !nextParams) return;
@@ -797,16 +839,24 @@ const CommentsModal = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* 백드롭 */}
       <div
-        className="fixed inset-0 bg-gray-500 bg-opacity-40 transition-opacity"
+        className="fixed inset-0 bg-gray-500 bg-opacity-20 transition-opacity"
         onClick={onClose}
       />
 
       {/* 모달 컨텐츠 */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative w-full max-w-6xl h-[90vh] bg-white rounded-xl shadow-xl flex flex-col">
+          {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            <XMarkIcon className="w-6 h-6" />
+          </button>
+          
           {/* 상단 헤더 */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex-1">
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <div className="pr-12"> {/* 닫기 버튼 공간 확보 */}
               {postTitle && (
                 <>
                   <h2 className="text-xl font-bold text-gray-900 mb-1">
@@ -830,9 +880,9 @@ const CommentsModal = ({
                     })()}
                   </h2>
                   {/* 작성일 표시 */}
-                  {post?.posted_at && (
+                  {activePost?.posted_at && (
                     <p className="text-sm text-gray-500 mb-2">
-                      작성일: {new Date(post.posted_at).toLocaleDateString('ko-KR', {
+                      작성일: {new Date(activePost.posted_at).toLocaleDateString('ko-KR', {
                         year: 'numeric',
                         month: 'long',
                         day: 'numeric',
@@ -843,15 +893,6 @@ const CommentsModal = ({
                 </>
               )}
             </div>
-            
-            
-            {/* 닫기 버튼 */}
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              <XMarkIcon className="w-6 h-6" />
-            </button>
           </div>
 
           {/* 메인 컨텐츠 영역 */}
@@ -884,14 +925,45 @@ const CommentsModal = ({
                   </button>
                 )}
               </div>
-              <div className="flex-1 p-4 overflow-y-auto">
-                {postContent ? (
-                  <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed">
-                    {decodeHtmlEntities(postContent)}
-                  </div>
-                ) : (
-                  <div className="text-gray-400 text-center py-8">
-                    게시물 내용이 없습니다
+              <div className="flex-1 overflow-y-auto">
+                {/* 게시물 내용 */}
+                <div className="p-4">
+                  {postContent ? (
+                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed">
+                      {decodeHtmlEntities(postContent)}
+                    </div>
+                  ) : (
+                    <div className="text-gray-400 text-center py-8">
+                      게시물 내용이 없습니다
+                    </div>
+                  )}
+                </div>
+
+                {/* 추출된 상품 리스트 */}
+                {products && products.length > 0 && (
+                  <div className="border-t border-gray-200">
+                    <div className="p-4 bg-blue-50">
+                      <h4 className="text-sm font-medium text-gray-900 mb-3">
+                        추출된 상품 ({products.length}개)
+                      </h4>
+                      <div className="space-y-2">
+                        {products.map((product, index) => (
+                          <div key={product.id || index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200">
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900">
+                                {product.name}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                ID: {product.product_id}
+                              </div>
+                            </div>
+                            <div className="text-sm font-bold text-blue-600">
+                              {product.price ? `${Number(product.price).toLocaleString()}원` : '가격 미정'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -903,7 +975,7 @@ const CommentsModal = ({
                 <div className="flex items-center gap-4">
                   <h3 className="text-sm font-medium text-gray-700">댓글 목록</h3>
                   <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <span>총 {comments.length}개의 댓글</span>
+                    <span>총 {visibleCommentsCount}개의 댓글</span>
                     <span>주문 {Object.values(savedComments).filter(comment => comment.isSaved).length}개</span>
                   </div>
                 </div>
