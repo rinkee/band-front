@@ -644,7 +644,7 @@ export default function PostsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4">
             {posts.map((post) => (
               <PostCard
                 key={post.post_key}
@@ -899,9 +899,9 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       {/* 상품 정보 섹션 - KREAM 스타일 */}
       <div className="p-3 space-y-1">
         {/* 브랜드명/작성일 */}
-        <p className="text-xs text-gray-400 font-medium">
+        {/* <p className="text-xs text-gray-400 font-medium">
           {formatDate(post.posted_at)}
-        </p>
+        </p> */}
         
         {/* 수령일 및 상품명 */}
         {post.products && Array.isArray(post.products) && post.products.length > 0 ? (
@@ -917,10 +917,10 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 <>
                   {deliveryDate && (
                     <p className="text-xs text-blue-600 font-medium">
-                      수령일: {deliveryDate}
+                      {deliveryDate} 수령
                     </p>
                   )}
-                  <h3 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
+                  <h3 className="text-md font-medium text-gray-900 line-clamp-2 leading-tight">
                     {productName}
                     {post.products.length > 1 && (
                       <span className="text-gray-500 ml-1">
@@ -941,14 +941,15 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
               
               return (
                 <>
-                  {deliveryDate && (
-                    <p className="text-xs text-blue-600 font-medium">
-                      수령일: {deliveryDate}
-                    </p>
-                  )}
-                  <h3 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
+                  
+                  <h3 className="text-lg font-medium text-gray-900 line-clamp-2 leading-tight">
                     {productName}
                   </h3>
+                  {deliveryDate && (
+                    <p className="text-sm text-gray-600 font-medium">
+                      {deliveryDate} 수령
+                    </p>
+                  )}
                 </>
               );
             })()}
