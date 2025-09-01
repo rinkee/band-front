@@ -243,12 +243,21 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     }
   }, [bandNumber, pageType, startUpdate, completeUpdate, updateProgress, refreshSWRCache]);
 
+  // interval 참조를 컴포넌트 레벨에 저장
+  const intervalRef = useRef(null);
+  
   // 백그라운드 처리 - Realtime으로 완료 감지
   const simulateProgress = (progressId, totalItems) => {
     console.log('🔄 백그라운드 처리 시작:', { progressId, totalItems });
     
+    // 이전 interval이 있으면 정리
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      console.log('🧹 이전 interval 정리');
+    }
+    
     // 주기적으로 SWR 캐시만 갱신 (DB 업데이트는 Edge Function이 처리)
-    const intervalId = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       const userId = getUserIdFromSession();
       if (userId) {
         refreshSWRCache(userId);
@@ -256,14 +265,16 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
       }
     }, 10000); // 10초마다 캐시 갱신
     
-    // 인터벌 정리를 위한 참조 저장 (Realtime으로 완료 감지 시 정리)
-    // Edge Function이 완료하면 Realtime 이벤트로 자동 완료 처리됨
-    
     // 5분 후 안전장치 (비정상 종료 방지)
     setTimeout(() => {
-      clearInterval(intervalId);
-      console.log('⏰ 5분 안전장치 작동 - 인터벌 정리');
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        console.log('⏰ 5분 안전장치 작동 - 인터벌 정리');
+      }
     }, 300000);
+    
+    return intervalRef.current; // interval ID 반환
   };
 
   // 응답 처리
@@ -273,18 +284,43 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     if (response.status === 200 || response.status === 207) {
       const processedCount = responseData.data?.length || 0;
 
-      // Edge Function이 완료되었으므로 Realtime으로 자동 처리됨
-      console.log('✅ Edge Function 응답 수신:', { processedCount, status: response.status });
+      console.log('✅ Edge Function 응답 수신:', { 
+        processedCount, 
+        status: response.status,
+        progressId,
+        timestamp: new Date().toISOString()
+      });
       
-      // 로컬 상태 업데이트만 수행 (DB는 Edge Function이 이미 처리함)
+      // 로컬 상태 업데이트 및 완료 처리
       try {
+        console.log('📊 상태 업데이트 시작:', { progressId, processedCount });
+        
         await updateProgress(progressId, {
           processed_posts: processedCount,
           status: 'completed'
         });
-        // completeUpdate 제거 - Realtime 이벤트로 처리
+        
+        // Edge Function 완료 시 명시적으로 completeUpdate 호출
+        // Realtime 이벤트가 늦게 도착하거나 실패할 경우를 대비
+        console.log('🎯 completeUpdate 호출 직전:', { progressId });
+        await completeUpdate(progressId, true);
+        console.log('✨ completeUpdate 완료:', { progressId });
+        
+        // interval 정리
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          console.log('🧹 업데이트 완료 - interval 정리');
+        }
+        
       } catch (error) {
-        console.error("로컬 상태 업데이트 실패:", error);
+        console.error("❌ 상태 업데이트 실패:", error);
+        // 에러 시에도 완료 처리 시도
+        try {
+          await completeUpdate(progressId, false, '상태 업데이트 실패');
+        } catch (completeError) {
+          console.error("❌ completeUpdate 실패:", completeError);
+        }
       }
 
       if (responseData.errorSummary) {
@@ -327,6 +363,17 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     }
     return () => clearTimeout(timer);
   }, [successMessage, isBackgroundProcessing]);
+  
+  // 컴포넌트 언마운트 시 interval 정리
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        console.log('🧹 컴포넌트 언마운트 - interval 정리');
+      }
+    };
+  }, []);
 
   return (
     <div className="inline-block">

@@ -528,7 +528,12 @@ export const UpdateProgressProvider = ({ children }) => {
 
   // 업데이트 완료 (로컬 상태만 업데이트, DB는 Edge Function이 처리)
   const completeUpdate = async (progressId, success = true, errorMessage = null) => {
-    console.log('📍 completeUpdate 호출:', { progressId, success, errorMessage });
+    console.log('📍 completeUpdate 호출:', { 
+      progressId, 
+      success, 
+      errorMessage,
+      timestamp: new Date().toISOString()
+    });
     
     try {
       // Edge Function이 이미 execution_locks를 업데이트하므로 여기서는 제거
@@ -536,9 +541,18 @@ export const UpdateProgressProvider = ({ children }) => {
       
       // 로컬 상태 완료 업데이트
       setProgressStates(prev => {
+        console.log('🔍 현재 progressStates:', prev);
         const updated = { ...prev };
+        let foundAndUpdated = false;
+        
         for (const [pageType, state] of Object.entries(updated)) {
           if (state && state.id === progressId) {
+            console.log(`✅ ${pageType} 상태 완료 처리:`, {
+              progressId,
+              oldStatus: state.status,
+              newStatus: success ? 'completed' : 'failed'
+            });
+            
             updated[pageType] = {
               ...state,
               isRunning: false,
@@ -549,18 +563,27 @@ export const UpdateProgressProvider = ({ children }) => {
               updatedAt: new Date().toISOString(),
               errorMessage: success ? null : errorMessage
             };
+            
+            foundAndUpdated = true;
 
             // 완료된 작업은 3초 후 자동 정리
             setTimeout(() => {
+              console.log(`🧹 ${pageType} 상태 자동 정리 시작`);
               setProgressStates(prevStates => {
                 const cleanedStates = { ...prevStates };
                 delete cleanedStates[pageType];
+                console.log('🧹 정리 후 상태:', cleanedStates);
                 return cleanedStates;
               });
             }, 3000);
             break;
           }
         }
+        
+        if (!foundAndUpdated) {
+          console.warn('⚠️ progressId에 해당하는 상태를 찾을 수 없음:', progressId);
+        }
+        
         return updated;
       });
     } catch (error) {
