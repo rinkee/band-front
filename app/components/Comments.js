@@ -250,6 +250,7 @@ const CommentsList = ({
   excludedCustomers = [],
   savedComments = {},
   onEnableReprocess, // 재처리 활성화 콜백 추가
+  hideExcludedCustomers = false, // 제외 고객 숨김 상태 추가
 }) => {
   const commentsEndRef = useRef(null);
   
@@ -432,7 +433,24 @@ const CommentsList = ({
 
       {/* 댓글 목록 */}
       <div className="divide-y divide-gray-100">
-        {sortedComments.map((comment, currentIndex) => {
+        {sortedComments
+          .filter((comment) => {
+            // 제외 고객 숨김 설정이 true이고, 해당 댓글이 제외 고객인 경우 필터링
+            if (hideExcludedCustomers) {
+              const authorName = comment.author?.name;
+              const isExcludedCustomer = excludedCustomers.some(
+                (excluded) => {
+                  if (typeof excluded === 'string') {
+                    return excluded === authorName;
+                  }
+                  return excluded.name === authorName;
+                }
+              );
+              return !isExcludedCustomer; // 제외 고객이 아닌 댓글만 표시
+            }
+            return true; // 모든 댓글 표시
+          })
+          .map((comment, currentIndex) => {
           // 제외 고객 여부 확인
           const authorName = comment.author?.name;
           const isExcludedCustomer = excludedCustomers.some(
@@ -503,6 +521,7 @@ const CommentsModal = ({
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [savedComments, setSavedComments] = useState({});
+  const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
   const scrollContainerRef = useRef(null);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
@@ -749,7 +768,7 @@ const CommentsModal = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* 백드롭 */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        className="fixed inset-0 bg-gray-500 bg-opacity-40 transition-opacity"
         onClick={onClose}
       />
 
@@ -760,13 +779,68 @@ const CommentsModal = ({
           <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
             <div className="flex-1">
               {postTitle && (
-                <h2 className="text-xl font-bold text-gray-900 mb-1">
-                  {postTitle}
-                </h2>
+                <>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">
+                    {(() => {
+                      // 제목에서 수령일 제거
+                      const cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
+                      // 수령일 추출
+                      const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
+                      const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
+                      
+                      return (
+                        <div>
+                          {cleanTitle || '제목 없음'}
+                          {deliveryDate && (
+                            <div className="text-sm font-medium text-blue-600 mt-1">
+                              {deliveryDate} 수령
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </h2>
+                  {/* 작성일 표시 */}
+                  {post?.posted_at && (
+                    <p className="text-sm text-gray-500 mb-2">
+                      작성일: {new Date(post.posted_at).toLocaleDateString('ko-KR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        weekday: 'short'
+                      })}
+                    </p>
+                  )}
+                </>
               )}
-              <p className="text-sm text-gray-500">
-                총 {comments.length}개의 댓글
-              </p>
+              <div className="flex items-center gap-4 text-sm text-gray-600">
+                <span>총 {comments.length}개의 댓글</span>
+                {/* 주문 수 계산 및 표시 */}
+                <span>
+                  주문 {Object.values(savedComments).filter(comment => comment.isSaved).length}개
+                </span>
+              </div>
+            </div>
+            
+            {/* 제외 고객 숨김 토글 버튼 */}
+            <div className="flex items-center gap-3 mr-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    hideExcludedCustomers ? 'bg-blue-500' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                      hideExcludedCustomers ? 'translate-x-4' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="text-xs text-gray-600 whitespace-nowrap">
+                  제외고객 숨김
+                </span>
+              </div>
             </div>
             
             {/* 닫기 버튼 */}
@@ -886,6 +960,7 @@ const CommentsModal = ({
                   excludedCustomers={excludedCustomers}
                   savedComments={savedComments}
                   onEnableReprocess={onEnableReprocess}
+                  hideExcludedCustomers={hideExcludedCustomers}
                 />
               </div>
             </div>
