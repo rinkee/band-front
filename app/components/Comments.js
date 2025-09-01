@@ -563,15 +563,11 @@ const CommentsModal = ({
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
       );
       
-      console.log('상품 데이터 조회 시작:', postKey);
-      
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('post_key', postKey)
         .order('created_at', { ascending: true });
-      
-      console.log('상품 데이터 조회 결과:', { data, error });
       
       if (error) throw error;
       return data;
@@ -582,33 +578,20 @@ const CommentsModal = ({
     }
   );
 
-  // 디버깅을 위한 로그
-  useEffect(() => {
-    console.log('Products 상태:', { products, productsError, postKey });
-    if (products && products.length > 0) {
-      console.log('첫 번째 상품 데이터 구조:', products[0]);
-    }
-  }, [products, productsError, postKey]);
 
   // 제외고객 숨김 상태를 고려한 댓글 수 계산
   const visibleCommentsCount = useMemo(() => {
-    console.log('댓글 수 계산:', { 
-      comments: comments?.length, 
-      hideExcludedCustomers, 
-      excludedCustomers: excludedCustomers?.length 
-    });
-    
     if (!comments || comments.length === 0) return 0;
     
     if (hideExcludedCustomers && excludedCustomers && excludedCustomers.length > 0) {
-      // 제외고객이 숨김 상태일 때는 제외고객 댓글을 빼고 계산
+      // 현재 댓글 목록에서 제외고객인 사람만 필터링
       const filtered = comments.filter((comment) => {
+        // 제외고객 배열에서 현재 댓글 작성자가 있는지 확인
         const isExcludedCustomer = excludedCustomers.some(
           (customer) => customer.author_key === comment.author_key
         );
         return !isExcludedCustomer;
       });
-      console.log('필터링된 댓글 수:', filtered.length);
       return filtered.length;
     }
     
@@ -1002,15 +985,15 @@ const CommentsModal = ({
                           <div key={product.id || index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200">
                             <div className="flex-1">
                               <div className="text-sm font-medium text-gray-900">
-                                {product.product_name || product.name || '상품명 없음'}
+                                {product.products_data?.title || product.title || product.product_name || '상품명 없음'}
                               </div>
                               <div className="text-xs text-gray-500">
-                                ID: {product.id || product.product_id || 'ID 없음'}
+                                수량: {product.quantity || 1}{product.quantity_text || '개'}
                               </div>
                             </div>
                             <div className="text-sm font-bold text-blue-600">
-                              {product.product_price || product.price ? 
-                                `${Number(product.product_price || product.price).toLocaleString()}원` : 
+                              {product.products_data?.price || product.base_price || product.price ? 
+                                `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
                                 '가격 미정'}
                             </div>
                           </div>
