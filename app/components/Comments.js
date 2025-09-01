@@ -585,20 +585,31 @@ const CommentsModal = ({
   // 디버깅을 위한 로그
   useEffect(() => {
     console.log('Products 상태:', { products, productsError, postKey });
+    if (products && products.length > 0) {
+      console.log('첫 번째 상품 데이터 구조:', products[0]);
+    }
   }, [products, productsError, postKey]);
 
   // 제외고객 숨김 상태를 고려한 댓글 수 계산
   const visibleCommentsCount = useMemo(() => {
+    console.log('댓글 수 계산:', { 
+      comments: comments?.length, 
+      hideExcludedCustomers, 
+      excludedCustomers: excludedCustomers?.length 
+    });
+    
     if (!comments || comments.length === 0) return 0;
     
-    if (hideExcludedCustomers) {
+    if (hideExcludedCustomers && excludedCustomers && excludedCustomers.length > 0) {
       // 제외고객이 숨김 상태일 때는 제외고객 댓글을 빼고 계산
-      return comments.filter((comment) => {
+      const filtered = comments.filter((comment) => {
         const isExcludedCustomer = excludedCustomers.some(
           (customer) => customer.author_key === comment.author_key
         );
         return !isExcludedCustomer;
-      }).length;
+      });
+      console.log('필터링된 댓글 수:', filtered.length);
+      return filtered.length;
     }
     
     return comments.length;
@@ -874,13 +885,13 @@ const CommentsModal = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* 백드롭 */}
       <div
-        className="fixed inset-0 bg-gray-500 bg-opacity-20 transition-opacity"
+        className="fixed inset-0 bg-black bg-opacity-10 transition-opacity"
         onClick={onClose}
       />
 
       {/* 모달 컨텐츠 */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-6xl h-[90vh] bg-white bg-opacity-95 rounded-xl shadow-xl flex flex-col backdrop-blur-sm">
+        <div className="relative w-full max-w-6xl h-[90vh] bg-white bg-opacity-90 rounded-xl shadow-2xl flex flex-col backdrop-blur-md">
           {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
           <button
             onClick={onClose}
@@ -991,14 +1002,16 @@ const CommentsModal = ({
                           <div key={product.id || index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200">
                             <div className="flex-1">
                               <div className="text-sm font-medium text-gray-900">
-                                {product.name || '상품명 없음'}
+                                {product.product_name || product.name || '상품명 없음'}
                               </div>
                               <div className="text-xs text-gray-500">
-                                ID: {product.product_id || 'ID 없음'}
+                                ID: {product.id || product.product_id || 'ID 없음'}
                               </div>
                             </div>
                             <div className="text-sm font-bold text-blue-600">
-                              {product.price ? `${Number(product.price).toLocaleString()}원` : '가격 미정'}
+                              {product.product_price || product.price ? 
+                                `${Number(product.product_price || product.price).toLocaleString()}원` : 
+                                '가격 미정'}
                             </div>
                           </div>
                         ))
