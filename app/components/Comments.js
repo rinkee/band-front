@@ -583,25 +583,38 @@ const CommentsModal = ({
   const visibleCommentsCount = useMemo(() => {
     if (!comments || comments.length === 0) return 0;
     
-    if (hideExcludedCustomers) {
+    if (hideExcludedCustomers && excludedCustomers && excludedCustomers.length > 0) {
       // 현재 댓글 목록에서 제외 처리된 댓글 찾기
-      // excludedCustomers 배열에 있는 author_key를 가진 댓글들만 제외
-      const excludedAuthorKeys = new Set();
+      const excludedAuthorNames = new Set();
       
       // 현재 댓글 목록을 순회하면서 제외고객 찾기
       comments.forEach((comment) => {
+        const authorName = comment.author?.name;
+        if (!authorName) return;
+        
         // excludedCustomers 배열에 해당 작성자가 있는지 확인
-        const isExcluded = excludedCustomers?.some(
-          (customer) => customer.author_key === comment.author_key
+        const isExcluded = excludedCustomers.some(
+          (customer) => {
+            // customer가 문자열인 경우 직접 비교
+            if (typeof customer === 'string') {
+              return customer === authorName;
+            }
+            // customer가 객체인 경우 name 속성 비교
+            return customer.name === authorName || customer.author_name === authorName;
+          }
         );
+        
         if (isExcluded) {
-          excludedAuthorKeys.add(comment.author_key);
+          excludedAuthorNames.add(authorName);
         }
       });
       
       // 제외고객이 아닌 댓글만 카운트
       const visibleComments = comments.filter(
-        (comment) => !excludedAuthorKeys.has(comment.author_key)
+        (comment) => {
+          const authorName = comment.author?.name;
+          return authorName && !excludedAuthorNames.has(authorName);
+        }
       );
       
       return visibleComments.length;
@@ -614,16 +627,27 @@ const CommentsModal = ({
   const visibleOrdersCount = useMemo(() => {
     if (!savedComments || Object.keys(savedComments).length === 0) return 0;
     
-    if (hideExcludedCustomers && comments && comments.length > 0) {
+    if (hideExcludedCustomers && comments && comments.length > 0 && excludedCustomers && excludedCustomers.length > 0) {
       // 현재 댓글 목록에서 제외 처리된 작성자 찾기
-      const excludedAuthorKeys = new Set();
+      const excludedAuthorNames = new Set();
       
       comments.forEach((comment) => {
-        const isExcluded = excludedCustomers?.some(
-          (customer) => customer.author_key === comment.author_key
+        const authorName = comment.author?.name;
+        if (!authorName) return;
+        
+        const isExcluded = excludedCustomers.some(
+          (customer) => {
+            // customer가 문자열인 경우 직접 비교
+            if (typeof customer === 'string') {
+              return customer === authorName;
+            }
+            // customer가 객체인 경우 name 속성 비교
+            return customer.name === authorName || customer.author_name === authorName;
+          }
         );
+        
         if (isExcluded) {
-          excludedAuthorKeys.add(comment.author_key);
+          excludedAuthorNames.add(authorName);
         }
       });
       
@@ -636,8 +660,9 @@ const CommentsModal = ({
           const relatedComment = comments.find(c => c.comment_key === commentKey);
           if (!relatedComment) return true; // 댓글을 찾지 못하면 포함
           
+          const authorName = relatedComment.author?.name;
           // 제외고객이 아닌 경우만 포함
-          return !excludedAuthorKeys.has(relatedComment.author_key);
+          return authorName && !excludedAuthorNames.has(authorName);
         }).length;
     }
     
