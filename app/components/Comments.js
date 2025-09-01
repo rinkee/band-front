@@ -581,26 +581,30 @@ const CommentsModal = ({
 
   // 제외고객 숨김 상태를 고려한 댓글 수 계산
   const visibleCommentsCount = useMemo(() => {
-    // 디버깅용 로그
-    console.log('visibleCommentsCount 계산:', {
-      comments: comments?.length || 0,
-      hideExcludedCustomers,
-      excludedCustomersCount: excludedCustomers?.length || 0
-    });
-    
     if (!comments || comments.length === 0) return 0;
     
-    if (hideExcludedCustomers && excludedCustomers && excludedCustomers.length > 0) {
-      // 현재 댓글 목록에서 제외고객인 사람만 필터링
-      const filtered = comments.filter((comment) => {
-        // 제외고객 배열에서 현재 댓글 작성자가 있는지 확인
-        const isExcludedCustomer = excludedCustomers.some(
+    if (hideExcludedCustomers) {
+      // 현재 댓글 목록에서 제외 처리된 댓글 찾기
+      // excludedCustomers 배열에 있는 author_key를 가진 댓글들만 제외
+      const excludedAuthorKeys = new Set();
+      
+      // 현재 댓글 목록을 순회하면서 제외고객 찾기
+      comments.forEach((comment) => {
+        // excludedCustomers 배열에 해당 작성자가 있는지 확인
+        const isExcluded = excludedCustomers?.some(
           (customer) => customer.author_key === comment.author_key
         );
-        return !isExcludedCustomer;
+        if (isExcluded) {
+          excludedAuthorKeys.add(comment.author_key);
+        }
       });
-      console.log('필터링 후 댓글 수:', filtered.length);
-      return filtered.length;
+      
+      // 제외고객이 아닌 댓글만 카운트
+      const visibleComments = comments.filter(
+        (comment) => !excludedAuthorKeys.has(comment.author_key)
+      );
+      
+      return visibleComments.length;
     }
     
     return comments.length;
@@ -610,26 +614,35 @@ const CommentsModal = ({
   const visibleOrdersCount = useMemo(() => {
     if (!savedComments || Object.keys(savedComments).length === 0) return 0;
     
-    const savedOrdersCount = Object.values(savedComments).filter(comment => comment.isSaved).length;
-    
-    if (hideExcludedCustomers) {
-      // 제외고객이 숨김 상태일 때는 제외고객의 주문을 빼고 계산
+    if (hideExcludedCustomers && comments && comments.length > 0) {
+      // 현재 댓글 목록에서 제외 처리된 작성자 찾기
+      const excludedAuthorKeys = new Set();
+      
+      comments.forEach((comment) => {
+        const isExcluded = excludedCustomers?.some(
+          (customer) => customer.author_key === comment.author_key
+        );
+        if (isExcluded) {
+          excludedAuthorKeys.add(comment.author_key);
+        }
+      });
+      
+      // 제외고객이 아닌 사람의 주문만 카운트
       return Object.entries(savedComments)
         .filter(([commentKey, comment]) => {
           if (!comment.isSaved) return false;
           
-          // 해당 댓글의 author_key를 찾기
+          // 해당 댓글 찾기
           const relatedComment = comments.find(c => c.comment_key === commentKey);
           if (!relatedComment) return true; // 댓글을 찾지 못하면 포함
           
-          const isExcludedCustomer = excludedCustomers.some(
-            (customer) => customer.author_key === relatedComment.author_key
-          );
-          return !isExcludedCustomer;
+          // 제외고객이 아닌 경우만 포함
+          return !excludedAuthorKeys.has(relatedComment.author_key);
         }).length;
     }
     
-    return savedOrdersCount;
+    // 제외고객 숨김이 비활성화되어 있으면 모든 저장된 주문 카운트
+    return Object.values(savedComments).filter(comment => comment.isSaved).length;
   }, [savedComments, hideExcludedCustomers, excludedCustomers, comments]);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
@@ -649,10 +662,7 @@ const CommentsModal = ({
 
   // 댓글 가져오기 함수
   const fetchComments = async (isRefresh = false, useBackupToken = false) => {
-    if (!postKey || !bandKey || !accessToken) {
-      console.error('fetchComments 실행 불가 - 필수 정보 누락:', { postKey, bandKey, hasAccessToken: !!accessToken });
-      return;
-    }
+    if (!postKey || !bandKey || !accessToken) return;
 
     setLoading(true);
     setError(null);
@@ -691,11 +701,6 @@ const CommentsModal = ({
       }
 
       const apiResponse = await response.json();
-      console.log('댓글 API 응답:', { 
-        success: apiResponse.success, 
-        itemCount: apiResponse.data?.items?.length,
-        hasNext: !!apiResponse.data?.next_params 
-      });
 
       if (!apiResponse.success) {
         throw new Error(apiResponse.message || "댓글 조회에 실패했습니다");
@@ -704,7 +709,6 @@ const CommentsModal = ({
       const newComments = apiResponse.data?.items || [];
 
       if (isRefresh) {
-        console.log('댓글 새로고침 - 가져온 댓글 수:', newComments.length);
         setComments(newComments);
         // 댓글들의 DB 저장 상태 확인
         checkCommentsInDB(newComments);
