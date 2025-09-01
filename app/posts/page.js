@@ -903,24 +903,56 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           {formatDate(post.posted_at)}
         </p>
         
-        {/* 상품명 */}
+        {/* 수령일 및 상품명 */}
         {post.products && Array.isArray(post.products) && post.products.length > 0 ? (
-          <h3 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
-            {post.products.slice(0, 1).map((product, index) => (
-              <span key={product.product_id || index}>
-                {product.title || product.name}
-              </span>
-            ))}
-            {post.products.length > 1 && (
-              <span className="text-gray-500 ml-1">
-                외 {post.products.length - 1}개
-              </span>
-            )}
-          </h3>
+          <div className="space-y-1">
+            {/* 수령일 추출 */}
+            {(() => {
+              const productTitle = post.products[0]?.title || post.products[0]?.name || '';
+              const deliveryDateMatch = productTitle.match(/\[([^\]]+)\]/);
+              const deliveryDate = deliveryDateMatch ? deliveryDateMatch[1] : null;
+              const productName = deliveryDate ? productTitle.replace(/\[[^\]]+\]\s*/, '') : productTitle;
+              
+              return (
+                <>
+                  {deliveryDate && (
+                    <p className="text-xs text-blue-600 font-medium">
+                      수령일: {deliveryDate}
+                    </p>
+                  )}
+                  <h3 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
+                    {productName}
+                    {post.products.length > 1 && (
+                      <span className="text-gray-500 ml-1">
+                        외 {post.products.length - 1}개
+                      </span>
+                    )}
+                  </h3>
+                </>
+              );
+            })()}
+          </div>
         ) : post.title && (
-          <h3 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
-            {post.title}
-          </h3>
+          <div className="space-y-1">
+            {(() => {
+              const deliveryDateMatch = post.title.match(/\[([^\]]+)\]/);
+              const deliveryDate = deliveryDateMatch ? deliveryDateMatch[1] : null;
+              const productName = deliveryDate ? post.title.replace(/\[[^\]]+\]\s*/, '') : post.title;
+              
+              return (
+                <>
+                  {deliveryDate && (
+                    <p className="text-xs text-blue-600 font-medium">
+                      수령일: {deliveryDate}
+                    </p>
+                  )}
+                  <h3 className="text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
+                    {productName}
+                  </h3>
+                </>
+              );
+            })()}
+          </div>
         )}
 
         {/* 가격/댓글 정보 */}
