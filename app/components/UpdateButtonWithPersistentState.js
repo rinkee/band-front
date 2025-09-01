@@ -1,6 +1,6 @@
 // UpdateButtonWithPersistentState.js - 페이지간 상태 유지 버전
 "use client";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
 import { useUpdateProgress } from "../contexts/UpdateProgressContext";
