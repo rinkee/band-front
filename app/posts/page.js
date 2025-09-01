@@ -886,7 +886,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       {/* 수령일 */}
       {deliveryDate && (
         <div className="px-4 pt-4 pb-2">
-          <span className="text-sm text-blue-600 font-medium">{deliveryDate} 수령</span>
+          <span className="text-sm font-medium">{deliveryDate} 수령</span>
         </div>
       )}
 
@@ -929,11 +929,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
               }
             }}
           />
-          {imageUrls.length > 1 && (
-            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-              +{imageUrls.length - 1}
-            </div>
-          )}
+          
         </div>
       )}
 
@@ -972,19 +968,32 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             <span>작성: {formatDate(post.posted_at)}</span>
           </div>
           
-          {/* 처리 상태 */}
-          {post.comment_sync_status && (
-            <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-              post.comment_sync_status === 'success' ? 'bg-green-100 text-green-800' :
-              post.comment_sync_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-              post.comment_sync_status === 'failed' ? 'bg-red-100 text-red-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
-              {post.comment_sync_status === 'success' ? '완료' :
-               post.comment_sync_status === 'pending' ? '대기' :
-               post.comment_sync_status === 'failed' ? '실패' : '미처리'}
-            </div>
-          )}
+          {/* 처리 상태 및 주문보기 버튼 */}
+          <div className="flex items-center space-x-2">
+            {post.comment_sync_status && (
+              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                post.comment_sync_status === 'success' ? 'bg-green-100 text-green-800' :
+                post.comment_sync_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                post.comment_sync_status === 'failed' ? 'bg-red-100 text-red-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {post.comment_sync_status === 'success' ? '완료' :
+                 post.comment_sync_status === 'pending' ? '대기' :
+                 post.comment_sync_status === 'failed' ? '실패' : '미처리'}
+              </div>
+            )}
+            
+            {/* 주문보기 버튼 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation(); // 카드 클릭 이벤트 방지
+                onViewOrders(post.post_key);
+              }}
+              className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium hover:bg-blue-200 transition-colors"
+            >
+              주문보기
+            </button>
+          </div>
         </div>
       </div>
     </div>
