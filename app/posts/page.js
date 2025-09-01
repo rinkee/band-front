@@ -654,6 +654,7 @@ export default function PostsPage() {
                 onViewComments={handleViewComments}
                 onDeletePost={handleDeletePost}
                 onToggleReprocess={handleToggleReprocess}
+                onOpenBarcodeModal={handlePostClick}
               />
             ))}
           </div>
@@ -712,7 +713,7 @@ export default function PostsPage() {
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenBarcodeModal }) {
   // 사용자 친화적인 상태 표시
   const getStatusDisplay = (status) => {
     switch (status) {
@@ -914,7 +915,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <img
             src={mainImage}
             alt={cleanTitle || "게시물 이미지"}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover"
             onError={(e) => {
               e.target.style.display = 'none';
               const parent = e.target.parentElement;
@@ -974,8 +975,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         <button
           onClick={(e) => {
             e.stopPropagation(); // 카드 클릭 이벤트 방지
-            // 바코드 등록 모달 열기 로직 추가 필요
-            alert('바코드 등록 기능 준비 중');
+            onOpenBarcodeModal(post.post_id);
           }}
           className="flex flex-col items-center justify-center py-3 hover:bg-gray-50 transition-colors border-r border-gray-100"
         >
