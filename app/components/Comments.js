@@ -813,13 +813,6 @@ const CommentsModal = ({
                   )}
                 </>
               )}
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <span>총 {comments.length}개의 댓글</span>
-                {/* 주문 수 계산 및 표시 */}
-                <span>
-                  주문 {Object.values(savedComments).filter(comment => comment.isSaved).length}개
-                </span>
-              </div>
             </div>
             
             {/* 제외 고객 숨김 토글 버튼 */}
@@ -898,7 +891,13 @@ const CommentsModal = ({
             {/* 오른쪽: 댓글 목록 */}
             <div className="w-1/2 flex flex-col">
               <div className="p-4 bg-gray-25 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-700">댓글 목록</h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-sm font-medium text-gray-700">댓글 목록</h3>
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span>총 {comments.length}개의 댓글</span>
+                    <span>주문 {Object.values(savedComments).filter(comment => comment.isSaved).length}개</span>
+                  </div>
+                </div>
                 {/* 재처리 스위치 */}
                 {post && (
                   <div className="flex items-center gap-2">
@@ -938,7 +937,7 @@ const CommentsModal = ({
                         ? '상품아님' 
                         : post.comment_sync_status === 'pending' 
                         ? '재처리중' 
-                        : '재처리'
+                        : '누락 주문 재처리'
                       }
                     </span>
                   </div>
