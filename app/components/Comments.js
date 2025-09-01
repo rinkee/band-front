@@ -815,26 +815,6 @@ const CommentsModal = ({
               )}
             </div>
             
-            {/* 제외 고객 숨김 토글 버튼 */}
-            <div className="flex items-center gap-3 mr-4">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    hideExcludedCustomers ? 'bg-blue-500' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                      hideExcludedCustomers ? 'translate-x-4' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-                <span className="text-xs text-gray-600 whitespace-nowrap">
-                  제외고객 숨김
-                </span>
-              </div>
-            </div>
             
             {/* 닫기 버튼 */}
             <button
@@ -898,50 +878,71 @@ const CommentsModal = ({
                     <span>주문 {Object.values(savedComments).filter(comment => comment.isSaved).length}개</span>
                   </div>
                 </div>
-                {/* 재처리 스위치 */}
-                {post && (
+                <div className="flex items-center gap-4">
+                  {/* 제외 고객 숨김 토글 버튼 */}
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => {
-                        if (!post.is_product || !onToggleReprocess) return;
-                        const isCurrentlyPending = post.comment_sync_status === 'pending';
-                        onToggleReprocess(post, !isCurrentlyPending);
-                      }}
-                      disabled={!post.is_product || !onToggleReprocess}
+                      onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
                       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                        !post.is_product
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : post.comment_sync_status === 'pending'
-                          ? 'bg-amber-500'
-                          : 'bg-gray-200'
+                        hideExcludedCustomers ? 'bg-blue-500' : 'bg-gray-200'
                       }`}
                     >
                       <span
-                        className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
-                          !post.is_product
-                            ? 'bg-gray-300'
-                            : post.comment_sync_status === 'pending'
-                            ? 'translate-x-4 bg-white'
-                            : 'translate-x-1 bg-white'
+                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                          hideExcludedCustomers ? 'translate-x-4' : 'translate-x-1'
                         }`}
                       />
                     </button>
-                    <span className={`text-xs whitespace-nowrap ${
-                      !post.is_product
-                        ? 'text-gray-300'
-                        : post.comment_sync_status === 'pending'
-                        ? 'text-amber-600 font-medium'
-                        : 'text-gray-600'
-                    }`}>
-                      {!post.is_product 
-                        ? '상품아님' 
-                        : post.comment_sync_status === 'pending' 
-                        ? '재처리중' 
-                        : '누락 주문 재처리'
-                      }
+                    <span className="text-xs text-gray-600 whitespace-nowrap">
+                      제외고객 숨김
                     </span>
                   </div>
-                )}
+                  
+                  {/* 재처리 스위치 */}
+                  {post && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (!post.is_product || !onToggleReprocess) return;
+                          const isCurrentlyPending = post.comment_sync_status === 'pending';
+                          onToggleReprocess(post, !isCurrentlyPending);
+                        }}
+                        disabled={!post.is_product || !onToggleReprocess}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          !post.is_product
+                            ? 'bg-gray-100 cursor-not-allowed'
+                            : post.comment_sync_status === 'pending'
+                            ? 'bg-amber-500'
+                            : 'bg-gray-200'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
+                            !post.is_product
+                              ? 'bg-gray-300'
+                              : post.comment_sync_status === 'pending'
+                              ? 'translate-x-4 bg-white'
+                              : 'translate-x-1 bg-white'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-xs whitespace-nowrap ${
+                        !post.is_product
+                          ? 'text-gray-300'
+                          : post.comment_sync_status === 'pending'
+                          ? 'text-amber-600 font-medium'
+                          : 'text-gray-600'
+                      }`}>
+                        {!post.is_product 
+                          ? '상품아님' 
+                          : post.comment_sync_status === 'pending' 
+                          ? '재처리중' 
+                          : '누락 주문 재처리'
+                        }
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
               <div
                 ref={scrollContainerRef}
