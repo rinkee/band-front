@@ -5,6 +5,7 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { UserIcon } from "@heroicons/react/24/solid";
+import useSWR from "swr";
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -524,6 +525,34 @@ const CommentsModal = ({
   const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
   const scrollContainerRef = useRef(null);
 
+  // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
+  const { data: currentPost } = useSWR(
+    postKey ? `/api/posts/${postKey}` : null,
+    async (url) => {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('post_key', postKey)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    {
+      refreshInterval: 2000, // 2초마다 갱신
+      revalidateOnFocus: true
+    }
+  );
+
+  // post prop 대신 currentPost 사용 (fallback으로 post 사용)
+  const activePost = currentPost || post;
+
   // 스크롤 이벤트 핸들러 - 로직 수정
   const handleScroll = () => {
     if (!scrollContainerRef.current || !nextParams) return;
@@ -899,43 +928,43 @@ const CommentsModal = ({
                   </div>
                   
                   {/* 재처리 스위치 */}
-                  {post && (
+                  {activePost && (
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
-                          if (!post.is_product || !onToggleReprocess) return;
-                          const isCurrentlyPending = post.comment_sync_status === 'pending';
-                          onToggleReprocess(post, !isCurrentlyPending);
+                          if (!activePost.is_product || !onToggleReprocess) return;
+                          const isCurrentlyPending = activePost.comment_sync_status === 'pending';
+                          onToggleReprocess(activePost, !isCurrentlyPending);
                         }}
-                        disabled={!post.is_product || !onToggleReprocess}
+                        disabled={!activePost.is_product || !onToggleReprocess}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          !post.is_product
+                          !activePost.is_product
                             ? 'bg-gray-100 cursor-not-allowed'
-                            : post.comment_sync_status === 'pending'
+                            : activePost.comment_sync_status === 'pending'
                             ? 'bg-amber-500'
                             : 'bg-gray-200'
                         }`}
                       >
                         <span
                           className={`inline-block h-3 w-3 transform rounded-full transition-transform ${
-                            !post.is_product
+                            !activePost.is_product
                               ? 'bg-gray-300'
-                              : post.comment_sync_status === 'pending'
+                              : activePost.comment_sync_status === 'pending'
                               ? 'translate-x-4 bg-white'
                               : 'translate-x-1 bg-white'
                           }`}
                         />
                       </button>
                       <span className={`text-xs whitespace-nowrap ${
-                        !post.is_product
+                        !activePost.is_product
                           ? 'text-gray-300'
-                          : post.comment_sync_status === 'pending'
+                          : activePost.comment_sync_status === 'pending'
                           ? 'text-amber-600 font-medium'
                           : 'text-gray-600'
                       }`}>
-                        {!post.is_product 
+                        {!activePost.is_product 
                           ? '상품아님' 
-                          : post.comment_sync_status === 'pending' 
+                          : activePost.comment_sync_status === 'pending' 
                           ? '재처리중' 
                           : '누락 주문 재처리'
                         }
