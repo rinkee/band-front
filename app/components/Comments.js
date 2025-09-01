@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { UserIcon } from "@heroicons/react/24/solid";
 import useSWR from "swr";
+import supabase from '../lib/supabaseClient';
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -529,11 +530,7 @@ const CommentsModal = ({
   const { data: currentPost } = useSWR(
     postKey ? `/api/posts/${postKey}` : null,
     async (url) => {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
+      // supabase is already imported at the top
       
       const { data, error } = await supabase
         .from('posts')
@@ -557,11 +554,7 @@ const CommentsModal = ({
   const { data: products, error: productsError } = useSWR(
     postKey ? `products-${postKey}` : null,
     async () => {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
+      // supabase is already imported at the top
       
       const { data, error } = await supabase
         .from('products')
