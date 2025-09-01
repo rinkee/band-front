@@ -883,89 +883,90 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all duration-200 cursor-pointer group"
       onClick={() => onViewComments(post)}
     >
-      <div className="p-4 space-y-3">
-        {/* 수령일 */}
-        {deliveryDate && (
-          <div className="flex items-center space-x-1">
-            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className="text-sm text-blue-600 font-medium">{deliveryDate} 수령</span>
-          </div>
-        )}
+      {/* 수령일 */}
+      {deliveryDate && (
+        <div className="px-4 pt-4 pb-2">
+          <span className="text-sm text-blue-600 font-medium">{deliveryDate} 수령</span>
+        </div>
+      )}
 
-        {/* 타이틀 */}
+      {/* 타이틀 */}
+      <div className={`px-4 ${deliveryDate ? 'pb-2' : 'pt-4 pb-2'}`}>
         <h3 className="text-lg font-semibold text-gray-900 line-clamp-2 leading-tight">
           {cleanTitle || '제목 없음'}
         </h3>
+      </div>
 
-        {/* 내용 3줄까지 */}
-        {shortContent && (
+      {/* 내용 3줄까지 */}
+      {shortContent && (
+        <div className="px-4 pb-2">
           <div className="text-sm text-gray-600 line-clamp-3 leading-relaxed">
             {shortContent.split('\n').map((line, index) => (
               <div key={index}>{line}</div>
             ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* 이미지 섹션 */}
-        {hasImages && (
-          <div className="relative aspect-video bg-gray-50 overflow-hidden rounded-md">
-            <img
-              src={mainImage}
-              alt={cleanTitle || "게시물 이미지"}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                const parent = e.target.parentElement;
-                if (parent) {
-                  parent.innerHTML = `
-                    <div class="w-full h-full flex items-center justify-center bg-gray-50">
-                      <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  `;
-                }
-              }}
-            />
-            {imageUrls.length > 1 && (
-              <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                +{imageUrls.length - 1}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 추출된 상품 및 가격 리스트 */}
-        {post.products && Array.isArray(post.products) && post.products.length > 0 && (
-          <div className="border-t border-gray-100 pt-3 space-y-2">
-            <div className="flex items-center space-x-1">
-              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
-              <span className="text-sm font-medium text-green-600">추출된 상품 {post.products.length}개</span>
+      {/* 이미지 섹션 */}
+      {hasImages && (
+        <div className="relative aspect-video bg-gray-50 overflow-hidden">
+          <img
+            src={mainImage}
+            alt={cleanTitle || "게시물 이미지"}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              e.target.style.display = 'none';
+              const parent = e.target.parentElement;
+              if (parent) {
+                parent.innerHTML = `
+                  <div class="w-full h-full flex items-center justify-center bg-gray-50">
+                    <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                `;
+              }
+            }}
+          />
+          {imageUrls.length > 1 && (
+            <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+              +{imageUrls.length - 1}
             </div>
-            
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {post.products.map((product, index) => (
-                <div key={product.product_id || index} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
-                  <span className="flex-1 text-gray-800 line-clamp-1">
-                    {product.title || product.name || '상품명 없음'}
+          )}
+        </div>
+      )}
+
+      {/* 추출된 상품 및 가격 리스트 */}
+      {post.products && Array.isArray(post.products) && post.products.length > 0 && (
+        <div className="px-4 pt-3 pb-2">
+          <div className="flex items-center space-x-1 mb-2">
+            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            <span className="text-sm font-medium text-green-600">추출된 상품 {post.products.length}개</span>
+          </div>
+          
+          <div className="space-y-0.5 max-h-32 overflow-y-auto">
+            {post.products.map((product, index) => (
+              <div key={product.product_id || index} className="flex justify-between items-center text-sm">
+                <span className="flex-1 text-gray-800 line-clamp-1 pr-2">
+                  {product.title || product.name || '상품명 없음'}
+                </span>
+                {product.base_price && (
+                  <span className="text-black font-medium">
+                    {Number(product.base_price).toLocaleString()}원
                   </span>
-                  {product.base_price && (
-                    <span className="text-gray-900 font-medium ml-2">
-                      {Number(product.base_price).toLocaleString()}원
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* 댓글/주문 통계 */}
-        <div className="flex items-center justify-between pt-2 text-xs text-gray-500">
+      {/* 댓글/주문 통계 */}
+      <div className="px-4 pb-4 pt-2">
+        <div className="flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center space-x-3">
             <span>댓글 {post.comment_count || 0}개</span>
             <span>작성: {formatDate(post.posted_at)}</span>
