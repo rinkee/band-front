@@ -554,20 +554,24 @@ const CommentsModal = ({
   const activePost = currentPost || post;
 
   // 게시물의 추출된 상품 리스트 가져오기
-  const { data: products } = useSWR(
-    postKey ? `/api/products/${postKey}` : null,
-    async (url) => {
+  const { data: products, error: productsError } = useSWR(
+    postKey ? `products-${postKey}` : null,
+    async () => {
       const { createClient } = await import('@supabase/supabase-js');
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
       );
       
+      console.log('상품 데이터 조회 시작:', postKey);
+      
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('post_key', postKey)
         .order('created_at', { ascending: true });
+      
+      console.log('상품 데이터 조회 결과:', { data, error });
       
       if (error) throw error;
       return data;
@@ -577,6 +581,11 @@ const CommentsModal = ({
       refreshInterval: 0
     }
   );
+
+  // 디버깅을 위한 로그
+  useEffect(() => {
+    console.log('Products 상태:', { products, productsError, postKey });
+  }, [products, productsError, postKey]);
 
   // 제외고객 숨김 상태를 고려한 댓글 수 계산
   const visibleCommentsCount = useMemo(() => {
@@ -594,6 +603,32 @@ const CommentsModal = ({
     
     return comments.length;
   }, [comments, hideExcludedCustomers, excludedCustomers]);
+
+  // 제외고객 숨김 상태를 고려한 주문 수 계산
+  const visibleOrdersCount = useMemo(() => {
+    if (!savedComments || Object.keys(savedComments).length === 0) return 0;
+    
+    const savedOrdersCount = Object.values(savedComments).filter(comment => comment.isSaved).length;
+    
+    if (hideExcludedCustomers) {
+      // 제외고객이 숨김 상태일 때는 제외고객의 주문을 빼고 계산
+      return Object.entries(savedComments)
+        .filter(([commentKey, comment]) => {
+          if (!comment.isSaved) return false;
+          
+          // 해당 댓글의 author_key를 찾기
+          const relatedComment = comments.find(c => c.comment_key === commentKey);
+          if (!relatedComment) return true; // 댓글을 찾지 못하면 포함
+          
+          const isExcludedCustomer = excludedCustomers.some(
+            (customer) => customer.author_key === relatedComment.author_key
+          );
+          return !isExcludedCustomer;
+        }).length;
+    }
+    
+    return savedOrdersCount;
+  }, [savedComments, hideExcludedCustomers, excludedCustomers, comments]);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
   const handleScroll = () => {
@@ -845,7 +880,7 @@ const CommentsModal = ({
 
       {/* 모달 컨텐츠 */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-6xl h-[90vh] bg-white rounded-xl shadow-xl flex flex-col">
+        <div className="relative w-full max-w-6xl h-[90vh] bg-white bg-opacity-95 rounded-xl shadow-xl flex flex-col backdrop-blur-sm">
           {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
           <button
             onClick={onClose}
@@ -940,32 +975,41 @@ const CommentsModal = ({
                 </div>
 
                 {/* 추출된 상품 리스트 */}
-                {products && products.length > 0 && (
-                  <div className="border-t border-gray-200">
-                    <div className="p-4 bg-blue-50">
-                      <h4 className="text-sm font-medium text-gray-900 mb-3">
-                        추출된 상품 ({products.length}개)
-                      </h4>
-                      <div className="space-y-2">
-                        {products.map((product, index) => (
+                <div className="border-t border-gray-200">
+                  <div className="p-4 bg-blue-50">
+                    <h4 className="text-sm font-medium text-gray-900 mb-3">
+                      추출된 상품 ({products?.length || 0}개)
+                    </h4>
+                    {productsError && (
+                      <div className="text-red-500 text-xs mb-2">
+                        상품 로딩 오류: {productsError.message}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {products && products.length > 0 ? (
+                        products.map((product, index) => (
                           <div key={product.id || index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200">
                             <div className="flex-1">
                               <div className="text-sm font-medium text-gray-900">
-                                {product.name}
+                                {product.name || '상품명 없음'}
                               </div>
                               <div className="text-xs text-gray-500">
-                                ID: {product.product_id}
+                                ID: {product.product_id || 'ID 없음'}
                               </div>
                             </div>
                             <div className="text-sm font-bold text-blue-600">
                               {product.price ? `${Number(product.price).toLocaleString()}원` : '가격 미정'}
                             </div>
                           </div>
-                        ))}
-                      </div>
+                        ))
+                      ) : (
+                        <div className="text-gray-500 text-center py-4 text-sm">
+                          추출된 상품이 없습니다
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
@@ -976,7 +1020,7 @@ const CommentsModal = ({
                   <h3 className="text-sm font-medium text-gray-700">댓글 목록</h3>
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <span>총 {visibleCommentsCount}개의 댓글</span>
-                    <span>주문 {Object.values(savedComments).filter(comment => comment.isSaved).length}개</span>
+                    <span>주문 {visibleOrdersCount}개</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
