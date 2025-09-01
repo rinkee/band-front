@@ -581,6 +581,13 @@ const CommentsModal = ({
 
   // 제외고객 숨김 상태를 고려한 댓글 수 계산
   const visibleCommentsCount = useMemo(() => {
+    // 디버깅용 로그
+    console.log('visibleCommentsCount 계산:', {
+      comments: comments?.length || 0,
+      hideExcludedCustomers,
+      excludedCustomersCount: excludedCustomers?.length || 0
+    });
+    
     if (!comments || comments.length === 0) return 0;
     
     if (hideExcludedCustomers && excludedCustomers && excludedCustomers.length > 0) {
@@ -592,6 +599,7 @@ const CommentsModal = ({
         );
         return !isExcludedCustomer;
       });
+      console.log('필터링 후 댓글 수:', filtered.length);
       return filtered.length;
     }
     
@@ -641,7 +649,10 @@ const CommentsModal = ({
 
   // 댓글 가져오기 함수
   const fetchComments = async (isRefresh = false, useBackupToken = false) => {
-    if (!postKey || !bandKey || !accessToken) return;
+    if (!postKey || !bandKey || !accessToken) {
+      console.error('fetchComments 실행 불가 - 필수 정보 누락:', { postKey, bandKey, hasAccessToken: !!accessToken });
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -680,6 +691,11 @@ const CommentsModal = ({
       }
 
       const apiResponse = await response.json();
+      console.log('댓글 API 응답:', { 
+        success: apiResponse.success, 
+        itemCount: apiResponse.data?.items?.length,
+        hasNext: !!apiResponse.data?.next_params 
+      });
 
       if (!apiResponse.success) {
         throw new Error(apiResponse.message || "댓글 조회에 실패했습니다");
@@ -688,6 +704,7 @@ const CommentsModal = ({
       const newComments = apiResponse.data?.items || [];
 
       if (isRefresh) {
+        console.log('댓글 새로고침 - 가져온 댓글 수:', newComments.length);
         setComments(newComments);
         // 댓글들의 DB 저장 상태 확인
         checkCommentsInDB(newComments);
@@ -1015,8 +1032,8 @@ const CommentsModal = ({
                 <div className="flex items-center gap-4">
                   <h3 className="text-sm font-medium text-gray-700">댓글 목록</h3>
                   <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <span>총 {visibleCommentsCount}개의 댓글</span>
-                    <span>주문 {visibleOrdersCount}개</span>
+                    <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개의 댓글</span>
+                    <span>주문 {loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
