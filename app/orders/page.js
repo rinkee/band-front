@@ -495,8 +495,8 @@ export default function OrdersPage() {
   const orderStatusOptions = [
     { value: "all", label: "전체" },
     { value: "주문완료", label: "주문완료" },
+    { value: "주문완료+수령가능", label: "주문완료+수령가능" },
     { value: "수령완료", label: "수령완료" },
-    { value: "수령완료+수령가능", label: "수령완료+수령가능" },
     { value: "미수령", label: "미수령" },
     { value: "주문취소", label: "주문취소" },
     { value: "결제완료", label: "결제완료" },
@@ -571,9 +571,9 @@ export default function OrdersPage() {
       if (filterSelection === "all") {
         return undefined;
       }
-      // '수령완료+수령가능' 선택 시 수령완료 상태로 필터링
-      if (filterSelection === "수령완료+수령가능") {
-        return "수령완료";
+      // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
+      if (filterSelection === "주문완료+수령가능") {
+        return "주문완료";
       }
       // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
       return filterSelection;
@@ -587,8 +587,8 @@ export default function OrdersPage() {
       ) {
         return filterSelection;
       }
-      // '수령완료+수령가능' 선택 시 특별 플래그 전달
-      if (filterSelection === "수령완료+수령가능") {
+      // '주문완료+수령가능' 선택 시 특별 플래그 전달
+      if (filterSelection === "주문완료+수령가능") {
         return "수령가능";
       }
       // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)

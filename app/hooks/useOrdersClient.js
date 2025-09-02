@@ -22,7 +22,7 @@ const fetchOrders = async (key) => {
   
   let query;
   if (needsPickupDateFilter) {
-    // 수령가능 필터: orders와 products를 조인하여 pickup_date 확인
+    // 주문완료+수령가능 필터: orders와 products를 조인하여 pickup_date 확인
     query = supabase
       .from("orders")
       .select(`
@@ -65,7 +65,7 @@ const fetchOrders = async (key) => {
     ) {
       query = query.is("sub_status", null);
     } else if (filters.subStatus === "수령가능") {
-      // '수령완료+수령가능' 필터: pickup_date가 현재 날짜 이후인 주문들만
+      // '주문완료+수령가능' 필터: pickup_date가 현재 날짜 이후인 주문들만
       const today = new Date().toISOString().split('T')[0];
       if (needsPickupDateFilter) {
         query = query.not("products.pickup_date", "is", null)
@@ -199,7 +199,7 @@ const fetchOrders = async (key) => {
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
 
-  // 수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
+  // 주문완료+수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
   let processedData = data || [];
   if (needsPickupDateFilter && data) {
     processedData = data.map(order => ({
