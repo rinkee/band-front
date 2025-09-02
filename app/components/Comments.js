@@ -133,7 +133,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
           <img
             src={comment.author.profile_image_url}
             alt={comment.author?.name || "익명"}
-            className="w-10 h-10 rounded-full object-cover border border-gray-200"
+            className="w-10 h-10 rounded-full object-cover"
             onError={() => setImageError(true)}
           />
         ) : (
@@ -161,7 +161,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
               isDbDataLoading ? (
                 // DB 데이터 로딩 중
                 <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
-                  <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-3 h-3 bg-gray-400 rounded-full animate-spin"></div>
                 </span>
               ) : isSavedInDB ? (
                 orderStatus === "주문취소" ? (
@@ -204,7 +204,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             <img
               src={comment.photo.url}
               alt="댓글 이미지"
-              className="max-w-xs rounded-lg border border-gray-200"
+              className="max-w-xs rounded-lg"
               style={{
                 maxHeight: "200px",
                 width: "auto",
@@ -429,7 +429,7 @@ const CommentsList = ({
       {/* 누락 주문 발견 시 재처리 알림 - 모듈 형태 */}
       {hasMissedOrders && onEnableReprocess && (
         <div className="m-4 mb-0">
-          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-6 shadow-sm">
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl p-6 shadow-sm">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -467,7 +467,7 @@ const CommentsList = ({
           <button
             onClick={onLoadMore}
             disabled={loadMoreLoading}
-            className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 hover:from-blue-100 hover:to-indigo-100 disabled:from-gray-50 disabled:to-gray-50 disabled:border-gray-200 transition-all duration-200 shadow-sm"
+            className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 hover:from-blue-100 hover:to-indigo-100 disabled:from-gray-50 disabled:to-gray-50 transition-all duration-200 shadow-sm"
           >
             <div className="flex items-center justify-center gap-3">
               {loadMoreLoading ? (
@@ -966,7 +966,7 @@ const CommentsModal = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* 백드롭 - 투명하게 */}
       <div
-        className="fixed inset-0 transition-opacity"
+        className="fixed inset-0 transition-opacity bg-gray-900/60"
         onClick={onClose}
       />
 
@@ -976,19 +976,19 @@ const CommentsModal = ({
           {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
           <button
             onClick={onClose}
-            className="absolute top-6 right-6 z-20 p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
+            className="absolute top-3 right-3 z-20 p-3 text-gray-100 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
           >
-            <XMarkIcon className="w-6 h-6" />
+            <XMarkIcon className="w-8 h-8" />
           </button>
           
           {/* 상단 헤더 - 모던한 그라데이션 배경 */}
-          <div className="px-8 py-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-b border-gray-100">
+          <div className="px-8 py-4 bg-gray-700">
             <div className="pr-16"> {/* 닫기 버튼 공간 확보 */}
               {postTitle && (
                 <>
                   <div className="flex items-start gap-4">
                     <div className="flex-1">
-                      <h2 className="text-2xl font-bold text-gray-900 mb-2 leading-tight">
+                      <h2 className="text-2xl font-bold text-white mb-2 leading-tight">
                         {(() => {
                           // 제목에서 수령일 제거
                           const cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
@@ -1089,11 +1089,11 @@ const CommentsModal = ({
           </div>
 
           {/* 메인 컨텐츠 영역 - 가로 3분할 레이아웃 */}
-          <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-50">
+          <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-200">
             {/* 게시물 내용 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col h-full">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
+              <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
+                <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
                     <h3 className="font-semibold text-gray-900">게시물 내용</h3>
                     <p className="text-sm text-gray-500">원본 텍스트</p>
@@ -1103,7 +1103,7 @@ const CommentsModal = ({
                   {post && onDeletePost && (
                     <button
                       onClick={() => onDeletePost(post)}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 hover:border-red-300"
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="게시물 삭제"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1137,9 +1137,9 @@ const CommentsModal = ({
 
             {/* 댓글 목록 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-2xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-300">
+                <div className="px-4 py-3  bg-gray-100">
                   <div>
                     <h3 className="font-semibold text-gray-900">댓글 목록</h3>
                     <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -1174,7 +1174,7 @@ const CommentsModal = ({
               {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
               <div className="mt-4 flex items-center gap-3 flex-wrap">
                 {/* 제외 고객 숨김 모듈 */}
-                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-gray-200">
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
                   <button
                     onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
                     className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
@@ -1192,7 +1192,7 @@ const CommentsModal = ({
                 
                 {/* 누락 주문 재처리 모듈 */}
                 {activePost && (
-                  <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-gray-200">
+                  <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
                     <button
                       onClick={() => {
                         if (!activePost.is_product || !onToggleReprocess) return;
@@ -1239,8 +1239,8 @@ const CommentsModal = ({
 
             {/* 추출된 상품 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex-1 min-h-0">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="bg-white rounded-2xl overflow-hidden flex-1 min-h-0">
+                <div className="px-4 py-3  bg-gray-100">
                   <div>
                     <h3 className="font-semibold text-gray-900">추출된 상품</h3>
                     <p className="text-sm text-gray-500">{products?.length || 0}개의 상품</p>
@@ -1249,7 +1249,7 @@ const CommentsModal = ({
                 
                 <div className="flex-1 overflow-y-auto p-4">
                   {productsError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+                    <div className="p-3 bg-red-50 rounded-lg mb-3">
                       <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
                       <p className="text-red-500 text-sm mt-1">{productsError.message}</p>
                     </div>
@@ -1258,7 +1258,7 @@ const CommentsModal = ({
                   <div className="space-y-3">
                     {products && products.length > 0 ? (
                       products.map((product, index) => (
-                        <div key={product.id || index} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                        <div key={product.id || index} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
                               <h4 className="font-medium text-gray-900 mb-2 leading-tight text-sm">
