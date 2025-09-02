@@ -2498,7 +2498,7 @@ export default function OrdersPage() {
                       />
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-48 bg-gray-50">
-                      <div className="flex items-center justify-center gap-4">
+                      <div className="flex items-center justify-center gap-4 h-full">
                         <button
                           onClick={() => handleSortChange("product_name")} // 상품명 정렬
                           className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
