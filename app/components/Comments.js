@@ -220,7 +220,13 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
                 <div key={index} className="text-sm">
-                  <span className="font-medium">{order.product_name || '상품'}</span>
+                  <span className="font-medium">
+                    {(() => {
+                      const productName = order.product_name || '상품';
+                      // 날짜 패턴 제거: [9월3일], [1월15일] 등
+                      return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
+                    })()}
+                  </span>
                   {order.quantity && (
                     <span className="ml-1">× {order.quantity}</span>
                   )}
