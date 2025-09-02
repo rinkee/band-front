@@ -364,7 +364,14 @@ export default function OrdersPage() {
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
-  const [showPickupAvailableOnly, setShowPickupAvailableOnly] = useState(false); // 수령가능만 보기 상태
+  // 수령가능만 보기 상태 - localStorage에서 복원
+  const [showPickupAvailableOnly, setShowPickupAvailableOnly] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('showPickupAvailableOnly');
+      return savedState === 'true';
+    }
+    return false;
+  });
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -1466,6 +1473,10 @@ export default function OrdersPage() {
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
     setShowPickupAvailableOnly(false); // 수령가능만 보기 초기화
+    // localStorage에서 수령가능만 보기 상태 삭제
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('showPickupAvailableOnly');
+    }
     setFilterDateRange("30days"); // 기본 날짜로 복귀
     setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
@@ -1507,6 +1518,11 @@ export default function OrdersPage() {
   const handlePickupAvailableToggle = () => {
     const newToggleState = !showPickupAvailableOnly;
     setShowPickupAvailableOnly(newToggleState);
+    
+    // localStorage에 상태 저장
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('showPickupAvailableOnly', newToggleState.toString());
+    }
     
     if (newToggleState) {
       // 수령가능만 보기가 활성화되면 주문완료로 설정하고 수령가능 필터 추가
