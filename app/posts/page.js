@@ -644,7 +644,7 @@ export default function PostsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-4">
             {posts.map((post) => (
               <PostCard
                 key={post.post_key}
@@ -886,7 +886,18 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
             <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
-              <div className="w-full h-full bg-blue-500 flex items-center justify-center">
+              {(post.profile_image || post.author_profile) ? (
+                <img 
+                  src={post.profile_image || post.author_profile} 
+                  alt={`${post.author_name || '익명'} 프로필`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextElementSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div className="w-full h-full bg-blue-500 flex items-center justify-center" style={{ display: (post.profile_image || post.author_profile) ? 'none' : 'flex' }}>
                 <span className="text-white font-medium text-sm">
                   {post.author_name ? post.author_name.charAt(0) : '익'}
                 </span>
