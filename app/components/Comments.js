@@ -1260,20 +1260,31 @@ const CommentsModal = ({
                     {products && products.length > 0 ? (
                       products.map((product, index) => (
                         <div key={product.id || index} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
-                          <div className="flex items-start justify-between">
+                          <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
                               <h4 className="font-medium text-gray-900 mb-2 leading-tight text-sm">
-                                {product.products_data?.title || product.title || product.product_name || '상품명 없음'}
+                                {(() => {
+                                  const productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
+                                  // 날짜 패턴 제거: [9월3일], [1월15일] 등
+                                  return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
+                                })()}
                               </h4>
                               <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-                                  수량 {product.quantity || 1}{product.quantity_text || '개'}
-                                </span>
                                 <span className="font-bold text-green-600 text-sm">
                                   {product.products_data?.price || product.base_price || product.price ? 
                                     `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
                                     '가격 미정'}
                                 </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-center ml-4">
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-gray-900">
+                                  {product.quantity || 1}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {product.quantity_text || '개'}
+                                </div>
                               </div>
                             </div>
                           </div>
