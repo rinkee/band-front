@@ -364,6 +364,7 @@ export default function OrdersPage() {
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
+  const [showPickupAvailableOnly, setShowPickupAvailableOnly] = useState(false); // 수령가능만 보기 상태
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -505,6 +506,10 @@ export default function OrdersPage() {
         return filterSelection;
       })(),
       subStatus: (() => {
+        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
+        if (showPickupAvailableOnly) {
+          return "수령가능";
+        }
         // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
         if (
           filterSelection === "확인필요" ||
@@ -596,6 +601,10 @@ export default function OrdersPage() {
         return filterSelection;
       })(),
       subStatus: (() => {
+        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
+        if (showPickupAvailableOnly) {
+          return "수령가능";
+        }
         if (
           filterSelection === "확인필요" ||
           filterSelection === "미수령" ||
@@ -1456,6 +1465,7 @@ export default function OrdersPage() {
     setExactCustomerFilter(null);
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
+    setShowPickupAvailableOnly(false); // 수령가능만 보기 초기화
     setFilterDateRange("30days"); // 기본 날짜로 복귀
     setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
@@ -1489,6 +1499,20 @@ export default function OrdersPage() {
   // 필터 변경 핸들러 (선택된 값을 filterSelection state에 저장)
   const handleFilterChange = (selectedValue) => {
     setFilterSelection(selectedValue); // 사용자가 선택한 값을 그대로 저장
+    setCurrentPage(1);
+    setSelectedOrderIds([]);
+  };
+
+  // 수령가능만 보기 토글 핸들러
+  const handlePickupAvailableToggle = () => {
+    const newToggleState = !showPickupAvailableOnly;
+    setShowPickupAvailableOnly(newToggleState);
+    
+    if (newToggleState) {
+      // 수령가능만 보기가 활성화되면 주문완료로 설정하고 수령가능 필터 추가
+      setFilterSelection("주문완료");
+    }
+    
     setCurrentPage(1);
     setSelectedOrderIds([]);
   };
@@ -2159,6 +2183,43 @@ export default function OrdersPage() {
                         );
                       })}
                     </div>
+                  )}
+                </div>
+
+                {/* 수령가능만 보기 스위치 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-sm font-medium text-gray-700">
+                      수령가능만 보기
+                    </span>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={showPickupAvailableOnly}
+                        onChange={handlePickupAvailableToggle}
+                        className="sr-only"
+                      />
+                      <div
+                        className={`w-11 h-6 rounded-full transition-colors duration-200 ease-in-out ${
+                          showPickupAvailableOnly
+                            ? "bg-blue-600"
+                            : "bg-gray-200"
+                        }`}
+                      >
+                        <div
+                          className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
+                            showPickupAvailableOnly
+                              ? "translate-x-5"
+                              : "translate-x-0.5"
+                          } mt-0.5`}
+                        />
+                      </div>
+                    </div>
+                  </label>
+                  {showPickupAvailableOnly && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      주문완료 상태의 수령가능한 주문만 표시됩니다.
+                    </p>
                   )}
                 </div>
               </div>

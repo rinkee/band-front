@@ -914,7 +914,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           </div>
           {/* 수령일 표시 */}
           {deliveryDate && (
-            <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded">
+            <div className="text-xs text-gray-600 font-medium bg-blue-50 px-2 py-1 rounded">
               {(() => {
                 // 날짜 파싱 및 요일 표시
                 const parseKoreanDate = (dateStr) => {
@@ -929,7 +929,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                     const days = ['일', '월', '화', '수', '목', '금', '토'];
                     const dayName = days[date.getDay()];
                     
-                    return `${month}월${day}일 ${dayName}요일`;
+                    return `${month}월${day}일 ${dayName}`;
                   }
                   return dateStr;
                 };
