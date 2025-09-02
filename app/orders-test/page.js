@@ -2508,8 +2508,8 @@ export default function OrdersPage() {
                         </button>
                         
                         {/* 수령가능만 보기 스위치 */}
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500 whitespace-nowrap">수령가능만</span>
+                        <label className="flex items-center gap-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-xs text-gray-500 whitespace-nowrap select-none">수령가능만</span>
                           <div className="relative">
                             <input
                               type="checkbox"
@@ -2518,7 +2518,7 @@ export default function OrdersPage() {
                               className="sr-only"
                             />
                             <div
-                              className={`w-8 h-4 rounded-full transition-colors duration-200 ease-in-out ${
+                              className={`w-8 h-4 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${
                                 showPickupAvailableOnly
                                   ? "bg-blue-600"
                                   : "bg-gray-300"
@@ -2533,7 +2533,7 @@ export default function OrdersPage() {
                               />
                             </div>
                           </div>
-                        </div>
+                        </label>
                       </div>
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
