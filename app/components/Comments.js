@@ -475,10 +475,10 @@ const CommentsList = ({
                 <>
                   <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
                     <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                     </svg>
                   </div>
-                  <span className="font-medium text-blue-700">더 많은 댓글 보기</span>
+                  <span className="font-medium text-blue-700">댓글 더보기</span>
                 </>
               )}
             </div>
@@ -1133,7 +1133,7 @@ const CommentsModal = ({
             <div className="w-1/3 flex flex-col">
               <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-300">
                   <div>
                     <h3 className="font-semibold text-gray-900">댓글 목록</h3>
                     <div className="flex items-center gap-3 text-sm text-gray-500">
