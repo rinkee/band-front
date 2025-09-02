@@ -909,9 +909,9 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         </div>
       )}
 
-      {/* 이미지 섹션 */}
-      {hasImages && (
-        <div className="relative aspect-video bg-gray-50 overflow-hidden">
+      {/* 이미지 섹션 - 이미지가 없어도 최소 높이 유지 */}
+      <div className="relative aspect-video bg-gray-50 overflow-hidden min-h-[200px]">
+        {hasImages ? (
           <img
             src={mainImage}
             alt={cleanTitle || "게시물 이미지"}
@@ -930,9 +930,14 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
               }
             }}
           />
-          
-        </div>
-      )}
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-100">
+            <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z" />
+            </svg>
+          </div>
+        )}
+      </div>
 
       {/* 추출된 상품 및 가격 리스트 */}
       {post.products && Array.isArray(post.products) && post.products.length > 0 && (
