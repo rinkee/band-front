@@ -1247,7 +1247,7 @@ const CommentsModal = ({
                   </div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-4 max-h-96 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
                   {productsError && (
                     <div className="p-3 bg-red-50 rounded-lg mb-3">
                       <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
