@@ -17,11 +17,26 @@ const fetchOrders = async (key) => {
   const sortBy = filters.sortBy || "ordered_at";
   const ascending = filters.sortOrder === "asc";
 
-  // orders_with_products 뷰 사용 (Edge Function과 동일)
-  let query = supabase
-    .from("orders_with_products")
-    .select("*", { count: "exact" })
-    .eq("user_id", userId);
+  // 수령가능 필터인 경우 products 테이블과 조인 필요
+  const needsPickupDateFilter = filters.subStatus === "수령가능";
+  
+  let query;
+  if (needsPickupDateFilter) {
+    // 수령가능 필터: orders와 products를 조인하여 pickup_date 확인
+    query = supabase
+      .from("orders")
+      .select(`
+        *,
+        products!inner(pickup_date, title, barcode, price_options, band_key)
+      `, { count: "exact" })
+      .eq("user_id", userId);
+  } else {
+    // 일반적인 경우: orders_with_products 뷰 사용 (Edge Function과 동일)
+    query = supabase
+      .from("orders_with_products")
+      .select("*", { count: "exact" })
+      .eq("user_id", userId);
+  }
 
   // 상태 필터링
   if (
@@ -49,6 +64,13 @@ const fetchOrders = async (key) => {
       filters.subStatus.toLowerCase() === "null"
     ) {
       query = query.is("sub_status", null);
+    } else if (filters.subStatus === "수령가능") {
+      // '수령완료+수령가능' 필터: pickup_date가 현재 날짜 이후인 주문들만
+      const today = new Date().toISOString().split('T')[0];
+      if (needsPickupDateFilter) {
+        query = query.not("products.pickup_date", "is", null)
+                     .gte("products.pickup_date", today);
+      }
     } else {
       const subStatusValues = filters.subStatus
         .split(",")
@@ -177,9 +199,22 @@ const fetchOrders = async (key) => {
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
 
+  // 수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
+  let processedData = data || [];
+  if (needsPickupDateFilter && data) {
+    processedData = data.map(order => ({
+      ...order,
+      product_title: order.products?.title,
+      product_barcode: order.products?.barcode,
+      product_price_options: order.products?.price_options,
+      product_pickup_date: order.products?.pickup_date,
+      band_key: order.products?.band_key || order.band_key
+    }));
+  }
+
   return {
     success: true,
-    data: data || [],
+    data: processedData,
     pagination: {
       totalItems,
       totalPages,
