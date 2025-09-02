@@ -2684,9 +2684,17 @@ export default function OrdersPage() {
                             ) : (
                               // 일반 표시 모드
                               <div 
-                                className="hover:text-orange-600 hover:underline cursor-pointer"
+                                className={`${
+                                  showPickupAvailableOnly 
+                                    ? "cursor-not-allowed text-gray-400" 
+                                    : "hover:text-orange-600 hover:underline cursor-pointer"
+                                }`}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (showPickupAvailableOnly) {
+                                    alert("수령가능만 보기 모드에서는 고객명만 검색 가능합니다.\n상품명으로 검색하려면 수령가능만 보기를 해제해주세요.");
+                                    return;
+                                  }
                                   handleCellClickToSearch(
                                     getProductNameById(order.product_id)
                                   );
