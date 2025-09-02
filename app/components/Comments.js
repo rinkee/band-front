@@ -965,10 +965,10 @@ const CommentsModal = ({
 
           {/* 메인 컨텐츠 영역 */}
           <div className="flex flex-1 overflow-hidden">
-            {/* 왼쪽: 게시물 내용 */}
+            {/* 왼쪽: 게시물 내용과 상품 */}
             <div className="w-1/2 border-r border-gray-200 flex flex-col">
               <div className="p-4 bg-gray-25 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-700">게시물 내용</h3>
+                <h3 className="text-sm font-medium text-gray-700">게시물 정보</h3>
                 {/* 삭제 버튼 */}
                 {post && onDeletePost && (
                   <button
@@ -993,26 +993,35 @@ const CommentsModal = ({
                   </button>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto">
-                {/* 게시물 내용 */}
-                <div className="p-4">
-                  {postContent ? (
-                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed">
-                      {decodeHtmlEntities(postContent)}
-                    </div>
-                  ) : (
-                    <div className="text-gray-400 text-center py-8">
-                      게시물 내용이 없습니다
-                    </div>
-                  )}
+              
+              {/* 게시물 내용과 상품을 가로로 배치 */}
+              <div className="flex-1 flex overflow-hidden">
+                {/* 게시물 내용 (왼쪽) */}
+                <div className="w-3/5 border-r border-gray-200 flex flex-col">
+                  <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                    <h4 className="text-xs font-medium text-gray-600">게시물 내용</h4>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {postContent ? (
+                      <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-sm">
+                        {decodeHtmlEntities(postContent)}
+                      </div>
+                    ) : (
+                      <div className="text-gray-400 text-center py-8 text-sm">
+                        게시물 내용이 없습니다
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* 추출된 상품 리스트 */}
-                <div className="border-t border-gray-200">
-                  <div className="p-4 bg-blue-50">
-                    <h4 className="text-sm font-medium text-gray-900 mb-3">
+                {/* 추출된 상품 (오른쪽) */}
+                <div className="w-2/5 flex flex-col">
+                  <div className="px-3 py-2 bg-blue-50 border-b border-gray-200">
+                    <h4 className="text-xs font-medium text-blue-700">
                       추출된 상품 ({products?.length || 0}개)
                     </h4>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3">
                     {productsError && (
                       <div className="text-red-500 text-xs mb-2">
                         상품 로딩 오류: {productsError.message}
@@ -1021,24 +1030,24 @@ const CommentsModal = ({
                     <div className="space-y-2">
                       {products && products.length > 0 ? (
                         products.map((product, index) => (
-                          <div key={product.id || index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-blue-200">
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-gray-900">
-                                {product.products_data?.title || product.title || product.product_name || '상품명 없음'}
-                              </div>
+                          <div key={product.id || index} className="p-2 bg-white rounded border border-blue-200">
+                            <div className="text-sm font-medium text-gray-900 leading-tight mb-1">
+                              {product.products_data?.title || product.title || product.product_name || '상품명 없음'}
+                            </div>
+                            <div className="flex justify-between items-center">
                               <div className="text-xs text-gray-500">
                                 수량: {product.quantity || 1}{product.quantity_text || '개'}
                               </div>
-                            </div>
-                            <div className="text-sm font-bold text-blue-600">
-                              {product.products_data?.price || product.base_price || product.price ? 
-                                `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
-                                '가격 미정'}
+                              <div className="text-xs font-bold text-blue-600">
+                                {product.products_data?.price || product.base_price || product.price ? 
+                                  `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
+                                  '가격 미정'}
+                              </div>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div className="text-gray-500 text-center py-4 text-sm">
+                        <div className="text-gray-500 text-center py-4 text-xs">
                           추출된 상품이 없습니다
                         </div>
                       )}
