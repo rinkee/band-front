@@ -2082,7 +2082,7 @@ export default function OrdersPage() {
                       <button 
                         type="button"
                         onClick={handlePickupAvailableToggle}
-                        className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
+                        className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
                           showPickupAvailableOnly
                             ? "bg-blue-600"
                             : "bg-gray-300"
