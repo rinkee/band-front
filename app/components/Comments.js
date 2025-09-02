@@ -215,11 +215,11 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-2 p-2 bg-gray-100 rounded-lg">
+          <div className="mt-2 mb-2 p-2 bg-gray-100 rounded-lg">
             {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="text-sm">
+                <div key={index} className="text-xs">
                   <span className="font-medium">
                     {(() => {
                       const productName = order.product_name || '상품';
@@ -231,7 +231,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                     <span className="ml-1">× {order.quantity}</span>
                   )}
                   {(order.total_amount || order.product_price) && (
-                    <span className="font-bold ml-2">
+                    <span className="font-medium ml-2">
                       {(() => {
                         const displayPrice = order.total_amount || order.product_price;
                         console.log(`🎯 화면 표시 가격:`, {
@@ -449,7 +449,7 @@ const CommentsList = ({
               </div>
               <button
                 onClick={onEnableReprocess}
-                className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-medium rounded-xl hover:bg-orange-600 shadow-lg hover:shadow-orange-200 transition-all duration-200 flex-shrink-0"
+                className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-medium rounded-2xl hover:bg-orange-600 shadow-lg hover:shadow-orange-200 transition-all duration-200 flex-shrink-0"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -964,9 +964,9 @@ const CommentsModal = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* 백드롭 */}
+      {/* 백드롭 - 투명하게 */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-10 transition-opacity"
+        className="fixed inset-0 transition-opacity"
         onClick={onClose}
       />
 
@@ -1092,7 +1092,7 @@ const CommentsModal = ({
           <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-50">
             {/* 게시물 내용 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col h-full">
+              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col h-full">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
                   <div>
                     <h3 className="font-semibold text-gray-900">게시물 내용</h3>
@@ -1137,7 +1137,7 @@ const CommentsModal = ({
 
             {/* 댓글 목록 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-white rounded-2xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-300">
                   <div>
@@ -1174,11 +1174,11 @@ const CommentsModal = ({
               {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
               <div className="mt-4 flex items-center gap-3 flex-wrap">
                 {/* 제외 고객 숨김 모듈 */}
-                <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200">
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-gray-200">
                   <button
                     onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
-                      hideExcludedCustomers ? 'bg-blue-500' : 'bg-gray-300'
+                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
+                      hideExcludedCustomers ? 'bg-red-500' : 'bg-gray-300'
                     }`}
                   >
                     <span
@@ -1187,12 +1187,12 @@ const CommentsModal = ({
                       }`}
                     />
                   </button>
-                  <span className="text-sm font-medium text-gray-700">제외고객 숨김</span>
+                  <span className="text-base font-medium text-gray-700">제외고객 숨김</span>
                 </div>
                 
                 {/* 누락 주문 재처리 모듈 */}
                 {activePost && (
-                  <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-gray-200">
                     <button
                       onClick={() => {
                         if (!activePost.is_product || !onToggleReprocess) return;
@@ -1200,7 +1200,7 @@ const CommentsModal = ({
                         onToggleReprocess(activePost, !isCurrentlyPending);
                       }}
                       disabled={!activePost.is_product || !onToggleReprocess}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
+                      className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 ${
                         !activePost.is_product
                           ? 'bg-gray-200 cursor-not-allowed'
                           : activePost.comment_sync_status === 'pending'
@@ -1218,7 +1218,7 @@ const CommentsModal = ({
                         }`}
                       />
                     </button>
-                    <span className={`text-sm font-medium ${
+                    <span className={`text-base font-medium ${
                       !activePost.is_product
                         ? 'text-gray-400'
                         : activePost.comment_sync_status === 'pending'
@@ -1239,7 +1239,7 @@ const CommentsModal = ({
 
             {/* 추출된 상품 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0">
+              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex-1 min-h-0">
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                   <div>
                     <h3 className="font-semibold text-gray-900">추출된 상품</h3>
@@ -1269,7 +1269,7 @@ const CommentsModal = ({
                                 })()}
                               </h4>
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-green-600 text-sm">
+                                <span className="font-bold text-gray-700 text-sm">
                                   {product.products_data?.price || product.base_price || product.price ? 
                                     `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
                                     '가격 미정'}
