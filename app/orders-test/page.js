@@ -2540,11 +2540,11 @@ export default function OrdersPage() {
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
                       <button
-                        onClick={() => handleSortChange("product_name")} // 상품명 정렬
+                        onClick={() => handleSortChange("product_title")} // 상품명 정렬
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isDataLoading}
                       >
-                        상품명 {getSortIcon("product_name")}
+                        상품명 {getSortIcon("product_title")}
                       </button>
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
