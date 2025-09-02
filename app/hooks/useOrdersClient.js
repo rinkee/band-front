@@ -236,21 +236,24 @@ const fetchOrders = async (key) => {
       if (!isPostKeySearch) {
         const normalizeForSearch = (str) => {
           let normalized = str.replace(/\([^)]*\)/g, ' ');
-          // 대괄호와 그 안의 내용은 유지 (날짜 정보)
+          // 대괄호와 그 안의 내용도 공백으로 치환 (검색 성공률 향상)
+          normalized = normalized.replace(/\[[^\]]*\]/g, ' ');
           normalized = normalized.replace(/\s+/g, ' ').trim();
           return normalized;
         };
         
         const normalizedTerm = normalizeForSearch(searchTerm);
-        // 괄호나 대괄호가 있으면 정규화, 아니면 원본 사용
-        const searchPattern = (searchTerm.includes('(') || searchTerm.includes(')') || 
-                             searchTerm.includes('[') || searchTerm.includes(']')) ? 
-                             normalizedTerm : searchTerm;
+        
+        // 원본 검색어와 정규화된 검색어 모두 시도
+        const searchPatterns = [searchTerm.trim()];
+        if (normalizedTerm !== searchTerm.trim()) {
+          searchPatterns.push(normalizedTerm);
+        }
         
         // 상품명이나 바코드에서 검색어가 포함된 항목만 필터링
         console.log('Client-side filtering:', {
           searchTerm,
-          searchPattern,
+          searchPatterns,
           originalDataLength: processedData.length
         });
         
@@ -260,22 +263,28 @@ const fetchOrders = async (key) => {
           const customerName = order.customer_name || '';
           const postKey = order.post_key || '';
           
-          const titleMatch = productTitle.toLowerCase().includes(searchPattern.toLowerCase());
-          const barcodeMatch = productBarcode.toLowerCase().includes(searchPattern.toLowerCase());
-          const customerMatch = customerName.toLowerCase().includes(searchPattern.toLowerCase());
-          const postMatch = postKey.toLowerCase().includes(searchPattern.toLowerCase());
-          
-          const matches = titleMatch || barcodeMatch || customerMatch || postMatch;
-          
-          if (titleMatch) {
-            console.log('Title match found:', {
-              productTitle,
-              searchPattern,
-              titleMatch
-            });
-          }
-          
-          return matches;
+          // 여러 검색 패턴 중 하나라도 매칭되면 통과
+          return searchPatterns.some(pattern => {
+            const titleMatch = productTitle.toLowerCase().includes(pattern.toLowerCase());
+            const barcodeMatch = productBarcode.toLowerCase().includes(pattern.toLowerCase());
+            const customerMatch = customerName.toLowerCase().includes(pattern.toLowerCase());
+            const postMatch = postKey.toLowerCase().includes(pattern.toLowerCase());
+            
+            const matches = titleMatch || barcodeMatch || customerMatch || postMatch;
+            
+            if (matches) {
+              console.log('Match found:', {
+                productTitle,
+                pattern,
+                titleMatch,
+                barcodeMatch,
+                customerMatch,
+                postMatch
+              });
+            }
+            
+            return matches;
+          });
         });
         
         console.log('Filtered data length:', processedData.length);
