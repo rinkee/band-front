@@ -20,6 +20,21 @@ const fetchOrders = async (key) => {
   // 수령가능 필터인 경우 products 테이블과 조인 필요
   const needsPickupDateFilter = filters.subStatus === "수령가능";
   
+  // Map sortBy to actual column names based on query mode
+  let actualSortBy = sortBy;
+  if (needsPickupDateFilter) {
+    // When joining with products table, map column names
+    if (sortBy === 'product_name' || sortBy === 'product_title') {
+      actualSortBy = 'products.title';
+    }
+    // Other columns remain the same as they're on the orders table
+  } else {
+    // For orders_with_products view, map column names
+    if (sortBy === 'product_name') {
+      actualSortBy = 'product_title';
+    }
+  }
+  
   let query;
   if (needsPickupDateFilter) {
     // 주문완료+수령가능 필터: orders와 products를 조인하여 pickup_date 확인
@@ -108,6 +123,10 @@ const fetchOrders = async (key) => {
       return normalized;
     };
 
+    // 상품 검색 컬럼명을 조인 모드에 따라 결정
+    const productTitleColumn = needsPickupDateFilter ? 'products.title' : 'product_title';
+    const productBarcodeColumn = needsPickupDateFilter ? 'products.barcode' : 'product_barcode';
+
     if (isPostKeySearch) {
       // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
@@ -120,12 +139,12 @@ const fetchOrders = async (key) => {
         // 괄호가 포함된 경우 정규화된 버전으로 검색
         if (searchTerm.includes('(') || searchTerm.includes(')')) {
           query = query.or(
-            `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%,product_barcode.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
+            `customer_name.ilike.%${normalizedTerm}%,${productTitleColumn}.ilike.%${normalizedTerm}%,${productBarcodeColumn}.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
           );
         } else {
           // 괄호가 없으면 원본 그대로 검색
           query = query.or(
-            `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
+            `customer_name.ilike.%${searchTerm}%,${productTitleColumn}.ilike.%${searchTerm}%,${productBarcodeColumn}.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
           );
         }
       } catch (error) {
@@ -188,7 +207,7 @@ const fetchOrders = async (key) => {
 
   // 정렬 및 페이지네이션
   query = query
-    .order(sortBy, { ascending })
+    .order(actualSortBy, { ascending })
     .range(startIndex, startIndex + limit - 1);
 
   const { data, error, count } = await query;
