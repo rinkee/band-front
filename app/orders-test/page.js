@@ -2054,6 +2054,8 @@ export default function OrdersPage() {
                 </div>
               </div>
 
+              
+
               {/* 주문 통계 섹션 */}
               <OrderStatsSidebar
                 stats={globalStatsData}
@@ -2063,6 +2065,44 @@ export default function OrdersPage() {
                 filterDateRange={filterDateRange}
                 currentFilter={filterSelection}
               />
+
+                {/* 수령가능만 보기 스위치 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-sm font-medium text-gray-700">
+                      수령가능만 보기
+                    </span>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={showPickupAvailableOnly}
+                        onChange={handlePickupAvailableToggle}
+                        className="sr-only"
+                      />
+                      <button 
+                        className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
+                          showPickupAvailableOnly
+                            ? "bg-blue-600"
+                            : "bg-gray-300"
+                        }`}
+                      >
+                        <span 
+                          className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                            showPickupAvailableOnly
+                              ? "translate-x-5"
+                              : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </label>
+                  {showPickupAvailableOnly && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      주문완료 상태의 수령가능한 주문만 표시됩니다.
+                    </p>
+                  )}
+                </div>
+
 
               {/* 필터 섹션 - 토글 */}
               <div className="space-y-3">
@@ -2153,43 +2193,7 @@ export default function OrdersPage() {
                   )}
                 </div>
 
-                {/* 수령가능만 보기 스위치 */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-sm font-medium text-gray-700">
-                      수령가능만 보기
-                    </span>
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={showPickupAvailableOnly}
-                        onChange={handlePickupAvailableToggle}
-                        className="sr-only"
-                      />
-                      <div
-                        className={`w-11 h-6 rounded-full transition-colors duration-200 ease-in-out ${
-                          showPickupAvailableOnly
-                            ? "bg-blue-600"
-                            : "bg-gray-200"
-                        }`}
-                      >
-                        <div
-                          className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
-                            showPickupAvailableOnly
-                              ? "translate-x-5"
-                              : "translate-x-0.5"
-                          } mt-0.5`}
-                        />
-                      </div>
-                    </div>
-                  </label>
-                  {showPickupAvailableOnly && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      주문완료 상태의 수령가능한 주문만 표시됩니다.
-                    </p>
-                  )}
-                </div>
-
+              
                 {/* 상태 필터 - 토글 */}
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
