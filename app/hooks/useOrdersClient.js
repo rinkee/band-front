@@ -123,33 +123,29 @@ const fetchOrders = async (key) => {
       return normalized;
     };
 
-    // 상품 검색 컬럼명을 조인 모드에 따라 결정
-    const productTitleColumn = needsPickupDateFilter ? 'products.title' : 'product_title';
-    const productBarcodeColumn = needsPickupDateFilter ? 'products.barcode' : 'product_barcode';
-
     if (isPostKeySearch) {
       // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
     } else {
-      // 일반 검색 - 특수문자 제거 후 검색
+      // 일반 검색 - 조인 모드와 뷰 모드 구분
       try {
-        // 원본 검색어와 정규화된 검색어 모두 시도
         const normalizedTerm = normalizeForSearch(searchTerm);
+        const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
         
-        // 괄호가 포함된 경우 정규화된 버전으로 검색
-        if (searchTerm.includes('(') || searchTerm.includes(')')) {
+        if (needsPickupDateFilter) {
+          // 조인 모드: 고객명과 post_key만 검색 (상품명 검색은 클라이언트에서 처리)
           query = query.or(
-            `customer_name.ilike.%${normalizedTerm}%,${productTitleColumn}.ilike.%${normalizedTerm}%,${productBarcodeColumn}.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
+            `customer_name.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
           );
         } else {
-          // 괄호가 없으면 원본 그대로 검색
+          // 뷰 모드: 기존 방식 유지
           query = query.or(
-            `customer_name.ilike.%${searchTerm}%,${productTitleColumn}.ilike.%${searchTerm}%,${productBarcodeColumn}.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
+            `customer_name.ilike.%${searchPattern}%,product_title.ilike.%${searchPattern}%,product_barcode.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
           );
         }
       } catch (error) {
         console.warn('Search filter error:', error);
-        // 에러 발생시 정규화된 검색어로 고객명만 필터링
+        // 에러 발생시 고객명만 필터링
         const normalizedTerm = normalizeForSearch(searchTerm);
         query = query.ilike("customer_name", `%${normalizedTerm}%`);
       }
@@ -237,6 +233,38 @@ const fetchOrders = async (key) => {
       product_pickup_date: order.products?.pickup_date,
       band_key: order.products?.band_key || order.band_key
     }));
+    
+    // 조인 모드에서 상품명/바코드 검색이 필요한 경우 클라이언트에서 필터링
+    if (filters.search && filters.search !== "undefined") {
+      const searchTerm = filters.search;
+      const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
+      
+      if (!isPostKeySearch) {
+        const normalizeForSearch = (str) => {
+          let normalized = str.replace(/\([^)]*\)/g, ' ');
+          normalized = normalized.replace(/\s+/g, ' ').trim();
+          return normalized;
+        };
+        
+        const normalizedTerm = normalizeForSearch(searchTerm);
+        const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
+        
+        // 상품명이나 바코드에서 검색어가 포함된 항목만 필터링
+        processedData = processedData.filter(order => {
+          const productTitle = order.product_title || '';
+          const productBarcode = order.product_barcode || '';
+          const customerName = order.customer_name || '';
+          const postKey = order.post_key || '';
+          
+          return (
+            productTitle.toLowerCase().includes(searchPattern.toLowerCase()) ||
+            productBarcode.toLowerCase().includes(searchPattern.toLowerCase()) ||
+            customerName.toLowerCase().includes(searchPattern.toLowerCase()) ||
+            postKey.toLowerCase().includes(searchPattern.toLowerCase())
+          );
+        });
+      }
+    }
   }
 
   return {
