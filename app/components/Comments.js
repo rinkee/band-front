@@ -995,6 +995,30 @@ const CommentsModal = ({
                       <div className="flex items-center gap-4 flex-wrap">
                         {/* 수령일 표시 */}
                         {(() => {
+                          // pickup_date 필드가 있으면 우선 사용
+                          if (activePost?.pickup_date) {
+                            try {
+                              const pickupDate = new Date(activePost.pickup_date);
+                              if (!isNaN(pickupDate.getTime())) {
+                                return (
+                                  <div className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    {pickupDate.toLocaleDateString('ko-KR', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      weekday: 'short'
+                                    })} 수령
+                                  </div>
+                                );
+                              }
+                            } catch (e) {
+                              console.log('pickup_date 파싱 실패:', e);
+                            }
+                          }
+                          
+                          // pickup_date가 없거나 파싱 실패 시 제목에서 추출
                           const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
                           const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
                           return deliveryDate && (
@@ -1004,10 +1028,23 @@ const CommentsModal = ({
                               </svg>
                               {(() => {
                                 try {
-                                  // 수령일을 파싱해서 요일 정보 추가
-                                  const date = new Date(deliveryDate.replace(/\s+/g, ' '));
-                                  if (!isNaN(date.getTime())) {
-                                    return date.toLocaleDateString('ko-KR', {
+                                  // 여러 날짜 형식을 시도해보기
+                                  let parsedDate;
+                                  
+                                  // "1월15일" 같은 형식을 "2024-01-15" 형식으로 변환 시도
+                                  const koreanDateMatch = deliveryDate.match(/(\d+)월\s*(\d+)일/);
+                                  if (koreanDateMatch) {
+                                    const currentYear = new Date().getFullYear();
+                                    const month = parseInt(koreanDateMatch[1]);
+                                    const day = parseInt(koreanDateMatch[2]);
+                                    parsedDate = new Date(currentYear, month - 1, day);
+                                  } else {
+                                    // 기본 파싱 시도
+                                    parsedDate = new Date(deliveryDate.replace(/\s+/g, ' '));
+                                  }
+                                  
+                                  if (!isNaN(parsedDate.getTime())) {
+                                    return parsedDate.toLocaleDateString('ko-KR', {
                                       month: 'short',
                                       day: 'numeric',
                                       weekday: 'short'
