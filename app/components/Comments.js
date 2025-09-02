@@ -1280,10 +1280,29 @@ const CommentsModal = ({
                             <div className="flex items-center justify-center ml-4">
                               <div className="text-center">
                                 <div className="text-lg font-bold text-gray-900">
-                                  {product.quantity || 1}
+                                  {(() => {
+                                    // 상품명 정제 함수
+                                    const cleanProductName = (name) => name.replace(/\[(\d+월\d+일)\]\s*/g, '').trim();
+                                    const targetProductName = cleanProductName(product.products_data?.title || product.title || product.product_name || '');
+                                    
+                                    // 해당 상품에 대한 총 주문 수량 계산
+                                    let totalQuantity = 0;
+                                    Object.values(savedComments).forEach(commentOrders => {
+                                      if (Array.isArray(commentOrders)) {
+                                        commentOrders.forEach(order => {
+                                          const orderProductName = cleanProductName(order.product_name || '');
+                                          if (orderProductName === targetProductName) {
+                                            totalQuantity += (order.quantity || 1);
+                                          }
+                                        });
+                                      }
+                                    });
+                                    
+                                    return totalQuantity;
+                                  })()}
                                 </div>
                                 <div className="text-xs text-gray-500">
-                                  {product.quantity_text || '개'}
+                                  총 주문
                                 </div>
                               </div>
                             </div>
