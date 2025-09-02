@@ -1149,80 +1149,13 @@ const CommentsModal = ({
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 className="font-semibold text-gray-900">댓글 목록</h3>
-                      <div className="flex items-center gap-3 text-sm text-gray-500">
-                        <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개</span>
-                        <span>•</span>
-                        <span>주문 {loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개</span>
-                      </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">댓글 목록</h3>
+                    <div className="flex items-center gap-3 text-sm text-gray-500">
+                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개</span>
+                      <span>•</span>
+                      <span>주문 {loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개</span>
                     </div>
-                  </div>
-                  
-                  {/* 컨트롤 모듈들 */}
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {/* 제외 고객 숨김 모듈 */}
-                    <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                      <button
-                        onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
-                          hideExcludedCustomers ? 'bg-blue-500' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
-                            hideExcludedCustomers ? 'translate-x-5' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                      <span className="text-xs font-medium text-gray-700">제외고객 숨김</span>
-                    </div>
-                    
-                    {/* 누락 주문 재처리 모듈 */}
-                    {activePost && (
-                      <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                        <button
-                          onClick={() => {
-                            if (!activePost.is_product || !onToggleReprocess) return;
-                            const isCurrentlyPending = activePost.comment_sync_status === 'pending';
-                            onToggleReprocess(activePost, !isCurrentlyPending);
-                          }}
-                          disabled={!activePost.is_product || !onToggleReprocess}
-                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
-                            !activePost.is_product
-                              ? 'bg-gray-200 cursor-not-allowed'
-                              : activePost.comment_sync_status === 'pending'
-                              ? 'bg-amber-500'
-                              : 'bg-gray-300'
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-3 w-3 transform rounded-full transition-transform duration-300 ${
-                              !activePost.is_product
-                                ? 'bg-gray-300'
-                                : activePost.comment_sync_status === 'pending'
-                                ? 'translate-x-5 bg-white'
-                                : 'translate-x-1 bg-white'
-                            }`}
-                          />
-                        </button>
-                        <span className={`text-xs font-medium ${
-                          !activePost.is_product
-                            ? 'text-gray-400'
-                            : activePost.comment_sync_status === 'pending'
-                            ? 'text-amber-600'
-                            : 'text-gray-700'
-                        }`}>
-                          {!activePost.is_product 
-                            ? '상품아님' 
-                            : activePost.comment_sync_status === 'pending' 
-                            ? '재처리중' 
-                            : '누락 주문 재처리'
-                          }
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
                 
@@ -1246,6 +1179,71 @@ const CommentsModal = ({
                     hideExcludedCustomers={hideExcludedCustomers}
                   />
                 </div>
+              </div>
+              
+              {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
+                {/* 제외 고객 숨김 모듈 */}
+                <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                  <button
+                    onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
+                      hideExcludedCustomers ? 'bg-blue-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        hideExcludedCustomers ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-sm font-medium text-gray-700">제외고객 숨김</span>
+                </div>
+                
+                {/* 누락 주문 재처리 모듈 */}
+                {activePost && (
+                  <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                    <button
+                      onClick={() => {
+                        if (!activePost.is_product || !onToggleReprocess) return;
+                        const isCurrentlyPending = activePost.comment_sync_status === 'pending';
+                        onToggleReprocess(activePost, !isCurrentlyPending);
+                      }}
+                      disabled={!activePost.is_product || !onToggleReprocess}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
+                        !activePost.is_product
+                          ? 'bg-gray-200 cursor-not-allowed'
+                          : activePost.comment_sync_status === 'pending'
+                          ? 'bg-amber-500'
+                          : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full transition-transform duration-300 ${
+                          !activePost.is_product
+                            ? 'bg-gray-300'
+                            : activePost.comment_sync_status === 'pending'
+                            ? 'translate-x-5 bg-white'
+                            : 'translate-x-1 bg-white'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-sm font-medium ${
+                      !activePost.is_product
+                        ? 'text-gray-400'
+                        : activePost.comment_sync_status === 'pending'
+                        ? 'text-amber-600'
+                        : 'text-gray-700'
+                    }`}>
+                      {!activePost.is_product 
+                        ? '상품아님' 
+                        : activePost.comment_sync_status === 'pending' 
+                        ? '재처리중' 
+                        : '누락 주문 재처리'
+                      }
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
