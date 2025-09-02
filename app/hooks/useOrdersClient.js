@@ -14,19 +14,11 @@ const fetchOrders = async (key) => {
 
   const limit = filters.limit || 30;
   const startIndex = (page - 1) * limit;
-  const rawSortBy = filters.sortBy || "ordered_at";
+  const sortBy = filters.sortBy || "ordered_at";
   const ascending = filters.sortOrder === "asc";
-  
+
   // 수령가능 필터인 경우 products 테이블과 조인 필요
   const needsPickupDateFilter = filters.subStatus === "수령가능";
-  
-  // sortBy 매핑: needsPickupDateFilter일 때는 다른 컬럼명 사용
-  const sortBy = (() => {
-    if (needsPickupDateFilter && rawSortBy === "product_title") {
-      return "products.title"; // 조인된 products 테이블의 title 컬럼
-    }
-    return rawSortBy;
-  })();
   
   let query;
   if (needsPickupDateFilter) {
@@ -110,24 +102,10 @@ const fetchOrders = async (key) => {
     const normalizeForSearch = (str) => {
       // 괄호와 그 안의 내용을 공백으로 치환
       let normalized = str.replace(/\([^)]*\)/g, ' ');
-      // 대괄호와 그 안의 내용도 공백으로 치환 (PostgreSQL 로직 파싱 에러 방지)
-      normalized = normalized.replace(/\[[^\]]*\]/g, ' ');
+      // 대괄호와 그 안의 내용도 유지 (날짜 정보)
       // 여러 공백을 하나로 정리
       normalized = normalized.replace(/\s+/g, ' ').trim();
       return normalized;
-    };
-    
-    // PostgreSQL 특수문자 이스케이프 함수
-    const escapeSpecialChars = (str) => {
-      // PostgreSQL에서 문제가 될 수 있는 특수문자들을 이스케이프
-      return str
-        .replace(/\\/g, '\\\\')  // 백슬래시
-        .replace(/'/g, "''")     // 작은따옴표
-        .replace(/"/g, '""')     // 큰따옴표
-        .replace(/%/g, '\\%')    // 퍼센트
-        .replace(/_/g, '\\_')    // 언더스코어
-        .replace(/\[/g, '\\[')   // 대괄호 시작
-        .replace(/\]/g, '\\]');  // 대괄호 끝
     };
 
     if (isPostKeySearch) {
@@ -139,29 +117,16 @@ const fetchOrders = async (key) => {
         // 원본 검색어와 정규화된 검색어 모두 시도
         const normalizedTerm = normalizeForSearch(searchTerm);
         
-        // 검색 필드를 조건부로 선택
-        const productSearchField = needsPickupDateFilter ? "products.title" : "product_title";
-        const barcodeSearchField = needsPickupDateFilter ? "products.barcode" : "product_barcode";
-        
-        // 검색어에서 특수문자 이스케이프 처리
-        const escapedSearchTerm = escapeSpecialChars(searchTerm);
-        const escapedNormalizedTerm = escapeSpecialChars(normalizedTerm);
-        
-        // 조인 쿼리의 경우 바코드 검색을 건너뛸 수 있음 (selected_barcode_option과 products.barcode는 다름)
-        const searchFields = needsPickupDateFilter ? 
-          [`customer_name.ilike.%${escapedSearchTerm}%`, `${productSearchField}.ilike.%${escapedSearchTerm}%`, `post_key.ilike.%${escapedSearchTerm}%`] :
-          [`customer_name.ilike.%${escapedSearchTerm}%`, `${productSearchField}.ilike.%${escapedSearchTerm}%`, `${barcodeSearchField}.ilike.%${escapedSearchTerm}%`, `post_key.ilike.%${escapedSearchTerm}%`];
-        
-        // 괄호나 대괄호가 포함된 경우 정규화된 버전으로 검색
-        if (searchTerm.includes('(') || searchTerm.includes(')') || searchTerm.includes('[') || searchTerm.includes(']')) {
-          const normalizedFields = needsPickupDateFilter ? 
-            [`customer_name.ilike.%${escapedNormalizedTerm}%`, `${productSearchField}.ilike.%${escapedNormalizedTerm}%`, `post_key.ilike.%${escapedNormalizedTerm}%`] :
-            [`customer_name.ilike.%${escapedNormalizedTerm}%`, `${productSearchField}.ilike.%${escapedNormalizedTerm}%`, `${barcodeSearchField}.ilike.%${escapedNormalizedTerm}%`, `post_key.ilike.%${escapedNormalizedTerm}%`];
-          
-          query = query.or(normalizedFields.join(','));
+        // 괄호가 포함된 경우 정규화된 버전으로 검색
+        if (searchTerm.includes('(') || searchTerm.includes(')')) {
+          query = query.or(
+            `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%,product_barcode.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
+          );
         } else {
-          // 특수문자가 없으면 원본 그대로 검색
-          query = query.or(searchFields.join(','));
+          // 괄호가 없으면 원본 그대로 검색
+          query = query.or(
+            `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
+          );
         }
       } catch (error) {
         console.warn('Search filter error:', error);
