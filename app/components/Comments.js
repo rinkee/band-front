@@ -964,7 +964,7 @@ const CommentsModal = ({
 
       {/* 모달 컨텐츠 */}
       <div className="flex min-h-full items-center justify-center p-6">
-        <div className="relative w-full max-w-7xl h-[92vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="relative w-full max-w-7xl h-[92vh] bg-white rounded-3xl flex flex-col overflow-hidden">
           {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
           <button
             onClick={onClose}
@@ -1084,7 +1084,7 @@ const CommentsModal = ({
           <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-50">
             {/* 게시물 내용 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col h-full">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
                   <div>
                     <h3 className="font-semibold text-gray-900">게시물 내용</h3>
@@ -1127,7 +1127,7 @@ const CommentsModal = ({
 
             {/* 추출된 상품 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 min-h-0">
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0">
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                   <div>
                     <h3 className="font-semibold text-gray-900">추출된 상품</h3>
@@ -1183,7 +1183,7 @@ const CommentsModal = ({
 
             {/* 댓글 목록 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                   <div>
@@ -1221,7 +1221,7 @@ const CommentsModal = ({
               {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
               <div className="mt-4 flex items-center gap-3 flex-wrap">
                 {/* 제외 고객 숨김 모듈 */}
-                <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200">
                   <button
                     onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 ${
@@ -1239,7 +1239,7 @@ const CommentsModal = ({
                 
                 {/* 누락 주문 재처리 모듈 */}
                 {activePost && (
-                  <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200">
                     <button
                       onClick={() => {
                         if (!activePost.is_product || !onToggleReprocess) return;
