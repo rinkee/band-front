@@ -1287,9 +1287,9 @@ const CommentsModal = ({
                                     
                                     // 해당 상품에 대한 총 주문 수량 계산
                                     let totalQuantity = 0;
-                                    Object.values(savedComments).forEach(commentOrders => {
-                                      if (Array.isArray(commentOrders)) {
-                                        commentOrders.forEach(order => {
+                                    Object.values(savedComments).forEach(commentData => {
+                                      if (commentData?.orders && Array.isArray(commentData.orders)) {
+                                        commentData.orders.forEach(order => {
                                           const orderProductName = cleanProductName(order.product_name || '');
                                           if (orderProductName === targetProductName) {
                                             totalQuantity += (order.quantity || 1);
