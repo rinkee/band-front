@@ -14,11 +14,19 @@ const fetchOrders = async (key) => {
 
   const limit = filters.limit || 30;
   const startIndex = (page - 1) * limit;
-  const sortBy = filters.sortBy || "ordered_at";
+  const rawSortBy = filters.sortBy || "ordered_at";
   const ascending = filters.sortOrder === "asc";
-
+  
   // 수령가능 필터인 경우 products 테이블과 조인 필요
   const needsPickupDateFilter = filters.subStatus === "수령가능";
+  
+  // sortBy 매핑: needsPickupDateFilter일 때는 다른 컬럼명 사용
+  const sortBy = (() => {
+    if (needsPickupDateFilter && rawSortBy === "product_title") {
+      return "products.title"; // 조인된 products 테이블의 title 컬럼
+    }
+    return rawSortBy;
+  })();
   
   let query;
   if (needsPickupDateFilter) {
