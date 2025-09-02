@@ -98,6 +98,14 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
     );
   }, [comment.author?.profile_image_url, imageError]);
 
+  // 비밀댓글인지 확인
+  const isPrivateComment = useMemo(() => {
+    return comment.content && 
+      (comment.content.includes("This comment is private.") || 
+       comment.content.includes("비밀댓글입니다") ||
+       comment.content === "This comment is private.");
+  }, [comment.content]);
+
   const formatTimeAgo = (timestamp) => {
     const now = Date.now();
     const diff = now - timestamp;
@@ -164,6 +172,11 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                   ✓ 주문 처리됨
                 </span>
               )
+            ) : isPrivateComment ? (
+              // 비밀댓글
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                🔒 비밀댓글
+              </span>
             ) : isMissed ? (
               // 누락된 주문 (이후 댓글이 DB에 있음)
               <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
@@ -263,7 +276,7 @@ const CommentsList = ({
   const hasMissedOrders = useMemo(() => {
     if (!comments || comments.length === 0 || isDbDataLoading) return false;
     
-    // 중복 제거된 댓글 목록 생성
+    // 중복 제거된 댓글 목록 생성 (비밀댓글 제외)
     const uniqueCommentKeys = new Set();
     const uniqueComments = [...comments]
       .sort((a, b) => a.created_at - b.created_at)
@@ -272,6 +285,18 @@ const CommentsList = ({
           return false;
         }
         uniqueCommentKeys.add(comment.comment_key);
+        
+        // 비밀댓글인지 확인 (content에 "This comment is private." 포함되어 있는 경우)
+        const isPrivateComment = comment.content && 
+          (comment.content.includes("This comment is private.") || 
+           comment.content.includes("비밀댓글입니다") ||
+           comment.content === "This comment is private.");
+        
+        // 비밀댓글은 제외
+        if (isPrivateComment) {
+          return false;
+        }
+        
         return true;
       });
     
