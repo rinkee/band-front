@@ -65,11 +65,11 @@ const fetchOrders = async (key) => {
     ) {
       query = query.is("sub_status", null);
     } else if (filters.subStatus === "수령가능") {
-      // '주문완료+수령가능' 필터: pickup_date가 현재 날짜 이후인 주문들만
+      // '주문완료+수령가능' 필터: pickup_date가 현재 날짜 이전이거나 오늘인 주문들만 (실제 수령 가능)
       const today = new Date().toISOString().split('T')[0];
       if (needsPickupDateFilter) {
         query = query.not("products.pickup_date", "is", null)
-                     .gte("products.pickup_date", today);
+                     .lte("products.pickup_date", today);
       }
     } else {
       const subStatusValues = filters.subStatus
