@@ -1258,7 +1258,7 @@ const CommentsModal = ({
                   <div className="space-y-3">
                     {products && products.length > 0 ? (
                       products.map((product, index) => (
-                        <div key={product.id || index} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div key={product.id || index} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
                               <h4 className="font-medium text-gray-900 mb-2 leading-tight text-sm">

@@ -880,37 +880,42 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   const shortContent = formatContent(content);
 
   return (
-    <div
-      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all duration-200 cursor-pointer group"
-      onClick={() => onViewComments(post)}
-    >
-      {/* 수령일 */}
-      {deliveryDate && (
-        <div className="px-4 pt-4 pb-2">
-          <span className="text-sm font-medium">{deliveryDate} 수령</span>
-        </div>
-      )}
-
-      {/* 타이틀 */}
-      <div className={`px-4 ${deliveryDate ? 'pb-2' : 'pt-4 pb-2'}`}>
-        <h3 className="text-lg font-semibold text-gray-900 line-clamp-2 leading-tight">
-          {cleanTitle || '제목 없음'}
-        </h3>
-      </div>
-
-      {/* 내용 3줄까지 */}
-      {shortContent && (
-        <div className="px-4 pb-2">
-          <div className="text-sm text-gray-600 line-clamp-3 leading-relaxed">
-            {shortContent.split('\n').map((line, index) => (
-              <div key={index}>{line}</div>
-            ))}
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col">
+      {/* 헤더 - 작성자 정보와 작성 시간 */}
+      <div className="p-4 flex-grow">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
+              <div className="w-full h-full bg-blue-500 flex items-center justify-center">
+                <span className="text-white font-medium text-sm">
+                  {post.author_name ? post.author_name.charAt(0) : '익'}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-base font-medium text-gray-900 truncate">
+                {post.author_name || '익명'}
+              </div>
+              <div className="text-sm text-gray-500">
+                {formatDate(post.posted_at)}
+              </div>
+            </div>
           </div>
         </div>
-      )}
+
+        {/* 제목 */}
+        <h3 className="font-medium text-gray-900 mb-2 line-clamp-2 text-base leading-snug">
+          {title || '제목 없음'}
+        </h3>
+
+        {/* 내용 */}
+        <p className="text-gray-600 text-base line-clamp-3 leading-relaxed mb-3">
+          {shortContent || '내용 없음'}
+        </p>
+      </div>
 
       {/* 이미지 섹션 - 이미지가 없어도 최소 높이 유지 */}
-      <div className="relative aspect-video bg-gray-50 overflow-hidden min-h-[200px]">
+      <div className="relative h-64 bg-gray-100">
         {hasImages ? (
           <img
             src={mainImage}
@@ -939,72 +944,81 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         )}
       </div>
 
-      {/* 추출된 상품 및 가격 리스트 */}
-      {post.products && Array.isArray(post.products) && post.products.length > 0 && (
-        <div className="px-4 pt-3 pb-2">
-          <div className="flex items-center space-x-1 mb-2">
-            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+      {/* 하단 액션 영역 */}
+      <div className="p-3">
+        {/* 3개 버튼 그리드 */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenBarcodeModal(post.post_id);
+            }}
+            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
             </svg>
-            <span className="text-sm font-medium text-green-600">추출된 상품 {post.products.length}개</span>
-          </div>
-          
-          <div className="space-y-0.5 max-h-32 overflow-y-auto">
-            {post.products.map((product, index) => (
-              <div key={product.product_id || index} className="flex justify-between items-center text-sm">
-                <span className="flex-1 text-gray-800 line-clamp-1 pr-2">
-                  {product.title || product.name || '상품명 없음'}
-                </span>
-                {product.base_price && (
-                  <span className="text-black font-medium">
-                    {Number(product.base_price).toLocaleString()}원
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+            <span className="text-sm text-gray-600 mt-0.5">바코드</span>
+          </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewOrders(post.post_key);
+            }}
+            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span className="text-sm text-gray-600 mt-0.5">주문</span>
+          </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewComments(post);
+            }}
+            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span className="text-sm text-gray-600 mt-0.5">실시간 댓글</span>
+          </button>
         </div>
-      )}
 
-      {/* 댓글 수와 작성 시간 정보 */}
-      <div className="px-4 pt-2 pb-3">
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>댓글 {post.comment_count || 0}개</span>
-          <span>작성: {formatDate(post.posted_at)}</span>
+        {/* 하단 컨트롤 */}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleReprocess && onToggleReprocess(post, !post.comment_sync_status);
+              }}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                post.comment_sync_status === 'pending' ? 'bg-amber-500' : 'bg-gray-200'
+              }`}
+            >
+              <span 
+                className={`inline-block h-3 w-3 transform rounded-full transition-transform bg-white ${
+                  post.comment_sync_status === 'pending' ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className="text-sm text-gray-400">누락주문 재처리</span>
+          </div>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeletePost && onDeletePost(post);
+            }}
+            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
+            title="삭제"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
-      </div>
-
-      {/* 바코드 등록 및 주문보기 버튼 */}
-      <div className="grid grid-cols-2 gap-0 border-t border-gray-100">
-        {/* 바코드 등록 버튼 */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // 카드 클릭 이벤트 방지
-            onOpenBarcodeModal(post.post_id);
-          }}
-          className="flex flex-col items-center justify-center py-3 hover:bg-gray-50 transition-colors border-r border-gray-100"
-        >
-          <svg className="w-6 h-6 text-gray-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" 
-              d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M8 7h8m-4 0V4m0 12v4m-4-4h.01M7 4h1m0 8h.01M21 12h-1m-2 0h-2.01M7 12h2m-2 0h-.01M3 12h.01M7 16h1m0 4h2m-6 0h2m12 0h2M8 20h8" />
-          </svg>
-          <span className="text-sm text-gray-700">바코드</span>
-        </button>
-
-        {/* 주문보기 버튼 */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // 카드 클릭 이벤트 방지
-            onViewOrders(post.post_key);
-          }}
-          className="flex flex-col items-center justify-center py-3 hover:bg-gray-50 transition-colors"
-        >
-          <svg className="w-6 h-6 text-gray-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" 
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span className="text-sm text-gray-700">주문</span>
-        </button>
       </div>
     </div>
   );
