@@ -125,16 +125,25 @@ const fetchOrders = async (key) => {
         // 원본 검색어와 정규화된 검색어 모두 시도
         const normalizedTerm = normalizeForSearch(searchTerm);
         
+        // 검색 필드를 조건부로 선택
+        const productSearchField = needsPickupDateFilter ? "products.title" : "product_title";
+        const barcodeSearchField = needsPickupDateFilter ? "products.barcode" : "product_barcode";
+        
+        // 조인 쿼리의 경우 바코드 검색을 건너뛸 수 있음 (selected_barcode_option과 products.barcode는 다름)
+        const searchFields = needsPickupDateFilter ? 
+          [`customer_name.ilike.%${searchTerm}%`, `${productSearchField}.ilike.%${searchTerm}%`, `post_key.ilike.%${searchTerm}%`] :
+          [`customer_name.ilike.%${searchTerm}%`, `${productSearchField}.ilike.%${searchTerm}%`, `${barcodeSearchField}.ilike.%${searchTerm}%`, `post_key.ilike.%${searchTerm}%`];
+        
         // 괄호가 포함된 경우 정규화된 버전으로 검색
         if (searchTerm.includes('(') || searchTerm.includes(')')) {
-          query = query.or(
-            `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%,product_barcode.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
-          );
+          const normalizedFields = needsPickupDateFilter ? 
+            [`customer_name.ilike.%${normalizedTerm}%`, `${productSearchField}.ilike.%${normalizedTerm}%`, `post_key.ilike.%${normalizedTerm}%`] :
+            [`customer_name.ilike.%${normalizedTerm}%`, `${productSearchField}.ilike.%${normalizedTerm}%`, `${barcodeSearchField}.ilike.%${normalizedTerm}%`, `post_key.ilike.%${normalizedTerm}%`];
+          
+          query = query.or(normalizedFields.join(','));
         } else {
           // 괄호가 없으면 원본 그대로 검색
-          query = query.or(
-            `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
-          );
+          query = query.or(searchFields.join(','));
         }
       } catch (error) {
         console.warn('Search filter error:', error);
