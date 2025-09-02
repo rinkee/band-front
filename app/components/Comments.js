@@ -146,49 +146,51 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
       {/* 댓글 내용 */}
       <div className="flex-1 min-w-0">
         {/* 작성자 이름 */}
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center justify-between mb-1">
           <span className="font-medium text-gray-900 text-sm">
             {comment.author?.name || "익명"}
           </span>
-          {isExcludedCustomer && (
-            <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
-              제외 고객
-            </span>
-          )}
-          {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
-          {!isExcludedCustomer && (
-            isDbDataLoading ? (
-              // DB 데이터 로딩 중
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
-                <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+          <div className="flex items-center gap-2">
+            {isExcludedCustomer && (
+              <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+                제외 고객
               </span>
-            ) : isSavedInDB ? (
-              orderStatus === "주문취소" ? (
-                <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
-                  ✓ 주문취소
+            )}
+            {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
+            {!isExcludedCustomer && (
+              isDbDataLoading ? (
+                // DB 데이터 로딩 중
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
+                  <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                </span>
+              ) : isSavedInDB ? (
+                orderStatus === "주문취소" ? (
+                  <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+                    ✓ 주문취소
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+                    ✓ 주문 처리됨
+                  </span>
+                )
+              ) : isPrivateComment ? (
+                // 비밀댓글
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                  🔒 비밀댓글
+                </span>
+              ) : isMissed ? (
+                // 누락된 주문 (이후 댓글이 DB에 있음)
+                <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
+                  ⚠ 누락 주문
                 </span>
               ) : (
-                <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
-                  ✓ 주문 처리됨
+                // 업데이트 전 (아직 처리 대상 아님)
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                  업데이트 전
                 </span>
               )
-            ) : isPrivateComment ? (
-              // 비밀댓글
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
-                🔒 비밀댓글
-              </span>
-            ) : isMissed ? (
-              // 누락된 주문 (이후 댓글이 DB에 있음)
-              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
-                ⚠ 누락 주문
-              </span>
-            ) : (
-              // 업데이트 전 (아직 처리 대상 아님)
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
-                업데이트 전
-              </span>
-            )
-          )}
+            )}
+          </div>
         </div>
 
         {/* 댓글 텍스트 */}
@@ -214,7 +216,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {isSavedInDB && orderDetails && orderDetails.length > 0 && (
           <div className="mt-2 p-2 bg-gray-100 rounded-lg">
-            <div className="text-sm font-bold mb-1">저장된 주문 정보</div>
+            {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
                 <div key={index} className="text-sm">
@@ -974,7 +976,7 @@ const CommentsModal = ({
           </button>
           
           {/* 상단 헤더 - 모던한 그라데이션 배경 */}
-          <div className="p-8 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-b border-gray-100">
+          <div className="px-8 py-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-b border-gray-100">
             <div className="pr-16"> {/* 닫기 버튼 공간 확보 */}
               {postTitle && (
                 <>
@@ -1125,61 +1127,7 @@ const CommentsModal = ({
               </div>
             </div>
 
-            {/* 추출된 상품 카드 */}
-            <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">추출된 상품</h3>
-                    <p className="text-sm text-gray-500">{products?.length || 0}개의 상품</p>
-                  </div>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-4">
-                  {productsError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
-                      <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
-                      <p className="text-red-500 text-sm mt-1">{productsError.message}</p>
-                    </div>
-                  )}
-                  
-                  <div className="space-y-3">
-                    {products && products.length > 0 ? (
-                      products.map((product, index) => (
-                        <div key={product.id || index} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-gray-900 mb-2 leading-tight text-sm">
-                                {product.products_data?.title || product.title || product.product_name || '상품명 없음'}
-                              </h4>
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-                                  수량 {product.quantity || 1}{product.quantity_text || '개'}
-                                </span>
-                                <span className="font-bold text-green-600 text-sm">
-                                  {product.products_data?.price || product.base_price || product.price ? 
-                                    `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
-                                    '가격 미정'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8 text-center">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                          </svg>
-                        </div>
-                        <p className="text-gray-500 text-sm">추출된 상품이 없습니다</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            
 
             {/* 댓글 목록 카드 */}
             <div className="w-1/3 flex flex-col">
@@ -1281,6 +1229,62 @@ const CommentsModal = ({
                     </span>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* 추출된 상품 카드 */}
+            <div className="w-1/3 flex flex-col">
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">추출된 상품</h3>
+                    <p className="text-sm text-gray-500">{products?.length || 0}개의 상품</p>
+                  </div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4">
+                  {productsError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+                      <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
+                      <p className="text-red-500 text-sm mt-1">{productsError.message}</p>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3">
+                    {products && products.length > 0 ? (
+                      products.map((product, index) => (
+                        <div key={product.id || index} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-gray-900 mb-2 leading-tight text-sm">
+                                {product.products_data?.title || product.title || product.product_name || '상품명 없음'}
+                              </h4>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                                  수량 {product.quantity || 1}{product.quantity_text || '개'}
+                                </span>
+                                <span className="font-bold text-green-600 text-sm">
+                                  {product.products_data?.price || product.base_price || product.price ? 
+                                    `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
+                                    '가격 미정'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                          </svg>
+                        </div>
+                        <p className="text-gray-500 text-sm">추출된 상품이 없습니다</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
