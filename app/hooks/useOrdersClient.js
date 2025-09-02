@@ -110,10 +110,24 @@ const fetchOrders = async (key) => {
     const normalizeForSearch = (str) => {
       // 괄호와 그 안의 내용을 공백으로 치환
       let normalized = str.replace(/\([^)]*\)/g, ' ');
-      // 대괄호와 그 안의 내용도 유지 (날짜 정보)
+      // 대괄호와 그 안의 내용도 공백으로 치환 (PostgreSQL 로직 파싱 에러 방지)
+      normalized = normalized.replace(/\[[^\]]*\]/g, ' ');
       // 여러 공백을 하나로 정리
       normalized = normalized.replace(/\s+/g, ' ').trim();
       return normalized;
+    };
+    
+    // PostgreSQL 특수문자 이스케이프 함수
+    const escapeSpecialChars = (str) => {
+      // PostgreSQL에서 문제가 될 수 있는 특수문자들을 이스케이프
+      return str
+        .replace(/\\/g, '\\\\')  // 백슬래시
+        .replace(/'/g, "''")     // 작은따옴표
+        .replace(/"/g, '""')     // 큰따옴표
+        .replace(/%/g, '\\%')    // 퍼센트
+        .replace(/_/g, '\\_')    // 언더스코어
+        .replace(/\[/g, '\\[')   // 대괄호 시작
+        .replace(/\]/g, '\\]');  // 대괄호 끝
     };
 
     if (isPostKeySearch) {
@@ -129,20 +143,24 @@ const fetchOrders = async (key) => {
         const productSearchField = needsPickupDateFilter ? "products.title" : "product_title";
         const barcodeSearchField = needsPickupDateFilter ? "products.barcode" : "product_barcode";
         
+        // 검색어에서 특수문자 이스케이프 처리
+        const escapedSearchTerm = escapeSpecialChars(searchTerm);
+        const escapedNormalizedTerm = escapeSpecialChars(normalizedTerm);
+        
         // 조인 쿼리의 경우 바코드 검색을 건너뛸 수 있음 (selected_barcode_option과 products.barcode는 다름)
         const searchFields = needsPickupDateFilter ? 
-          [`customer_name.ilike.%${searchTerm}%`, `${productSearchField}.ilike.%${searchTerm}%`, `post_key.ilike.%${searchTerm}%`] :
-          [`customer_name.ilike.%${searchTerm}%`, `${productSearchField}.ilike.%${searchTerm}%`, `${barcodeSearchField}.ilike.%${searchTerm}%`, `post_key.ilike.%${searchTerm}%`];
+          [`customer_name.ilike.%${escapedSearchTerm}%`, `${productSearchField}.ilike.%${escapedSearchTerm}%`, `post_key.ilike.%${escapedSearchTerm}%`] :
+          [`customer_name.ilike.%${escapedSearchTerm}%`, `${productSearchField}.ilike.%${escapedSearchTerm}%`, `${barcodeSearchField}.ilike.%${escapedSearchTerm}%`, `post_key.ilike.%${escapedSearchTerm}%`];
         
-        // 괄호가 포함된 경우 정규화된 버전으로 검색
-        if (searchTerm.includes('(') || searchTerm.includes(')')) {
+        // 괄호나 대괄호가 포함된 경우 정규화된 버전으로 검색
+        if (searchTerm.includes('(') || searchTerm.includes(')') || searchTerm.includes('[') || searchTerm.includes(']')) {
           const normalizedFields = needsPickupDateFilter ? 
-            [`customer_name.ilike.%${normalizedTerm}%`, `${productSearchField}.ilike.%${normalizedTerm}%`, `post_key.ilike.%${normalizedTerm}%`] :
-            [`customer_name.ilike.%${normalizedTerm}%`, `${productSearchField}.ilike.%${normalizedTerm}%`, `${barcodeSearchField}.ilike.%${normalizedTerm}%`, `post_key.ilike.%${normalizedTerm}%`];
+            [`customer_name.ilike.%${escapedNormalizedTerm}%`, `${productSearchField}.ilike.%${escapedNormalizedTerm}%`, `post_key.ilike.%${escapedNormalizedTerm}%`] :
+            [`customer_name.ilike.%${escapedNormalizedTerm}%`, `${productSearchField}.ilike.%${escapedNormalizedTerm}%`, `${barcodeSearchField}.ilike.%${escapedNormalizedTerm}%`, `post_key.ilike.%${escapedNormalizedTerm}%`];
           
           query = query.or(normalizedFields.join(','));
         } else {
-          // 괄호가 없으면 원본 그대로 검색
+          // 특수문자가 없으면 원본 그대로 검색
           query = query.or(searchFields.join(','));
         }
       } catch (error) {
