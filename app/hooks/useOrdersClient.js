@@ -66,10 +66,18 @@ const fetchOrders = async (key) => {
       query = query.is("sub_status", null);
     } else if (filters.subStatus === "수령가능") {
       // '주문완료+수령가능' 필터: pickup_date가 현재 날짜 이전이거나 오늘인 주문들만 (실제 수령 가능)
-      const today = new Date().toISOString().split('T')[0];
       if (needsPickupDateFilter) {
-        query = query.not("products.pickup_date", "is", null)
-                     .lte("products.pickup_date", today);
+        // pickup_date가 존재하고, 오늘 23:59:59 이전인 주문들
+        query = query.not("products.pickup_date", "is", null);
+        
+        // 오늘 자정까지의 시간을 계산 (KST 기준)
+        const now = new Date();
+        const kstOffset = 9 * 60; // 한국은 UTC+9
+        const kstTime = new Date(now.getTime() + (kstOffset * 60 * 1000));
+        const today = kstTime.toISOString().split('T')[0];
+        
+        // 오늘 23:59:59까지의 pickup_date를 가진 주문들 (오늘 포함, 이전 포함)
+        query = query.lte("products.pickup_date", `${today}T23:59:59.999Z`);
       }
     } else {
       const subStatusValues = filters.subStatus
