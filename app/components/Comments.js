@@ -1047,8 +1047,8 @@ const CommentsModal = ({
           <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-50">
             {/* 게시물 내용 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 min-h-0">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
                   <div>
                     <h3 className="font-semibold text-gray-900">게시물 내용</h3>
                     <p className="text-sm text-gray-500">원본 텍스트</p>
@@ -1069,13 +1069,13 @@ const CommentsModal = ({
                   )}
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-4 min-h-0">
                   {postContent ? (
                     <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-sm">
                       {decodeHtmlEntities(postContent)}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <div className="flex flex-col items-center justify-center py-8 text-center h-full">
                       <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                         <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
