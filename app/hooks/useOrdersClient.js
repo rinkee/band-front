@@ -106,7 +106,9 @@ const fetchOrders = async (key) => {
   }
 
   // 검색 필터링 - post_key 우선 처리
-  if (filters.search && filters.search !== "undefined") {
+  if (filters.search && filters.search !== "undefined" && !needsPickupDateFilter) {
+    // 뷰 모드에서만 서버사이드 검색 수행
+    // 조인 모드에서는 모든 데이터를 가져온 후 클라이언트에서 필터링
     const searchTerm = filters.search;
 
     // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
@@ -127,22 +129,14 @@ const fetchOrders = async (key) => {
       // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
     } else {
-      // 일반 검색 - 조인 모드와 뷰 모드 구분
+      // 뷰 모드: 기존 방식 유지
       try {
         const normalizedTerm = normalizeForSearch(searchTerm);
         const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
         
-        if (needsPickupDateFilter) {
-          // 조인 모드: 고객명과 post_key만 검색 (상품명 검색은 클라이언트에서 처리)
-          query = query.or(
-            `customer_name.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
-          );
-        } else {
-          // 뷰 모드: 기존 방식 유지
-          query = query.or(
-            `customer_name.ilike.%${searchPattern}%,product_title.ilike.%${searchPattern}%,product_barcode.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
-          );
-        }
+        query = query.or(
+          `customer_name.ilike.%${searchPattern}%,product_title.ilike.%${searchPattern}%,product_barcode.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
+        );
       } catch (error) {
         console.warn('Search filter error:', error);
         // 에러 발생시 고객명만 필터링
@@ -242,27 +236,49 @@ const fetchOrders = async (key) => {
       if (!isPostKeySearch) {
         const normalizeForSearch = (str) => {
           let normalized = str.replace(/\([^)]*\)/g, ' ');
+          // 대괄호와 그 안의 내용은 유지 (날짜 정보)
           normalized = normalized.replace(/\s+/g, ' ').trim();
           return normalized;
         };
         
         const normalizedTerm = normalizeForSearch(searchTerm);
-        const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
+        // 괄호나 대괄호가 있으면 정규화, 아니면 원본 사용
+        const searchPattern = (searchTerm.includes('(') || searchTerm.includes(')') || 
+                             searchTerm.includes('[') || searchTerm.includes(']')) ? 
+                             normalizedTerm : searchTerm;
         
         // 상품명이나 바코드에서 검색어가 포함된 항목만 필터링
+        console.log('Client-side filtering:', {
+          searchTerm,
+          searchPattern,
+          originalDataLength: processedData.length
+        });
+        
         processedData = processedData.filter(order => {
           const productTitle = order.product_title || '';
           const productBarcode = order.product_barcode || '';
           const customerName = order.customer_name || '';
           const postKey = order.post_key || '';
           
-          return (
-            productTitle.toLowerCase().includes(searchPattern.toLowerCase()) ||
-            productBarcode.toLowerCase().includes(searchPattern.toLowerCase()) ||
-            customerName.toLowerCase().includes(searchPattern.toLowerCase()) ||
-            postKey.toLowerCase().includes(searchPattern.toLowerCase())
-          );
+          const titleMatch = productTitle.toLowerCase().includes(searchPattern.toLowerCase());
+          const barcodeMatch = productBarcode.toLowerCase().includes(searchPattern.toLowerCase());
+          const customerMatch = customerName.toLowerCase().includes(searchPattern.toLowerCase());
+          const postMatch = postKey.toLowerCase().includes(searchPattern.toLowerCase());
+          
+          const matches = titleMatch || barcodeMatch || customerMatch || postMatch;
+          
+          if (titleMatch) {
+            console.log('Title match found:', {
+              productTitle,
+              searchPattern,
+              titleMatch
+            });
+          }
+          
+          return matches;
         });
+        
+        console.log('Filtered data length:', processedData.length);
       }
     }
   }
