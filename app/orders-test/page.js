@@ -2498,7 +2498,7 @@ export default function OrdersPage() {
                       />
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-48 bg-gray-50">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-center gap-4">
                         <button
                           onClick={() => handleSortChange("product_name")} // 상품명 정렬
                           className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -2518,16 +2518,16 @@ export default function OrdersPage() {
                               className="sr-only"
                             />
                             <div
-                              className={`w-10 h-5 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${
+                              className={`w-8 h-4 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${
                                 showPickupAvailableOnly
                                   ? "bg-blue-600"
                                   : "bg-gray-300"
                               }`}
                             >
                               <div
-                                className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${
+                                className={`w-3 h-3 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${
                                   showPickupAvailableOnly
-                                    ? "translate-x-5"
+                                    ? "translate-x-4"
                                     : "translate-x-0.5"
                                 } mt-0.5`}
                               />
