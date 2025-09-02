@@ -2153,6 +2153,43 @@ export default function OrdersPage() {
                   )}
                 </div>
 
+                {/* 수령가능만 보기 스위치 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-sm font-medium text-gray-700">
+                      수령가능만 보기
+                    </span>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={showPickupAvailableOnly}
+                        onChange={handlePickupAvailableToggle}
+                        className="sr-only"
+                      />
+                      <div
+                        className={`w-11 h-6 rounded-full transition-colors duration-200 ease-in-out ${
+                          showPickupAvailableOnly
+                            ? "bg-blue-600"
+                            : "bg-gray-200"
+                        }`}
+                      >
+                        <div
+                          className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
+                            showPickupAvailableOnly
+                              ? "translate-x-5"
+                              : "translate-x-0.5"
+                          } mt-0.5`}
+                        />
+                      </div>
+                    </div>
+                  </label>
+                  {showPickupAvailableOnly && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      주문완료 상태의 수령가능한 주문만 표시됩니다.
+                    </p>
+                  )}
+                </div>
+
                 {/* 상태 필터 - 토글 */}
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
@@ -2497,44 +2534,14 @@ export default function OrdersPage() {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-48 bg-gray-50">
-                      <div className="flex items-center justify-center gap-4 h-full">
-                        <button
-                          onClick={() => handleSortChange("product_name")} // 상품명 정렬
-                          className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isDataLoading}
-                        >
-                          상품명 {getSortIcon("product_name")}
-                        </button>
-                        
-                        {/* 수령가능만 보기 스위치 */}
-                        <label className="flex items-center gap-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                          <span className="text-xs text-gray-500 whitespace-nowrap select-none">수령가능만</span>
-                          <div className="relative">
-                            <input
-                              type="checkbox"
-                              checked={showPickupAvailableOnly}
-                              onChange={handlePickupAvailableToggle}
-                              className="sr-only"
-                            />
-                            <div
-                              className={`w-8 h-4 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${
-                                showPickupAvailableOnly
-                                  ? "bg-blue-600"
-                                  : "bg-gray-300"
-                              }`}
-                            >
-                              <div
-                                className={`w-3 h-3 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${
-                                  showPickupAvailableOnly
-                                    ? "translate-x-4"
-                                    : "translate-x-0.5"
-                                } mt-0.5`}
-                              />
-                            </div>
-                          </div>
-                        </label>
-                      </div>
+                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
+                      <button
+                        onClick={() => handleSortChange("product_name")} // 상품명 정렬
+                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isDataLoading}
+                      >
+                        상품명 {getSortIcon("product_name")}
+                      </button>
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       <button
