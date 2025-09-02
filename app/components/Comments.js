@@ -1142,10 +1142,9 @@ const CommentsModal = ({
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-300">
                   <div>
                     <h3 className="font-semibold text-gray-900">댓글 목록</h3>
-                    <div className="flex items-center gap-3 text-sm text-gray-500">
-                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개</span>
-                      <span>•</span>
-                      <span>주문 {loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개</span>
+                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
+                      <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
                     </div>
                   </div>
                 </div>
@@ -1285,16 +1284,31 @@ const CommentsModal = ({
                                     const cleanProductName = (name) => name.replace(/\[(\d+월\d+일)\]\s*/g, '').trim();
                                     const targetProductName = cleanProductName(product.products_data?.title || product.title || product.product_name || '');
                                     
-                                    // 해당 상품에 대한 총 주문 수량 계산
+                                    // 해당 상품에 대한 총 주문 수량 계산 (제외 고객 제외)
                                     let totalQuantity = 0;
-                                    Object.values(savedComments).forEach(commentData => {
+                                    Object.entries(savedComments).forEach(([commentKey, commentData]) => {
                                       if (commentData?.orders && Array.isArray(commentData.orders)) {
-                                        commentData.orders.forEach(order => {
-                                          const orderProductName = cleanProductName(order.product_name || '');
-                                          if (orderProductName === targetProductName) {
-                                            totalQuantity += (order.quantity || 1);
+                                        // 해당 댓글의 작성자가 제외 고객인지 확인
+                                        const relatedComment = comments.find(c => c.comment_key === commentKey);
+                                        const authorName = relatedComment?.author?.name;
+                                        
+                                        // 제외 고객인지 확인
+                                        const isExcludedCustomer = excludedCustomers.some(excluded => {
+                                          if (typeof excluded === 'string') {
+                                            return excluded === authorName;
                                           }
+                                          return excluded.name === authorName;
                                         });
+                                        
+                                        // 제외 고객이 아닌 경우만 수량 계산
+                                        if (!isExcludedCustomer && authorName) {
+                                          commentData.orders.forEach(order => {
+                                            const orderProductName = cleanProductName(order.product_name || '');
+                                            if (orderProductName === targetProductName) {
+                                              totalQuantity += (order.quantity || 1);
+                                            }
+                                          });
+                                        }
                                       }
                                     });
                                     
