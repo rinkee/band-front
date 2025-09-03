@@ -1105,7 +1105,10 @@ const CommentsModal = ({
                   {/* 삭제 버튼 */}
                   {post && onDeletePost && (
                     <button
-                      onClick={() => onDeletePost(post)}
+                      onClick={() => {
+                        onDeletePost(post);
+                        onClose(); // 삭제 후 모달 닫기
+                      }}
                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="게시물 삭제"
                     >
