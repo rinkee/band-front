@@ -975,7 +975,7 @@ const CommentsModal = ({
 
       {/* 모달 컨텐츠 */}
       <div className="flex min-h-full items-center justify-center p-6">
-        <div className="relative w-full max-w-7xl h-[92vh] bg-white rounded-3xl flex flex-col overflow-hidden">
+        <div className="relative w-full max-w-[100rem] h-[92vh] bg-white rounded-3xl flex flex-col overflow-hidden">
           {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
           <button
             onClick={onClose}
@@ -1094,7 +1094,7 @@ const CommentsModal = ({
           {/* 메인 컨텐츠 영역 - 가로 3분할 레이아웃 */}
           <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-200">
             {/* 게시물 내용 카드 */}
-            <div className="w-1/4 flex flex-col">
+            <div className="w-1/3 flex flex-col">
               <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
                 <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
@@ -1139,7 +1139,7 @@ const CommentsModal = ({
             
 
             {/* 댓글 목록 카드 */}
-            <div className="w-1/2 flex flex-col">
+            <div className="w-2/5 flex flex-col">
               <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3 bg-gray-100">
