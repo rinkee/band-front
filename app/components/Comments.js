@@ -215,40 +215,36 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {showOrderDetails && isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-2 mb-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="mt-2 mb-2 p-2 bg-gray-100 rounded-lg">
             {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="p-2 bg-white rounded border border-blue-100 mb-1">
-                  <div className="font-semibold text-gray-900 text-base mb-1">
+                <div key={index} className="text-sm">
+                  <span className="font-medium">
                     {(() => {
                       const productName = order.product_name || '상품';
                       // 날짜 패턴 제거: [9월3일], [1월15일] 등
                       return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
                     })()}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    {order.quantity && (
-                      <span className="px-2 py-1 bg-gray-100 rounded-full text-sm font-medium text-gray-700">
-                        수량: {order.quantity}개
-                      </span>
-                    )}
-                    {(order.total_amount || order.product_price) && (
-                      <span className="text-blue-600 font-bold text-base">
-                        {(() => {
-                          const displayPrice = order.total_amount || order.product_price;
-                          console.log(`🎯 화면 표시 가격:`, {
-                            product: order.product_name,
-                            quantity: order.quantity,
-                            total_amount: order.total_amount,
-                            product_price: order.product_price,
-                            display_price: displayPrice
-                          });
-                          return displayPrice.toLocaleString();
-                        })()}원
-                      </span>
-                    )}
-                  </div>
+                  </span>
+                  {order.quantity && (
+                    <span className="ml-1">× {order.quantity}</span>
+                  )}
+                  {(order.total_amount || order.product_price) && (
+                    <span className="font-medium ml-2">
+                      {(() => {
+                        const displayPrice = order.total_amount || order.product_price;
+                        console.log(`🎯 화면 표시 가격:`, {
+                          product: order.product_name,
+                          quantity: order.quantity,
+                          total_amount: order.total_amount,
+                          product_price: order.product_price,
+                          display_price: displayPrice
+                        });
+                        return displayPrice.toLocaleString();
+                      })()}원
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -589,7 +585,7 @@ const CommentsModal = ({
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [savedComments, setSavedComments] = useState({});
   const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
-  const [showOrderDetails, setShowOrderDetails] = useState(true); // 주문 상세 보기 토글 상태
+  const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
   const scrollContainerRef = useRef(null);
 
   // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
@@ -1147,41 +1143,12 @@ const CommentsModal = ({
               <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3 bg-gray-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
-                      <div className="flex items-center gap-1 text-base text-gray-500">
-                        <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
-                        <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
-                      </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
+                    <div className="flex items-center gap-1 text-base text-gray-500">
+                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
+                      <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
                     </div>
-                  </div>
-                  
-                  {/* 컨트롤 버튼들 */}
-                  <div className="flex items-center gap-2">
-                    {/* 제외 고객 숨기기 버튼 */}
-                    <button
-                      onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
-                      className={`px-3 py-1 text-sm rounded-full border font-medium transition-colors ${
-                        hideExcludedCustomers 
-                          ? 'bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200' 
-                          : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {hideExcludedCustomers ? '제외 고객 숨김' : '제외 고객 보기'}
-                    </button>
-                    
-                    {/* 주문 상세 보기 토글 */}
-                    <button
-                      onClick={() => setShowOrderDetails(!showOrderDetails)}
-                      className={`px-3 py-1 text-sm rounded-full border font-medium transition-colors ${
-                        showOrderDetails 
-                          ? 'bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200' 
-                          : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {showOrderDetails ? '주문 상세 숨김' : '주문 상세 보기'}
-                    </button>
                   </div>
                 </div>
                 
@@ -1225,6 +1192,23 @@ const CommentsModal = ({
                     />
                   </button>
                   <span className="text-base font-medium text-gray-700">제외고객 숨김</span>
+                </div>
+                
+                {/* 주문 상세 보기 모듈 */}
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                  <button
+                    onClick={() => setShowOrderDetails(!showOrderDetails)}
+                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
+                      showOrderDetails ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        showOrderDetails ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-base font-medium text-gray-700">주문 상세 보기</span>
                 </div>
                 
                 {/* 누락 주문 재처리 모듈 */}
