@@ -147,12 +147,12 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
       <div className="flex-1 min-w-0">
         {/* 작성자 이름 */}
         <div className="flex items-center justify-between mb-1">
-          <span className="font-medium text-gray-900 text-sm">
+          <span className="font-medium text-gray-900 text-base">
             {comment.author?.name || "익명"}
           </span>
           <div className="flex items-center gap-2">
             {isExcludedCustomer && (
-              <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+              <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
                 제외 고객
               </span>
             )}
@@ -160,32 +160,32 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             {!isExcludedCustomer && (
               isDbDataLoading ? (
                 // DB 데이터 로딩 중
-                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
                   <div className="w-3 h-3 bg-gray-400 rounded-full animate-spin"></div>
                 </span>
               ) : isSavedInDB ? (
                 orderStatus === "주문취소" ? (
-                  <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+                  <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
                     ✓ 주문취소
                   </span>
                 ) : (
-                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+                  <span className="text-sm px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
                     ✓ 주문 처리됨
                   </span>
                 )
               ) : isPrivateComment ? (
                 // 비밀댓글
-                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
                   🔒 비밀댓글
                 </span>
               ) : isMissed ? (
                 // 누락된 주문 (이후 댓글이 DB에 있음)
-                <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
+                <span className="text-sm px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
                   ⚠ 누락 주문
                 </span>
               ) : (
                 // 업데이트 전 (아직 처리 대상 아님)
-                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
                   업데이트 전
                 </span>
               )
@@ -194,7 +194,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         </div>
 
         {/* 댓글 텍스트 */}
-        <div className="text-gray-800 text-sm mb-2 whitespace-pre-wrap break-words">
+        <div className="text-gray-800 text-base mb-2 whitespace-pre-wrap break-words">
           {decodeHtmlEntities(comment.content)}
         </div>
 
@@ -219,7 +219,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="text-xs">
+                <div key={index} className="text-sm">
                   <span className="font-medium">
                     {(() => {
                       const productName = order.product_name || '상품';
@@ -252,7 +252,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         )}
 
         {/* 시간만 표시 */}
-        <div className="text-xs text-gray-500">
+        <div className="text-sm text-gray-500">
           <span>{formatTimeAgo(comment.created_at)}</span>
         </div>
       </div>
@@ -988,7 +988,7 @@ const CommentsModal = ({
                 <>
                   <div className="flex items-start gap-4">
                     <div className="flex-1">
-                      <h2 className="text-2xl font-bold text-white mb-2 leading-tight">
+                      <h2 className="text-3xl font-bold text-white mb-2 leading-tight">
                         {(() => {
                           // 제목에서 수령일 제거
                           const cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
@@ -1095,8 +1095,8 @@ const CommentsModal = ({
               <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
                 <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
-                    <h3 className="font-semibold text-gray-900">게시물 내용</h3>
-                    <p className="text-sm text-gray-500">원본 텍스트</p>
+                    <h3 className="text-lg font-semibold text-gray-900">게시물 내용</h3>
+                    <p className="text-base text-gray-500">원본 텍스트</p>
                   </div>
                   
                   {/* 삭제 버튼 */}
@@ -1116,7 +1116,7 @@ const CommentsModal = ({
                 
                 <div className="flex-1 overflow-y-auto p-4 min-h-0">
                   {postContent ? (
-                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-sm">
+                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-base">
                       {decodeHtmlEntities(postContent)}
                     </div>
                   ) : (
@@ -1126,7 +1126,7 @@ const CommentsModal = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <p className="text-gray-500 text-sm">게시물 내용이 없습니다</p>
+                      <p className="text-gray-500 text-base">게시물 내용이 없습니다</p>
                     </div>
                   )}
                 </div>
@@ -1141,8 +1141,8 @@ const CommentsModal = ({
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3  bg-gray-100">
                   <div>
-                    <h3 className="font-semibold text-gray-900">댓글 목록</h3>
-                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                    <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
+                    <div className="flex items-center gap-1 text-base text-gray-500">
                       <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
                       <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
                     </div>
@@ -1242,8 +1242,8 @@ const CommentsModal = ({
               <div className="bg-white rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
                 <div className="px-4 py-3 bg-gray-100">
                   <div>
-                    <h3 className="font-semibold text-gray-900">추출된 상품</h3>
-                    <p className="text-sm text-gray-500">{products?.length || 0}개의 상품</p>
+                    <h3 className="text-lg font-semibold text-gray-900">추출된 상품</h3>
+                    <p className="text-base text-gray-500">{products?.length || 0}개의 상품</p>
                   </div>
                 </div>
                 
@@ -1262,7 +1262,7 @@ const CommentsModal = ({
                         <div key={product.id || index} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-gray-900 mb-2 leading-tight text-sm">
+                              <h4 className="font-medium text-gray-900 mb-2 leading-tight text-base">
                                 {(() => {
                                   const productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
                                   // 날짜 패턴 제거: [9월3일], [1월15일] 등
@@ -1270,7 +1270,7 @@ const CommentsModal = ({
                                 })()}
                               </h4>
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-gray-700 text-sm">
+                                <span className="font-bold text-gray-700 text-base">
                                   {product.products_data?.price || product.base_price || product.price ? 
                                     `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
                                     '가격 미정'}
@@ -1316,7 +1316,7 @@ const CommentsModal = ({
                                     return totalQuantity;
                                   })()}
                                 </div>
-                                <div className="text-xs text-gray-500">
+                                <div className="text-sm text-gray-500">
                                   총 주문
                                 </div>
                               </div>
@@ -1331,7 +1331,7 @@ const CommentsModal = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                           </svg>
                         </div>
-                        <p className="text-gray-500 text-sm">추출된 상품이 없습니다</p>
+                        <p className="text-gray-500 text-base">추출된 상품이 없습니다</p>
                       </div>
                     )}
                   </div>
