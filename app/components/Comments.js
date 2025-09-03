@@ -86,7 +86,7 @@ const decodeHtmlEntities = (text) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails, showOrderDetails }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -214,7 +214,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         )}
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
-        {isSavedInDB && orderDetails && orderDetails.length > 0 && (
+        {showOrderDetails && isSavedInDB && orderDetails && orderDetails.length > 0 && (
           <div className="mt-2 mb-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
             {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
             <div className="space-y-1">
@@ -278,6 +278,7 @@ const CommentsList = ({
   savedComments = {},
   onEnableReprocess, // 재처리 활성화 콜백 추가
   hideExcludedCustomers = false, // 제외 고객 숨김 상태 추가
+  showOrderDetails = true, // 주문 상세 보기 상태 추가
 }) => {
   const commentsEndRef = useRef(null);
   
@@ -550,6 +551,7 @@ const CommentsList = ({
               isDbDataLoading={isDbDataLoading}
               orderStatus={orderStatus}
               orderDetails={orderDetails}
+              showOrderDetails={showOrderDetails}
             />
           );
         })}
@@ -587,6 +589,7 @@ const CommentsModal = ({
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [savedComments, setSavedComments] = useState({});
   const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
+  const [showOrderDetails, setShowOrderDetails] = useState(true); // 주문 상세 보기 토글 상태
   const scrollContainerRef = useRef(null);
 
   // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
@@ -1095,7 +1098,7 @@ const CommentsModal = ({
           {/* 메인 컨텐츠 영역 - 가로 3분할 레이아웃 */}
           <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-200">
             {/* 게시물 내용 카드 */}
-            <div className="w-1/3 flex flex-col">
+            <div className="w-1/4 flex flex-col">
               <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
                 <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
@@ -1140,16 +1143,45 @@ const CommentsModal = ({
             
 
             {/* 댓글 목록 카드 */}
-            <div className="w-1/3 flex flex-col">
+            <div className="w-1/2 flex flex-col">
               <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
-                <div className="px-4 py-3  bg-gray-100">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
-                    <div className="flex items-center gap-1 text-base text-gray-500">
-                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
-                      <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
+                <div className="px-4 py-3 bg-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
+                      <div className="flex items-center gap-1 text-base text-gray-500">
+                        <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
+                        <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
+                      </div>
                     </div>
+                  </div>
+                  
+                  {/* 컨트롤 버튼들 */}
+                  <div className="flex items-center gap-2">
+                    {/* 제외 고객 숨기기 버튼 */}
+                    <button
+                      onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
+                      className={`px-3 py-1 text-sm rounded-full border font-medium transition-colors ${
+                        hideExcludedCustomers 
+                          ? 'bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200' 
+                          : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {hideExcludedCustomers ? '제외 고객 숨김' : '제외 고객 보기'}
+                    </button>
+                    
+                    {/* 주문 상세 보기 토글 */}
+                    <button
+                      onClick={() => setShowOrderDetails(!showOrderDetails)}
+                      className={`px-3 py-1 text-sm rounded-full border font-medium transition-colors ${
+                        showOrderDetails 
+                          ? 'bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200' 
+                          : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {showOrderDetails ? '주문 상세 숨김' : '주문 상세 보기'}
+                    </button>
                   </div>
                 </div>
                 
@@ -1171,6 +1203,7 @@ const CommentsModal = ({
                     savedComments={savedComments}
                     onEnableReprocess={onEnableReprocess}
                     hideExcludedCustomers={hideExcludedCustomers}
+                    showOrderDetails={showOrderDetails}
                   />
                 </div>
               </div>
@@ -1242,7 +1275,7 @@ const CommentsModal = ({
             </div>
 
             {/* 추출된 상품 카드 */}
-            <div className="w-1/3 flex flex-col">
+            <div className="w-1/4 flex flex-col">
               <div className="bg-white rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
                 <div className="px-4 py-3 bg-gray-100">
                   <div>
