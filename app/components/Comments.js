@@ -1238,16 +1238,17 @@ const CommentsModal = ({
             </div>
 
             {/* 추출된 상품 카드 */}
-            <div className="w-1/3 flex flex-col h-full">
-              <div className="bg-white rounded-2xl overflow-hidden flex flex-col h-full">
-                <div className="px-4 py-3 bg-gray-100 flex-shrink-0">
+            <div className="w-1/3 flex flex-col">
+              <div className="bg-white rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-100">
                   <div>
                     <h3 className="font-semibold text-gray-900">추출된 상품</h3>
                     <p className="text-sm text-gray-500">{products?.length || 0}개의 상품</p>
                   </div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 min-h-0">
+                <div className="flex-1 overflow-y-auto">
+                  <div className="p-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
                   {productsError && (
                     <div className="p-3 bg-red-50 rounded-lg mb-3">
                       <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
@@ -1333,6 +1334,7 @@ const CommentsModal = ({
                         <p className="text-gray-500 text-sm">추출된 상품이 없습니다</p>
                       </div>
                     )}
+                  </div>
                   </div>
                 </div>
               </div>
