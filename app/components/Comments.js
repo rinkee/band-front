@@ -215,36 +215,40 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-2 mb-2 p-2 bg-gray-100 rounded-lg">
+          <div className="mt-2 mb-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
             {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
             <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="text-sm">
-                  <span className="font-medium">
+                <div key={index} className="p-2 bg-white rounded border border-blue-100 mb-1">
+                  <div className="font-semibold text-gray-900 text-base mb-1">
                     {(() => {
                       const productName = order.product_name || '상품';
                       // 날짜 패턴 제거: [9월3일], [1월15일] 등
                       return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
                     })()}
-                  </span>
-                  {order.quantity && (
-                    <span className="ml-1">× {order.quantity}</span>
-                  )}
-                  {(order.total_amount || order.product_price) && (
-                    <span className="font-medium ml-2">
-                      {(() => {
-                        const displayPrice = order.total_amount || order.product_price;
-                        console.log(`🎯 화면 표시 가격:`, {
-                          product: order.product_name,
-                          quantity: order.quantity,
-                          total_amount: order.total_amount,
-                          product_price: order.product_price,
-                          display_price: displayPrice
-                        });
-                        return displayPrice.toLocaleString();
-                      })()}원
-                    </span>
-                  )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    {order.quantity && (
+                      <span className="px-2 py-1 bg-gray-100 rounded-full text-sm font-medium text-gray-700">
+                        수량: {order.quantity}개
+                      </span>
+                    )}
+                    {(order.total_amount || order.product_price) && (
+                      <span className="text-blue-600 font-bold text-base">
+                        {(() => {
+                          const displayPrice = order.total_amount || order.product_price;
+                          console.log(`🎯 화면 표시 가격:`, {
+                            product: order.product_name,
+                            quantity: order.quantity,
+                            total_amount: order.total_amount,
+                            product_price: order.product_price,
+                            display_price: displayPrice
+                          });
+                          return displayPrice.toLocaleString();
+                        })()}원
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
