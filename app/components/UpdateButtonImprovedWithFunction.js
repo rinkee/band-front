@@ -35,6 +35,18 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     }
   };
 
+  // execution_locks 테이블에서 실행 중 상태 확인하는 함수
+  const checkExecutionLock = async (userId) => {
+    try {
+      const response = await api.get(`/api/execution-locks/check?userId=${userId}`);
+      return response.data?.is_running || false;
+    } catch (error) {
+      console.error("실행 상태 확인 중 오류:", error);
+      // 오류 시 안전하게 false 반환 (실행 허용)
+      return false;
+    }
+  };
+
   // function_number에 따른 Edge Function 이름 결정
   const getEdgeFunctionName = (functionNumber) => {
     
@@ -182,13 +194,20 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   const handleUpdatePosts = useCallback(async () => {
     setError("");
     setSuccessMessage("");
-    setIsLoading(true);
-
+    
     const userId = getUserIdFromSession();
     if (!userId) {
-      setIsLoading(false);
       return;
     }
+
+    // 실행 중 상태 확인
+    const isRunning = await checkExecutionLock(userId);
+    if (isRunning) {
+      setError("⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    setIsLoading(true);
 
     // 🎯 세션에서 function_number 가져오기
     let functionNumber = 0; // 기본값
