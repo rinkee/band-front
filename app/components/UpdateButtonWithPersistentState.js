@@ -100,18 +100,37 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     );
   }, [mutate]);
 
-  const handleUpdatePosts = useCallback(async () => {
-    // 이미 처리 중이면 중복 실행 방지
-    if (isBackgroundProcessing) {
-      console.log('⚠️ 이미 처리 중이므로 중복 실행 방지');
-      return;
+  // execution_locks 테이블에서 실행 중 상태 확인하는 함수
+  const checkExecutionLock = async (userId) => {
+    try {
+      const response = await api.get(`/api/execution-locks/check?userId=${userId}`);
+      return response.data?.is_running || false;
+    } catch (error) {
+      console.error("실행 상태 확인 중 오류:", error);
+      // 오류 시 안전하게 false 반환 (실행 허용)
+      return false;
     }
+  };
 
+  const handleUpdatePosts = useCallback(async () => {
     setError("");
     setSuccessMessage("");
 
     const userId = getUserIdFromSession();
     if (!userId) {
+      return;
+    }
+
+    // execution_locks에서 실행 중 상태 확인 (DB에서 확인)
+    const isRunning = await checkExecutionLock(userId);
+    if (isRunning) {
+      setError("⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    // Context 상태로도 중복 실행 방지
+    if (isBackgroundProcessing) {
+      console.log('⚠️ 이미 처리 중이므로 중복 실행 방지');
       return;
     }
 
@@ -246,7 +265,7 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
   // interval 참조를 컴포넌트 레벨에 저장
   const intervalRef = useRef(null);
   
-  // 백그라운드 처리 - Realtime으로 완료 감지
+  // 백그라운드 처리 - 단순한 진행률 시뮬레이션 (DB 연동 없음)
   const simulateProgress = (progressId, totalItems) => {
     console.log('🔄 백그라운드 처리 시작:', { progressId, totalItems });
     
@@ -256,25 +275,56 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
       console.log('🧹 이전 interval 정리');
     }
     
-    // 주기적으로 SWR 캐시만 갱신 (DB 업데이트는 Edge Function이 처리)
+    // 단순한 진행률 시뮬레이션 (주기적 캐시 갱신만)
+    let currentCount = 0;
+    const increment = Math.ceil(totalItems / 8);
+    
     intervalRef.current = setInterval(() => {
       const userId = getUserIdFromSession();
       if (userId) {
         refreshSWRCache(userId);
         console.log('🔄 SWR 캐시 갱신');
       }
-    }, 10000); // 10초마다 캐시 갱신
+      
+      // 진행률 업데이트 (90%까지만)
+      currentCount += increment;
+      if (currentCount > totalItems * 0.9) {
+        currentCount = Math.floor(totalItems * 0.9);
+      }
+      
+      // Context 상태 업데이트 (간단히)
+      try {
+        updateProgress(progressId, { 
+          processed_posts: currentCount,
+          status: 'processing'
+        });
+      } catch (err) {
+        console.error('진행률 업데이트 실패:', err);
+      }
+    }, 3000); // 3초마다 업데이트
     
-    // 5분 후 안전장치 (비정상 종료 방지)
+    // 최대 60초 후 자동 완료
     setTimeout(() => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-        console.log('⏰ 5분 안전장치 작동 - 인터벌 정리');
+        console.log('⏰ 60초 안전장치 작동 - 자동 완료');
+        
+        // 자동 완료 처리
+        try {
+          updateProgress(progressId, {
+            processed_posts: totalItems,
+            status: 'completed'
+          });
+          completeUpdate(progressId, true);
+          setSuccessMessage("✨ 백그라운드 처리 완료!");
+        } catch (err) {
+          console.error('자동 완료 처리 실패:', err);
+        }
       }
-    }, 300000);
+    }, 60000);
     
-    return intervalRef.current; // interval ID 반환
+    return intervalRef.current;
   };
 
   // 응답 처리
@@ -291,20 +341,9 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
         timestamp: new Date().toISOString()
       });
       
-      // 로컬 상태 업데이트 및 완료 처리
+      // 상태 완료 처리 (단순화)
       try {
-        console.log('📊 상태 업데이트 시작:', { progressId, processedCount });
-        
-        await updateProgress(progressId, {
-          processed_posts: processedCount,
-          status: 'completed'
-        });
-        
-        // Edge Function 완료 시 명시적으로 completeUpdate 호출
-        // Realtime 이벤트가 늦게 도착하거나 실패할 경우를 대비
-        console.log('🎯 completeUpdate 호출 직전:', { progressId });
-        await completeUpdate(progressId, true);
-        console.log('✨ completeUpdate 완료:', { progressId });
+        console.log('📊 완료 처리 시작:', { progressId, processedCount });
         
         // interval 정리
         if (intervalRef.current) {
@@ -313,14 +352,17 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
           console.log('🧹 업데이트 완료 - interval 정리');
         }
         
+        // Context 상태 완료 처리
+        await updateProgress(progressId, {
+          processed_posts: processedCount,
+          status: 'completed'
+        });
+        
+        await completeUpdate(progressId, true);
+        console.log('✨ 완료 처리 완료:', { progressId });
+        
       } catch (error) {
-        console.error("❌ 상태 업데이트 실패:", error);
-        // 에러 시에도 완료 처리 시도
-        try {
-          await completeUpdate(progressId, false, '상태 업데이트 실패');
-        } catch (completeError) {
-          console.error("❌ completeUpdate 실패:", completeError);
-        }
+        console.error("❌ 완료 처리 실패:", error);
       }
 
       if (responseData.errorSummary) {

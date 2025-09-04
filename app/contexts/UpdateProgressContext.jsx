@@ -83,58 +83,10 @@ export const UpdateProgressProvider = ({ children }) => {
     }
   }, [progressStates]);
 
-  // Supabase Realtime 구독 (Context7 권장사항 적용)
-  useEffect(() => {
-    if (!userId) return;
-
-    let subscription;
-
-    const setupRealtimeSubscription = async () => {
-      try {
-        // 인증 토큰 설정 (중요!)
-        await supabase.realtime.setAuth();
-        
-        console.log('🚀 리얼타임 구독 설정 시작...', { userId });
-        
-        subscription = supabase
-          .channel(`execution-locks-${userId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'execution_locks',
-              filter: `user_id=eq.${userId}`
-            },
-            (payload) => {
-              console.log('🔔 Realtime update received:', payload);
-              handleRealtimeUpdate(payload);
-            }
-          )
-          .subscribe((status, err) => {
-            console.log('🔗 Realtime subscription status:', status);
-            if (status === 'SUBSCRIBED') {
-              console.log('✅ Realtime 구독 성공 - execution_locks 테이블 변경 감지 중...');
-            } else if (status === 'CLOSED') {
-              console.log('❌ Realtime 구독 종료');
-            } else if (err) {
-              console.error('❌ Realtime 구독 에러:', err);
-            }
-          });
-      } catch (error) {
-        console.error('Failed to setup realtime subscription:', error);
-      }
-    };
-
-    setupRealtimeSubscription();
-
-    return () => {
-      if (subscription) {
-        console.log('🔄 Realtime 구독 해제');
-        subscription.unsubscribe();
-      }
-    };
-  }, [userId]);
+  // 리얼타임 구독 제거됨 - 단순 상태 관리만 사용
+  // useEffect(() => {
+  //   console.log('📝 Realtime 구독이 비활성화됨 - 단순 상태 관리 사용');
+  // }, [userId]);
 
   // Realtime 업데이트 처리 (execution_locks 테이블 구조)
   const handleRealtimeUpdate = (payload) => {
