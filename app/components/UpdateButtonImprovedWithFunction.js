@@ -38,10 +38,34 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   // execution_locks 테이블에서 실행 중 상태 확인하는 함수
   const checkExecutionLock = async (userId) => {
     try {
-      const response = await api.get(`/api/execution-locks/check?userId=${userId}`);
-      return response.data?.is_running || false;
+      // baseURL을 사용하지 않고 직접 fetch 사용
+      const response = await fetch(`/api/execution-locks/check?userId=${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data?.is_running || false;
     } catch (error) {
       console.error("실행 상태 확인 중 오류:", error);
+      
+      // 네트워크 에러 시 경고만 표시하고 실행 허용
+      if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
+        console.warn("네트워크 연결 문제로 실행 상태 확인 실패. 실행을 허용합니다.");
+        setError("⚠️ 네트워크 연결을 확인해주세요. (실행은 계속됩니다)");
+        
+        // 3초 후 에러 메시지 자동 제거
+        setTimeout(() => {
+          setError("");
+        }, 3000);
+      }
+      
       // 오류 시 안전하게 false 반환 (실행 허용)
       return false;
     }
@@ -408,8 +432,15 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     let userFriendlyMessage = "잠시 후 다시 시도해주세요.";
     
     if (err.isAxiosError && err.response) {
-      const msg = err.response.data?.message || "잠시 후 다시 시도해주세요.";
-      userFriendlyMessage = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+      const status = err.response.status;
+      
+      if (status === 409) {
+        // 409 Conflict - 이미 실행 중인 작업이 있음
+        userFriendlyMessage = "⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.";
+      } else {
+        const msg = err.response.data?.message || "잠시 후 다시 시도해주세요.";
+        userFriendlyMessage = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+      }
     } else if (err.message.includes("timeout") || err.code === "ECONNABORTED") {
       userFriendlyMessage = "요청 시간 초과. 네트워크를 확인하세요.";
     }
