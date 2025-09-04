@@ -1,9 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+// 서버 사이드에서는 NEXT_PUBLIC_ 접두사 없이 사용
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Supabase 환경 변수가 설정되지 않았습니다:', { supabaseUrl: !!supabaseUrl, supabaseKey: !!supabaseKey });
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);

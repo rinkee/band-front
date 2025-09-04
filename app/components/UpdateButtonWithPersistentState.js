@@ -103,10 +103,24 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
   // execution_locks 테이블에서 실행 중 상태 확인하는 함수
   const checkExecutionLock = async (userId) => {
     try {
-      const response = await api.get(`/api/execution-locks/check?userId=${userId}`);
+      const response = await api.get(`/api/execution-locks/check?userId=${userId}`, {
+        timeout: 5000 // 5초 타임아웃
+      });
       return response.data?.is_running || false;
     } catch (error) {
       console.error("실행 상태 확인 중 오류:", error);
+      
+      // 네트워크 에러 등의 경우 사용자에게 알림 (하지만 실행은 허용)
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        console.warn("네트워크 연결 문제로 실행 상태 확인 실패. 실행을 허용합니다.");
+        setError("⚠️ 네트워크 연결을 확인해주세요. (실행은 계속됩니다)");
+        
+        // 5초 후 에러 메시지 자동 제거
+        setTimeout(() => {
+          setError("");
+        }, 5000);
+      }
+      
       // 오류 시 안전하게 false 반환 (실행 허용)
       return false;
     }
@@ -121,18 +135,19 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
       return;
     }
 
-    // execution_locks에서 실행 중 상태 확인 (DB에서 확인)
-    const isRunning = await checkExecutionLock(userId);
-    if (isRunning) {
+    // Context 상태로 중복 실행 방지 (우선 API 호출은 비활성화)
+    if (isBackgroundProcessing) {
+      console.log('⚠️ 이미 처리 중이므로 중복 실행 방지');
       setError("⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.");
       return;
     }
 
-    // Context 상태로도 중복 실행 방지
-    if (isBackgroundProcessing) {
-      console.log('⚠️ 이미 처리 중이므로 중복 실행 방지');
-      return;
-    }
+    // TODO: API 안정화 후 활성화 예정
+    // const isRunning = await checkExecutionLock(userId);
+    // if (isRunning) {
+    //   setError("⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.");
+    //   return;
+    // }
 
     // 🎯 세션에서 function_number 가져오기
     let functionNumber = 0; // 기본값
