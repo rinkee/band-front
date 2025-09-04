@@ -85,6 +85,12 @@ const decodeHtmlEntities = (text) => {
   return decodedText;
 };
 
+// 댓글이 취소 관련인지 확인하는 함수
+const isCancellationComment = (content) => {
+  if (!content) return false;
+  return content.includes('취소');
+};
+
 // 댓글 항목 컴포넌트
 const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails, showOrderDetails }) => {
   const [imageError, setImageError] = useState(false);
@@ -105,6 +111,12 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
        comment.content.includes("비밀댓글입니다") ||
        comment.content === "This comment is private.");
   }, [comment.content]);
+
+  // 취소 댓글인지 확인
+  const isCancellation = isCancellationComment(comment.content);
+  
+  // orderStatus 재정의 - 취소 댓글이면 무조건 "주문취소"
+  const displayStatus = isCancellation ? "주문취소" : orderStatus;
 
   const formatTimeAgo = (timestamp) => {
     const now = Date.now();
@@ -163,16 +175,16 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                 <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
                   <div className="w-3 h-3 bg-gray-400 rounded-full animate-spin"></div>
                 </span>
+              ) : isCancellation || displayStatus === "주문취소" ? (
+                // 취소 댓글이거나 이미 주문취소 상태면
+                <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+                  ✓ 주문취소
+                </span>
               ) : isSavedInDB ? (
-                orderStatus === "주문취소" ? (
-                  <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
-                    ✓ 주문취소
-                  </span>
-                ) : (
-                  <span className="text-sm px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
-                    ✓ 주문 처리됨
-                  </span>
-                )
+                // 기존 저장된 주문 (취소가 아닌 경우)
+                <span className="text-sm px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+                  ✓ 주문 처리됨
+                </span>
               ) : isPrivateComment ? (
                 // 비밀댓글
                 <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
@@ -324,7 +336,8 @@ const CommentsList = ({
       
       const savedComment = savedComments[comment.comment_key];
       const isSavedInDB = savedComment?.isSaved || false;
-      const isMissed = !isSavedInDB && uniqueComments.some(
+      const isCancellation = isCancellationComment(comment.content);
+      const isMissed = !isCancellation && !isSavedInDB && uniqueComments.some(
         (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
       );
       
@@ -532,8 +545,9 @@ const CommentsList = ({
           const orderStatus = savedComment?.status || null;
           const orderDetails = savedComment?.orders || [];
           
-          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
-          const isMissed = !isSavedInDB && sortedComments.some(
+          // 누락 여부 판단: 취소 댓글이 아니고, DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
+          const isCancellation = isCancellationComment(comment.content);
+          const isMissed = !isCancellation && !isSavedInDB && sortedComments.some(
             (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
           );
           
