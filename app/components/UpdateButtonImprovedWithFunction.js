@@ -333,7 +333,10 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           
           // 백그라운드에서 완료되면 즉시 완료 처리
           const responseData = response.data;
-          const processedCount = responseData?.data?.length || 0;
+          // 새로운 응답 형식과 기존 형식 모두 지원
+          const processedCount = responseData?.stats?.total || responseData?.data?.length || 0;
+          const successCount = responseData?.stats?.success || processedCount;
+          const errorCount = responseData?.stats?.errors || 0;
           
           setIsBackgroundProcessing(false);
           
@@ -345,7 +348,13 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           });
           
           // 성공 메시지 설정
-          if (responseData?.errorSummary) {
+          if (errorCount > 0) {
+            setError(`${processedCount}개 중 ${errorCount}개 실패`);
+            if (successCount > 0) {
+              setSuccessMessage(`✨ ${successCount}개 처리 완료!`);
+            }
+          } else if (responseData?.errorSummary) {
+            // 기존 errorSummary 형식 지원 (하위 호환성)
             const { totalErrors, errorRate } = responseData.errorSummary;
             setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
           } else {
@@ -395,7 +404,10 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     const responseData = response.data;
 
     if (response.status === 200 || response.status === 207) {
-      const processedCount = responseData.data?.length || 0;
+      // 새로운 응답 형식과 기존 형식 모두 지원
+      const processedCount = responseData.stats?.total || responseData.data?.length || 0;
+      const successCount = responseData.stats?.success || processedCount;
+      const errorCount = responseData.stats?.errors || 0;
       const failoverInfo = responseData.failoverInfo;
       
       // 진행률 업데이트
@@ -405,7 +417,14 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         message: '완료!'
       });
 
-      if (responseData.errorSummary) {
+      // 에러 및 성공 메시지 처리
+      if (errorCount > 0) {
+        setError(`${processedCount}개 중 ${errorCount}개 실패`);
+        if (successCount > 0) {
+          setSuccessMessage(`✨ ${successCount}개 동기화 완료!`);
+        }
+      } else if (responseData.errorSummary) {
+        // 기존 errorSummary 형식 지원 (하위 호환성)
         const { totalErrors, errorRate } = responseData.errorSummary;
         setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
       } else {
