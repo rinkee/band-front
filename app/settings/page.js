@@ -2475,10 +2475,10 @@ export default function SettingsPage() {
             </LightCard>
 
             {/* 관리자 전용: 밴드 키 선택기 */}
-            {(userData?.role === "admin" || userData?.data?.role === "admin") && (
+            {(swrUserData?.role === "admin" || swrUserData?.data?.role === "admin") && (
               <LightCard padding="p-5 sm:p-6">
                 <BandKeySelector 
-                  userData={userData?.data || userData} 
+                  userData={swrUserData?.data || swrUserData} 
                   onKeyChange={(band) => {
                     // 밴드 키 변경 후 사용자 데이터 새로고침
                     globalMutate(`/api/auth/me/${userId}`);
