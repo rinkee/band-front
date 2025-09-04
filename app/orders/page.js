@@ -1958,7 +1958,7 @@ export default function OrdersPage() {
         </div>
 
         {/* 필터 섹션 */}
-        <LightCard padding="p-0" className="mb-6 md:mb-8 overflow-hidden">
+        <LightCard padding="p-0" className="mb-2 md:mb-2 overflow-hidden">
           <div className="divide-y divide-gray-200">
             {/* 조회 기간 */}
             <div className="grid grid-cols-[max-content_1fr] items-center">
@@ -2087,7 +2087,7 @@ export default function OrdersPage() {
 
         {/* 주의 안내 문구 */}
         <p className="text-sm text-gray-600 px-1 py-2">
-          상품과 수량이 잘못 처리될 수 있습니다. 상품명과 고객댓글 수량을 꼭 확인하세요.
+          * 상품과 수량이 잘못 처리될 수 있습니다. 상품명과 고객댓글 수량을 꼭 확인하세요.
         </p>
 
         {/* 주문 테이블 */}
