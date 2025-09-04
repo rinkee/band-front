@@ -336,8 +336,7 @@ const CommentsList = ({
       
       const savedComment = savedComments[comment.comment_key];
       const isSavedInDB = savedComment?.isSaved || false;
-      const isCancellation = isCancellationComment(comment.content);
-      const isMissed = !isCancellation && !isSavedInDB && uniqueComments.some(
+      const isMissed = !isSavedInDB && uniqueComments.some(
         (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
       );
       
@@ -542,9 +541,8 @@ const CommentsList = ({
           const orderStatus = savedComment?.status || null;
           const orderDetails = savedComment?.orders || [];
           
-          // 누락 여부 판단: 취소 댓글이 아니고, DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
-          const isCancellation = isCancellationComment(comment.content);
-          const isMissed = !isCancellation && !isSavedInDB && sortedComments.some(
+          // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
+          const isMissed = !isSavedInDB && sortedComments.some(
             (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
           );
           
