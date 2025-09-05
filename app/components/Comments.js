@@ -737,22 +737,6 @@ const CommentsModal = ({
 
       if (productsError) throw productsError;
 
-      // 관련된 주문들의 pickup_date도 함께 업데이트
-      const { error: ordersError, data: ordersData } = await supabase
-        .from('orders')
-        .update({ 
-          pickup_date: new Date(dateToSave).toISOString().split('T')[0], // date 타입이므로 날짜만
-          updated_at: new Date().toISOString()
-        })
-        .eq('post_key', postKey);
-
-      console.log('Orders 테이블 업데이트 결과:', { error: ordersError, data: ordersData });
-
-      if (ordersError) {
-        console.warn('주문 테이블 업데이트 실패 (계속 진행):', ordersError);
-        // 주문 테이블 업데이트 실패는 경고만 하고 계속 진행
-      }
-
       // 성공 시 편집 모드 종료
       setIsEditingPickupDate(false);
       
