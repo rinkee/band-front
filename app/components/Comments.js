@@ -138,19 +138,19 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
   };
 
   return (
-    <div className="flex gap-4 p-5 hover:bg-gray-50 transition-colors border-b border-gray-100">
+    <div className="flex gap-3 p-4 hover:bg-gray-50 transition-colors">
       {/* 프로필 이미지 */}
       <div className="flex-shrink-0">
         {hasValidProfileImage ? (
           <img
             src={comment.author.profile_image_url}
             alt={comment.author?.name || "익명"}
-            className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
+            className="w-10 h-10 rounded-full object-cover"
             onError={() => setImageError(true)}
           />
         ) : (
-          <div className="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-200">
-            <UserIcon className="w-7 h-7 text-white" />
+          <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
+            <UserIcon className="w-6 h-6 text-white" />
           </div>
         )}
       </div>
@@ -158,13 +158,13 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
       {/* 댓글 내용 */}
       <div className="flex-1 min-w-0">
         {/* 작성자 이름 */}
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-bold text-gray-900 text-lg">
+        <div className="flex items-center justify-between mb-1">
+          <span className="font-medium text-gray-900 text-base">
             {comment.author?.name || "익명"}
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {isExcludedCustomer && (
-              <span className="text-base px-3 py-1 bg-red-100 text-red-600 rounded-lg font-bold border border-red-200">
+              <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
                 제외 고객
               </span>
             )}
@@ -172,33 +172,32 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             {!isExcludedCustomer && (
               isDbDataLoading ? (
                 // DB 데이터 로딩 중
-                <span className="text-base px-3 py-1 bg-gray-100 text-gray-500 rounded-lg font-bold border border-gray-200 flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gray-400 rounded-full animate-spin"></div>
-                  로딩
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
+                  <div className="w-3 h-3 bg-gray-400 rounded-full animate-spin"></div>
                 </span>
               ) : isCancellation || displayStatus === "주문취소" ? (
                 // 취소 댓글이거나 이미 주문취소 상태면
-                <span className="text-base px-3 py-1 bg-red-100 text-red-600 rounded-lg font-bold border border-red-200">
+                <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
                   ✓ 주문취소
                 </span>
               ) : isSavedInDB ? (
                 // 기존 저장된 주문 (취소가 아닌 경우)
-                <span className="text-base px-3 py-1 bg-green-100 text-green-600 rounded-lg font-bold border border-green-200">
+                <span className="text-sm px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
                   ✓ 주문 처리됨
                 </span>
               ) : isPrivateComment ? (
                 // 비밀댓글
-                <span className="text-base px-3 py-1 bg-gray-100 text-gray-500 rounded-lg font-bold border border-gray-200">
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
                   🔒 비밀댓글
                 </span>
               ) : isMissed ? (
                 // 누락된 주문 (이후 댓글이 DB에 있음)
-                <span className="text-base px-3 py-1 bg-orange-100 text-orange-600 rounded-lg font-bold border border-orange-200">
+                <span className="text-sm px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
                   ⚠ 누락 주문
                 </span>
               ) : (
                 // 업데이트 전 (아직 처리 대상 아님)
-                <span className="text-base px-3 py-1 bg-gray-100 text-gray-500 rounded-lg font-bold border border-gray-200">
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
                   업데이트 전
                 </span>
               )
@@ -207,7 +206,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         </div>
 
         {/* 댓글 텍스트 */}
-        <div className="text-gray-800 text-lg mb-3 whitespace-pre-wrap break-words leading-relaxed">
+        <div className="text-gray-800 text-base mb-2 whitespace-pre-wrap break-words">
           {decodeHtmlEntities(comment.content)}
         </div>
 
@@ -228,11 +227,12 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
 
         {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
         {showOrderDetails && isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-3 mb-3 p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-            <div className="space-y-2">
+          <div className="mt-2 mb-2 p-2 bg-gray-100 rounded-lg">
+            {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
+            <div className="space-y-1">
               {orderDetails.map((order, index) => (
-                <div key={index} className="text-base">
-                  <span className="font-bold text-gray-900">
+                <div key={index} className="text-sm">
+                  <span className="font-medium">
                     {(() => {
                       const productName = order.product_name || '상품';
                       // 날짜 패턴 제거: [9월3일], [1월15일] 등
@@ -240,10 +240,10 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                     })()}
                   </span>
                   {order.quantity && (
-                    <span className="ml-2 font-medium text-blue-600">× {order.quantity}</span>
+                    <span className="ml-1">× {order.quantity}</span>
                   )}
                   {(order.total_amount || order.product_price) && (
-                    <span className="font-bold ml-3 text-blue-700">
+                    <span className="font-medium ml-2">
                       {(() => {
                         const displayPrice = order.total_amount || order.product_price;
                         console.log(`🎯 화면 표시 가격:`, {
@@ -264,7 +264,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         )}
 
         {/* 시간만 표시 */}
-        <div className="text-base text-gray-500 font-medium">
+        <div className="text-sm text-gray-500">
           <span>{formatTimeAgo(comment.created_at)}</span>
         </div>
       </div>
@@ -388,10 +388,10 @@ const CommentsList = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex items-center gap-3 text-gray-600">
-          <ArrowPathIcon className="w-6 h-6 animate-spin" />
-          <span className="text-lg font-medium">댓글을 불러오는 중...</span>
+      <div className="flex items-center justify-center py-8">
+        <div className="flex items-center gap-2 text-gray-500">
+          <ArrowPathIcon className="w-5 h-5 animate-spin" />
+          <span>댓글을 불러오는 중...</span>
         </div>
       </div>
     );
@@ -399,14 +399,14 @@ const CommentsList = ({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="text-red-600 mb-3 text-lg font-bold">댓글을 불러오는데 실패했습니다</div>
-        <div className="text-base text-gray-600 mb-6">{error}</div>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <div className="text-red-500 mb-2">댓글을 불러오는데 실패했습니다</div>
+        <div className="text-sm text-gray-500 mb-4">{error}</div>
         <button
           onClick={onRefresh}
-          className="text-white bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-bold text-base flex items-center gap-2 border-2 border-blue-600 hover:border-blue-700 transition-colors"
+          className="text-blue-500 hover:text-blue-600 text-sm flex items-center gap-1"
         >
-          <ArrowPathIcon className="w-5 h-5" />
+          <ArrowPathIcon className="w-4 h-4" />
           다시 시도
         </button>
       </div>
@@ -415,9 +415,9 @@ const CommentsList = ({
 
   if (!comments || comments.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center text-gray-500">
-        <ChatBubbleBottomCenterTextIcon className="w-16 h-16 mb-4 opacity-50" />
-        <div className="text-lg font-medium">아직 댓글이 없습니다</div>
+      <div className="flex flex-col items-center justify-center py-8 text-center text-gray-500">
+        <ChatBubbleBottomCenterTextIcon className="w-12 h-12 mb-2 opacity-50" />
+        <div>아직 댓글이 없습니다</div>
       </div>
     );
   }
@@ -441,27 +441,27 @@ const CommentsList = ({
     <div>
       {/* 누락 주문 발견 시 재처리 알림 - 모듈 형태 */}
       {hasMissedOrders && onEnableReprocess && (
-        <div className="m-6 mb-0">
-          <div className="bg-orange-50 rounded-xl p-5 border-2 border-orange-200">
+        <div className="m-4 mb-0">
+          <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-orange-800">누락된 주문 발견</h4>
-                  <p className="text-base text-orange-600 mt-1">
+                  <h4 className="text-base font-semibold text-orange-800">누락된 주문 발견</h4>
+                  <p className="text-sm text-orange-600">
                     자동 재처리를 활성화하면 다음 업데이트 시 누락된 주문들이 복구됩니다.
                   </p>
                 </div>
               </div>
               <button
                 onClick={onEnableReprocess}
-                className="flex items-center gap-3 px-6 py-3 bg-orange-500 text-white text-base font-bold rounded-xl hover:bg-orange-600 transition-colors duration-200 flex-shrink-0 border-2 border-orange-500 hover:border-orange-600"
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors duration-200 flex-shrink-0"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 재처리 활성화
@@ -473,28 +473,28 @@ const CommentsList = ({
       
       {/* 더보기 버튼 - 모듈 형태 */}
       {showLoadMore && (
-        <div className="m-6 mb-0">
+        <div className="m-4 mb-0">
           <button
             onClick={onLoadMore}
             disabled={loadMoreLoading}
-            className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 hover:from-blue-100 hover:to-indigo-100 disabled:from-gray-50 disabled:to-gray-50 transition-all duration-200 shadow-sm border-2 border-blue-200 hover:border-blue-300"
+            className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 hover:from-blue-100 hover:to-indigo-100 disabled:from-gray-50 disabled:to-gray-50 transition-all duration-200 shadow-sm"
           >
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-3">
               {loadMoreLoading ? (
                 <>
-                  <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <ArrowPathIcon className="w-5 h-5 animate-spin text-blue-600" />
+                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                    <ArrowPathIcon className="w-4 h-4 animate-spin text-blue-600" />
                   </div>
-                  <span className="font-bold text-blue-700 text-lg">로딩 중...</span>
+                  <span className="font-medium text-blue-700">로딩 중...</span>
                 </>
               ) : (
                 <>
-                  <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                     </svg>
                   </div>
-                  <span className="font-bold text-blue-700 text-lg">댓글 더보기</span>
+                  <span className="font-medium text-blue-700">댓글 더보기</span>
                 </>
               )}
             </div>
@@ -503,7 +503,7 @@ const CommentsList = ({
       )}
 
       {/* 댓글 목록 */}
-      <div className="divide-y-2 divide-gray-100">
+      <div className="divide-y divide-gray-100">
         {sortedComments
           .filter((comment) => {
             // 제외 고객 숨김 설정이 true이고, 해당 댓글이 제외 고객인 경우 필터링
@@ -1144,139 +1144,152 @@ const CommentsModal = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* 백드롭 */}
+      {/* 백드롭 - 투명하게 */}
       <div
-        className="fixed inset-0 transition-opacity bg-black/50"
+        className="fixed inset-0 transition-opacity bg-gray-900/60"
         onClick={onClose}
       />
 
       {/* 모달 컨텐츠 */}
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-[100rem] h-[90vh] bg-white rounded-lg flex flex-col overflow-hidden shadow-xl">
-          {/* 상단 헤더 */}
-          <div className="bg-blue-600 text-white p-6 flex items-center justify-between">
-            <div className="flex-1">
-              <h2 className="text-xl font-bold">댓글 관리</h2>
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="relative w-full max-w-[100rem] h-[92vh] bg-white rounded-3xl flex flex-col overflow-hidden">
+          {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 z-20 p-3 text-gray-100 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
+          >
+            <XMarkIcon className="w-8 h-8" />
+          </button>
+          
+          {/* 상단 헤더 - 모던한 그라데이션 배경 */}
+          <div className="px-8 py-4 bg-gray-700">
+            <div className="pr-16"> {/* 닫기 버튼 공간 확보 */}
               {postTitle && (
-                <p className="text-blue-100 mt-1">{(() => {
-                  // 원본 제목에서 기존 날짜 패턴 제거
-                  let cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
-                  
-                  // products에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
-                  const firstProduct = products && products.length > 0 ? products[0] : null;
-                  if (firstProduct?.pickup_date) {
-                    try {
-                      const pickupDate = new Date(firstProduct.pickup_date);
-                      if (!isNaN(pickupDate.getTime())) {
-                        const formattedDate = `${pickupDate.getMonth() + 1}월${pickupDate.getDate()}일`;
-                        return `[${formattedDate}] ${cleanTitle}`.trim();
-                      }
-                    } catch (e) {
-                      console.log('pickup_date 파싱 실패:', e);
-                    }
-                  }
-                  
-                  // pickup_date가 없으면 원본 제목 사용
-                  return cleanTitle || '제목 없음';
-                })()}</p>
+                <>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <h2 className="text-3xl font-bold text-white mb-2 leading-tight">
+                        {(() => {
+                          // 원본 제목에서 기존 날짜 패턴 제거
+                          let cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
+                          
+                          // products에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
+                          const firstProduct = products && products.length > 0 ? products[0] : null;
+                          if (firstProduct?.pickup_date) {
+                            try {
+                              const pickupDate = new Date(firstProduct.pickup_date);
+                              if (!isNaN(pickupDate.getTime())) {
+                                const formattedDate = `${pickupDate.getMonth() + 1}월${pickupDate.getDate()}일`;
+                                return `[${formattedDate}] ${cleanTitle}`.trim();
+                              }
+                            } catch (e) {
+                              console.log('pickup_date 파싱 실패:', e);
+                            }
+                          }
+                          
+                          // pickup_date가 없으면 원본 제목 사용
+                          return cleanTitle || '제목 없음';
+                        })()}
+                      </h2>
+                      
+                      <div className="flex items-center gap-4 flex-wrap">
+                        {/* 수령일 표시/편집 */}
+                        {isEditingPickupDate ? (
+                          // 편집 모드
+                          <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-full">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <input
+                              type="date"
+                              value={editPickupDate}
+                              onChange={(e) => {
+                                const selectedDate = e.target.value;
+                                setEditPickupDate(selectedDate);
+                                // 날짜 선택 시 바로 저장 - 선택한 날짜를 직접 전달
+                                if (selectedDate) {
+                                  setTimeout(() => {
+                                    handlePickupDateSave(selectedDate);
+                                  }, 100);
+                                }
+                              }}
+                              min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
+                              className="text-lg bg-transparent border-none outline-none text-blue-700 font-medium w-40 h-10"
+                              style={{
+                                fontSize: '16px',
+                                padding: '8px',
+                                minWidth: '160px',
+                                height: '40px'
+                              }}
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          // 표시 모드
+                          (() => {
+                            // products 테이블의 pickup_date 필드가 있으면 우선 사용
+                            const firstProduct = products && products.length > 0 ? products[0] : null;
+                            if (firstProduct?.pickup_date) {
+                              try {
+                                const pickupDate = new Date(firstProduct.pickup_date);
+                                if (!isNaN(pickupDate.getTime())) {
+                                  return (
+                                    <button
+                                      onClick={handlePickupDateEdit}
+                                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
+                                      title="수령일 수정"
+                                    >
+                                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {pickupDate.toLocaleDateString('ko-KR', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        weekday: 'short'
+                                      })} 수령
+                                    </button>
+                                  );
+                                }
+                              } catch (e) {
+                                console.log('pickup_date 파싱 실패:', e);
+                              }
+                            }
+                          
+                          // pickup_date가 없으면 수령일 표시 없음
+                          return null;
+                          })()
+                        )}
+                        
+                        {/* 작성일 표시 */}
+                        {activePost?.posted_at && (
+                          <div className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-sm font-medium rounded-full">
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            작성: {new Date(activePost.posted_at).toLocaleDateString('ko-KR', {
+                              month: 'short',
+                              day: 'numeric',
+                              weekday: 'short'
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
-              
-              <div className="flex items-center gap-3 flex-wrap mt-3">
-                {/* 수령일 표시/편집 */}
-                {isEditingPickupDate ? (
-                  // 편집 모드
-                  <div className="inline-flex items-center gap-2 px-3 py-2 bg-blue-100 rounded-lg">
-                    <svg className="w-4 h-4 text-blue-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <input
-                      type="date"
-                      value={editPickupDate}
-                      onChange={(e) => {
-                        const selectedDate = e.target.value;
-                        setEditPickupDate(selectedDate);
-                        // 날짜 선택 시 바로 저장 - 선택한 날짜를 직접 전달
-                        if (selectedDate) {
-                          setTimeout(() => {
-                            handlePickupDateSave(selectedDate);
-                          }, 100);
-                        }
-                      }}
-                      min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
-                      className="bg-transparent border-none outline-none text-blue-800 font-semibold text-base min-w-[140px]"
-                      autoFocus
-                    />
-                  </div>
-                ) : (
-                  // 표시 모드
-                  (() => {
-                    // products 테이블의 pickup_date 필드가 있으면 우선 사용
-                    const firstProduct = products && products.length > 0 ? products[0] : null;
-                    if (firstProduct?.pickup_date) {
-                      try {
-                        const pickupDate = new Date(firstProduct.pickup_date);
-                        if (!isNaN(pickupDate.getTime())) {
-                          return (
-                            <button
-                              onClick={handlePickupDateEdit}
-                              className="inline-flex items-center px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold rounded-lg transition-colors cursor-pointer"
-                              title="수령일 수정"
-                            >
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              {pickupDate.toLocaleDateString('ko-KR', {
-                                month: 'short',
-                                day: 'numeric',
-                                weekday: 'short'
-                              })} 수령
-                            </button>
-                          );
-                        }
-                      } catch (e) {
-                        console.log('pickup_date 파싱 실패:', e);
-                      }
-                    }
-                  
-                  // pickup_date가 없으면 수령일 표시 없음
-                  return null;
-                  })()
-                )}
-                
-                {/* 작성일 표시 */}
-                {activePost?.posted_at && (
-                  <div className="inline-flex items-center px-3 py-2 bg-white bg-opacity-20 text-blue-100 font-medium rounded-lg">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    작성: {new Date(activePost.posted_at).toLocaleDateString('ko-KR', {
-                      month: 'short',
-                      day: 'numeric',
-                      weekday: 'short'
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <button
-              onClick={onClose}
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-500 transition-colors"
-            >
-              <XMarkIcon className="w-6 h-6" />
-            </button>
             </div>
           </div>
 
           {/* 메인 컨텐츠 영역 - 가로 3분할 레이아웃 */}
-          <div className="flex flex-1 overflow-hidden gap-6 p-6 bg-gray-50">
+          <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-200">
             {/* 게시물 내용 카드 */}
             <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden flex flex-col h-full shadow-sm">
-                <div className="px-6 py-4 flex items-center justify-between bg-gray-50 flex-shrink-0 border-b-2 border-gray-200">
+              <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
+                <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">게시물 내용</h3>
-                    <p className="text-lg text-gray-600 mt-1">원본 텍스트</p>
+                    <h3 className="text-lg font-semibold text-gray-900">게시물 내용</h3>
+                    <p className="text-base text-gray-500">원본 텍스트</p>
                   </div>
                   
                   {/* 삭제 버튼 */}
@@ -1286,10 +1299,10 @@ const CommentsModal = ({
                         onDeletePost(post);
                         onClose(); // 삭제 후 모달 닫기
                       }}
-                      className="flex items-center gap-2 px-4 py-2 text-base font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors border-2 border-red-200 hover:border-red-300"
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="게시물 삭제"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       삭제
@@ -1297,19 +1310,19 @@ const CommentsModal = ({
                   )}
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-6 min-h-0">
+                <div className="flex-1 overflow-y-auto p-4 min-h-0">
                   {postContent ? (
-                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-lg">
+                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-base">
                       {decodeHtmlEntities(postContent)}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center h-full">
-                      <div className="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center mb-4">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <div className="flex flex-col items-center justify-center py-8 text-center h-full">
+                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <p className="text-gray-500 text-lg font-medium">게시물 내용이 없습니다</p>
+                      <p className="text-gray-500 text-base">게시물 내용이 없습니다</p>
                     </div>
                   )}
                 </div>
@@ -1320,12 +1333,12 @@ const CommentsModal = ({
 
             {/* 댓글 목록 카드 */}
             <div className="w-2/5 flex flex-col">
-              <div className="bg-white rounded-xl border-2 border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
-                <div className="px-6 py-4 bg-gray-50 border-b-2 border-gray-200">
+                <div className="px-4 py-3 bg-gray-100">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">댓글 목록</h3>
-                    <div className="flex items-center gap-2 text-lg text-gray-600 mt-1">
+                    <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
+                    <div className="flex items-center gap-1 text-base text-gray-500">
                       <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
                       <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
                     </div>
@@ -1356,44 +1369,44 @@ const CommentsModal = ({
               </div>
               
               {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
-              <div className="mt-6 flex items-center gap-4 flex-wrap">
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
                 {/* 제외 고객 숨김 모듈 */}
-                <div className="flex items-center gap-3 bg-white p-4 rounded-xl border-2 border-gray-200 shadow-sm">
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
                   <button
                     onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ${
+                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
                       hideExcludedCustomers ? 'bg-red-500' : 'bg-gray-300'
                     }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${
-                        hideExcludedCustomers ? 'translate-x-6' : 'translate-x-1'
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        hideExcludedCustomers ? 'translate-x-5' : 'translate-x-1'
                       }`}
                     />
                   </button>
-                  <span className="text-lg font-bold text-gray-700">제외고객 숨김</span>
+                  <span className="text-base font-medium text-gray-700">제외고객 숨김</span>
                 </div>
                 
                 {/* 주문 상세 보기 모듈 */}
-                <div className="flex items-center gap-3 bg-white p-4 rounded-xl border-2 border-gray-200 shadow-sm">
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
                   <button
                     onClick={() => setShowOrderDetails(!showOrderDetails)}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 cursor-pointer ${
+                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
                       showOrderDetails ? 'bg-blue-600' : 'bg-gray-300'
                     }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${
-                        showOrderDetails ? 'translate-x-6' : 'translate-x-1'
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        showOrderDetails ? 'translate-x-5' : 'translate-x-1'
                       }`}
                     />
                   </button>
-                  <span className="text-lg font-bold text-gray-700">주문 상세 보기</span>
+                  <span className="text-base font-medium text-gray-700">주문 상세 보기</span>
                 </div>
                 
                 {/* 누락 주문 재처리 모듈 */}
                 {activePost && (
-                  <div className="flex items-center gap-3 bg-white p-4 rounded-xl border-2 border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
                     <button
                       onClick={() => {
                         if (!activePost.is_product || !onToggleReprocess) return;
@@ -1401,7 +1414,7 @@ const CommentsModal = ({
                         onToggleReprocess(activePost, !isCurrentlyPending);
                       }}
                       disabled={!activePost.is_product || !onToggleReprocess}
-                      className={`relative inline-flex h-7 w-13 items-center rounded-full transition-all duration-300 ${
+                      className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 ${
                         !activePost.is_product
                           ? 'bg-gray-200 cursor-not-allowed'
                           : activePost.comment_sync_status === 'pending'
@@ -1410,16 +1423,16 @@ const CommentsModal = ({
                       }`}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full transition-transform duration-300 shadow-sm ${
+                        className={`inline-block h-3 w-3 transform rounded-full transition-transform duration-300 ${
                           !activePost.is_product
                             ? 'bg-gray-300'
                             : activePost.comment_sync_status === 'pending'
-                            ? 'translate-x-7 bg-white'
+                            ? 'translate-x-5 bg-white'
                             : 'translate-x-1 bg-white'
                         }`}
                       />
                     </button>
-                    <span className={`text-lg font-bold ${
+                    <span className={`text-base font-medium ${
                       !activePost.is_product
                         ? 'text-gray-400'
                         : activePost.comment_sync_status === 'pending'
@@ -1440,30 +1453,30 @@ const CommentsModal = ({
 
             {/* 추출된 상품 카드 */}
             <div className="w-1/4 flex flex-col">
-              <div className="bg-white rounded-xl border-2 border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
-                <div className="px-6 py-4 bg-gray-50 border-b-2 border-gray-200">
+              <div className="bg-white rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-100">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">추출된 상품</h3>
-                    <p className="text-lg text-gray-600 mt-1">{products?.length || 0}개의 상품</p>
+                    <h3 className="text-lg font-semibold text-gray-900">추출된 상품</h3>
+                    <p className="text-base text-gray-500">{products?.length || 0}개의 상품</p>
                   </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto">
-                  <div className="p-6 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+                  <div className="p-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
                   {productsError && (
-                    <div className="p-4 bg-red-50 rounded-xl border-2 border-red-200 mb-4">
-                      <p className="text-red-600 text-lg font-bold">상품 로딩 오류</p>
-                      <p className="text-red-500 text-base mt-2">{productsError.message}</p>
+                    <div className="p-3 bg-red-50 rounded-lg mb-3">
+                      <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
+                      <p className="text-red-500 text-sm mt-1">{productsError.message}</p>
                     </div>
                   )}
                   
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {products && products.length > 0 ? (
                       products.map((product, index) => (
-                        <div key={product.id || index} className="p-4 border-2 border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                        <div key={product.id || index} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
                           <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-bold text-gray-900 mb-3 leading-tight text-lg">
+                              <h4 className="font-medium text-gray-900 mb-2 leading-tight text-base">
                                 {(() => {
                                   const productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
                                   // 날짜 패턴 제거: [9월3일], [1월15일] 등
@@ -1471,16 +1484,16 @@ const CommentsModal = ({
                                 })()}
                               </h4>
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-gray-700 text-lg">
+                                <span className="font-bold text-gray-700 text-base">
                                   {product.products_data?.price || product.base_price || product.price ? 
                                     `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
                                     '가격 미정'}
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center justify-center ml-6">
+                            <div className="flex items-center justify-center ml-4">
                               <div className="text-center">
-                                <div className="text-2xl font-bold text-blue-600">
+                                <div className="text-lg font-bold text-gray-900">
                                   {(() => {
                                     // 상품명 정제 함수
                                     const cleanProductName = (name) => name.replace(/\[(\d+월\d+일)\]\s*/g, '').trim();
@@ -1517,7 +1530,7 @@ const CommentsModal = ({
                                     return totalQuantity;
                                   })()}
                                 </div>
-                                <div className="text-base text-gray-600 font-medium">
+                                <div className="text-sm text-gray-500">
                                   총 주문
                                 </div>
                               </div>
@@ -1526,15 +1539,16 @@ const CommentsModal = ({
                         </div>
                       ))
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <div className="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center mb-4">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                           </svg>
                         </div>
-                        <p className="text-gray-500 text-lg font-medium">추출된 상품이 없습니다</p>
+                        <p className="text-gray-500 text-base">추출된 상품이 없습니다</p>
                       </div>
                     )}
+                  </div>
                   </div>
                 </div>
               </div>
