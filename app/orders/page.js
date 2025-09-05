@@ -1102,6 +1102,24 @@ export default function OrdersPage() {
     }
   }, [userData?.userId, mutateProducts]);
 
+  // 게시물 업데이트 이벤트 리스너 - Comments 모달에서 수령일 변경 시 주문 데이터 새로고침
+  useEffect(() => {
+    const handlePostUpdated = (event) => {
+      console.log('주문 페이지: 게시물 업데이트 이벤트 수신:', event.detail);
+      if (userData?.userId && mutateOrders) {
+        // 주문 데이터 새로고침
+        mutateOrders(undefined, { revalidate: true });
+        console.log('주문 데이터 새로고침 완료');
+      }
+    };
+
+    window.addEventListener('postUpdated', handlePostUpdated);
+    
+    return () => {
+      window.removeEventListener('postUpdated', handlePostUpdated);
+    };
+  }, [mutateOrders, userData?.userId]);
+
   // localStorage 플래그 감지하여 바코드 옵션 업데이트 확인
   useEffect(() => {
     const checkBarcodeOptionsUpdate = () => {
