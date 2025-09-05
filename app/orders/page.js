@@ -2260,11 +2260,13 @@ export default function OrdersPage() {
                                 const productName = getProductNameById(
                                   order.product_id
                                 );
-                                const { name, date } =
+                                const { name } =
                                   parseProductName(productName);
+                                // product_pickup_date 필드에서 수령일 가져오기
+                                const pickupDate = order.product_pickup_date;
                                 const isAvailable =
-                                  isClient && date
-                                    ? isPickupAvailable(date)
+                                  isClient && pickupDate
+                                    ? isPickupAvailable(formatDate(pickupDate))
                                     : false;
 
                                 return (
@@ -2278,11 +2280,14 @@ export default function OrdersPage() {
                                     >
                                       {name}
                                     </div>
-                                    {date && (
+                                    {pickupDate && (
                                       <div
                                         className="text-xs mt-0.5 text-gray-500"
                                       >
-                                        [{date}]
+                                        [{(() => {
+                                          const date = new Date(pickupDate);
+                                          return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                        })()}]
                                         {isAvailable && (
                                           <span className="ml-1 text-gray-500">
                                             ✓ 수령가능
@@ -2753,9 +2758,11 @@ export default function OrdersPage() {
                     const productName = getProductNameById(
                       selectedOrder.product_id
                     );
-                    const { name, date } = parseProductName(productName);
+                    const { name } = parseProductName(productName);
+                    // product_pickup_date 필드에서 수령일 가져오기
+                    const pickupDate = selectedOrder.product_pickup_date;
                     const isAvailable =
-                      isClient && date ? isPickupAvailable(date) : false;
+                      isClient && pickupDate ? isPickupAvailable(formatDate(pickupDate)) : false;
 
                     return (
                       <div className="flex flex-col">
@@ -2766,11 +2773,14 @@ export default function OrdersPage() {
                         >
                           {name}
                         </div>
-                        {date && (
+                        {pickupDate && (
                           <div
                             className="text-sm mt-1 text-gray-500"
                           >
-                            [{date}]
+                            [{(() => {
+                              const date = new Date(pickupDate);
+                              return `${date.getMonth() + 1}월${date.getDate()}일`;
+                            })()}]
                             {isAvailable && (
                               <span className="ml-1 text-gray-500">
                                 ✓ 수령가능
@@ -3016,11 +3026,13 @@ export default function OrdersPage() {
                             const productName = getProductNameById(
                               selectedOrder.product_id
                             );
-                            const { name, date } =
+                            const { name } =
                               parseProductName(productName);
+                            // product_pickup_date 필드에서 수령일 가져오기
+                            const pickupDate = selectedOrder.product_pickup_date;
                             const isAvailable =
-                              isClient && date
-                                ? isPickupAvailable(date)
+                              isClient && pickupDate
+                                ? isPickupAvailable(formatDate(pickupDate))
                                 : false;
 
                             return (
@@ -3034,11 +3046,14 @@ export default function OrdersPage() {
                                 >
                                   {name}
                                 </div>
-                                {date && (
+                                {pickupDate && (
                                   <div
                                     className="text-sm mt-1 text-gray-500"
                                   >
-                                    [{date}]
+                                    [{(() => {
+                                      const date = new Date(pickupDate);
+                                      return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                    })()}]
                                     {isAvailable && (
                                       <span className="ml-1 text-gray-500">
                                         ✓ 수령가능
