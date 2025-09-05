@@ -670,13 +670,27 @@ const CommentsModal = ({
   };
 
   const handlePickupDateSave = async () => {
-    if (!editPickupDate) return;
+    if (!editPickupDate) {
+      console.error('수령일 저장 실패: editPickupDate가 비어있습니다.');
+      return;
+    }
+    
+    console.log('수령일 저장 시작:', { postKey, editPickupDate, activePost: activePost?.title });
     
     try {
+      // postKey 확인
+      if (!postKey) {
+        console.error('수령일 저장 실패: postKey가 없습니다.');
+        alert('게시물 정보를 찾을 수 없습니다.');
+        return;
+      }
+
       // 작성일 체크 - 작성일보다 이전으로 선택할 수 없음
       if (activePost?.created_at) {
         const createdDate = new Date(activePost.created_at);
         const selectedDate = new Date(editPickupDate);
+        
+        console.log('날짜 검증:', { createdDate, selectedDate });
         
         if (selectedDate < createdDate) {
           alert('수령일은 작성일보다 이전으로 설정할 수 없습니다.');
@@ -697,7 +711,13 @@ const CommentsModal = ({
       // 새로운 제목: 새 수령일을 맨 앞에 추가
       const updatedTitle = `[${formattedDate}] ${currentTitle}`.trim();
 
-      const { error } = await supabase
+      console.log('업데이트 데이터:', {
+        pickup_date: new Date(editPickupDate).toISOString(),
+        title: updatedTitle,
+        postKey
+      });
+
+      const { error, data } = await supabase
         .from('posts')
         .update({ 
           pickup_date: new Date(editPickupDate).toISOString(),
@@ -705,6 +725,8 @@ const CommentsModal = ({
           updated_at: new Date().toISOString()
         })
         .eq('post_key', postKey);
+
+      console.log('Supabase 업데이트 결과:', { error, data });
 
       if (error) throw error;
 
@@ -717,7 +739,13 @@ const CommentsModal = ({
       
     } catch (error) {
       console.error('수령일 업데이트 실패:', error);
-      alert('수령일 업데이트에 실패했습니다.');
+      console.error('에러 세부정보:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      alert(`수령일 업데이트에 실패했습니다.\n에러: ${error.message || error}`);
     }
   };
 
