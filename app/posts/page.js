@@ -891,7 +891,30 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   
   const title = post.title || '';
   const content = post.content || '';
-  const deliveryDate = extractDeliveryDate(title);
+  
+  // products 테이블의 pickup_date 기반으로 수령일 계산
+  const getPickupDateFromProducts = () => {
+    if (post.products && post.products.length > 0) {
+      const firstProduct = post.products[0];
+      if (firstProduct.pickup_date) {
+        try {
+          const pickupDate = new Date(firstProduct.pickup_date);
+          if (!isNaN(pickupDate.getTime())) {
+            const month = pickupDate.getMonth() + 1;
+            const day = pickupDate.getDate();
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const dayName = days[pickupDate.getDay()];
+            return `${month}월${day}일 ${dayName} 수령`;
+          }
+        } catch (e) {
+          console.log('pickup_date 파싱 실패:', e);
+        }
+      }
+    }
+    return null;
+  };
+  
+  const deliveryDate = getPickupDateFromProducts() || extractDeliveryDate(title);
   const cleanTitle = extractCleanTitle(title);
   const shortContent = formatContent(content);
 
@@ -931,26 +954,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           {/* 수령일 표시 */}
           {deliveryDate && (
             <div className="text-xs text-gray-600 font-medium bg-blue-50 px-2 py-1 rounded">
-              {(() => {
-                // 날짜 파싱 및 요일 표시
-                const parseKoreanDate = (dateStr) => {
-                  // "9월10일" 형태를 파싱
-                  const match = dateStr.match(/(\d+)월(\d+)일/);
-                  if (match) {
-                    const month = parseInt(match[1]);
-                    const day = parseInt(match[2]);
-                    const currentYear = new Date().getFullYear();
-                    const date = new Date(currentYear, month - 1, day);
-                    
-                    const days = ['일', '월', '화', '수', '목', '금', '토'];
-                    const dayName = days[date.getDay()];
-                    
-                    return `${month}월${day}일 ${dayName}`;
-                  }
-                  return dateStr;
-                };
-                return parseKoreanDate(deliveryDate);
-              })()}
+              {deliveryDate}
             </div>
           )}
         </div>
