@@ -1190,8 +1190,9 @@ const CommentsModal = ({
                                 }
                               })()}
                             </div>
-                          );
-                        })()}
+                            );
+                          })()
+                        )}
                         
                         {/* 작성일 표시 */}
                         {activePost?.posted_at && (
