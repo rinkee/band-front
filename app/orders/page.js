@@ -3078,8 +3078,8 @@ export default function OrdersPage() {
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
-                          // Use the new helper function
-                          value: formatDate(selectedOrder.product_pickup_date),
+                          // Use the correct pickup_date field
+                          value: formatDate(selectedOrder.pickup_date),
                           readOnly: true,
                         },
                         {
