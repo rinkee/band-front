@@ -625,9 +625,10 @@ const CommentsModal = ({
 
   // 수령일 편집 관련 함수들
   const handlePickupDateEdit = () => {
-    // 현재 수령일을 편집 필드에 설정
-    if (activePost?.pickup_date) {
-      const date = new Date(activePost.pickup_date);
+    // products 테이블에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
+    const firstProduct = products && products.length > 0 ? products[0] : null;
+    if (firstProduct?.pickup_date) {
+      const date = new Date(firstProduct.pickup_date);
       const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
       setEditPickupDate(localDate.toISOString().split('T')[0]);
     } else {
@@ -717,18 +718,31 @@ const CommentsModal = ({
         postKey
       });
 
-      const { error, data } = await supabase
-        .from('posts')
+      // products 테이블의 pickup_date 업데이트
+      const { error: productsError, data: productsData } = await supabase
+        .from('products')
         .update({ 
           pickup_date: new Date(editPickupDate).toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('post_key', postKey);
+
+      console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
+
+      if (productsError) throw productsError;
+
+      // posts 테이블의 title 업데이트 (pickup_date는 products 테이블에만 있으므로 제외)
+      const { error: postsError, data: postsData } = await supabase
+        .from('posts')
+        .update({ 
           title: updatedTitle,
           updated_at: new Date().toISOString()
         })
         .eq('post_key', postKey);
 
-      console.log('Supabase 업데이트 결과:', { error, data });
+      console.log('Posts 테이블 업데이트 결과:', { error: postsError, data: postsData });
 
-      if (error) throw error;
+      if (postsError) throw postsError;
 
       // 성공 시 편집 모드 종료
       setIsEditingPickupDate(false);
@@ -736,6 +750,7 @@ const CommentsModal = ({
       // SWR 캐시 갱신
       const { mutate } = require('swr');
       mutate(`/api/posts/${postKey}`);
+      mutate(`products-${postKey}`); // products 캐시도 갱신
       
     } catch (error) {
       console.error('수령일 업데이트 실패:', error);
@@ -1183,10 +1198,11 @@ const CommentsModal = ({
                         ) : (
                           // 표시 모드
                           (() => {
-                            // pickup_date 필드가 있으면 우선 사용
-                            if (activePost?.pickup_date) {
+                            // products 테이블의 pickup_date 필드가 있으면 우선 사용
+                            const firstProduct = products && products.length > 0 ? products[0] : null;
+                            if (firstProduct?.pickup_date) {
                               try {
-                                const pickupDate = new Date(activePost.pickup_date);
+                                const pickupDate = new Date(firstProduct.pickup_date);
                                 if (!isNaN(pickupDate.getTime())) {
                                   return (
                                     <button
