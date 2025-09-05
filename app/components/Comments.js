@@ -687,14 +687,23 @@ const CommentsModal = ({
       }
 
       // 작성일 체크 - 작성일보다 이전으로 선택할 수 없음
-      if (activePost?.created_at) {
-        const createdDate = new Date(activePost.created_at);
+      const postDate = activePost?.posted_at || activePost?.created_at;
+      if (postDate) {
+        // 날짜만 비교 (시간 제외)
+        const createdDate = new Date(postDate);
+        const createdDateOnly = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+        
         const selectedDate = new Date(editPickupDate);
+        const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
         
-        console.log('날짜 검증:', { createdDate, selectedDate });
+        console.log('날짜 검증:', { 
+          postDate,
+          createdDateOnly: createdDateOnly.toISOString().split('T')[0], 
+          selectedDateOnly: selectedDateOnly.toISOString().split('T')[0] 
+        });
         
-        if (selectedDate < createdDate) {
-          alert('수령일은 작성일보다 이전으로 설정할 수 없습니다.');
+        if (selectedDateOnly < createdDateOnly) {
+          alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
           return;
         }
       }
@@ -1109,6 +1118,21 @@ const CommentsModal = ({
     }
   }, [isOpen, postKey, bandKey, accessToken]);
 
+  // 모달이 닫히거나 postKey가 변경될 때 수령일 편집 상태 초기화
+  useEffect(() => {
+    if (!isOpen) {
+      // 모달이 닫히면 수령일 편집 상태 초기화
+      setIsEditingPickupDate(false);
+      setEditPickupDate('');
+    }
+  }, [isOpen]);
+
+  // postKey가 변경될 때 수령일 편집 상태 초기화 (다른 게시물로 변경 시)
+  useEffect(() => {
+    setIsEditingPickupDate(false);
+    setEditPickupDate('');
+  }, [postKey]);
+
   // 스크롤 이벤트 리스너 등록
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -1172,7 +1196,7 @@ const CommentsModal = ({
                               type="date"
                               value={editPickupDate}
                               onChange={(e) => setEditPickupDate(e.target.value)}
-                              min={activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
+                              min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
                               className="text-sm bg-transparent border-none outline-none text-blue-700 font-medium"
                               autoFocus
                             />
