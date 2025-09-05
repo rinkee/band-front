@@ -631,10 +631,40 @@ const CommentsModal = ({
       const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
       setEditPickupDate(localDate.toISOString().split('T')[0]);
     } else {
-      // 기본값: 오늘 날짜
-      const today = new Date();
-      const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
-      setEditPickupDate(localDate.toISOString().split('T')[0]);
+      // pickup_date가 없는 경우 제목에서 추출 시도
+      const postTitle = activePost?.title || '';
+      const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
+      const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
+      
+      if (deliveryDate) {
+        try {
+          // "1월15일" 형식을 파싱
+          const koreanDateMatch = deliveryDate.match(/(\d+)월\s*(\d+)일/);
+          if (koreanDateMatch) {
+            const currentYear = new Date().getFullYear();
+            const month = parseInt(koreanDateMatch[1]);
+            const day = parseInt(koreanDateMatch[2]);
+            const parsedDate = new Date(currentYear, month - 1, day);
+            const localDate = new Date(parsedDate.getTime() - parsedDate.getTimezoneOffset() * 60000);
+            setEditPickupDate(localDate.toISOString().split('T')[0]);
+          } else {
+            // 기본값: 오늘 날짜
+            const today = new Date();
+            const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+            setEditPickupDate(localDate.toISOString().split('T')[0]);
+          }
+        } catch {
+          // 파싱 실패 시 기본값: 오늘 날짜
+          const today = new Date();
+          const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+          setEditPickupDate(localDate.toISOString().split('T')[0]);
+        }
+      } else {
+        // 기본값: 오늘 날짜
+        const today = new Date();
+        const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+        setEditPickupDate(localDate.toISOString().split('T')[0]);
+      }
     }
     setIsEditingPickupDate(true);
   };
@@ -1156,7 +1186,11 @@ const CommentsModal = ({
                           const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
                           const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
                           return deliveryDate && (
-                            <div className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
+                            <button
+                              onClick={handlePickupDateEdit}
+                              className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
+                              title="수령일 수정"
+                            >
                               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
@@ -1189,7 +1223,7 @@ const CommentsModal = ({
                                   return deliveryDate + ' 수령';
                                 }
                               })()}
-                            </div>
+                            </button>
                             );
                           })()
                         )}
