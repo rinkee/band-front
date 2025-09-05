@@ -595,6 +595,8 @@ const CommentsModal = ({
   const [savedComments, setSavedComments] = useState({});
   const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
   const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
+  const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
+  const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
   const scrollContainerRef = useRef(null);
 
   // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
@@ -620,6 +622,79 @@ const CommentsModal = ({
 
   // post prop 대신 currentPost 사용 (fallback으로 post 사용)
   const activePost = currentPost || post;
+
+  // 수령일 편집 관련 함수들
+  const handlePickupDateEdit = () => {
+    // 현재 수령일을 편집 필드에 설정
+    if (activePost?.pickup_date) {
+      const date = new Date(activePost.pickup_date);
+      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      setEditPickupDate(localDate.toISOString().split('T')[0]);
+    } else {
+      // 기본값: 오늘 날짜
+      const today = new Date();
+      const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+      setEditPickupDate(localDate.toISOString().split('T')[0]);
+    }
+    setIsEditingPickupDate(true);
+  };
+
+  const handlePickupDateSave = async () => {
+    if (!editPickupDate) return;
+    
+    try {
+      // 작성일 체크 - 작성일보다 이전으로 선택할 수 없음
+      if (activePost?.created_at) {
+        const createdDate = new Date(activePost.created_at);
+        const selectedDate = new Date(editPickupDate);
+        
+        if (selectedDate < createdDate) {
+          alert('수령일은 작성일보다 이전으로 설정할 수 없습니다.');
+          return;
+        }
+      }
+
+      // 새로운 수령일로 제목 업데이트 생성
+      const newPickupDate = new Date(editPickupDate);
+      const formattedDate = `${newPickupDate.getMonth() + 1}월${newPickupDate.getDate()}일`;
+      
+      // 현재 제목에서 기존 날짜 부분 제거하고 새 날짜로 교체
+      let currentTitle = activePost?.title || '';
+      
+      // 기존 날짜 패턴들을 제거: [1월15일], (1월15일), 1월15일
+      currentTitle = currentTitle.replace(/[\[\(]?\d+월\d+일[\]\)]?\s*/g, '');
+      
+      // 새로운 제목: 새 수령일을 맨 앞에 추가
+      const updatedTitle = `[${formattedDate}] ${currentTitle}`.trim();
+
+      const { error } = await supabase
+        .from('posts')
+        .update({ 
+          pickup_date: new Date(editPickupDate).toISOString(),
+          title: updatedTitle,
+          updated_at: new Date().toISOString()
+        })
+        .eq('post_key', postKey);
+
+      if (error) throw error;
+
+      // 성공 시 편집 모드 종료
+      setIsEditingPickupDate(false);
+      
+      // SWR 캐시 갱신
+      const { mutate } = require('swr');
+      mutate(`/api/posts/${postKey}`);
+      
+    } catch (error) {
+      console.error('수령일 업데이트 실패:', error);
+      alert('수령일 업데이트에 실패했습니다.');
+    }
+  };
+
+  const handlePickupDateCancel = () => {
+    setIsEditingPickupDate(false);
+    setEditPickupDate('');
+  };
 
   // 게시물의 추출된 상품 리스트 가져오기
   const { data: products, error: productsError } = useSWR(
@@ -1013,30 +1088,69 @@ const CommentsModal = ({
                       </h2>
                       
                       <div className="flex items-center gap-4 flex-wrap">
-                        {/* 수령일 표시 */}
-                        {(() => {
-                          // pickup_date 필드가 있으면 우선 사용
-                          if (activePost?.pickup_date) {
-                            try {
-                              const pickupDate = new Date(activePost.pickup_date);
-                              if (!isNaN(pickupDate.getTime())) {
-                                return (
-                                  <div className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
-                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                    {pickupDate.toLocaleDateString('ko-KR', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      weekday: 'short'
-                                    })} 수령
-                                  </div>
-                                );
+                        {/* 수령일 표시/편집 */}
+                        {isEditingPickupDate ? (
+                          // 편집 모드
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <input
+                              type="date"
+                              value={editPickupDate}
+                              onChange={(e) => setEditPickupDate(e.target.value)}
+                              min={activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
+                              className="text-sm bg-transparent border-none outline-none text-blue-700 font-medium"
+                              autoFocus
+                            />
+                            <button
+                              onClick={handlePickupDateSave}
+                              className="text-green-600 hover:text-green-700 p-1"
+                              title="저장"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={handlePickupDateCancel}
+                              className="text-gray-500 hover:text-gray-700 p-1"
+                              title="취소"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          // 표시 모드
+                          (() => {
+                            // pickup_date 필드가 있으면 우선 사용
+                            if (activePost?.pickup_date) {
+                              try {
+                                const pickupDate = new Date(activePost.pickup_date);
+                                if (!isNaN(pickupDate.getTime())) {
+                                  return (
+                                    <button
+                                      onClick={handlePickupDateEdit}
+                                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
+                                      title="수령일 수정"
+                                    >
+                                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {pickupDate.toLocaleDateString('ko-KR', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        weekday: 'short'
+                                      })} 수령
+                                    </button>
+                                  );
+                                }
+                              } catch (e) {
+                                console.log('pickup_date 파싱 실패:', e);
                               }
-                            } catch (e) {
-                              console.log('pickup_date 파싱 실패:', e);
                             }
-                          }
                           
                           // pickup_date가 없거나 파싱 실패 시 제목에서 추출
                           const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
