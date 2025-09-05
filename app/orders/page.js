@@ -1095,12 +1095,14 @@ export default function OrdersPage() {
     };
   }, [mutateProducts, userData?.userId]);
 
-  // 페이지 로드 시 상품 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
+  // 페이지 로드 시 상품 및 주문 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
   useEffect(() => {
     if (userData?.userId) {
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
+      mutateOrders(undefined, { revalidate: true }); // 페이지 진입 시 주문 데이터도 새로고침
+      console.log('Orders 페이지 진입: 상품 및 주문 데이터 새로고침');
     }
-  }, [userData?.userId, mutateProducts]);
+  }, [userData?.userId, mutateProducts, mutateOrders]);
 
   // 게시물 업데이트 이벤트 리스너 - Comments 모달에서 수령일 변경 시 주문 데이터 새로고침
   useEffect(() => {
@@ -1117,6 +1119,34 @@ export default function OrdersPage() {
     
     return () => {
       window.removeEventListener('postUpdated', handlePostUpdated);
+    };
+  }, [mutateOrders, userData?.userId]);
+
+  // localStorage 플래그 감지하여 수령일 업데이트 확인
+  useEffect(() => {
+    const checkPickupDateUpdate = () => {
+      const lastUpdated = localStorage.getItem("pickupDateUpdated");
+      if (lastUpdated && userData?.userId) {
+        const updateTime = parseInt(lastUpdated);
+        const now = Date.now();
+        // 5분 이내의 업데이트만 유효하다고 간주
+        if (now - updateTime < 5 * 60 * 1000) {
+          console.log('수령일 변경 감지됨, 주문 데이터 새로고침');
+          mutateOrders(undefined, { revalidate: true });
+          // 플래그 제거하여 중복 업데이트 방지
+          localStorage.removeItem("pickupDateUpdated");
+        }
+      }
+    };
+
+    // 컴포넌트 마운트 시 체크
+    checkPickupDateUpdate();
+
+    // storage 이벤트 리스너 (다른 탭에서 변경사항이 있을 때)
+    window.addEventListener("storage", checkPickupDateUpdate);
+
+    return () => {
+      window.removeEventListener("storage", checkPickupDateUpdate);
     };
   }, [mutateOrders, userData?.userId]);
 

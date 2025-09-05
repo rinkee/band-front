@@ -752,6 +752,9 @@ const CommentsModal = ({
         window.dispatchEvent(new CustomEvent('postUpdated', { 
           detail: { postKey, pickup_date: new Date(dateToSave).toISOString() } 
         }));
+        
+        // localStorage에 플래그 저장하여 다른 페이지에서도 변경사항 인지 가능
+        localStorage.setItem('pickupDateUpdated', Date.now().toString());
       }
       
     } catch (error) {
