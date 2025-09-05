@@ -738,7 +738,7 @@ const CommentsModal = ({
         postKey
       });
 
-      // products 테이블의 pickup_date 업데이트
+      // products 테이블의 pickup_date만 업데이트 (title은 개별 상품명이므로 수정하지 않음)
       const { error: productsError, data: productsData } = await supabase
         .from('products')
         .update({ 
@@ -751,7 +751,7 @@ const CommentsModal = ({
 
       if (productsError) throw productsError;
 
-      // posts 테이블의 title 업데이트 (pickup_date는 products 테이블에만 있으므로 제외)
+      // posts 테이블의 title만 업데이트 (게시물 전체 제목 수정)
       const { error: postsError, data: postsData } = await supabase
         .from('posts')
         .update({ 
