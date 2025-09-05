@@ -5,7 +5,7 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { UserIcon } from "@heroicons/react/24/solid";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import supabase from '../lib/supabaseClient';
 
 // 밴드 특수 태그 처리 함수
@@ -598,6 +598,7 @@ const CommentsModal = ({
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
   const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
   const scrollContainerRef = useRef(null);
+  const { mutate: globalMutate } = useSWRConfig();
 
   // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
   const { data: currentPost } = useSWR(
@@ -766,10 +767,19 @@ const CommentsModal = ({
       // 성공 시 편집 모드 종료
       setIsEditingPickupDate(false);
       
-      // SWR 캐시 갱신
-      const { mutate } = require('swr');
-      mutate(`/api/posts/${postKey}`);
-      mutate(`products-${postKey}`); // products 캐시도 갱신
+      // SWR 캐시 갱신 (전역 mutate 사용)
+      await globalMutate(`/api/posts/${postKey}`);
+      await globalMutate(`products-${postKey}`);
+      
+      // 모든 관련 캐시 갱신
+      await globalMutate(key => typeof key === 'string' && key.includes(postKey));
+      
+      // 부모 컴포넌트의 게시물 목록도 갱신하기 위해 전역 이벤트 발생
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('postUpdated', { 
+          detail: { postKey, updatedTitle, pickup_date: new Date(dateToSave).toISOString() } 
+        }));
+      }
       
     } catch (error) {
       console.error('수령일 업데이트 실패:', error);

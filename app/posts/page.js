@@ -235,6 +235,22 @@ export default function PostsPage() {
     }
   }, [postsData, scrollableContentRef]);
 
+  // postUpdated 이벤트 리스너 추가 (수령일 실시간 업데이트)
+  useEffect(() => {
+    const handlePostUpdated = (event) => {
+      console.log('게시물 업데이트 이벤트 수신:', event.detail);
+      // SWR 캐시 갱신하여 게시물 목록 새로고침
+      mutate();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('postUpdated', handlePostUpdated);
+      return () => {
+        window.removeEventListener('postUpdated', handlePostUpdated);
+      };
+    }
+  }, [mutate]);
+
   // 검색 기능
   const handleSearch = (e) => {
     e.preventDefault();
