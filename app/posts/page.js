@@ -864,10 +864,25 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
     return [];
   };
 
-  // 수령일 추출 함수
+  // 수령일 추출 함수 (fallback용 - 제목에서 추출)
   const extractDeliveryDate = (title) => {
     const match = title.match(/\[([^\]]+)\]/);
-    return match ? match[1] : null;
+    if (match) {
+      const dateStr = match[1];
+      // "9월8일" 형태를 파싱해서 요일과 "수령" 텍스트 추가
+      const dateMatch = dateStr.match(/(\d+)월(\d+)일/);
+      if (dateMatch) {
+        const month = parseInt(dateMatch[1]);
+        const day = parseInt(dateMatch[2]);
+        const currentYear = new Date().getFullYear();
+        const date = new Date(currentYear, month - 1, day);
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const dayName = days[date.getDay()];
+        return `${month}월${day}일 ${dayName} 수령`;
+      }
+      return `${dateStr} 수령`; // 파싱 실패 시에도 "수령" 추가
+    }
+    return null;
   };
 
   // 제목에서 수령일 제거하여 순수 제목 추출
