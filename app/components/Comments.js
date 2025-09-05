@@ -679,13 +679,14 @@ const CommentsModal = ({
     }, 100);
   };
 
-  const handlePickupDateSave = async () => {
-    if (!editPickupDate) {
-      console.error('수령일 저장 실패: editPickupDate가 비어있습니다.');
+  const handlePickupDateSave = async (dateValue = null) => {
+    const dateToSave = dateValue || editPickupDate;
+    if (!dateToSave) {
+      console.error('수령일 저장 실패: dateToSave가 비어있습니다.');
       return;
     }
     
-    console.log('수령일 저장 시작:', { postKey, editPickupDate, activePost: activePost?.title });
+    console.log('수령일 저장 시작:', { postKey, dateToSave, editPickupDate, activePost: activePost?.title });
     
     try {
       // postKey 확인
@@ -702,7 +703,7 @@ const CommentsModal = ({
         const createdDate = new Date(postDate);
         const createdDateOnly = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
         
-        const selectedDate = new Date(editPickupDate);
+        const selectedDate = new Date(dateToSave);
         const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
         
         console.log('날짜 검증:', { 
@@ -718,7 +719,7 @@ const CommentsModal = ({
       }
 
       // 새로운 수령일로 제목 업데이트 생성
-      const newPickupDate = new Date(editPickupDate);
+      const newPickupDate = new Date(dateToSave);
       const formattedDate = `${newPickupDate.getMonth() + 1}월${newPickupDate.getDate()}일`;
       
       // 현재 제목에서 기존 날짜 부분 제거하고 새 날짜로 교체
@@ -731,7 +732,7 @@ const CommentsModal = ({
       const updatedTitle = `[${formattedDate}] ${currentTitle}`.trim();
 
       console.log('업데이트 데이터:', {
-        pickup_date: new Date(editPickupDate).toISOString(),
+        pickup_date: new Date(dateToSave).toISOString(),
         title: updatedTitle,
         postKey
       });
@@ -740,7 +741,7 @@ const CommentsModal = ({
       const { error: productsError, data: productsData } = await supabase
         .from('products')
         .update({ 
-          pickup_date: new Date(editPickupDate).toISOString(),
+          pickup_date: new Date(dateToSave).toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('post_key', postKey);
@@ -1205,11 +1206,12 @@ const CommentsModal = ({
                               type="date"
                               value={editPickupDate}
                               onChange={(e) => {
-                                setEditPickupDate(e.target.value);
-                                // 날짜 선택 시 바로 저장
-                                if (e.target.value) {
+                                const selectedDate = e.target.value;
+                                setEditPickupDate(selectedDate);
+                                // 날짜 선택 시 바로 저장 - 선택한 날짜를 직접 전달
+                                if (selectedDate) {
                                   setTimeout(() => {
-                                    handlePickupDateSave();
+                                    handlePickupDateSave(selectedDate);
                                   }, 100);
                                 }
                               }}
