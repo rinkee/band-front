@@ -719,26 +719,12 @@ const CommentsModal = ({
         }
       }
 
-      // 새로운 수령일로 제목 업데이트 생성
-      const newPickupDate = new Date(dateToSave);
-      const formattedDate = `${newPickupDate.getMonth() + 1}월${newPickupDate.getDate()}일`;
-      
-      // 현재 제목에서 기존 날짜 부분 제거하고 새 날짜로 교체
-      let currentTitle = activePost?.title || '';
-      
-      // 기존 날짜 패턴들을 제거: [1월15일], (1월15일), 1월15일
-      currentTitle = currentTitle.replace(/[\[\(]?\d+월\d+일[\]\)]?\s*/g, '');
-      
-      // 새로운 제목: 새 수령일을 맨 앞에 추가
-      const updatedTitle = `[${formattedDate}] ${currentTitle}`.trim();
-
       console.log('업데이트 데이터:', {
         pickup_date: new Date(dateToSave).toISOString(),
-        title: updatedTitle,
         postKey
       });
 
-      // products 테이블의 pickup_date만 업데이트 (title은 개별 상품명이므로 수정하지 않음)
+      // products 테이블의 pickup_date만 업데이트 (제목은 수정하지 않음)
       const { error: productsError, data: productsData } = await supabase
         .from('products')
         .update({ 
@@ -750,19 +736,6 @@ const CommentsModal = ({
       console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
 
       if (productsError) throw productsError;
-
-      // posts 테이블의 title만 업데이트 (게시물 전체 제목 수정)
-      const { error: postsError, data: postsData } = await supabase
-        .from('posts')
-        .update({ 
-          title: updatedTitle,
-          updated_at: new Date().toISOString()
-        })
-        .eq('post_key', postKey);
-
-      console.log('Posts 테이블 업데이트 결과:', { error: postsError, data: postsData });
-
-      if (postsError) throw postsError;
 
       // 성공 시 편집 모드 종료
       setIsEditingPickupDate(false);
@@ -777,7 +750,7 @@ const CommentsModal = ({
       // 부모 컴포넌트의 게시물 목록도 갱신하기 위해 전역 이벤트 발생
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('postUpdated', { 
-          detail: { postKey, updatedTitle, pickup_date: new Date(dateToSave).toISOString() } 
+          detail: { postKey, pickup_date: new Date(dateToSave).toISOString() } 
         }));
       }
       
@@ -1194,12 +1167,24 @@ const CommentsModal = ({
                     <div className="flex-1">
                       <h2 className="text-3xl font-bold text-white mb-2 leading-tight">
                         {(() => {
-                          // 제목에서 수령일 제거
-                          const cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
-                          // 수령일 추출
-                          const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
-                          const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
+                          // 원본 제목에서 기존 날짜 패턴 제거
+                          let cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
                           
+                          // products에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
+                          const firstProduct = products && products.length > 0 ? products[0] : null;
+                          if (firstProduct?.pickup_date) {
+                            try {
+                              const pickupDate = new Date(firstProduct.pickup_date);
+                              if (!isNaN(pickupDate.getTime())) {
+                                const formattedDate = `${pickupDate.getMonth() + 1}월${pickupDate.getDate()}일`;
+                                return `[${formattedDate}] ${cleanTitle}`.trim();
+                              }
+                            } catch (e) {
+                              console.log('pickup_date 파싱 실패:', e);
+                            }
+                          }
+                          
+                          // pickup_date가 없으면 원본 제목 사용
                           return cleanTitle || '제목 없음';
                         })()}
                       </h2>
@@ -1267,49 +1252,8 @@ const CommentsModal = ({
                               }
                             }
                           
-                          // pickup_date가 없거나 파싱 실패 시 제목에서 추출
-                          const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
-                          const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
-                          return deliveryDate && (
-                            <button
-                              onClick={handlePickupDateEdit}
-                              className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
-                              title="수령일 수정"
-                            >
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              {(() => {
-                                try {
-                                  // 여러 날짜 형식을 시도해보기
-                                  let parsedDate;
-                                  
-                                  // "1월15일" 같은 형식을 "2024-01-15" 형식으로 변환 시도
-                                  const koreanDateMatch = deliveryDate.match(/(\d+)월\s*(\d+)일/);
-                                  if (koreanDateMatch) {
-                                    const currentYear = new Date().getFullYear();
-                                    const month = parseInt(koreanDateMatch[1]);
-                                    const day = parseInt(koreanDateMatch[2]);
-                                    parsedDate = new Date(currentYear, month - 1, day);
-                                  } else {
-                                    // 기본 파싱 시도
-                                    parsedDate = new Date(deliveryDate.replace(/\s+/g, ' '));
-                                  }
-                                  
-                                  if (!isNaN(parsedDate.getTime())) {
-                                    return parsedDate.toLocaleDateString('ko-KR', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      weekday: 'short'
-                                    }) + ' 수령';
-                                  }
-                                  return deliveryDate + ' 수령';
-                                } catch {
-                                  return deliveryDate + ' 수령';
-                                }
-                              })()}
-                            </button>
-                            );
+                          // pickup_date가 없으면 수령일 표시 없음
+                          return null;
                           })()
                         )}
                         
