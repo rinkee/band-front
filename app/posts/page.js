@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
+import ProductManagementModal from "../components/ProductManagementModal";
 import CommentsModal from "../components/Comments";
 import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
@@ -48,6 +49,10 @@ export default function PostsPage() {
   // 댓글 모달 관련 상태
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
+
+  // 상품 관리 모달 관련 상태
+  const [isProductManagementModalOpen, setIsProductManagementModalOpen] = useState(false);
+  const [selectedPostForProductManagement, setSelectedPostForProductManagement] = useState(null);
 
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
@@ -369,6 +374,18 @@ export default function PostsPage() {
     setSelectedPostForComments(null);
   };
 
+  // 상품 관리 모달 열기 함수
+  const handleOpenProductManagementModal = (post) => {
+    setSelectedPostForProductManagement(post);
+    setIsProductManagementModalOpen(true);
+  };
+
+  // 상품 관리 모달 닫기 함수
+  const handleCloseProductManagementModal = () => {
+    setIsProductManagementModalOpen(false);
+    setSelectedPostForProductManagement(null);
+  };
+
   // 게시물 삭제 함수
   const handleDeletePost = async (post) => {
     if (!post || !post.post_id) {
@@ -671,6 +688,7 @@ export default function PostsPage() {
                 onDeletePost={handleDeletePost}
                 onToggleReprocess={handleToggleReprocess}
                 onOpenBarcodeModal={handlePostClick}
+                onOpenProductManagement={() => handleOpenProductManagementModal(post)}
               />
             ))}
           </div>
@@ -722,6 +740,13 @@ export default function PostsPage() {
         }}
       />
 
+      {/* 상품 관리 모달 */}
+      <ProductManagementModal
+        isOpen={isProductManagementModalOpen}
+        onClose={handleCloseProductManagementModal}
+        post={selectedPostForProductManagement}
+      />
+
       {/* 토스트 알림 컨테이너 */}
       <ToastContainer toasts={toasts} hideToast={hideToast} />
     </div>
@@ -729,7 +754,7 @@ export default function PostsPage() {
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenBarcodeModal }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenBarcodeModal, onOpenProductManagement }) {
   // 사용자 친화적인 상태 표시
   const getStatusDisplay = (status) => {
     switch (status) {
@@ -934,7 +959,10 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   const shortContent = formatContent(content);
 
   return (
-    <div className="bg-white rounded-lg   border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col">
+    <div 
+      className="bg-white rounded-lg   border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col"
+      onClick={() => onOpenProductManagement && onOpenProductManagement(post)}
+    >
       {/* 헤더 - 작성자 정보와 작성 시간 */}
       <div className="p-4 flex-grow">
         <div className="flex items-center justify-between mb-3">
