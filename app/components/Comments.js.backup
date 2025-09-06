@@ -1536,6 +1536,7 @@ const CommentsModal = ({
                       </div>
                     )}
                   </div>
+                  </div>
                 </div>
               </div>
             </div>
