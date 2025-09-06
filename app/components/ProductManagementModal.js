@@ -105,8 +105,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       const maxItemNumber = Math.max(...products.map(p => parseInt(p.item_number) || 0));
       const newItemNumber = maxItemNumber + 1;
       
-      // 새로운 product_id 생성
-      const newProductId = `${post.post_key}_${newItemNumber}`;
+      // 기존 product_id에서 마지막 item 부분만 교체
+      let newProductId;
+      if (baseProduct.product_id.includes('_item')) {
+        // 기존 형식이 _item으로 끝나는 경우 (예: ...item1 -> ...item2)
+        newProductId = baseProduct.product_id.replace(/_item\d+$/, `_item${newItemNumber}`);
+      } else {
+        // 기존 형식이 숫자로만 끝나는 경우 (예: ...._2 -> ...._item2)
+        newProductId = baseProduct.product_id.replace(/_\d+$/, `_item${newItemNumber}`);
+      }
 
       // 기존 상품 데이터 복사하여 새 상품 생성
       const newProductData = {
