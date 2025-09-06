@@ -773,10 +773,25 @@ function PostItem({ post, onViewOrders, onViewComments, onOpenProductManagement 
         <div className="space-y-6">
           {/* 작성자 정보 */}
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-              <span className="text-sm font-medium text-gray-600">
-                {post.author_name ? post.author_name.charAt(0) : '?'}
-              </span>
+            <div className="w-8 h-8 bg-gray-100 rounded-full overflow-hidden flex items-center justify-center">
+              {(post.author_profile || post.profile_image) ? (
+                <img 
+                  src={post.author_profile || post.profile_image} 
+                  alt={`${post.author_name || '익명'} 프로필`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    const fallback = document.createElement('span');
+                    fallback.className = 'text-sm font-medium text-gray-600';
+                    fallback.textContent = post.author_name ? post.author_name.charAt(0) : '?';
+                    e.target.parentElement.appendChild(fallback);
+                  }}
+                />
+              ) : (
+                <span className="text-sm font-medium text-gray-600">
+                  {post.author_name ? post.author_name.charAt(0) : '?'}
+                </span>
+              )}
             </div>
             <div>
               <div className="text-sm font-medium text-black">{post.author_name || '익명'}</div>
@@ -818,10 +833,25 @@ function PostItem({ post, onViewOrders, onViewComments, onOpenProductManagement 
                 {latestComments.map((comment, idx) => (
                   <div key={idx} className="bg-gray-50 rounded-lg p-3">
                     <div className="flex items-start space-x-2">
-                      <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs text-gray-600">
-                          {comment.author?.name ? comment.author.name.charAt(0) : '?'}
-                        </span>
+                      <div className="w-6 h-6 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
+                        {comment.author?.profile_image_url ? (
+                          <img 
+                            src={comment.author.profile_image_url}
+                            alt={`${comment.author.name || '익명'} 프로필`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              const fallback = document.createElement('span');
+                              fallback.className = 'text-xs text-gray-600';
+                              fallback.textContent = comment.author?.name ? comment.author.name.charAt(0) : '?';
+                              e.target.parentElement.appendChild(fallback);
+                            }}
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-600">
+                            {comment.author?.name ? comment.author.name.charAt(0) : '?'}
+                          </span>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs text-gray-500 mb-1">
