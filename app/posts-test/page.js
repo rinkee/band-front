@@ -898,12 +898,12 @@ function PostItem({ post, onViewOrders, onViewComments, onOpenProductManagement 
           </div>
 
           {products.length > 0 ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {products.map((product, idx) => (
-                <div key={idx} className="bg-gray-50 rounded-lg p-4">
-                  <div className="space-y-3">
+                <div key={idx} className="bg-gray-50 rounded-lg p-3">
+                  <div className="space-y-2">
                     <div>
-                      <div className="text-sm font-medium text-black">
+                      <div className="text-sm font-medium text-black line-clamp-2">
                         {product.title || '제품명 없음'}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
@@ -912,25 +912,24 @@ function PostItem({ post, onViewOrders, onViewComments, onOpenProductManagement 
                     </div>
                     
                     {product.price && (
-                      <div className="text-lg font-semibold text-black">
+                      <div className="text-base font-semibold text-black">
                         {product.price.toLocaleString()}원
                       </div>
                     )}
 
-                    {product.quantity && (
-                      <div className="text-sm text-gray-600">
-                        수량: {product.quantity}
-                      </div>
-                    )}
-
-                    {product.productId && (
-                      <div className="text-xs text-gray-400 font-mono">
-                        ID: {product.productId.split('_').pop()}
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      {product.quantity && (
+                        <span>수량: {product.quantity}</span>
+                      )}
+                      {product.productId && (
+                        <span className="font-mono">
+                          ID: {product.productId.split('_').pop().slice(-6)}
+                        </span>
+                      )}
+                    </div>
 
                     {product.description && (
-                      <div className="text-sm text-gray-600 leading-relaxed">
+                      <div className="text-xs text-gray-600 leading-relaxed line-clamp-2">
                         {product.description}
                       </div>
                     )}
