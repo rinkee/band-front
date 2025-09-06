@@ -92,13 +92,51 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   // 상품 추가
   const addProduct = async () => {
     try {
+      // 사용자 정보 가져오기
+      const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
+      
+      // 기존 상품들에서 최대 item_number 찾기
+      let maxItemNumber = 0;
+      if (products.length > 0) {
+        maxItemNumber = Math.max(...products.map(p => p.item_number || 0));
+      }
+      
+      // 새로운 product_id 생성 (기존 패턴 + item_number)
+      const baseProductId = post.post_key || `product_${Date.now()}`;
+      const newItemNumber = maxItemNumber + 1;
+      const newProductId = `${baseProductId}_${newItemNumber}`;
+
       const { data, error } = await supabase
         .from('products')
         .insert({
-          ...newProduct,
+          product_id: newProductId,
+          user_id: userData.userId,
+          band_number: userData.bandNumber || post.band_number,
+          title: newProduct.title,
+          content: post.content || '',
+          base_price: parseFloat(newProduct.base_price) || 0,
+          stock_quantity: parseInt(newProduct.stock_quantity) || 0,
+          category: '',
+          tags: [],
+          status: 'active',
+          barcode: newProduct.barcode || '',
+          post_id: post.post_id,
+          band_post_url: post.band_post_url || '',
           post_key: post.post_key,
           band_key: post.band_key,
           pickup_date: commonPickupDate || null,
+          price_options: [],
+          features: [],
+          deliverytype: '픽업',
+          pickup_type: '수령',
+          quantity_text: `${newProduct.stock_quantity}개`,
+          is_multiple_product: false,
+          product_index: 0,
+          item_number: newItemNumber,
+          is_closed: false,
+          posted_at: post.posted_at || new Date().toISOString(),
+          barcode_options: { options: [] },
+          product_type: 'individual',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -114,6 +152,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         stock_quantity: 0,
       });
       setIsAddingNew(false);
+
+      // 캐시 갱신
+      await globalMutate(key => typeof key === 'string' && key.includes(post.post_key));
 
     } catch (error) {
       console.error('상품 추가 실패:', error);
