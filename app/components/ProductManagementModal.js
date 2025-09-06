@@ -21,9 +21,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const [newProduct, setNewProduct] = useState({
     title: '',
     base_price: '',
-    description: '',
     barcode: '',
-    remaining_quantity: 0,
+    stock_quantity: 0,
   });
 
   // 모달이 열릴 때 데이터 로드
@@ -111,9 +110,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       setNewProduct({
         title: '',
         base_price: '',
-        description: '',
         barcode: '',
-        remaining_quantity: 0,
+        stock_quantity: 0,
       });
       setIsAddingNew(false);
 
@@ -170,9 +168,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     setNewProduct({
       title: '',
       base_price: '',
-      description: '',
       barcode: '',
-      remaining_quantity: 0,
+      stock_quantity: 0,
     });
     onClose();
   };
@@ -284,26 +281,16 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">잔여수량</label>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">재고수량</label>
                           <input
                             type="number"
                             min="0"
                             placeholder="수량"
-                            value={newProduct.remaining_quantity}
-                            onChange={(e) => setNewProduct(prev => ({ ...prev, remaining_quantity: parseInt(e.target.value) || 0 }))}
+                            value={newProduct.stock_quantity}
+                            onChange={(e) => setNewProduct(prev => ({ ...prev, stock_quantity: parseInt(e.target.value) || 0 }))}
                             className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                           />
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">설명</label>
-                        <textarea
-                          placeholder="상품 설명을 입력하세요"
-                          value={newProduct.description}
-                          onChange={(e) => setNewProduct(prev => ({ ...prev, description: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm"
-                          rows="2"
-                        />
                       </div>
                       <div className="flex justify-end gap-2 pt-1">
                         <button
@@ -367,28 +354,17 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">잔여수량</label>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">재고수량</label>
                               <input
                                 type="number"
                                 min="0"
-                                value={product.remaining_quantity || 0}
+                                value={product.stock_quantity || 0}
                                 onChange={(e) => setProducts(prev => prev.map(p => 
-                                  p.product_id === product.product_id ? { ...p, remaining_quantity: parseInt(e.target.value) || 0 } : p
+                                  p.product_id === product.product_id ? { ...p, stock_quantity: parseInt(e.target.value) || 0 } : p
                                 ))}
                                 className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                               />
                             </div>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">설명</label>
-                            <textarea
-                              value={product.description || ''}
-                              onChange={(e) => setProducts(prev => prev.map(p => 
-                                p.product_id === product.product_id ? { ...p, description: e.target.value } : p
-                              ))}
-                              className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm"
-                              rows="2"
-                            />
                           </div>
                           <div className="flex justify-end gap-2 pt-1">
                             <button
@@ -403,8 +379,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                                   title: product.title,
                                   base_price: product.base_price,
                                   barcode: product.barcode,
-                                  description: product.description,
-                                  remaining_quantity: product.remaining_quantity,
+                                  stock_quantity: product.stock_quantity,
                                 });
                                 setEditingProduct(null);
                               }}
@@ -456,9 +431,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                             </div>
                           )}
                           <div className="bg-gray-50 rounded-md p-2">
-                            <div className="text-xs text-gray-500 mb-1">잔여수량</div>
+                            <div className="text-xs text-gray-500 mb-1">재고수량</div>
                             <div className="font-medium text-gray-900 text-sm">
-                              {product.remaining_quantity || 0}개
+                              {product.stock_quantity || 0}개
                             </div>
                           </div>
                           {product.pickup_date && (
