@@ -92,54 +92,57 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   // 상품 추가
   const addProduct = async () => {
     try {
-      // 사용자 정보 가져오기
-      const userData = JSON.parse(sessionStorage.getItem('userData') || '{}');
+      // 기존 상품이 있는지 확인
+      if (products.length === 0) {
+        alert('기존 상품이 없어서 새 상품을 추가할 수 없습니다.');
+        return;
+      }
+
+      // 첫 번째 상품을 기준으로 복사
+      const baseProduct = products[0];
       
       // 기존 상품들에서 최대 item_number 찾기
-      let maxItemNumber = 0;
-      if (products.length > 0) {
-        maxItemNumber = Math.max(...products.map(p => p.item_number || 0));
-      }
-      
-      // 새로운 product_id 생성 (기존 패턴 + item_number)
-      const baseProductId = post.post_key || `product_${Date.now()}`;
+      const maxItemNumber = Math.max(...products.map(p => parseInt(p.item_number) || 0));
       const newItemNumber = maxItemNumber + 1;
-      const newProductId = `${baseProductId}_${newItemNumber}`;
+      
+      // 새로운 product_id 생성
+      const newProductId = `${post.post_key}_${newItemNumber}`;
+
+      // 기존 상품 데이터 복사하여 새 상품 생성
+      const newProductData = {
+        ...baseProduct,
+        product_id: newProductId,
+        title: newProduct.title,
+        base_price: parseFloat(newProduct.base_price) || baseProduct.base_price,
+        barcode: newProduct.barcode || '',
+        stock_quantity: parseInt(newProduct.stock_quantity) || 0,
+        item_number: newItemNumber.toString(),
+        quantity_text: `${parseInt(newProduct.stock_quantity) || 0}개`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        // products_data 업데이트 (기존 데이터를 기반으로 수정)
+        products_data: JSON.stringify({
+          ...(typeof baseProduct.products_data === 'string' 
+            ? JSON.parse(baseProduct.products_data) 
+            : baseProduct.products_data || {}),
+          title: newProduct.title,
+          price: parseFloat(newProduct.base_price) || baseProduct.base_price,
+          basePrice: parseFloat(newProduct.base_price) || baseProduct.base_price,
+          productId: newProductId,
+          itemNumber: newItemNumber,
+          stockQuantity: parseInt(newProduct.stock_quantity) || 0,
+          quantityText: `${parseInt(newProduct.stock_quantity) || 0}개`,
+          created_by_modal: true, // 모달에서 생성되었다는 표시
+          created_at: new Date().toISOString()
+        })
+      };
+
+      // idx와 기타 불필요한 필드 제거
+      delete newProductData.idx;
 
       const { data, error } = await supabase
         .from('products')
-        .insert({
-          product_id: newProductId,
-          user_id: userData.userId,
-          band_number: userData.bandNumber || post.band_number,
-          title: newProduct.title,
-          content: post.content || '',
-          base_price: parseFloat(newProduct.base_price) || 0,
-          stock_quantity: parseInt(newProduct.stock_quantity) || 0,
-          category: '',
-          tags: [],
-          status: 'active',
-          barcode: newProduct.barcode || '',
-          post_id: post.post_id,
-          band_post_url: post.band_post_url || '',
-          post_key: post.post_key,
-          band_key: post.band_key,
-          pickup_date: commonPickupDate || null,
-          price_options: [],
-          features: [],
-          deliverytype: '픽업',
-          pickup_type: '수령',
-          quantity_text: `${newProduct.stock_quantity}개`,
-          is_multiple_product: false,
-          product_index: 0,
-          item_number: newItemNumber,
-          is_closed: false,
-          posted_at: post.posted_at || new Date().toISOString(),
-          barcode_options: { options: [] },
-          product_type: 'individual',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        .insert(newProductData)
         .select();
 
       if (error) throw error;
