@@ -588,7 +588,7 @@ export default function PostsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+          <div className="space-y-8">
             {posts.map((post) => (
               <PostItem
                 key={post.post_key}
