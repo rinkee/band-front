@@ -768,170 +768,135 @@ function PostItem({ post, onViewOrders, onViewComments, onOpenProductManagement 
 
   return (
     <div className="py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* 왼쪽 영역: 게시물 정보 */}
-        <div className="space-y-6">
-          {/* 작성자 정보 */}
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gray-100 rounded-full overflow-hidden flex items-center justify-center">
-              {(post.author_profile || post.profile_image) ? (
-                <img 
-                  src={post.author_profile || post.profile_image} 
-                  alt={`${post.author_name || '익명'} 프로필`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    const fallback = document.createElement('span');
-                    fallback.className = 'text-sm font-medium text-gray-600';
-                    fallback.textContent = post.author_name ? post.author_name.charAt(0) : '?';
-                    e.target.parentElement.appendChild(fallback);
-                  }}
-                />
-              ) : (
-                <span className="text-sm font-medium text-gray-600">
-                  {post.author_name ? post.author_name.charAt(0) : '?'}
-                </span>
-              )}
-            </div>
-            <div>
-              <div className="text-sm font-medium text-black">{post.author_name || '익명'}</div>
-              <div className="text-xs text-gray-500">{formatDate(post.posted_at)}</div>
-            </div>
-          </div>
-
-          {/* 제목 */}
-          <div>
-            <h2 className="text-lg font-medium text-black leading-relaxed">
-              {cleanTitle(post.title)}
-            </h2>
-          </div>
-
-          {/* 이미지 */}
-          {firstImage && (
-            <div className="aspect-square bg-gray-50 overflow-hidden">
-              <img
-                src={firstImage}
-                alt="게시물 이미지"
+      <div className="space-y-6">
+        {/* 업로더 정보 - 긴 칸 */}
+        <div className="flex items-start space-x-4 bg-gray-50 p-4">
+          <div className="w-10 h-10 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
+            {(post.author_profile || post.profile_image) ? (
+              <img 
+                src={post.author_profile || post.profile_image} 
+                alt={`${post.author_name || '익명'} 프로필`}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  e.target.parentElement.innerHTML = '<div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">이미지 로드 실패</div>';
+                  e.target.style.display = 'none';
+                  const fallback = document.createElement('span');
+                  fallback.className = 'text-sm font-medium text-gray-600';
+                  fallback.textContent = post.author_name ? post.author_name.charAt(0) : '?';
+                  e.target.parentElement.appendChild(fallback);
                 }}
               />
-            </div>
-          )}
-
-          {/* 내용 */}
-          <div className="text-sm text-gray-600 leading-relaxed">
-            {summarizeContent(post.content)}
+            ) : (
+              <span className="text-sm font-medium text-gray-600">
+                {post.author_name ? post.author_name.charAt(0) : '?'}
+              </span>
+            )}
           </div>
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-base font-medium text-black">{post.author_name || '익명'}</div>
+                <div className="text-sm text-gray-500">{formatDate(post.posted_at)}</div>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => onViewComments(post)}
+                  className="text-sm text-gray-500 hover:text-black transition-colors"
+                >
+                  댓글 보기
+                </button>
+                <button
+                  onClick={() => onViewOrders(post.post_key)}
+                  className="text-sm text-gray-500 hover:text-black transition-colors"
+                >
+                  주문 관리
+                </button>
+              </div>
+            </div>
+            
+            {/* 제목과 내용 */}
+            <div className="mt-3 space-y-2">
+              <h2 className="text-lg font-medium text-black leading-relaxed">
+                {cleanTitle(post.title)}
+              </h2>
+              <div className="text-sm text-gray-600 leading-relaxed">
+                {summarizeContent(post.content)}
+              </div>
+            </div>
 
-          {/* 최근 댓글 3개 */}
-          {latestComments.length > 0 && (
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-black">최근 댓글</div>
-              <div className="space-y-2">
-                {latestComments.map((comment, idx) => (
-                  <div key={idx} className="bg-gray-50 p-3">
-                    <div className="flex items-start space-x-2">
-                      <div className="w-6 h-6 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {comment.author?.profile_image_url ? (
-                          <img 
-                            src={comment.author.profile_image_url}
-                            alt={`${comment.author.name || '익명'} 프로필`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              const fallback = document.createElement('span');
-                              fallback.className = 'text-xs text-gray-600';
-                              fallback.textContent = comment.author?.name ? comment.author.name.charAt(0) : '?';
-                              e.target.parentElement.appendChild(fallback);
-                            }}
-                          />
-                        ) : (
-                          <span className="text-xs text-gray-600">
-                            {comment.author?.name ? comment.author.name.charAt(0) : '?'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs text-gray-500 mb-1">
-                          {comment.author?.name || '익명'}
+            {/* 이미지 */}
+            {firstImage && (
+              <div className="mt-4 aspect-video bg-gray-100 overflow-hidden">
+                <img
+                  src={firstImage}
+                  alt="게시물 이미지"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.parentElement.innerHTML = '<div class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">이미지 로드 실패</div>';
+                  }}
+                />
+              </div>
+            )}
+
+            {/* 최근 댓글 */}
+            {latestComments.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <div className="text-sm font-medium text-black">최근 댓글</div>
+                <div className="space-y-1">
+                  {latestComments.map((comment, idx) => (
+                    <div key={idx} className="bg-white p-2">
+                      <div className="flex items-start space-x-2">
+                        <div className="w-5 h-5 bg-gray-300 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
+                          {comment.author?.profile_image_url ? (
+                            <img 
+                              src={comment.author.profile_image_url}
+                              alt={`${comment.author.name || '익명'} 프로필`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                const fallback = document.createElement('span');
+                                fallback.className = 'text-xs text-gray-600';
+                                fallback.textContent = comment.author?.name ? comment.author.name.charAt(0) : '?';
+                                e.target.parentElement.appendChild(fallback);
+                              }}
+                            />
+                          ) : (
+                            <span className="text-xs text-gray-600">
+                              {comment.author?.name ? comment.author.name.charAt(0) : '?'}
+                            </span>
+                          )}
                         </div>
-                        <div className="text-sm text-gray-700">
-                          {comment.body}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-gray-500">
+                            {comment.author?.name || '익명'}
+                          </div>
+                          <div className="text-sm text-gray-700">
+                            {comment.body}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* 액션 버튼들 */}
-          <div className="flex space-x-4 pt-4">
-            <button
-              onClick={() => onViewComments(post)}
-              className="text-sm text-gray-500 hover:text-black transition-colors"
-            >
-              댓글 보기
-            </button>
-            <button
-              onClick={() => onViewOrders(post.post_key)}
-              className="text-sm text-gray-500 hover:text-black transition-colors"
-            >
-              주문 관리
-            </button>
+            )}
           </div>
         </div>
 
-        {/* 오른쪽 영역: 상품 정보 */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium text-black">상품 정보</div>
-            <button
-              onClick={() => onOpenProductManagement(post)}
-              className="text-xs text-gray-500 hover:text-black transition-colors"
-            >
-              상품 추가
-            </button>
-          </div>
-
+        {/* 상품 정보 */}
+        <div className="space-y-3">
+          <div className="text-sm font-medium text-black">상품 정보</div>
+          
           {products.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-2">
               {products.map((product, idx) => (
-                <div key={idx} className="bg-gray-50 p-4">
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-sm font-medium text-black">
-                        {product.title || '제품명 없음'}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {product.category || '카테고리 없음'}
-                      </div>
+                <div key={idx} className="bg-gray-50 p-3">
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium text-black">
+                      {product.title || '제품명 없음'}
                     </div>
-                    
                     {product.price && (
-                      <div className="text-lg font-semibold text-black">
+                      <div className="text-base font-semibold text-black">
                         {product.price.toLocaleString()}원
-                      </div>
-                    )}
-
-                    {product.quantity && (
-                      <div className="text-sm text-gray-600">
-                        수량: {product.quantity}
-                      </div>
-                    )}
-
-                    {product.productId && (
-                      <div className="text-xs text-gray-400 font-mono">
-                        ID: {product.productId.split('_').pop()}
-                      </div>
-                    )}
-
-                    {product.description && (
-                      <div className="text-sm text-gray-600 leading-relaxed">
-                        {product.description}
                       </div>
                     )}
                   </div>
@@ -939,16 +904,19 @@ function PostItem({ post, onViewOrders, onViewComments, onOpenProductManagement 
               ))}
             </div>
           ) : (
-            <div className="bg-gray-50 p-8 text-center">
-              <div className="text-sm text-gray-400 mb-3">추출된 상품이 없습니다</div>
-              <button
-                onClick={() => onOpenProductManagement(post)}
-                className="text-sm text-gray-600 hover:text-black transition-colors"
-              >
-                상품 추가하기
-              </button>
+            <div className="bg-gray-50 p-6 text-center">
+              <div className="text-sm text-gray-400">추출된 상품이 없습니다</div>
             </div>
           )}
+          
+          <div className="pt-2">
+            <button
+              onClick={() => onOpenProductManagement(post)}
+              className="text-sm text-gray-500 hover:text-black transition-colors"
+            >
+              상품 추가
+            </button>
+          </div>
         </div>
       </div>
     </div>
