@@ -48,9 +48,19 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const loadProducts = async () => {
     setIsLoading(true);
     try {
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        console.error('사용자 ID를 찾을 수 없습니다.');
+        return;
+      }
+      
       const { data, error } = await supabase
         .from('products')
         .select('*')
+        .eq('user_id', userId)  // user_id 필터 추가
         .eq('post_key', post.post_key)
         .order('created_at', { ascending: true });
 
@@ -157,10 +167,20 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   // 상품 업데이트
   const updateProduct = async (productId, updates) => {
     try {
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        alert('사용자 인증 정보를 찾을 수 없습니다.');
+        return;
+      }
+      
       const { error } = await supabase
         .from('products')
         .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('product_id', productId);
+        .eq('product_id', productId)
+        .eq('user_id', userId);  // user_id 필터 추가
 
       if (error) throw error;
 
@@ -179,10 +199,20 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     if (!confirm('이 상품을 삭제하시겠습니까?')) return;
 
     try {
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        alert('사용자 인증 정보를 찾을 수 없습니다.');
+        return;
+      }
+      
       const { error } = await supabase
         .from('products')
         .delete()
-        .eq('product_id', productId);
+        .eq('product_id', productId)
+        .eq('user_id', userId);  // user_id 필터 추가
 
       if (error) throw error;
 
@@ -239,18 +269,28 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         alert('게시물 정보를 찾을 수 없습니다.');
         return;
       }
+      
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        alert('사용자 인증 정보를 찾을 수 없습니다.');
+        return;
+      }
 
       // UTC ISO 문자열로 변환
       const utcDate = new Date(editPickupDate).toISOString();
 
-      // products 테이블 업데이트
+      // products 테이블 업데이트 - user_id 필터 추가
       const { error: productsError } = await supabase
         .from('products')
         .update({ 
           pickup_date: utcDate,
           updated_at: new Date().toISOString()
         })
-        .eq('post_key', postKey);
+        .eq('post_key', postKey)
+        .eq('user_id', userId);  // user_id 필터 추가
 
       if (productsError) throw productsError;
 
@@ -266,7 +306,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           const { error: postsError } = await supabase
             .from('posts')
             .update({ title: newTitle, updated_at: new Date().toISOString() })
-            .eq('post_key', postKey);
+            .eq('post_key', postKey)
+            .eq('user_id', userId);  // user_id 필터 추가
 
           if (postsError) {
             console.error('Posts title 업데이트 실패:', postsError);
@@ -301,7 +342,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           await supabase
             .from('products')
             .update({ title: newTitle })
-            .eq('product_id', product.product_id);
+            .eq('product_id', product.product_id)
+            .eq('user_id', userId);  // user_id 필터 추가
         }
       }
 

@@ -9,13 +9,14 @@ const supabase = createClient(
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { commentKeys, postKey, bandKey } = body;
+    const { commentKeys, postKey, bandKey, userId } = body;
 
     console.log('📥 API 요청 파라미터:', {
       commentKeys: commentKeys?.slice(0, 3),
       commentKeysCount: commentKeys?.length,
       postKey,
-      bandKey
+      bandKey,
+      userId
     });
 
     if (!commentKeys || !Array.isArray(commentKeys)) {
@@ -30,11 +31,18 @@ export async function POST(request) {
       }, { status: 400 });
     }
     
+    if (!userId) {
+      return NextResponse.json({
+        error: 'userId가 필요합니다.'
+      }, { status: 400 });
+    }
+    
 
-    // orders 테이블에서 올바른 컬럼명으로 조회 (주문 상세 정보 포함)
+    // orders 테이블에서 올바른 컬럼명으로 조회 (주문 상세 정보 포함) - user_id 필터 추가
     const { data: orders, error } = await supabase
       .from('orders')
       .select('comment_key, status, product_name, quantity, price, total_amount')
+      .eq('user_id', userId)  // user_id 필터 추가
       .eq('band_key', bandKey)
       .eq('post_key', postKey)
       .in('comment_key', commentKeys);

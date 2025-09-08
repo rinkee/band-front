@@ -409,9 +409,17 @@ export default function PostsPage() {
     }
 
     try {
-      // Edge Function을 통한 삭제 요청
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        throw new Error('사용자 인증 정보를 찾을 수 없습니다.');
+      }
+      
+      // Edge Function을 통한 삭제 요청 - user_id 포함
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/posts-delete?postId=${post.post_id}`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/posts-delete?postId=${post.post_id}&userId=${userId}`,
         {
           method: 'DELETE',
           headers: {
