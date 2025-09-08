@@ -235,8 +235,8 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
                   <span className="font-medium">
                     {(() => {
                       const productName = order.product_name || '상품';
-                      // 날짜 패턴 제거: [9월3일], [1월15일] 등
-                      return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
+                      // 날짜 패턴 제거: [9월3일], [1월15일], [월일] 등 모든 형태
+                      return productName.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim();
                     })()}
                   </span>
                   {order.quantity && (
@@ -629,9 +629,9 @@ const CommentsModal = ({
     // products 테이블에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
     const firstProduct = products && products.length > 0 ? products[0] : null;
     if (firstProduct?.pickup_date) {
-      const date = new Date(firstProduct.pickup_date);
-      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-      setEditPickupDate(localDate.toISOString().split('T')[0]);
+      // DB 값을 문자열로 직접 파싱하여 타임존 변환 방지
+      const dateStr = firstProduct.pickup_date.split('T')[0]; // "2025-01-15"
+      setEditPickupDate(dateStr);
     } else {
       // pickup_date가 없는 경우 제목에서 추출 시도
       const postTitle = activePost?.title || '';
@@ -670,12 +670,11 @@ const CommentsModal = ({
     }
     setIsEditingPickupDate(true);
     
-    // 다음 렌더링 후 date input에 포커스하고 캘린더 열기
+    // 캘린더 자동 활성화
     setTimeout(() => {
-      const dateInput = document.querySelector('input[type="date"]');
-      if (dateInput) {
-        dateInput.focus();
-        dateInput.showPicker?.(); // 브라우저가 지원하는 경우 캘린더 자동 열기
+      if (dateInputRef.current) {
+        dateInputRef.current.focus();
+        dateInputRef.current.showPicker?.(); // 브라우저가 지원하는 경우 캘린더 자동 열기
       }
     }, 100);
   };
@@ -736,6 +735,29 @@ const CommentsModal = ({
       console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
 
       if (productsError) throw productsError;
+
+      // posts 테이블의 title 업데이트 (날짜 부분 교체)
+      if (activePost?.title) {
+        const currentTitle = activePost.title;
+        const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
+        if (dateMatch) {
+          const date = new Date(dateToSave);
+          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+          const newTitle = `[${newDateStr}]${dateMatch[1]}`;
+          
+          const { error: postsError } = await supabase
+            .from('posts')
+            .update({ title: newTitle, updated_at: new Date().toISOString() })
+            .eq('post_key', postKey);
+
+          console.log('Posts 테이블 title 업데이트 결과:', { error: postsError, newTitle });
+          
+          if (postsError) {
+            console.error('Posts title 업데이트 실패:', postsError);
+            // title 업데이트 실패는 치명적 오류가 아님
+          }
+        }
+      }
 
       // 성공 시 편집 모드 종료
       setIsEditingPickupDate(false);
@@ -1169,27 +1191,7 @@ const CommentsModal = ({
                   <div className="flex items-start gap-4">
                     <div className="flex-1">
                       <h2 className="text-3xl font-bold text-white mb-2 leading-tight">
-                        {(() => {
-                          // 원본 제목에서 기존 날짜 패턴 제거
-                          let cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
-                          
-                          // products에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
-                          const firstProduct = products && products.length > 0 ? products[0] : null;
-                          if (firstProduct?.pickup_date) {
-                            try {
-                              const pickupDate = new Date(firstProduct.pickup_date);
-                              if (!isNaN(pickupDate.getTime())) {
-                                const formattedDate = `${pickupDate.getMonth() + 1}월${pickupDate.getDate()}일`;
-                                return `[${formattedDate}] ${cleanTitle}`.trim();
-                              }
-                            } catch (e) {
-                              console.log('pickup_date 파싱 실패:', e);
-                            }
-                          }
-                          
-                          // pickup_date가 없으면 원본 제목 사용
-                          return cleanTitle || '제목 없음';
-                        })()}
+                        {postTitle.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim()}
                       </h2>
                       
                       <div className="flex items-center gap-4 flex-wrap">
@@ -1198,11 +1200,13 @@ const CommentsModal = ({
                           // 편집 모드
                           <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-full">
                             <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                             </svg>
                             <input
+                              ref={dateInputRef}
                               type="date"
                               value={editPickupDate}
+                              min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : undefined}
                               onChange={(e) => {
                                 const selectedDate = e.target.value;
                                 setEditPickupDate(selectedDate);
@@ -1231,8 +1235,12 @@ const CommentsModal = ({
                             const firstProduct = products && products.length > 0 ? products[0] : null;
                             if (firstProduct?.pickup_date) {
                               try {
-                                const pickupDate = new Date(firstProduct.pickup_date);
-                                if (!isNaN(pickupDate.getTime())) {
+                                // DB 값을 문자열로 직접 파싱하여 타임존 변환 방지
+                                const dateStr = firstProduct.pickup_date.split('T')[0]; // "2025-01-15"
+                                const [year, month, day] = dateStr.split('-');
+                                const displayDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                
+                                if (!isNaN(displayDate.getTime())) {
                                   return (
                                     <button
                                       onClick={handlePickupDateEdit}
@@ -1240,9 +1248,9 @@ const CommentsModal = ({
                                       title="수령일 수정"
                                     >
                                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                       </svg>
-                                      {pickupDate.toLocaleDateString('ko-KR', {
+                                      {displayDate.toLocaleDateString('ko-KR', {
                                         month: 'short',
                                         day: 'numeric',
                                         weekday: 'short'
@@ -1479,8 +1487,8 @@ const CommentsModal = ({
                               <h4 className="font-medium text-gray-900 mb-2 leading-tight text-base">
                                 {(() => {
                                   const productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
-                                  // 날짜 패턴 제거: [9월3일], [1월15일] 등
-                                  return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
+                                  // 날짜 패턴 제거: [9월3일], [1월15일], [월일] 등 모든 형태
+                                  return productName.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim();
                                 })()}
                               </h4>
                               <div className="flex items-center gap-2">
@@ -1496,7 +1504,7 @@ const CommentsModal = ({
                                 <div className="text-lg font-bold text-gray-900">
                                   {(() => {
                                     // 상품명 정제 함수
-                                    const cleanProductName = (name) => name.replace(/\[(\d+월\d+일)\]\s*/g, '').trim();
+                                    const cleanProductName = (name) => name.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim();
                                     const targetProductName = cleanProductName(product.products_data?.title || product.title || product.product_name || '');
                                     
                                     // 해당 상품에 대한 총 주문 수량 계산 (제외 고객 제외)

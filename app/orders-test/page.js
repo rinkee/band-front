@@ -2519,6 +2519,11 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        {/* 주의 안내 문구 */}
+        <p className="text-sm text-gray-600 px-5 lg:px-7 pb-2">
+          * 상품과 수량이 잘못 처리될 수 있습니다. 상품명과 고객댓글 수량을 꼭 확인하세요.
+        </p>
+
         {/* 주문 리스트 영역 - 스크롤 가능 */}
         <div className="flex-1 min-h-0 pb-4 px-4 lg:px-6 pt-0">
           <div className="h-full bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">

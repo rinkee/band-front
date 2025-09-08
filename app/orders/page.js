@@ -1290,12 +1290,28 @@ export default function OrdersPage() {
   };
 
   // 수령 가능한 상품인지 판단하는 함수 (클라이언트 사이드에서만 실행)
-  const isPickupAvailable = (dateString) => {
+  const isPickupAvailable = (dateInput) => {
     // 클라이언트 사이드 렌더링이 완료되지 않았으면 false 반환
     if (!isClient) return false;
 
-    const pickupDate = parsePickupDate(dateString);
-    if (!pickupDate) return false;
+    let pickupDate;
+
+    // DB pickup_date 직접 처리 (ISO 형식)
+    if (typeof dateInput === 'string' && dateInput.includes('T')) {
+      // "2025-09-08T00:00:00.000Z" 형식
+      pickupDate = new Date(dateInput.split('T')[0]); // 타임존 변환 방지를 위해 날짜 부분만 사용
+    }
+    // "YYYY-MM-DD" 형식
+    else if (typeof dateInput === 'string' && dateInput.includes('-') && dateInput.length === 10) {
+      const [year, month, day] = dateInput.split('-');
+      pickupDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    }
+    // 기존 parsePickupDate로 처리 (한국어 형식 등)
+    else {
+      pickupDate = parsePickupDate(dateInput);
+    }
+
+    if (!pickupDate || isNaN(pickupDate.getTime())) return false;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0); // 시간 부분을 제거하여 날짜만 비교
@@ -1332,16 +1348,30 @@ export default function OrdersPage() {
   const formatDate = (ds) => {
     if (!ds) return "-";
     try {
-      const d = new Date(ds);
-      if (isNaN(d.getTime())) return "Invalid Date";
-      const mo = String(d.getMonth() + 1).padStart(2, "0"),
-        da = String(d.getDate()).padStart(2, "0"),
-        hr = String(d.getHours()).padStart(2, "0"),
-        mi = String(d.getMinutes()).padStart(2, "0");
-      return `${mo}.${da} ${hr}:${mi}`;
+      // DB 값을 그대로 사용하되, 필요한 경우에만 최소한의 포맷팅
+      if (typeof ds === 'string') {
+        // ISO 형식인 경우 (2025-01-15T00:00:00.000Z)
+        if (ds.includes('T')) {
+          const [datePart, timePart] = ds.split('T');
+          const [year, month, day] = datePart.split('-');
+          const [hours, minutes] = timePart.split(':');
+          
+          return `${month.padStart(2, "0")}.${day.padStart(2, "0")} ${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+        }
+        // 날짜만 있는 경우 (2025-01-15 or 01.15 형식)
+        else if (ds.includes('-')) {
+          const [year, month, day] = ds.split('-');
+          return `${month.padStart(2, "0")}.${day.padStart(2, "0")}`;
+        }
+        // 이미 포맷된 형식인 경우 그대로 반환
+        else {
+          return ds;
+        }
+      }
+      return ds.toString();
     } catch (e) {
       console.error("Date Format Err:", e);
-      return "Error";
+      return ds || "Error";
     }
   };
   const formatDateForPicker = (date) => {
@@ -2314,7 +2344,7 @@ export default function OrdersPage() {
                                 const pickupDate = order.product_pickup_date;
                                 const isAvailable =
                                   isClient && pickupDate
-                                    ? isPickupAvailable(formatDate(pickupDate))
+                                    ? isPickupAvailable(pickupDate)
                                     : false;
 
                                 return (
@@ -2334,7 +2364,7 @@ export default function OrdersPage() {
                                       >
                                         [{(() => {
                                           const date = new Date(pickupDate);
-                                          return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                          return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
                                         })()}]
                                         {isAvailable && (
                                           <span className="ml-1 text-gray-500">
@@ -2810,7 +2840,7 @@ export default function OrdersPage() {
                     // product_pickup_date 필드에서 수령일 가져오기
                     const pickupDate = selectedOrder.product_pickup_date;
                     const isAvailable =
-                      isClient && pickupDate ? isPickupAvailable(formatDate(pickupDate)) : false;
+                      isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
                     return (
                       <div className="flex flex-col">
@@ -2827,7 +2857,7 @@ export default function OrdersPage() {
                           >
                             [{(() => {
                               const date = new Date(pickupDate);
-                              return `${date.getMonth() + 1}월${date.getDate()}일`;
+                              return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
                             })()}]
                             {isAvailable && (
                               <span className="ml-1 text-gray-500">
@@ -3080,7 +3110,7 @@ export default function OrdersPage() {
                             const pickupDate = selectedOrder.product_pickup_date;
                             const isAvailable =
                               isClient && pickupDate
-                                ? isPickupAvailable(formatDate(pickupDate))
+                                ? isPickupAvailable(pickupDate)
                                 : false;
 
                             return (
@@ -3100,7 +3130,7 @@ export default function OrdersPage() {
                                   >
                                     [{(() => {
                                       const date = new Date(pickupDate);
-                                      return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                      return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
                                     })()}]
                                     {isAvailable && (
                                       <span className="ml-1 text-gray-500">
@@ -3141,8 +3171,8 @@ export default function OrdersPage() {
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
-                          // Use the correct pickup_date field
-                          value: formatDate(selectedOrder.pickup_date),
+                          // DB에서 직접 가져온 product_pickup_date 사용
+                          value: selectedOrder.product_pickup_date ? formatDate(selectedOrder.product_pickup_date) : "-",
                           readOnly: true,
                         },
                         {

@@ -677,7 +677,7 @@ export default function PostsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {posts.map((post) => (
               <PostCard
                 key={post.post_key}
@@ -687,7 +687,6 @@ export default function PostsPage() {
                 onViewComments={handleViewComments}
                 onDeletePost={handleDeletePost}
                 onToggleReprocess={handleToggleReprocess}
-                onOpenBarcodeModal={handlePostClick}
                 onOpenProductManagement={() => handleOpenProductManagementModal(post)}
               />
             ))}
@@ -754,7 +753,7 @@ export default function PostsPage() {
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenBarcodeModal, onOpenProductManagement }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenProductManagement }) {
   // 사용자 친화적인 상태 표시
   const getStatusDisplay = (status) => {
     switch (status) {
@@ -940,10 +939,10 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         try {
           const pickupDate = new Date(firstProduct.pickup_date);
           if (!isNaN(pickupDate.getTime())) {
-            const month = pickupDate.getMonth() + 1;
-            const day = pickupDate.getDate();
+            const month = pickupDate.getUTCMonth() + 1;
+            const day = pickupDate.getUTCDate();
             const days = ['일', '월', '화', '수', '목', '금', '토'];
-            const dayName = days[pickupDate.getDay()];
+            const dayName = days[pickupDate.getUTCDay()];
             return `${month}월${day}일 ${dayName} 수령`;
           }
         } catch (e) {
@@ -1050,14 +1049,14 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <button 
             onClick={(e) => {
               e.stopPropagation();
-              onOpenBarcodeModal(post.post_id);
+              onOpenProductManagement && onOpenProductManagement(post);
             }}
             className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
-            <span className="text-sm text-gray-600 mt-0.5">바코드</span>
+            <span className="text-sm text-gray-600 mt-0.5">상품</span>
           </button>
           <button 
             onClick={(e) => {
