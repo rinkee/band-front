@@ -723,14 +723,22 @@ const CommentsModal = ({
         postKey
       });
 
-      // products 테이블의 pickup_date 업데이트
+      // products 테이블의 pickup_date 업데이트 - user_id 필터 추가
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        throw new Error('사용자 ID를 찾을 수 없습니다.');
+      }
+      
       const { error: productsError, data: productsData } = await supabase
         .from('products')
         .update({ 
           pickup_date: new Date(dateToSave).toISOString(),
           updated_at: new Date().toISOString()
         })
-        .eq('post_key', postKey);
+        .eq('post_key', postKey)
+        .eq('user_id', userId);  // user_id 필터 추가
 
       console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
 
@@ -796,16 +804,25 @@ const CommentsModal = ({
     setEditPickupDate('');
   };
 
-  // 게시물의 추출된 상품 리스트 가져오기
+  // 게시물의 추출된 상품 리스트 가져오기 - user_id 포함
   const { data: products, error: productsError } = useSWR(
     postKey ? `products-${postKey}` : null,
     async () => {
       // supabase is already imported at the top
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        console.warn('사용자 ID가 없어서 상품을 가져올 수 없습니다.');
+        return [];
+      }
       
       const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('post_key', postKey)
+        .eq('user_id', userId)  // user_id 필터 추가
         .order('created_at', { ascending: true });
       
       if (error) throw error;
