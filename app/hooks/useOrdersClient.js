@@ -17,11 +17,41 @@ const fetchOrders = async (key) => {
   const sortBy = filters.sortBy || "ordered_at";
   const ascending = filters.sortOrder === "asc";
 
-  // orders_with_products 뷰 사용 (Edge Function과 동일)
-  let query = supabase
-    .from("orders_with_products")
-    .select("*", { count: "exact" })
-    .eq("user_id", userId);
+  // 수령가능 필터인 경우 products 테이블과 조인 필요
+  const needsPickupDateFilter = filters.subStatus === "수령가능";
+  
+  // Map sortBy to actual column names based on query mode
+  let actualSortBy = sortBy;
+  if (needsPickupDateFilter) {
+    // When joining with products table, map column names
+    if (sortBy === 'product_name' || sortBy === 'product_title') {
+      actualSortBy = 'products.title';
+    }
+    // Other columns remain the same as they're on the orders table
+  } else {
+    // For orders_with_products view, map column names
+    if (sortBy === 'product_name') {
+      actualSortBy = 'product_title';
+    }
+  }
+  
+  let query;
+  if (needsPickupDateFilter) {
+    // 주문완료+수령가능 필터: orders와 products를 조인하여 pickup_date 확인
+    query = supabase
+      .from("orders")
+      .select(`
+        *,
+        products!inner(pickup_date, title, barcode, price_options, band_key)
+      `, { count: "exact" })
+      .eq("user_id", userId);
+  } else {
+    // 일반적인 경우: orders_with_products 뷰 사용 (Edge Function과 동일)
+    query = supabase
+      .from("orders_with_products")
+      .select("*", { count: "exact" })
+      .eq("user_id", userId);
+  }
 
   // 상태 필터링
   if (
@@ -49,6 +79,20 @@ const fetchOrders = async (key) => {
       filters.subStatus.toLowerCase() === "null"
     ) {
       query = query.is("sub_status", null);
+    } else if (filters.subStatus === "수령가능") {
+      // '주문완료+수령가능' 필터: pickup_date가 현재 시간 이전인 주문들만 (실제 수령 가능)
+      if (needsPickupDateFilter) {
+        // pickup_date가 존재하고, 현재 시간 이전인 주문들
+        query = query.not("products.pickup_date", "is", null);
+        
+        // 현재 시간을 KST 기준으로 계산
+        const now = new Date();
+        const kstOffset = 9 * 60; // 한국은 UTC+9
+        const kstNow = new Date(now.getTime() + (kstOffset * 60 * 1000));
+        
+        // KST 기준 현재 시간 이전의 pickup_date를 가진 주문들만 필터링
+        query = query.lte("products.pickup_date", kstNow.toISOString());
+      }
     } else {
       const subStatusValues = filters.subStatus
         .split(",")
@@ -61,7 +105,9 @@ const fetchOrders = async (key) => {
   }
 
   // 검색 필터링 - post_key 우선 처리
-  if (filters.search && filters.search !== "undefined") {
+  if (filters.search && filters.search !== "undefined" && !needsPickupDateFilter) {
+    // 뷰 모드에서만 서버사이드 검색 수행
+    // 조인 모드에서는 모든 데이터를 가져온 후 클라이언트에서 필터링
     const searchTerm = filters.search;
 
     // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
@@ -82,25 +128,17 @@ const fetchOrders = async (key) => {
       // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
     } else {
-      // 일반 검색 - 특수문자 제거 후 검색
+      // 뷰 모드: 기존 방식 유지
       try {
-        // 원본 검색어와 정규화된 검색어 모두 시도
         const normalizedTerm = normalizeForSearch(searchTerm);
+        const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
         
-        // 괄호가 포함된 경우 정규화된 버전으로 검색
-        if (searchTerm.includes('(') || searchTerm.includes(')')) {
-          query = query.or(
-            `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%,product_barcode.ilike.%${normalizedTerm}%,post_key.ilike.%${normalizedTerm}%`
-          );
-        } else {
-          // 괄호가 없으면 원본 그대로 검색
-          query = query.or(
-            `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%,product_barcode.ilike.%${searchTerm}%,post_key.ilike.%${searchTerm}%`
-          );
-        }
+        query = query.or(
+          `customer_name.ilike.%${searchPattern}%,product_title.ilike.%${searchPattern}%,product_barcode.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
+        );
       } catch (error) {
         console.warn('Search filter error:', error);
-        // 에러 발생시 정규화된 검색어로 고객명만 필터링
+        // 에러 발생시 고객명만 필터링
         const normalizedTerm = normalizeForSearch(searchTerm);
         query = query.ilike("customer_name", `%${normalizedTerm}%`);
       }
@@ -158,7 +196,7 @@ const fetchOrders = async (key) => {
 
   // 정렬 및 페이지네이션
   query = query
-    .order(sortBy, { ascending })
+    .order(actualSortBy, { ascending })
     .range(startIndex, startIndex + limit - 1);
 
   const { data, error, count } = await query;
@@ -177,9 +215,85 @@ const fetchOrders = async (key) => {
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
 
+  // 주문완료+수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
+  let processedData = data || [];
+  if (needsPickupDateFilter && data) {
+    processedData = data.map(order => ({
+      ...order,
+      product_title: order.products?.title,
+      product_barcode: order.products?.barcode,
+      product_price_options: order.products?.price_options,
+      product_pickup_date: order.products?.pickup_date,
+      band_key: order.products?.band_key || order.band_key
+    }));
+    
+    // 조인 모드에서 상품명/바코드 검색이 필요한 경우 클라이언트에서 필터링
+    if (filters.search && filters.search !== "undefined") {
+      const searchTerm = filters.search;
+      const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
+      
+      if (!isPostKeySearch) {
+        const normalizeForSearch = (str) => {
+          let normalized = str.replace(/\([^)]*\)/g, ' ');
+          // 대괄호와 그 안의 내용도 공백으로 치환 (검색 성공률 향상)
+          normalized = normalized.replace(/\[[^\]]*\]/g, ' ');
+          normalized = normalized.replace(/\s+/g, ' ').trim();
+          return normalized;
+        };
+        
+        const normalizedTerm = normalizeForSearch(searchTerm);
+        
+        // 원본 검색어와 정규화된 검색어 모두 시도
+        const searchPatterns = [searchTerm.trim()];
+        if (normalizedTerm !== searchTerm.trim()) {
+          searchPatterns.push(normalizedTerm);
+        }
+        
+        // 상품명이나 바코드에서 검색어가 포함된 항목만 필터링
+        console.log('Client-side filtering:', {
+          searchTerm,
+          searchPatterns,
+          originalDataLength: processedData.length
+        });
+        
+        processedData = processedData.filter(order => {
+          const productTitle = order.product_title || '';
+          const productBarcode = order.product_barcode || '';
+          const customerName = order.customer_name || '';
+          const postKey = order.post_key || '';
+          
+          // 여러 검색 패턴 중 하나라도 매칭되면 통과
+          return searchPatterns.some(pattern => {
+            const titleMatch = productTitle.toLowerCase().includes(pattern.toLowerCase());
+            const barcodeMatch = productBarcode.toLowerCase().includes(pattern.toLowerCase());
+            const customerMatch = customerName.toLowerCase().includes(pattern.toLowerCase());
+            const postMatch = postKey.toLowerCase().includes(pattern.toLowerCase());
+            
+            const matches = titleMatch || barcodeMatch || customerMatch || postMatch;
+            
+            if (matches) {
+              console.log('Match found:', {
+                productTitle,
+                pattern,
+                titleMatch,
+                barcodeMatch,
+                customerMatch,
+                postMatch
+              });
+            }
+            
+            return matches;
+          });
+        });
+        
+        console.log('Filtered data length:', processedData.length);
+      }
+    }
+  }
+
   return {
     success: true,
-    data: data || [],
+    data: processedData,
     pagination: {
       totalItems,
       totalPages,

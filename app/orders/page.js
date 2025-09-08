@@ -20,7 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -397,7 +397,73 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
-  const displayOrders = orders || [];
+  // 같은 고객 주문들을 순서 번호로 정렬하고 첫 번째 _0 주문에만 댓글 표시
+  const processOrdersForDisplay = (orders) => {
+    if (!orders || orders.length === 0) return [];
+    
+    // 1단계: 주문 그룹 키 생성 함수
+    const getOrderGroupKey = (orderId) => {
+      if (!orderId) return 'no-group';
+      return orderId.replace(/_item\d+_\d+$/, '');
+    };
+    
+    // 2단계: 주문 순서 번호 추출 함수 (_뒤의 숫자)
+    const getOrderNumber = (orderId) => {
+      if (!orderId) return 999;
+      const match = orderId.match(/_(\d+)$/);
+      return match ? parseInt(match[1], 10) : 999;
+    };
+    
+    // 3단계: 같은 고객별로 그룹화하고 순서 번호로 정렬
+    const groupedOrders = new Map();
+    
+    orders.forEach(order => {
+      const groupKey = getOrderGroupKey(order.order_id);
+      if (!groupedOrders.has(groupKey)) {
+        groupedOrders.set(groupKey, []);
+      }
+      groupedOrders.get(groupKey).push(order);
+    });
+    
+    // 각 그룹 내에서 순서 번호로 정렬
+    const sortedOrders = [];
+    groupedOrders.forEach((groupOrders, groupKey) => {
+      const sorted = groupOrders.sort((a, b) => {
+        return getOrderNumber(a.order_id) - getOrderNumber(b.order_id);
+      });
+      sortedOrders.push(...sorted);
+    });
+    
+    // 4단계: 각 그룹의 첫 번째 _0 주문 식별
+    const groupFirstZeroOrders = new Map();
+    
+    for (const order of sortedOrders) {
+      const orderGroupKey = getOrderGroupKey(order.order_id);
+      const endsWithZero = order.order_id && order.order_id.endsWith('_0');
+      
+      if (endsWithZero && !groupFirstZeroOrders.has(orderGroupKey)) {
+        groupFirstZeroOrders.set(orderGroupKey, order.order_id);
+      }
+    }
+    
+    // 5단계: 댓글 표시 로직 적용
+    return sortedOrders.map(order => {
+      const orderGroupKey = getOrderGroupKey(order.order_id);
+      const endsWithZero = order.order_id && order.order_id.endsWith('_0');
+      const orderNumber = getOrderNumber(order.order_id);
+      
+      // 해당 주문이 그룹의 첫 번째 _0 주문인지 확인
+      const showComment = endsWithZero && groupFirstZeroOrders.get(orderGroupKey) === order.order_id;
+      
+      
+      return {
+        ...order,
+        showComment: showComment
+      };
+    });
+  };
+
+  const displayOrders = processOrdersForDisplay(orders);
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
@@ -429,6 +495,7 @@ export default function OrdersPage() {
   const orderStatusOptions = [
     { value: "all", label: "전체" },
     { value: "주문완료", label: "주문완료" },
+    { value: "주문완료+수령가능", label: "주문완료+수령가능" },
     { value: "수령완료", label: "수령완료" },
     { value: "미수령", label: "미수령" },
     { value: "주문취소", label: "주문취소" },
@@ -504,6 +571,10 @@ export default function OrdersPage() {
       if (filterSelection === "all") {
         return undefined;
       }
+      // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
+      if (filterSelection === "주문완료+수령가능") {
+        return "주문완료";
+      }
       // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
       return filterSelection;
     })(),
@@ -515,6 +586,10 @@ export default function OrdersPage() {
         filterSelection === "none"
       ) {
         return filterSelection;
+      }
+      // '주문완료+수령가능' 선택 시 특별 플래그 전달
+      if (filterSelection === "주문완료+수령가능") {
+        return "수령가능";
       }
       // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
       return undefined;
@@ -1020,12 +1095,60 @@ export default function OrdersPage() {
     };
   }, [mutateProducts, userData?.userId]);
 
-  // 페이지 로드 시 상품 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
+  // 페이지 로드 시 상품 및 주문 데이터 새로고침 (라우팅으로 인한 페이지 진입 감지)
   useEffect(() => {
     if (userData?.userId) {
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
+      mutateOrders(undefined, { revalidate: true }); // 페이지 진입 시 주문 데이터도 새로고침
+      console.log('Orders 페이지 진입: 상품 및 주문 데이터 새로고침');
     }
-  }, [userData?.userId, mutateProducts]);
+  }, [userData?.userId, mutateProducts, mutateOrders]);
+
+  // 게시물 업데이트 이벤트 리스너 - Comments 모달에서 수령일 변경 시 주문 데이터 새로고침
+  useEffect(() => {
+    const handlePostUpdated = (event) => {
+      console.log('주문 페이지: 게시물 업데이트 이벤트 수신:', event.detail);
+      if (userData?.userId && mutateOrders) {
+        // 주문 데이터 새로고침
+        mutateOrders(undefined, { revalidate: true });
+        console.log('주문 데이터 새로고침 완료');
+      }
+    };
+
+    window.addEventListener('postUpdated', handlePostUpdated);
+    
+    return () => {
+      window.removeEventListener('postUpdated', handlePostUpdated);
+    };
+  }, [mutateOrders, userData?.userId]);
+
+  // localStorage 플래그 감지하여 수령일 업데이트 확인
+  useEffect(() => {
+    const checkPickupDateUpdate = () => {
+      const lastUpdated = localStorage.getItem("pickupDateUpdated");
+      if (lastUpdated && userData?.userId) {
+        const updateTime = parseInt(lastUpdated);
+        const now = Date.now();
+        // 5분 이내의 업데이트만 유효하다고 간주
+        if (now - updateTime < 5 * 60 * 1000) {
+          console.log('수령일 변경 감지됨, 주문 데이터 새로고침');
+          mutateOrders(undefined, { revalidate: true });
+          // 플래그 제거하여 중복 업데이트 방지
+          localStorage.removeItem("pickupDateUpdated");
+        }
+      }
+    };
+
+    // 컴포넌트 마운트 시 체크
+    checkPickupDateUpdate();
+
+    // storage 이벤트 리스너 (다른 탭에서 변경사항이 있을 때)
+    window.addEventListener("storage", checkPickupDateUpdate);
+
+    return () => {
+      window.removeEventListener("storage", checkPickupDateUpdate);
+    };
+  }, [mutateOrders, userData?.userId]);
 
   // localStorage 플래그 감지하여 바코드 옵션 업데이트 확인
   useEffect(() => {
@@ -1883,7 +2006,7 @@ export default function OrdersPage() {
         </div>
 
         {/* 필터 섹션 */}
-        <LightCard padding="p-0" className="mb-6 md:mb-8 overflow-hidden">
+        <LightCard padding="p-0" className="mb-2 md:mb-2 overflow-hidden">
           <div className="divide-y divide-gray-200">
             {/* 조회 기간 */}
             <div className="grid grid-cols-[max-content_1fr] items-center">
@@ -2009,6 +2132,11 @@ export default function OrdersPage() {
             </div>
           </div>
         </LightCard>
+
+        {/* 주의 안내 문구 */}
+        <p className="text-sm text-gray-600 px-1 py-2">
+          * 상품과 수량이 잘못 처리될 수 있습니다. 상품명과 고객댓글 수량을 꼭 확인하세요.
+        </p>
 
         {/* 주문 테이블 */}
         <LightCard padding="p-0" className="overflow-hidden">
@@ -2180,11 +2308,13 @@ export default function OrdersPage() {
                                 const productName = getProductNameById(
                                   order.product_id
                                 );
-                                const { name, date } =
+                                const { name } =
                                   parseProductName(productName);
+                                // product_pickup_date 필드에서 수령일 가져오기
+                                const pickupDate = order.product_pickup_date;
                                 const isAvailable =
-                                  isClient && date
-                                    ? isPickupAvailable(date)
+                                  isClient && pickupDate
+                                    ? isPickupAvailable(formatDate(pickupDate))
                                     : false;
 
                                 return (
@@ -2198,11 +2328,14 @@ export default function OrdersPage() {
                                     >
                                       {name}
                                     </div>
-                                    {date && (
+                                    {pickupDate && (
                                       <div
                                         className="text-xs mt-0.5 text-gray-500"
                                       >
-                                        [{date}]
+                                        [{(() => {
+                                          const date = new Date(pickupDate);
+                                          return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                        })()}]
                                         {isAvailable && (
                                           <span className="ml-1 text-gray-500">
                                             ✓ 수령가능
@@ -2228,10 +2361,14 @@ export default function OrdersPage() {
                         </td>
                         <td
                           className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
-                          title={processBandTags(order.comment) || ""}
+                          title={order.showComment ? (processBandTags(order.comment) || "") : ""}
                         >
-                          <div className="line-clamp-3 break-words leading-tight">
-                            {processBandTags(order.comment) || "-"}
+                          <div className="line-clamp-3 break-words leading-tight whitespace-pre-line">
+                            {order.showComment ? (
+                              <span>{processBandTags(order.comment) || "댓글 없음"}</span>
+                            ) : (
+                              <span className="text-gray-400 text-lg">⤷</span>
+                            )}
                           </div>
                         </td>
 
@@ -2420,10 +2557,10 @@ export default function OrdersPage() {
                             ) : (
                               <button
                                 onClick={() => handleEditStart(order)}
-                                className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                                title="수정"
+                                className="inline-flex items-center justify-center px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors"
+                                title="주문 수정"
                               >
-                                <PencilIcon className="w-4 h-4" />
+                                주문 수정
                               </button>
                             )}
                           </div>
@@ -2669,9 +2806,11 @@ export default function OrdersPage() {
                     const productName = getProductNameById(
                       selectedOrder.product_id
                     );
-                    const { name, date } = parseProductName(productName);
+                    const { name } = parseProductName(productName);
+                    // product_pickup_date 필드에서 수령일 가져오기
+                    const pickupDate = selectedOrder.product_pickup_date;
                     const isAvailable =
-                      isClient && date ? isPickupAvailable(date) : false;
+                      isClient && pickupDate ? isPickupAvailable(formatDate(pickupDate)) : false;
 
                     return (
                       <div className="flex flex-col">
@@ -2682,11 +2821,14 @@ export default function OrdersPage() {
                         >
                           {name}
                         </div>
-                        {date && (
+                        {pickupDate && (
                           <div
                             className="text-sm mt-1 text-gray-500"
                           >
-                            [{date}]
+                            [{(() => {
+                              const date = new Date(pickupDate);
+                              return `${date.getMonth() + 1}월${date.getDate()}일`;
+                            })()}]
                             {isAvailable && (
                               <span className="ml-1 text-gray-500">
                                 ✓ 수령가능
@@ -2932,11 +3074,13 @@ export default function OrdersPage() {
                             const productName = getProductNameById(
                               selectedOrder.product_id
                             );
-                            const { name, date } =
+                            const { name } =
                               parseProductName(productName);
+                            // product_pickup_date 필드에서 수령일 가져오기
+                            const pickupDate = selectedOrder.product_pickup_date;
                             const isAvailable =
-                              isClient && date
-                                ? isPickupAvailable(date)
+                              isClient && pickupDate
+                                ? isPickupAvailable(formatDate(pickupDate))
                                 : false;
 
                             return (
@@ -2950,11 +3094,14 @@ export default function OrdersPage() {
                                 >
                                   {name}
                                 </div>
-                                {date && (
+                                {pickupDate && (
                                   <div
                                     className="text-sm mt-1 text-gray-500"
                                   >
-                                    [{date}]
+                                    [{(() => {
+                                      const date = new Date(pickupDate);
+                                      return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                    })()}]
                                     {isAvailable && (
                                       <span className="ml-1 text-gray-500">
                                         ✓ 수령가능
@@ -2994,8 +3141,8 @@ export default function OrdersPage() {
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
-                          // Use the new helper function
-                          value: formatDate(selectedOrder.product_pickup_date),
+                          // Use the correct pickup_date field
+                          value: formatDate(selectedOrder.pickup_date),
                           readOnly: true,
                         },
                         {

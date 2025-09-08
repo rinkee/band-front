@@ -83,58 +83,10 @@ export const UpdateProgressProvider = ({ children }) => {
     }
   }, [progressStates]);
 
-  // Supabase Realtime 구독 (Context7 권장사항 적용)
-  useEffect(() => {
-    if (!userId) return;
-
-    let subscription;
-
-    const setupRealtimeSubscription = async () => {
-      try {
-        // 인증 토큰 설정 (중요!)
-        await supabase.realtime.setAuth();
-        
-        console.log('🚀 리얼타임 구독 설정 시작...', { userId });
-        
-        subscription = supabase
-          .channel(`execution-locks-${userId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'execution_locks',
-              filter: `user_id=eq.${userId}`
-            },
-            (payload) => {
-              console.log('🔔 Realtime update received:', payload);
-              handleRealtimeUpdate(payload);
-            }
-          )
-          .subscribe((status, err) => {
-            console.log('🔗 Realtime subscription status:', status);
-            if (status === 'SUBSCRIBED') {
-              console.log('✅ Realtime 구독 성공 - execution_locks 테이블 변경 감지 중...');
-            } else if (status === 'CLOSED') {
-              console.log('❌ Realtime 구독 종료');
-            } else if (err) {
-              console.error('❌ Realtime 구독 에러:', err);
-            }
-          });
-      } catch (error) {
-        console.error('Failed to setup realtime subscription:', error);
-      }
-    };
-
-    setupRealtimeSubscription();
-
-    return () => {
-      if (subscription) {
-        console.log('🔄 Realtime 구독 해제');
-        subscription.unsubscribe();
-      }
-    };
-  }, [userId]);
+  // 리얼타임 구독 제거됨 - 단순 상태 관리만 사용
+  // useEffect(() => {
+  //   console.log('📝 Realtime 구독이 비활성화됨 - 단순 상태 관리 사용');
+  // }, [userId]);
 
   // Realtime 업데이트 처리 (execution_locks 테이블 구조)
   const handleRealtimeUpdate = (payload) => {
@@ -528,7 +480,12 @@ export const UpdateProgressProvider = ({ children }) => {
 
   // 업데이트 완료 (로컬 상태만 업데이트, DB는 Edge Function이 처리)
   const completeUpdate = async (progressId, success = true, errorMessage = null) => {
-    console.log('📍 completeUpdate 호출:', { progressId, success, errorMessage });
+    console.log('📍 completeUpdate 호출:', { 
+      progressId, 
+      success, 
+      errorMessage,
+      timestamp: new Date().toISOString()
+    });
     
     try {
       // Edge Function이 이미 execution_locks를 업데이트하므로 여기서는 제거
@@ -536,9 +493,18 @@ export const UpdateProgressProvider = ({ children }) => {
       
       // 로컬 상태 완료 업데이트
       setProgressStates(prev => {
+        console.log('🔍 현재 progressStates:', prev);
         const updated = { ...prev };
+        let foundAndUpdated = false;
+        
         for (const [pageType, state] of Object.entries(updated)) {
           if (state && state.id === progressId) {
+            console.log(`✅ ${pageType} 상태 완료 처리:`, {
+              progressId,
+              oldStatus: state.status,
+              newStatus: success ? 'completed' : 'failed'
+            });
+            
             updated[pageType] = {
               ...state,
               isRunning: false,
@@ -549,18 +515,27 @@ export const UpdateProgressProvider = ({ children }) => {
               updatedAt: new Date().toISOString(),
               errorMessage: success ? null : errorMessage
             };
+            
+            foundAndUpdated = true;
 
             // 완료된 작업은 3초 후 자동 정리
             setTimeout(() => {
+              console.log(`🧹 ${pageType} 상태 자동 정리 시작`);
               setProgressStates(prevStates => {
                 const cleanedStates = { ...prevStates };
                 delete cleanedStates[pageType];
+                console.log('🧹 정리 후 상태:', cleanedStates);
                 return cleanedStates;
               });
             }, 3000);
             break;
           }
         }
+        
+        if (!foundAndUpdated) {
+          console.warn('⚠️ progressId에 해당하는 상태를 찾을 수 없음:', progressId);
+        }
+        
         return updated;
       });
     } catch (error) {

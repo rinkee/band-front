@@ -38,6 +38,35 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
   const [saving, setSaving] = useState(false);
   const [availableProducts, setAvailableProducts] = useState({});
 
+  // comment_key로 주문들을 그룹화하고 첫 번째만 댓글 표시용 플래그 추가
+  const processOrdersForDisplay = (orders) => {
+    const grouped = {};
+    
+    // 먼저 그룹화
+    orders.forEach(order => {
+      const commentKey = order.comment_key || 'no-comment';
+      
+      if (!grouped[commentKey]) {
+        grouped[commentKey] = [];
+      }
+      
+      grouped[commentKey].push(order);
+    });
+    
+    // 각 그룹의 첫 번째 주문에만 댓글 표시 플래그 추가
+    const processedOrders = [];
+    Object.values(grouped).forEach(groupOrders => {
+      groupOrders.forEach((order, index) => {
+        processedOrders.push({
+          ...order,
+          showComment: index === 0  // 첫 번째 주문만 댓글 표시
+        });
+      });
+    });
+    
+    return processedOrders;
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("ko-KR", {
       style: "currency",
@@ -176,8 +205,9 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {orders.length > 0 ? (
-            orders.map((order) => {
+            processOrdersForDisplay(orders).map((order) => {
               const isEditing = editingOrder === order.order_id;
+              
               return (
                 <tr key={order.order_id} className="hover:bg-gray-50">
                   {/* 고객명 */}
@@ -208,9 +238,9 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                     )}
                   </td>
                   
-                  {/* 고객 댓글 */}
+                  {/* 고객 댓글 - 첫 번째 주문만 표시 */}
                   <td className="px-4 py-4 text-sm text-gray-500 max-w-xs truncate">
-                    {processBandTags(order.comment)}
+                    {order.showComment ? processBandTags(order.comment) : ''}
                   </td>
                   
                   {/* 수량 - 편집 가능 */}

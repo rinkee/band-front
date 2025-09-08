@@ -18,7 +18,7 @@ import { useSWRConfig } from "swr";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ko } from "date-fns/locale";
-import UpdateButton from "../components/UpdateButtonWithPersistentState"; // 상태 유지 업데이트 버튼
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -793,7 +793,6 @@ export default function ProductsPage() {
   useEffect(() => {
     if (productsData?.data) {
       // 주문 수량 데이터 확인
-      console.log('상품 데이터 예시:', productsData.data[0]);
       
       // 상품 ID 추출
       const productIds = productsData.data.map(p => p.product_id).filter(Boolean);
@@ -814,7 +813,6 @@ export default function ProductsPage() {
               unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
             }));
             
-            console.log('productsWithStats 샘플:', productsWithStats[0]);
             setProducts(productsWithStats);
           })
           .catch(error => {
@@ -960,7 +958,6 @@ export default function ProductsPage() {
         const unpickedOrders = productOrders.filter(order => 
           order.sub_status === '미수령' && order.status !== '수령완료'
         );
-        console.log(`상품 ${productId} - 전체 주문: ${productOrders.length}개, 실제 미수령 주문: ${unpickedOrders.length}개`);
         const unpickedQuantity = unpickedOrders.reduce((sum, order) => sum + (order.quantity || 0), 0);
         
         statsMap[productId] = {
@@ -1017,11 +1014,10 @@ export default function ProductsPage() {
       data?.forEach(post => {
         const key = `${post.band_key}_${post.post_key}`;
         
-        // image_urls에서 첫 번째 이미지만 추출
+        // image_urls 전체 배열 저장 (다중 상품 지원)
         if (post.image_urls && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
-          const imageUrl = post.image_urls[0];
-          imageMap[key] = imageUrl;
-          console.log(`✅ ${key}: image_urls에서 이미지 추출:`, imageUrl);
+          imageMap[key] = post.image_urls; // 전체 배열 저장
+          console.log(`✅ ${key}: image_urls 배열 저장:`, post.image_urls.length, '개 이미지');
         } else {
           console.log(`❌ ${key}: image_urls 없음 또는 빈 배열`);
         }
@@ -1306,6 +1302,65 @@ export default function ProductsPage() {
       showError('바코드 저장에 실패했습니다.');
     } finally {
       // 저장 중 상태 해제
+      setSavingBarcodes(prev => {
+        const newState = { ...prev };
+        delete newState[product.product_id];
+        return newState;
+      });
+    }
+  };
+
+  // 바코드 자동생성 함수
+  const generateAutoBarcode = () => {
+    // 55로 시작하는 13자리 바코드 생성 (55 + 타임스탬프 8자리 + 랜덤 3자리)
+    const timestamp = Date.now().toString().slice(-8); // 타임스탬프 마지막 8자리
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0'); // 랜덤 3자리
+    return `55${timestamp}${random}`;
+  };
+
+  // 바코드 자동생성 및 저장 핸들러
+  const handleAutoGenerateBarcode = async (product) => {
+    try {
+      // 기존 바코드 확인
+      const currentBarcode = editingBarcodes[product.product_id] || product.barcode;
+      if (currentBarcode && currentBarcode.trim()) {
+        const confirmMessage = `이미 바코드(${currentBarcode})가 있습니다.\n새로운 바코드로 교체하시겠습니까?`;
+        if (!confirm(confirmMessage)) {
+          return; // 사용자가 취소하면 함수 종료
+        }
+      }
+      
+      setSavingBarcodes(prev => ({ ...prev, [product.product_id]: true }));
+      
+      const autoBarcode = generateAutoBarcode();
+      
+      // DB에 직접 저장
+      const { error } = await supabase
+        .from('products')
+        .update({ barcode: autoBarcode })
+        .eq('product_id', product.product_id);
+
+      if (error) throw error;
+
+      // 성공 시 상품 목록 업데이트
+      setProducts(prev => prev.map(p => 
+        p.product_id === product.product_id 
+          ? { ...p, barcode: autoBarcode }
+          : p
+      ));
+      
+      // 편집 상태도 업데이트
+      setEditingBarcodes(prev => {
+        const newState = { ...prev };
+        delete newState[product.product_id];
+        return newState;
+      });
+      
+      // 데이터 새로고침
+      mutateProducts();
+    } catch (error) {
+      console.error('바코드 자동생성 오류:', error);
+    } finally {
       setSavingBarcodes(prev => {
         const newState = { ...prev };
         delete newState[product.product_id];
@@ -1745,18 +1800,14 @@ export default function ProductsPage() {
                       <td className="px-4 py-4 whitespace-nowrap sm:pl-6">
                         <div className="flex items-center space-x-4">
                           {/* 상품 이미지 - 크기 증가 */}
-                          <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
+                          <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 shadow-sm">
                             {(() => {
                               const imageKey = `${product.band_key}_${product.post_key}`;
-                              const imageUrl = postsImages[imageKey];
-                              console.log(`🖼️ 상품 ${product.title}:`, {
-                                band_key: product.band_key,
-                                post_key: product.post_key,
-                                imageKey: imageKey,
-                                has_imageUrl: !!imageUrl,
-                                imageUrl: imageUrl,
-                                postsImagesKeys: Object.keys(postsImages).slice(0, 5) // 디버깅용
-                              });
+                              const imageUrls = postsImages[imageKey]; // 배열로 받음
+                              
+                              // 모든 상품에 첫 번째 이미지(0번) 사용
+                              const imageUrl = Array.isArray(imageUrls) ? imageUrls[0] : imageUrls;
+                                
                               
                               if (product.band_key && product.post_key && imageUrl) {
                                 return (
@@ -1764,6 +1815,10 @@ export default function ProductsPage() {
                                     src={imageUrl}
                                     alt={product.title}
                                     className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                    style={{ 
+                                      imageRendering: 'auto',
+                                      backfaceVisibility: 'hidden'
+                                    }}
                                     onError={(e) => {
                                       console.error(`❌ 이미지 로드 실패: ${imageUrl}`);
                                       e.target.onerror = null;
@@ -1794,7 +1849,7 @@ export default function ProductsPage() {
                           </div>
                           {/* 상품명 */}
                           <div className="flex-1">
-                            <div className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
+                            <div className="text-base font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
                               {(() => {
                                 const parsed = parseProductName(product.title);
                                 // 날짜 부분을 제거하고 순수 상품명만 표시
@@ -1809,12 +1864,12 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-5 whitespace-nowrap text-base text-gray-800 font-semibold">
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-gray-800">
                         {formatCurrency(product.base_price)}
                       </td>
                       <td className="px-4 py-5 whitespace-nowrap text-center">
                         {product.total_order_quantity > 0 ? (
-                          <span className="text-lg font-bold text-green-600">
+                          <span className="text-xl font-bold text-gray-900">
                             {product.total_order_quantity}
                           </span>
                         ) : (
@@ -1831,7 +1886,7 @@ export default function ProductsPage() {
                               // 미수령 주문 페이지로 이동 (상품명과 미수령 필터 파라미터 전달)
                               router.push(`/orders?search=${encodeURIComponent(product.title)}&filter=unpicked`);
                             }}
-                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-lg font-bold text-red-600 group-hover:bg-red-100 hover:bg-red-200 hover:text-red-700 transition-all duration-200 cursor-pointer"
+                            className="inline-flex items-center justify-center px-3 py-1 rounded-md text-xl font-bold text-red-600 group-hover:bg-red-100 hover:bg-red-200 hover:text-red-700 transition-all duration-200 cursor-pointer"
                             title="미수령 주문 보기"
                           >
                             {product.unpicked_quantity}
@@ -1885,6 +1940,22 @@ export default function ProductsPage() {
                               </div>
                             )}
                           </div>
+                          {/* 바코드 자동생성 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAutoGenerateBarcode(product);
+                            }}
+                            disabled={savingBarcodes[product.product_id]}
+                            className={`mt-1.5 w-full px-2 py-1 text-xs rounded transition-colors ${
+                              savingBarcodes[product.product_id]
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-700 border border-gray-300'
+                            }`}
+                            title="바코드 자동 생성"
+                          >
+                            {savingBarcodes[product.product_id] ? '생성중...' : '바코드 자동 생성'}
+                          </button>
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">

@@ -5,6 +5,8 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { UserIcon } from "@heroicons/react/24/solid";
+import useSWR, { useSWRConfig } from "swr";
+import supabase from '../lib/supabaseClient';
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -83,8 +85,14 @@ const decodeHtmlEntities = (text) => {
   return decodedText;
 };
 
+// 댓글이 취소 관련인지 확인하는 함수
+const isCancellationComment = (content) => {
+  if (!content) return false;
+  return content.includes('취소');
+};
+
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails, showOrderDetails }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -95,6 +103,20 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
       !imageError
     );
   }, [comment.author?.profile_image_url, imageError]);
+
+  // 비밀댓글인지 확인
+  const isPrivateComment = useMemo(() => {
+    return comment.content && 
+      (comment.content.includes("This comment is private.") || 
+       comment.content.includes("비밀댓글입니다") ||
+       comment.content === "This comment is private.");
+  }, [comment.content]);
+
+  // 취소 댓글인지 확인
+  const isCancellation = isCancellationComment(comment.content);
+  
+  // orderStatus 재정의 - 취소 댓글이면 무조건 "주문취소"
+  const displayStatus = isCancellation ? "주문취소" : orderStatus;
 
   const formatTimeAgo = (timestamp) => {
     const now = Date.now();
@@ -123,7 +145,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
           <img
             src={comment.author.profile_image_url}
             alt={comment.author?.name || "익명"}
-            className="w-10 h-10 rounded-full object-cover border border-gray-200"
+            className="w-10 h-10 rounded-full object-cover"
             onError={() => setImageError(true)}
           />
         ) : (
@@ -136,48 +158,55 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
       {/* 댓글 내용 */}
       <div className="flex-1 min-w-0">
         {/* 작성자 이름 */}
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-medium text-gray-900 text-sm">
+        <div className="flex items-center justify-between mb-1">
+          <span className="font-medium text-gray-900 text-base">
             {comment.author?.name || "익명"}
           </span>
-          {isExcludedCustomer && (
-            <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
-              제외 고객
-            </span>
-          )}
-          {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
-          {!isExcludedCustomer && (
-            isDbDataLoading ? (
-              // DB 데이터 로딩 중
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
-                <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+          <div className="flex items-center gap-2">
+            {isExcludedCustomer && (
+              <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+                제외 고객
               </span>
-            ) : isSavedInDB ? (
-              orderStatus === "주문취소" ? (
-                <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
+            )}
+            {/* 댓글 상태 표시 - 제외 고객이 아닌 경우만 */}
+            {!isExcludedCustomer && (
+              isDbDataLoading ? (
+                // DB 데이터 로딩 중
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium flex items-center gap-1">
+                  <div className="w-3 h-3 bg-gray-400 rounded-full animate-spin"></div>
+                </span>
+              ) : isCancellation || displayStatus === "주문취소" ? (
+                // 취소 댓글이거나 이미 주문취소 상태면
+                <span className="text-sm px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">
                   ✓ 주문취소
                 </span>
-              ) : (
-                <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
+              ) : isSavedInDB ? (
+                // 기존 저장된 주문 (취소가 아닌 경우)
+                <span className="text-sm px-2 py-0.5 bg-green-100 text-green-600 rounded-full font-medium">
                   ✓ 주문 처리됨
                 </span>
+              ) : isPrivateComment ? (
+                // 비밀댓글
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                  🔒 비밀댓글
+                </span>
+              ) : isMissed ? (
+                // 누락된 주문 (이후 댓글이 DB에 있음)
+                <span className="text-sm px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
+                  ⚠ 누락 주문
+                </span>
+              ) : (
+                // 업데이트 전 (아직 처리 대상 아님)
+                <span className="text-sm px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
+                  업데이트 전
+                </span>
               )
-            ) : isMissed ? (
-              // 누락된 주문 (이후 댓글이 DB에 있음)
-              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">
-                ⚠ 누락 주문
-              </span>
-            ) : (
-              // 업데이트 전 (아직 처리 대상 아님)
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-medium">
-                업데이트 전
-              </span>
-            )
-          )}
+            )}
+          </div>
         </div>
 
         {/* 댓글 텍스트 */}
-        <div className="text-gray-800 text-sm mb-2 whitespace-pre-wrap break-words">
+        <div className="text-gray-800 text-base mb-2 whitespace-pre-wrap break-words">
           {decodeHtmlEntities(comment.content)}
         </div>
 
@@ -187,7 +216,7 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
             <img
               src={comment.photo.url}
               alt="댓글 이미지"
-              className="max-w-xs rounded-lg border border-gray-200"
+              className="max-w-xs rounded-lg"
               style={{
                 maxHeight: "200px",
                 width: "auto",
@@ -196,8 +225,46 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
           </div>
         )}
 
+        {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
+        {showOrderDetails && isSavedInDB && orderDetails && orderDetails.length > 0 && (
+          <div className="mt-2 mb-2 p-2 bg-gray-100 rounded-lg">
+            {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
+            <div className="space-y-1">
+              {orderDetails.map((order, index) => (
+                <div key={index} className="text-sm">
+                  <span className="font-medium">
+                    {(() => {
+                      const productName = order.product_name || '상품';
+                      // 날짜 패턴 제거: [9월3일], [1월15일] 등
+                      return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
+                    })()}
+                  </span>
+                  {order.quantity && (
+                    <span className="ml-1">× {order.quantity}</span>
+                  )}
+                  {(order.total_amount || order.product_price) && (
+                    <span className="font-medium ml-2">
+                      {(() => {
+                        const displayPrice = order.total_amount || order.product_price;
+                        console.log(`🎯 화면 표시 가격:`, {
+                          product: order.product_name,
+                          quantity: order.quantity,
+                          total_amount: order.total_amount,
+                          product_price: order.product_price,
+                          display_price: displayPrice
+                        });
+                        return displayPrice.toLocaleString();
+                      })()}원
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 시간만 표시 */}
-        <div className="text-xs text-gray-500">
+        <div className="text-sm text-gray-500">
           <span>{formatTimeAgo(comment.created_at)}</span>
         </div>
       </div>
@@ -218,19 +285,43 @@ const CommentsList = ({
   excludedCustomers = [],
   savedComments = {},
   onEnableReprocess, // 재처리 활성화 콜백 추가
+  hideExcludedCustomers = false, // 제외 고객 숨김 상태 추가
+  showOrderDetails = true, // 주문 상세 보기 상태 추가
 }) => {
   const commentsEndRef = useRef(null);
   
   // DB 데이터 로딩 상태 추적
   const [isDbDataLoading, setIsDbDataLoading] = useState(true);
   
-  // 누락 주문 여부 확인 - DB 데이터 로딩 완료 후에만 실행
+  // 누락 주문 여부 확인 - DB 데이터 로딩 완료 후에만 실행 (중복 제거된 댓글 기준)
   const hasMissedOrders = useMemo(() => {
     if (!comments || comments.length === 0 || isDbDataLoading) return false;
     
-    const sortedComments = [...comments].sort((a, b) => a.created_at - b.created_at);
+    // 중복 제거된 댓글 목록 생성 (비밀댓글 제외)
+    const uniqueCommentKeys = new Set();
+    const uniqueComments = [...comments]
+      .sort((a, b) => a.created_at - b.created_at)
+      .filter(comment => {
+        if (uniqueCommentKeys.has(comment.comment_key)) {
+          return false;
+        }
+        uniqueCommentKeys.add(comment.comment_key);
+        
+        // 비밀댓글인지 확인 (content에 "This comment is private." 포함되어 있는 경우)
+        const isPrivateComment = comment.content && 
+          (comment.content.includes("This comment is private.") || 
+           comment.content.includes("비밀댓글입니다") ||
+           comment.content === "This comment is private.");
+        
+        // 비밀댓글은 제외
+        if (isPrivateComment) {
+          return false;
+        }
+        
+        return true;
+      });
     
-    return sortedComments.some((comment, currentIndex) => {
+    return uniqueComments.some((comment, currentIndex) => {
       const authorName = comment.author?.name;
       const isExcludedCustomer = excludedCustomers.some(
         (excluded) => {
@@ -245,7 +336,7 @@ const CommentsList = ({
       
       const savedComment = savedComments[comment.comment_key];
       const isSavedInDB = savedComment?.isSaved || false;
-      const isMissed = !isSavedInDB && sortedComments.some(
+      const isMissed = !isSavedInDB && uniqueComments.some(
         (c, idx) => idx > currentIndex && savedComments[c.comment_key]?.isSaved
       );
       
@@ -253,9 +344,19 @@ const CommentsList = ({
     });
   }, [comments, savedComments, excludedCustomers, isDbDataLoading]);
   
-  // 가장 이른 저장된 댓글의 시간 찾기
+  // 가장 이른 저장된 댓글의 시간 찾기 (중복 제거된 댓글 기준)
   const earliestSavedCommentTime = useMemo(() => {
-    const savedTimes = comments
+    // 중복 제거된 댓글 목록 생성
+    const uniqueCommentKeys = new Set();
+    const uniqueComments = comments.filter(comment => {
+      if (uniqueCommentKeys.has(comment.comment_key)) {
+        return false;
+      }
+      uniqueCommentKeys.add(comment.comment_key);
+      return true;
+    });
+    
+    const savedTimes = uniqueComments
       .filter(comment => savedComments[comment.comment_key]?.isSaved)
       .map(comment => comment.created_at);
     
@@ -266,6 +367,7 @@ const CommentsList = ({
   // savedComments가 변경되면 DB 데이터 로딩 완료로 설정
   useEffect(() => {
     if (savedComments && Object.keys(savedComments).length >= 0) {
+      console.log('✅ DB 로딩 완료, savedComments:', savedComments);
       setIsDbDataLoading(false);
     }
   }, [savedComments]);
@@ -320,56 +422,106 @@ const CommentsList = ({
     );
   }
 
-  // 댓글을 시간순으로 정렬 (오래된 순)
-  const sortedComments = [...comments].sort(
-    (a, b) => a.created_at - b.created_at
-  );
+  // 댓글을 시간순으로 정렬하고 중복 제거 (comment_key 기준)
+  const uniqueComments = [];
+  const seenCommentKeys = new Set();
+  
+  const sortedComments = [...comments]
+    .sort((a, b) => a.created_at - b.created_at)
+    .filter(comment => {
+      if (seenCommentKeys.has(comment.comment_key)) {
+        return false; // 이미 본 댓글은 제외
+      }
+      seenCommentKeys.add(comment.comment_key);
+      uniqueComments.push(comment);
+      return true;
+    });
 
   return (
     <div>
-      {/* 누락 주문 발견 시 재처리 알림 */}
+      {/* 누락 주문 발견 시 재처리 알림 - 모듈 형태 */}
       {hasMissedOrders && onEnableReprocess && (
-        <div className="p-4 border-b border-gray-100 bg-orange-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-orange-600 font-medium">⚠ 누락된 주문이 발견되었습니다</span>
-              <span className="text-sm text-orange-500">
-                자동 재처리를 활성화하여 누락 주문을 복구할 수 있습니다
-              </span>
+        <div className="m-4 mb-0">
+          <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-base font-semibold text-orange-800">누락된 주문 발견</h4>
+                  <p className="text-sm text-orange-600">
+                    자동 재처리를 활성화하면 다음 업데이트 시 누락된 주문들이 복구됩니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onEnableReprocess}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors duration-200 flex-shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                재처리 활성화
+              </button>
             </div>
-            <button
-              onClick={onEnableReprocess}
-              className="px-3 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 font-medium transition-colors"
-            >
-              재처리 활성화
-            </button>
           </div>
         </div>
       )}
       
-      {/* 더보기 버튼 - 댓글 리스트 위에 위치 */}
+      {/* 더보기 버튼 - 모듈 형태 */}
       {showLoadMore && (
-        <div className="p-4 border-b border-gray-100 bg-gray-50">
+        <div className="m-4 mb-0">
           <button
             onClick={onLoadMore}
             disabled={loadMoreLoading}
-            className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 disabled:text-gray-400 flex items-center justify-center gap-1 font-medium"
+            className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 hover:from-blue-100 hover:to-indigo-100 disabled:from-gray-50 disabled:to-gray-50 transition-all duration-200 shadow-sm"
           >
-            {loadMoreLoading ? (
-              <>
-                <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                로딩 중...
-              </>
-            ) : (
-              "더 많은 댓글 보기"
-            )}
+            <div className="flex items-center justify-center gap-3">
+              {loadMoreLoading ? (
+                <>
+                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                    <ArrowPathIcon className="w-4 h-4 animate-spin text-blue-600" />
+                  </div>
+                  <span className="font-medium text-blue-700">로딩 중...</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                    </svg>
+                  </div>
+                  <span className="font-medium text-blue-700">댓글 더보기</span>
+                </>
+              )}
+            </div>
           </button>
         </div>
       )}
 
       {/* 댓글 목록 */}
       <div className="divide-y divide-gray-100">
-        {sortedComments.map((comment, currentIndex) => {
+        {sortedComments
+          .filter((comment) => {
+            // 제외 고객 숨김 설정이 true이고, 해당 댓글이 제외 고객인 경우 필터링
+            if (hideExcludedCustomers) {
+              const authorName = comment.author?.name;
+              const isExcludedCustomer = excludedCustomers.some(
+                (excluded) => {
+                  if (typeof excluded === 'string') {
+                    return excluded === authorName;
+                  }
+                  return excluded.name === authorName;
+                }
+              );
+              return !isExcludedCustomer; // 제외 고객이 아닌 댓글만 표시
+            }
+            return true; // 모든 댓글 표시
+          })
+          .map((comment, currentIndex) => {
           // 제외 고객 여부 확인
           const authorName = comment.author?.name;
           const isExcludedCustomer = excludedCustomers.some(
@@ -387,6 +539,7 @@ const CommentsList = ({
           const savedComment = savedComments[comment.comment_key];
           const isSavedInDB = savedComment?.isSaved || false;
           const orderStatus = savedComment?.status || null;
+          const orderDetails = savedComment?.orders || [];
           
           // 누락 여부 판단: DB에 없고, 이 댓글보다 나중 댓글 중 DB에 저장된 것이 있는 경우
           const isMissed = !isSavedInDB && sortedComments.some(
@@ -402,6 +555,8 @@ const CommentsList = ({
               isMissed={isMissed}
               isDbDataLoading={isDbDataLoading}
               orderStatus={orderStatus}
+              orderDetails={orderDetails}
+              showOrderDetails={showOrderDetails}
             />
           );
         })}
@@ -426,6 +581,9 @@ const CommentsModal = ({
   order,
   onFailover,
   onEnableReprocess, // 재처리 활성화 콜백 추가
+  post, // 게시물 정보 추가
+  onToggleReprocess, // 재처리 토글 콜백
+  onDeletePost, // 삭제 콜백
 }) => {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -435,7 +593,299 @@ const CommentsModal = ({
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [savedComments, setSavedComments] = useState({});
+  const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
+  const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
+  const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
+  const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
   const scrollContainerRef = useRef(null);
+  const { mutate: globalMutate } = useSWRConfig();
+
+  // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
+  const { data: currentPost } = useSWR(
+    postKey ? `/api/posts/${postKey}` : null,
+    async (url) => {
+      // supabase is already imported at the top
+      
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('post_key', postKey)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    {
+      refreshInterval: 2000, // 2초마다 갱신
+      revalidateOnFocus: true
+    }
+  );
+
+  // post prop 대신 currentPost 사용 (fallback으로 post 사용)
+  const activePost = currentPost || post;
+
+  // 수령일 편집 관련 함수들
+  const handlePickupDateEdit = () => {
+    // products 테이블에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
+    const firstProduct = products && products.length > 0 ? products[0] : null;
+    if (firstProduct?.pickup_date) {
+      const date = new Date(firstProduct.pickup_date);
+      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      setEditPickupDate(localDate.toISOString().split('T')[0]);
+    } else {
+      // pickup_date가 없는 경우 제목에서 추출 시도
+      const postTitle = activePost?.title || '';
+      const deliveryMatch = postTitle.match(/^\[([^\]]+)\]/);
+      const deliveryDate = deliveryMatch ? deliveryMatch[1] : null;
+      
+      if (deliveryDate) {
+        try {
+          // "1월15일" 형식을 파싱
+          const koreanDateMatch = deliveryDate.match(/(\d+)월\s*(\d+)일/);
+          if (koreanDateMatch) {
+            const currentYear = new Date().getFullYear();
+            const month = parseInt(koreanDateMatch[1]);
+            const day = parseInt(koreanDateMatch[2]);
+            const parsedDate = new Date(currentYear, month - 1, day);
+            const localDate = new Date(parsedDate.getTime() - parsedDate.getTimezoneOffset() * 60000);
+            setEditPickupDate(localDate.toISOString().split('T')[0]);
+          } else {
+            // 기본값: 오늘 날짜
+            const today = new Date();
+            const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+            setEditPickupDate(localDate.toISOString().split('T')[0]);
+          }
+        } catch {
+          // 파싱 실패 시 기본값: 오늘 날짜
+          const today = new Date();
+          const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+          setEditPickupDate(localDate.toISOString().split('T')[0]);
+        }
+      } else {
+        // 기본값: 오늘 날짜
+        const today = new Date();
+        const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+        setEditPickupDate(localDate.toISOString().split('T')[0]);
+      }
+    }
+    setIsEditingPickupDate(true);
+    
+    // 다음 렌더링 후 date input에 포커스하고 캘린더 열기
+    setTimeout(() => {
+      const dateInput = document.querySelector('input[type="date"]');
+      if (dateInput) {
+        dateInput.focus();
+        dateInput.showPicker?.(); // 브라우저가 지원하는 경우 캘린더 자동 열기
+      }
+    }, 100);
+  };
+
+  const handlePickupDateSave = async (dateValue = null) => {
+    const dateToSave = dateValue || editPickupDate;
+    if (!dateToSave) {
+      console.error('수령일 저장 실패: dateToSave가 비어있습니다.');
+      return;
+    }
+    
+    console.log('수령일 저장 시작:', { postKey, dateToSave, editPickupDate, activePost: activePost?.title });
+    
+    try {
+      // postKey 확인
+      if (!postKey) {
+        console.error('수령일 저장 실패: postKey가 없습니다.');
+        alert('게시물 정보를 찾을 수 없습니다.');
+        return;
+      }
+
+      // 작성일 체크 - 작성일보다 이전으로 선택할 수 없음
+      const postDate = activePost?.posted_at || activePost?.created_at;
+      if (postDate) {
+        // 날짜만 비교 (시간 제외)
+        const createdDate = new Date(postDate);
+        const createdDateOnly = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+        
+        const selectedDate = new Date(dateToSave);
+        const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+        
+        console.log('날짜 검증:', { 
+          postDate,
+          createdDateOnly: createdDateOnly.toISOString().split('T')[0], 
+          selectedDateOnly: selectedDateOnly.toISOString().split('T')[0] 
+        });
+        
+        if (selectedDateOnly < createdDateOnly) {
+          alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
+          return;
+        }
+      }
+
+      console.log('업데이트 데이터:', {
+        pickup_date: new Date(dateToSave).toISOString(),
+        postKey
+      });
+
+      // products 테이블의 pickup_date 업데이트
+      const { error: productsError, data: productsData } = await supabase
+        .from('products')
+        .update({ 
+          pickup_date: new Date(dateToSave).toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('post_key', postKey);
+
+      console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
+
+      if (productsError) throw productsError;
+
+      // 성공 시 편집 모드 종료
+      setIsEditingPickupDate(false);
+      
+      // SWR 캐시 갱신 (전역 mutate 사용)
+      await globalMutate(`/api/posts/${postKey}`);
+      await globalMutate(`products-${postKey}`);
+      
+      // 모든 관련 캐시 갱신
+      await globalMutate(key => typeof key === 'string' && key.includes(postKey));
+      
+      // 부모 컴포넌트의 게시물 목록도 갱신하기 위해 전역 이벤트 발생
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('postUpdated', { 
+          detail: { postKey, pickup_date: new Date(dateToSave).toISOString() } 
+        }));
+        
+        // localStorage에 플래그 저장하여 다른 페이지에서도 변경사항 인지 가능
+        localStorage.setItem('pickupDateUpdated', Date.now().toString());
+      }
+      
+    } catch (error) {
+      console.error('수령일 업데이트 실패:', error);
+      console.error('에러 세부정보:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      alert(`수령일 업데이트에 실패했습니다.\n에러: ${error.message || error}`);
+    }
+  };
+
+  const handlePickupDateCancel = () => {
+    setIsEditingPickupDate(false);
+    setEditPickupDate('');
+  };
+
+  // 게시물의 추출된 상품 리스트 가져오기
+  const { data: products, error: productsError } = useSWR(
+    postKey ? `products-${postKey}` : null,
+    async () => {
+      // supabase is already imported at the top
+      
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('post_key', postKey)
+        .order('created_at', { ascending: true });
+      
+      if (error) throw error;
+      return data;
+    },
+    {
+      revalidateOnFocus: false,
+      refreshInterval: 0
+    }
+  );
+
+
+  // 제외고객 숨김 상태를 고려한 댓글 수 계산
+  const visibleCommentsCount = useMemo(() => {
+    if (!comments || comments.length === 0) return 0;
+    
+    if (hideExcludedCustomers && excludedCustomers && excludedCustomers.length > 0) {
+      // 현재 댓글 목록에서 제외 처리된 댓글 찾기
+      const excludedAuthorNames = new Set();
+      
+      // 현재 댓글 목록을 순회하면서 제외고객 찾기
+      comments.forEach((comment) => {
+        const authorName = comment.author?.name;
+        if (!authorName) return;
+        
+        // excludedCustomers 배열에 해당 작성자가 있는지 확인
+        const isExcluded = excludedCustomers.some(
+          (customer) => {
+            // customer가 문자열인 경우 직접 비교
+            if (typeof customer === 'string') {
+              return customer === authorName;
+            }
+            // customer가 객체인 경우 name 속성 비교
+            return customer.name === authorName || customer.author_name === authorName;
+          }
+        );
+        
+        if (isExcluded) {
+          excludedAuthorNames.add(authorName);
+        }
+      });
+      
+      // 제외고객이 아닌 댓글만 카운트
+      const visibleComments = comments.filter(
+        (comment) => {
+          const authorName = comment.author?.name;
+          return authorName && !excludedAuthorNames.has(authorName);
+        }
+      );
+      
+      return visibleComments.length;
+    }
+    
+    return comments.length;
+  }, [comments, hideExcludedCustomers, excludedCustomers]);
+
+  // 제외고객 숨김 상태를 고려한 주문 수 계산
+  const visibleOrdersCount = useMemo(() => {
+    if (!savedComments || Object.keys(savedComments).length === 0) return 0;
+    
+    if (hideExcludedCustomers && comments && comments.length > 0 && excludedCustomers && excludedCustomers.length > 0) {
+      // 현재 댓글 목록에서 제외 처리된 작성자 찾기
+      const excludedAuthorNames = new Set();
+      
+      comments.forEach((comment) => {
+        const authorName = comment.author?.name;
+        if (!authorName) return;
+        
+        const isExcluded = excludedCustomers.some(
+          (customer) => {
+            // customer가 문자열인 경우 직접 비교
+            if (typeof customer === 'string') {
+              return customer === authorName;
+            }
+            // customer가 객체인 경우 name 속성 비교
+            return customer.name === authorName || customer.author_name === authorName;
+          }
+        );
+        
+        if (isExcluded) {
+          excludedAuthorNames.add(authorName);
+        }
+      });
+      
+      // 제외고객이 아닌 사람의 주문만 카운트
+      return Object.entries(savedComments)
+        .filter(([commentKey, comment]) => {
+          if (!comment.isSaved) return false;
+          
+          // 해당 댓글 찾기
+          const relatedComment = comments.find(c => c.comment_key === commentKey);
+          if (!relatedComment) return true; // 댓글을 찾지 못하면 포함
+          
+          const authorName = relatedComment.author?.name;
+          // 제외고객이 아닌 경우만 포함
+          return authorName && !excludedAuthorNames.has(authorName);
+        }).length;
+    }
+    
+    // 제외고객 숨김이 비활성화되어 있으면 모든 저장된 주문 카운트
+    return Object.values(savedComments).filter(comment => comment.isSaved).length;
+  }, [savedComments, hideExcludedCustomers, excludedCustomers, comments]);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
   const handleScroll = () => {
@@ -611,6 +1061,13 @@ const CommentsModal = ({
     try {
       const commentKeys = commentsToCheck.map(c => c.comment_key);
       
+      console.log('📤 댓글 DB 확인 요청:', {
+        commentKeysCount: commentKeys.length,
+        postKey,
+        bandKey,
+        commentKeys: commentKeys.slice(0, 3) // 첫 3개만 로그
+      });
+      
       const response = await fetch('/api/orders/check-comments', {
         method: 'POST',
         headers: {
@@ -625,9 +1082,13 @@ const CommentsModal = ({
       
       if (response.ok) {
         const data = await response.json();
+        console.log('📥 댓글 DB 확인 응답:', data);
+        
         if (data.success && data.savedComments) {
           setSavedComments(data.savedComments);
         }
+      } else {
+        console.error('API 응답 오류:', response.status, await response.text());
       }
     } catch (error) {
       console.error('DB 저장 상태 확인 오류:', error);
@@ -653,6 +1114,21 @@ const CommentsModal = ({
     }
   }, [isOpen, postKey, bandKey, accessToken]);
 
+  // 모달이 닫히거나 postKey가 변경될 때 수령일 편집 상태 초기화
+  useEffect(() => {
+    if (!isOpen) {
+      // 모달이 닫히면 수령일 편집 상태 초기화
+      setIsEditingPickupDate(false);
+      setEditPickupDate('');
+    }
+  }, [isOpen]);
+
+  // postKey가 변경될 때 수령일 편집 상태 초기화 (다른 게시물로 변경 시)
+  useEffect(() => {
+    setIsEditingPickupDate(false);
+    setEditPickupDate('');
+  }, [postKey]);
+
   // 스크롤 이벤트 리스너 등록
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -668,77 +1144,414 @@ const CommentsModal = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* 백드롭 */}
+      {/* 백드롭 - 투명하게 */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        className="fixed inset-0 transition-opacity bg-gray-900/60"
         onClick={onClose}
       />
 
       {/* 모달 컨텐츠 */}
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-7xl h-[90vh] bg-white rounded-xl shadow-xl flex">
-          {/* 왼쪽: 게시물 내용 */}
-          <div className="w-1/2 border-r border-gray-200">
-            {/* 헤더 */}
-            <div className="flex items-center justify-between py-2 px-4 border-b border-gray-200">
-              <div>
-                {postTitle && (
-                  <p className="text-lg font-semibold text-gray-900">
-                    {postTitle}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* 게시물 내용 */}
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {postContent ? (
-                <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed">
-                  {decodeHtmlEntities(postContent)}
-                </div>
-              ) : (
-                <div className="text-gray-500 text-center py-8">
-                  게시물 내용을 불러올 수 없습니다
-                </div>
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="relative w-full max-w-[100rem] h-[92vh] bg-white rounded-3xl flex flex-col overflow-hidden">
+          {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 z-20 p-3 text-gray-100 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
+          >
+            <XMarkIcon className="w-8 h-8" />
+          </button>
+          
+          {/* 상단 헤더 - 모던한 그라데이션 배경 */}
+          <div className="px-8 py-4 bg-gray-700">
+            <div className="pr-16"> {/* 닫기 버튼 공간 확보 */}
+              {postTitle && (
+                <>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <h2 className="text-3xl font-bold text-white mb-2 leading-tight">
+                        {(() => {
+                          // 원본 제목에서 기존 날짜 패턴 제거
+                          let cleanTitle = postTitle.replace(/^\[[^\]]+\]\s*/, '');
+                          
+                          // products에서 pickup_date 확인 (첫 번째 상품의 pickup_date 사용)
+                          const firstProduct = products && products.length > 0 ? products[0] : null;
+                          if (firstProduct?.pickup_date) {
+                            try {
+                              const pickupDate = new Date(firstProduct.pickup_date);
+                              if (!isNaN(pickupDate.getTime())) {
+                                const formattedDate = `${pickupDate.getMonth() + 1}월${pickupDate.getDate()}일`;
+                                return `[${formattedDate}] ${cleanTitle}`.trim();
+                              }
+                            } catch (e) {
+                              console.log('pickup_date 파싱 실패:', e);
+                            }
+                          }
+                          
+                          // pickup_date가 없으면 원본 제목 사용
+                          return cleanTitle || '제목 없음';
+                        })()}
+                      </h2>
+                      
+                      <div className="flex items-center gap-4 flex-wrap">
+                        {/* 수령일 표시/편집 */}
+                        {isEditingPickupDate ? (
+                          // 편집 모드
+                          <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-full">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <input
+                              type="date"
+                              value={editPickupDate}
+                              onChange={(e) => {
+                                const selectedDate = e.target.value;
+                                setEditPickupDate(selectedDate);
+                                // 날짜 선택 시 바로 저장 - 선택한 날짜를 직접 전달
+                                if (selectedDate) {
+                                  setTimeout(() => {
+                                    handlePickupDateSave(selectedDate);
+                                  }, 100);
+                                }
+                              }}
+                              min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
+                              className="text-lg bg-transparent border-none outline-none text-blue-700 font-medium w-40 h-10"
+                              style={{
+                                fontSize: '16px',
+                                padding: '8px',
+                                minWidth: '160px',
+                                height: '40px'
+                              }}
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          // 표시 모드
+                          (() => {
+                            // products 테이블의 pickup_date 필드가 있으면 우선 사용
+                            const firstProduct = products && products.length > 0 ? products[0] : null;
+                            if (firstProduct?.pickup_date) {
+                              try {
+                                const pickupDate = new Date(firstProduct.pickup_date);
+                                if (!isNaN(pickupDate.getTime())) {
+                                  return (
+                                    <button
+                                      onClick={handlePickupDateEdit}
+                                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
+                                      title="수령일 수정"
+                                    >
+                                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {pickupDate.toLocaleDateString('ko-KR', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        weekday: 'short'
+                                      })} 수령
+                                    </button>
+                                  );
+                                }
+                              } catch (e) {
+                                console.log('pickup_date 파싱 실패:', e);
+                              }
+                            }
+                          
+                          // pickup_date가 없으면 수령일 표시 없음
+                          return null;
+                          })()
+                        )}
+                        
+                        {/* 작성일 표시 */}
+                        {activePost?.posted_at && (
+                          <div className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-sm font-medium rounded-full">
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            작성: {new Date(activePost.posted_at).toLocaleDateString('ko-KR', {
+                              month: 'short',
+                              day: 'numeric',
+                              weekday: 'short'
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
 
-          {/* 오른쪽: 댓글 */}
-          <div className="w-1/2 flex flex-col">
-            {/* 댓글 헤더 */}
-            <div className="flex items-center justify-between py-2 px-4 border-b border-gray-200">
-              <div>
-                <p className="text-lg text-gray-500">
-                  총 {comments.length}개의 댓글
-                </p>
+          {/* 메인 컨텐츠 영역 - 가로 3분할 레이아웃 */}
+          <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-200">
+            {/* 게시물 내용 카드 */}
+            <div className="w-1/3 flex flex-col">
+              <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
+                <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">게시물 내용</h3>
+                    <p className="text-base text-gray-500">원본 텍스트</p>
+                  </div>
+                  
+                  {/* 삭제 버튼 */}
+                  {post && onDeletePost && (
+                    <button
+                      onClick={() => {
+                        onDeletePost(post);
+                        onClose(); // 삭제 후 모달 닫기
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="게시물 삭제"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      삭제
+                    </button>
+                  )}
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                  {postContent ? (
+                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-base">
+                      {decodeHtmlEntities(postContent)}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center h-full">
+                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-500 text-base">게시물 내용이 없습니다</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
             </div>
 
-            {/* 댓글 목록 */}
-            <div
-              ref={scrollContainerRef}
-              className="flex-1 max-h-[70vh] overflow-y-auto"
-            >
-              <CommentsList
-                comments={comments}
-                loading={loading && comments.length === 0}
-                error={error}
-                onRefresh={() => fetchComments(true)}
-                showLoadMore={showLoadMoreButton && nextParams}
-                onLoadMore={loadMoreComments}
-                loadMoreLoading={loading}
-                shouldScrollToBottom={shouldScrollToBottom}
-                excludedCustomers={excludedCustomers}
-                savedComments={savedComments}
-                onEnableReprocess={onEnableReprocess}
-              />
+            
+
+            {/* 댓글 목록 카드 */}
+            <div className="w-2/5 flex flex-col">
+              <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
+                {/* 댓글 헤더 */}
+                <div className="px-4 py-3 bg-gray-100">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
+                    <div className="flex items-center gap-1 text-base text-gray-500">
+                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
+                      <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* 댓글 목록 스크롤 영역 */}
+                <div
+                  ref={scrollContainerRef}
+                  className="flex-1 overflow-y-auto"
+                >
+                  <CommentsList
+                    comments={comments}
+                    loading={loading && comments.length === 0}
+                    error={error}
+                    onRefresh={() => fetchComments(true)}
+                    showLoadMore={showLoadMoreButton && nextParams}
+                    onLoadMore={loadMoreComments}
+                    loadMoreLoading={loading}
+                    shouldScrollToBottom={shouldScrollToBottom}
+                    excludedCustomers={excludedCustomers}
+                    savedComments={savedComments}
+                    onEnableReprocess={onEnableReprocess}
+                    hideExcludedCustomers={hideExcludedCustomers}
+                    showOrderDetails={showOrderDetails}
+                  />
+                </div>
+              </div>
+              
+              {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
+                {/* 제외 고객 숨김 모듈 */}
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                  <button
+                    onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
+                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
+                      hideExcludedCustomers ? 'bg-red-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        hideExcludedCustomers ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-base font-medium text-gray-700">제외고객 숨김</span>
+                </div>
+                
+                {/* 주문 상세 보기 모듈 */}
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                  <button
+                    onClick={() => setShowOrderDetails(!showOrderDetails)}
+                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
+                      showOrderDetails ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        showOrderDetails ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-base font-medium text-gray-700">주문 상세 보기</span>
+                </div>
+                
+                {/* 누락 주문 재처리 모듈 */}
+                {activePost && (
+                  <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                    <button
+                      onClick={() => {
+                        if (!activePost.is_product || !onToggleReprocess) return;
+                        const isCurrentlyPending = activePost.comment_sync_status === 'pending';
+                        onToggleReprocess(activePost, !isCurrentlyPending);
+                      }}
+                      disabled={!activePost.is_product || !onToggleReprocess}
+                      className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 ${
+                        !activePost.is_product
+                          ? 'bg-gray-200 cursor-not-allowed'
+                          : activePost.comment_sync_status === 'pending'
+                          ? 'bg-amber-500'
+                          : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full transition-transform duration-300 ${
+                          !activePost.is_product
+                            ? 'bg-gray-300'
+                            : activePost.comment_sync_status === 'pending'
+                            ? 'translate-x-5 bg-white'
+                            : 'translate-x-1 bg-white'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-base font-medium ${
+                      !activePost.is_product
+                        ? 'text-gray-400'
+                        : activePost.comment_sync_status === 'pending'
+                        ? 'text-amber-600'
+                        : 'text-gray-700'
+                    }`}>
+                      {!activePost.is_product 
+                        ? '상품아님' 
+                        : activePost.comment_sync_status === 'pending' 
+                        ? '재처리중' 
+                        : '누락 주문 재처리'
+                      }
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 추출된 상품 카드 */}
+            <div className="w-1/4 flex flex-col">
+              <div className="bg-white rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-100">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">추출된 상품</h3>
+                    <p className="text-base text-gray-500">{products?.length || 0}개의 상품</p>
+                  </div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto">
+                  <div className="p-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+                  {productsError && (
+                    <div className="p-3 bg-red-50 rounded-lg mb-3">
+                      <p className="text-red-600 text-sm font-medium">상품 로딩 오류</p>
+                      <p className="text-red-500 text-sm mt-1">{productsError.message}</p>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3">
+                    {products && products.length > 0 ? (
+                      products.map((product, index) => (
+                        <div key={product.id || index} className="p-3 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-gray-900 mb-2 leading-tight text-base">
+                                {(() => {
+                                  const productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
+                                  // 날짜 패턴 제거: [9월3일], [1월15일] 등
+                                  return productName.replace(/\[(\d+월\d+일)\]\s*/g, '');
+                                })()}
+                              </h4>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-700 text-base">
+                                  {product.products_data?.price || product.base_price || product.price ? 
+                                    `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
+                                    '가격 미정'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-center ml-4">
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-gray-900">
+                                  {(() => {
+                                    // 상품명 정제 함수
+                                    const cleanProductName = (name) => name.replace(/\[(\d+월\d+일)\]\s*/g, '').trim();
+                                    const targetProductName = cleanProductName(product.products_data?.title || product.title || product.product_name || '');
+                                    
+                                    // 해당 상품에 대한 총 주문 수량 계산 (제외 고객 제외)
+                                    let totalQuantity = 0;
+                                    Object.entries(savedComments).forEach(([commentKey, commentData]) => {
+                                      if (commentData?.orders && Array.isArray(commentData.orders)) {
+                                        // 해당 댓글의 작성자가 제외 고객인지 확인
+                                        const relatedComment = comments.find(c => c.comment_key === commentKey);
+                                        const authorName = relatedComment?.author?.name;
+                                        
+                                        // 제외 고객인지 확인
+                                        const isExcludedCustomer = excludedCustomers.some(excluded => {
+                                          if (typeof excluded === 'string') {
+                                            return excluded === authorName;
+                                          }
+                                          return excluded.name === authorName;
+                                        });
+                                        
+                                        // 제외 고객이 아닌 경우만 수량 계산
+                                        if (!isExcludedCustomer && authorName) {
+                                          commentData.orders.forEach(order => {
+                                            const orderProductName = cleanProductName(order.product_name || '');
+                                            if (orderProductName === targetProductName) {
+                                              totalQuantity += (order.quantity || 1);
+                                            }
+                                          });
+                                        }
+                                      }
+                                    });
+                                    
+                                    return totalQuantity;
+                                  })()}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  총 주문
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                          </svg>
+                        </div>
+                        <p className="text-gray-500 text-base">추출된 상품이 없습니다</p>
+                      </div>
+                    )}
+                  </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

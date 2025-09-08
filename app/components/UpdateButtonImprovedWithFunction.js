@@ -35,6 +35,42 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     }
   };
 
+  // execution_locks 테이블에서 실행 중 상태 확인하는 함수
+  const checkExecutionLock = async (userId) => {
+    try {
+      // baseURL을 사용하지 않고 직접 fetch 사용
+      const response = await fetch(`/api/execution-locks/check?userId=${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data?.is_running || false;
+    } catch (error) {
+      console.error("실행 상태 확인 중 오류:", error);
+      
+      // 네트워크 에러 시 경고만 표시하고 실행 허용
+      if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
+        console.warn("네트워크 연결 문제로 실행 상태 확인 실패. 실행을 허용합니다.");
+        setError("⚠️ 네트워크 연결을 확인해주세요. (실행은 계속됩니다)");
+        
+        // 3초 후 에러 메시지 자동 제거
+        setTimeout(() => {
+          setError("");
+        }, 3000);
+      }
+      
+      // 오류 시 안전하게 false 반환 (실행 허용)
+      return false;
+    }
+  };
+
   // function_number에 따른 Edge Function 이름 결정
   const getEdgeFunctionName = (functionNumber) => {
     
@@ -100,20 +136,13 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     }
   }, []);
 
-  // 주기적 캐시 갱신 및 진행률 시뮬레이션
+  // 백그라운드 처리 시 진행률 시뮬레이션
   useEffect(() => {
     if (!isBackgroundProcessing) return;
-
-    const userId = getUserIdFromSession();
-    if (!userId) return;
-
-    // 즉시 한 번 갱신
-    refreshSWRCache(userId);
 
     // 사용자 설정에서 게시물 제한 가져오기
     let estimatedTotal = 200; // 기본값
     
-    // 1. userData에서 직접 post_fetch_limit 확인
     try {
       const sessionDataString = sessionStorage.getItem("userData");
       if (sessionDataString) {
@@ -129,7 +158,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       console.error("post_fetch_limit 읽기 실패:", error);
     }
     
-    // 2. 그래도 없으면 userPostLimit 세션 값 확인 (하위 호환성)
+    // 세션 fallback 확인
     if (estimatedTotal === 200) {
       const storedLimit = sessionStorage.getItem("userPostLimit");
       if (storedLimit) {
@@ -140,22 +169,22 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       }
     }
     
-    setProgress({ current: 0, total: estimatedTotal, message: '시작 중...' });
+    setProgress({ current: 0, total: estimatedTotal, message: '처리 시작...' });
 
+    // 단순 진행률 시뮬레이션 (DB 연동 없이)
     let currentCount = 0;
-    const increment = Math.ceil(estimatedTotal / 10); // 10단계로 나누어 진행
+    const increment = Math.ceil(estimatedTotal / 8);
 
-    // 진행률 업데이트 및 캐시 갱신 (2초마다)
     const intervalId = setInterval(() => {
       currentCount += increment;
-      if (currentCount > estimatedTotal) currentCount = estimatedTotal;
+      if (currentCount > estimatedTotal * 0.9) currentCount = Math.floor(estimatedTotal * 0.9);
       
       const messages = [
-        '분석 중...',
-        '추출 중...',
-        '처리 중...',
-        '저장 중...',
-        '마무리 중...'
+        '게시물 분석 중...',
+        '데이터 추출 중...',
+        '상품 정보 처리 중...',
+        '주문 정보 처리 중...',
+        '결과 정리 중...'
       ];
       const messageIndex = Math.floor((currentCount / estimatedTotal) * messages.length);
       
@@ -164,53 +193,45 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         total: estimatedTotal,
         message: messages[Math.min(messageIndex, messages.length - 1)]
       });
-      
-      refreshSWRCache(userId);
-      
-      // 완료 처리
-      if (currentCount >= estimatedTotal) {
-        setIsBackgroundProcessing(false);
-        setSuccessMessage("✨ 업데이트 완료!");
-        
-        // 진행률 바 유지하고 3초 후 제거
-        setTimeout(() => {
-          setProgress({ current: 0, total: 0, message: '' });
-          setSuccessMessage("");
-        }, 3000);
-        
-        clearInterval(intervalId);
-      }
-    }, 2000);
+    }, 2500);
 
-    // 최대 60초 타임아웃
+    // 최대 60초 후 자동 완료 처리
     const timeoutId = setTimeout(() => {
       clearInterval(intervalId);
       setIsBackgroundProcessing(false);
-      setProgress({ current: estimatedTotal, total: estimatedTotal, message: '완료!' });
-      setSuccessMessage("✨ 업데이트 완료!");
+      setProgress({ current: estimatedTotal, total: estimatedTotal, message: '처리 완료' });
+      setSuccessMessage("✨ 백그라운드 처리 완료!");
       
+      // 5초 후 상태 초기화
       setTimeout(() => {
         setProgress({ current: 0, total: 0, message: '' });
         setSuccessMessage("");
-      }, 3000);
+      }, 5000);
     }, 60000);
 
     return () => {
       clearInterval(intervalId);
       clearTimeout(timeoutId);
     };
-  }, [isBackgroundProcessing, refreshSWRCache]);
+  }, [isBackgroundProcessing]);
 
   const handleUpdatePosts = useCallback(async () => {
     setError("");
     setSuccessMessage("");
-    setIsLoading(true);
-
+    
     const userId = getUserIdFromSession();
     if (!userId) {
-      setIsLoading(false);
       return;
     }
+
+    // 실행 중 상태 확인
+    const isRunning = await checkExecutionLock(userId);
+    if (isRunning) {
+      setError("⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    setIsLoading(true);
 
     // 🎯 세션에서 function_number 가져오기
     let functionNumber = 0; // 기본값
@@ -311,27 +332,56 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         requestPromise.then((response) => {
           
           // 백그라운드에서 완료되면 즉시 완료 처리
-          handleResponse(response, userId, functionNumber, edgeFunctionName);
+          const responseData = response.data;
+          // 새로운 응답 형식과 기존 형식 모두 지원
+          const processedCount = responseData?.stats?.total || responseData?.data?.length || 0;
+          const successCount = responseData?.stats?.success || processedCount;
+          const errorCount = responseData?.stats?.errors || 0;
+          
           setIsBackgroundProcessing(false);
           
           // 진행률을 100%로 즉시 업데이트
-          const processedCount = response.data?.data?.length || 0;
           setProgress({
             current: processedCount,
             total: processedCount,
-            message: '완료!'
+            message: '처리 완료!'
           });
           
-          // 3초 후 진행률 초기화
+          // 성공 메시지 설정
+          if (errorCount > 0) {
+            setError(`${processedCount}개 중 ${errorCount}개 실패`);
+            if (successCount > 0) {
+              setSuccessMessage(`✨ ${successCount}개 처리 완료!`);
+            }
+          } else if (responseData?.errorSummary) {
+            // 기존 errorSummary 형식 지원 (하위 호환성)
+            const { totalErrors, errorRate } = responseData.errorSummary;
+            setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
+          } else {
+            setSuccessMessage(`✨ ${processedCount}개 처리 완료!`);
+          }
+
+          // SWR 캐시 갱신
+          refreshSWRCache(userId);
+          
+          // 5초 후 상태 초기화
           setTimeout(() => {
             setProgress({ current: 0, total: 0, message: '' });
-          }, 3000);
+            setSuccessMessage("");
+            setError("");
+          }, 5000);
         }).catch((err) => {
           // 백그라운드 에러 처리
           console.error("🔴 백그라운드 처리 에러:", err);
-          console.error("🔴 에러 상세:", err.response?.data);
           setIsBackgroundProcessing(false);
-          handleError(err);
+          setProgress({ current: 0, total: 0, message: '' });
+          
+          let userFriendlyMessage = "처리 중 오류가 발생했습니다.";
+          if (err.isAxiosError && err.response) {
+            const msg = err.response.data?.message || "잠시 후 다시 시도해주세요.";
+            userFriendlyMessage = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+          }
+          setError(userFriendlyMessage);
         });
       } else {
         // 3초 내에 응답이 온 경우 (기존 로직)
@@ -354,7 +404,10 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     const responseData = response.data;
 
     if (response.status === 200 || response.status === 207) {
-      const processedCount = responseData.data?.length || 0;
+      // 새로운 응답 형식과 기존 형식 모두 지원
+      const processedCount = responseData.stats?.total || responseData.data?.length || 0;
+      const successCount = responseData.stats?.success || processedCount;
+      const errorCount = responseData.stats?.errors || 0;
       const failoverInfo = responseData.failoverInfo;
       
       // 진행률 업데이트
@@ -364,7 +417,14 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         message: '완료!'
       });
 
-      if (responseData.errorSummary) {
+      // 에러 및 성공 메시지 처리
+      if (errorCount > 0) {
+        setError(`${processedCount}개 중 ${errorCount}개 실패`);
+        if (successCount > 0) {
+          setSuccessMessage(`✨ ${successCount}개 동기화 완료!`);
+        }
+      } else if (responseData.errorSummary) {
+        // 기존 errorSummary 형식 지원 (하위 호환성)
         const { totalErrors, errorRate } = responseData.errorSummary;
         setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
       } else {
@@ -391,8 +451,15 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     let userFriendlyMessage = "잠시 후 다시 시도해주세요.";
     
     if (err.isAxiosError && err.response) {
-      const msg = err.response.data?.message || "잠시 후 다시 시도해주세요.";
-      userFriendlyMessage = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+      const status = err.response.status;
+      
+      if (status === 409) {
+        // 409 Conflict - 이미 실행 중인 작업이 있음
+        userFriendlyMessage = "⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.";
+      } else {
+        const msg = err.response.data?.message || "잠시 후 다시 시도해주세요.";
+        userFriendlyMessage = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+      }
     } else if (err.message.includes("timeout") || err.code === "ECONNABORTED") {
       userFriendlyMessage = "요청 시간 초과. 네트워크를 확인하세요.";
     }
@@ -456,13 +523,13 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           </svg>
         )}
         {isLoading
-          ? "요청 중..."
+          ? "요청 전송 중..."
           : isBackgroundProcessing
-          ? "처리 중..."
+          ? "백그라운드 처리 중..."
           : error && !successMessage
           ? "재시도"
           : successMessage
-          ? "동기화 완료!"
+          ? "처리 완료!"
           : "업데이트"}
       </button>
 
@@ -480,7 +547,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           </div>
           {/* 진행 상태 텍스트 - 간결하게 */}
           <span className="text-xs text-gray-500">
-            {progress.current}/{progress.total} • {progress.message || '처리 중'}
+            {progress.current}/{progress.total} • {progress.message || '진행 중'}
           </span>
         </div>
       )}

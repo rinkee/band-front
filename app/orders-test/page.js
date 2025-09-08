@@ -20,7 +20,7 @@ import {
 } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
-import UpdateButton from "../components/UpdateButtonWithPersistentState"; // Realtime 상태 관리가 통합된 버전
+import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -364,6 +364,14 @@ export default function OrdersPage() {
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
+  // 수령가능만 보기 상태 - localStorage에서 복원
+  const [showPickupAvailableOnly, setShowPickupAvailableOnly] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('showPickupAvailableOnly');
+      return savedState === 'true';
+    }
+    return false;
+  });
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -505,6 +513,10 @@ export default function OrdersPage() {
         return filterSelection;
       })(),
       subStatus: (() => {
+        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
+        if (showPickupAvailableOnly) {
+          return "수령가능";
+        }
         // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
         if (
           filterSelection === "확인필요" ||
@@ -596,6 +608,10 @@ export default function OrdersPage() {
         return filterSelection;
       })(),
       subStatus: (() => {
+        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
+        if (showPickupAvailableOnly) {
+          return "수령가능";
+        }
         if (
           filterSelection === "확인필요" ||
           filterSelection === "미수령" ||
@@ -1456,6 +1472,11 @@ export default function OrdersPage() {
     setExactCustomerFilter(null);
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
+    setShowPickupAvailableOnly(false); // 수령가능만 보기 초기화
+    // localStorage에서 수령가능만 보기 상태 삭제
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('showPickupAvailableOnly');
+    }
     setFilterDateRange("30days"); // 기본 날짜로 복귀
     setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
@@ -1489,6 +1510,25 @@ export default function OrdersPage() {
   // 필터 변경 핸들러 (선택된 값을 filterSelection state에 저장)
   const handleFilterChange = (selectedValue) => {
     setFilterSelection(selectedValue); // 사용자가 선택한 값을 그대로 저장
+    setCurrentPage(1);
+    setSelectedOrderIds([]);
+  };
+
+  // 수령가능만 보기 토글 핸들러
+  const handlePickupAvailableToggle = () => {
+    const newToggleState = !showPickupAvailableOnly;
+    setShowPickupAvailableOnly(newToggleState);
+    
+    // localStorage에 상태 저장
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('showPickupAvailableOnly', newToggleState.toString());
+    }
+    
+    if (newToggleState) {
+      // 수령가능만 보기가 활성화되면 주문완료로 설정하고 수령가능 필터 추가
+      setFilterSelection("주문완료");
+    }
+    
     setCurrentPage(1);
     setSelectedOrderIds([]);
   };
@@ -2014,6 +2054,8 @@ export default function OrdersPage() {
                 </div>
               </div>
 
+              
+
               {/* 주문 통계 섹션 */}
               <OrderStatsSidebar
                 stats={globalStatsData}
@@ -2023,6 +2065,46 @@ export default function OrdersPage() {
                 filterDateRange={filterDateRange}
                 currentFilter={filterSelection}
               />
+
+                {/* 수령가능만 보기 스위치 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-sm font-medium text-gray-700">
+                      수령가능만 보기
+                    </span>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={showPickupAvailableOnly}
+                        onChange={handlePickupAvailableToggle}
+                        className="sr-only"
+                      />
+                      <button 
+                        type="button"
+                        onClick={handlePickupAvailableToggle}
+                        className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
+                          showPickupAvailableOnly
+                            ? "bg-blue-600"
+                            : "bg-gray-300"
+                        }`}
+                      >
+                        <span 
+                          className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                            showPickupAvailableOnly
+                              ? "translate-x-5"
+                              : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </label>
+                  {showPickupAvailableOnly && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      주문완료 상태의 수령가능한 주문만 표시됩니다.
+                    </p>
+                  )}
+                </div>
+
 
               {/* 필터 섹션 - 토글 */}
               <div className="space-y-3">
@@ -2113,6 +2195,7 @@ export default function OrdersPage() {
                   )}
                 </div>
 
+              
                 {/* 상태 필터 - 토글 */}
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
@@ -2161,6 +2244,7 @@ export default function OrdersPage() {
                     </div>
                   )}
                 </div>
+
               </div>
             </div>
           )}
@@ -2457,7 +2541,13 @@ export default function OrdersPage() {
                       />
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
-                      상품명
+                      <button
+                        onClick={() => handleSortChange("product_name")} // 상품명 정렬
+                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isDataLoading}
+                      >
+                        상품명 {getSortIcon("product_name")}
+                      </button>
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       <button
@@ -2594,9 +2684,17 @@ export default function OrdersPage() {
                             ) : (
                               // 일반 표시 모드
                               <div 
-                                className="hover:text-orange-600 hover:underline cursor-pointer"
+                                className={`${
+                                  showPickupAvailableOnly 
+                                    ? "cursor-not-allowed text-gray-400" 
+                                    : "hover:text-orange-600 hover:underline cursor-pointer"
+                                }`}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (showPickupAvailableOnly) {
+                                    alert("수령가능만 보기 모드에서는 고객명만 검색 가능합니다.\n상품명으로 검색하려면 수령가능만 보기를 해제해주세요.");
+                                    return;
+                                  }
                                   handleCellClickToSearch(
                                     getProductNameById(order.product_id)
                                   );
@@ -2816,10 +2914,10 @@ export default function OrdersPage() {
                               ) : (
                                 <button
                                   onClick={() => handleEditStart(order)}
-                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                                  title="수정"
+                                  className="inline-flex items-center justify-center px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors"
+                                  title="주문 수정"
                                 >
-                                  <PencilIcon className="w-4 h-4" />
+                                  주문 수정
                                 </button>
                               )}
                             </div>

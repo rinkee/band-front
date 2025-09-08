@@ -14,6 +14,7 @@ import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴�
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 추가
 import BandApiKeyManager from "../components/BandApiKeyManager";
 import BandApiUsageStats from "../components/BandApiUsageStats";
+import BandKeySelector from "../components/BandKeySelector";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -2472,6 +2473,22 @@ export default function SettingsPage() {
                 </button>
               </div>
             </LightCard>
+
+            {/* 관리자 전용: 밴드 키 선택기 */}
+            {(swrUserData?.role === "admin" || swrUserData?.data?.role === "admin") && (
+              <LightCard padding="p-5 sm:p-6">
+                <BandKeySelector 
+                  userData={swrUserData?.data || swrUserData} 
+                  onKeyChange={(band) => {
+                    // 밴드 키 변경 후 사용자 데이터 새로고침
+                    globalMutate(`/api/auth/me/${userId}`);
+                    // 다른 관련 데이터도 새로고침 (필요시)
+                    window.location.reload();
+                  }}
+                />
+              </LightCard>
+            )}
+
             {/* 계정 관리 카드 */}
             <LightCard padding="p-5 sm:p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2 border-b pb-3">
