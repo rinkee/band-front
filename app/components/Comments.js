@@ -1217,7 +1217,6 @@ const CommentsModal = ({
                                   }, 100);
                                 }
                               }}
-                              min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : activePost?.created_at ? new Date(activePost.created_at).toISOString().split('T')[0] : undefined}
                               className="text-lg bg-transparent border-none outline-none text-blue-700 font-medium w-40 h-10"
                               style={{
                                 fontSize: '16px',
