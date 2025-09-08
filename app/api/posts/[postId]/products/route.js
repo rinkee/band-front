@@ -21,10 +21,17 @@ export async function GET(request, { params }) {
       }, { status: 400 });
     }
 
-    // 해당 게시물(post)에 속한 모든 상품 조회 - post_key와 band_key로 조회
+    if (!userId) {
+      return NextResponse.json({
+        error: 'user_id는 필수 파라미터입니다.'
+      }, { status: 400 });
+    }
+
+    // 해당 게시물(post)에 속한 모든 상품 조회 - user_id, post_key, band_key로 조회
     let query = supabase
       .from('products')
       .select('product_id, title, base_price, quantity, stock_quantity, is_closed, post_key, item_number')
+      .eq('user_id', userId) // user_id 필터 추가
       .eq('post_key', postId) // post_key로 조회
       .eq('is_closed', false) // 판매 중인 상품만
       .order('item_number', { ascending: true }); // item_number로 정렬

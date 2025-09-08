@@ -1107,6 +1107,15 @@ const CommentsModal = ({
         commentKeys: commentKeys.slice(0, 3) // 첫 3개만 로그
       });
       
+      // 현재 사용자 ID 가져오기
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const userId = userData.userId;
+      
+      if (!userId) {
+        console.warn('사용자 ID가 없어서 댓글 DB 확인을 할 수 없습니다.');
+        return;
+      }
+      
       const response = await fetch('/api/orders/check-comments', {
         method: 'POST',
         headers: {
@@ -1115,7 +1124,8 @@ const CommentsModal = ({
         body: JSON.stringify({
           commentKeys,
           postKey,
-          bandKey
+          bandKey,
+          userId  // userId 추가
         }),
       });
       
