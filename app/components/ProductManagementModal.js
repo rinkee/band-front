@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useSWRConfig } from 'swr';
 
@@ -15,7 +15,10 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const [commonPickupDate, setCommonPickupDate] = useState('');
+  const [isEditingPickupDate, setIsEditingPickupDate] = useState(false);
+  const [editPickupDate, setEditPickupDate] = useState('');
+  const [currentPost, setCurrentPost] = useState(null);
+  const dateInputRef = useRef(null);
 
   // 새 상품 기본값
   const [newProduct, setNewProduct] = useState({
@@ -28,9 +31,18 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   // 모달이 열릴 때 데이터 로드
   useEffect(() => {
     if (isOpen && post) {
+      setCurrentPost(post); // post 데이터를 로컬 상태로 복사
       loadProducts();
     }
   }, [isOpen, post]);
+
+  // 모달이 닫히면 편집 상태 초기화
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEditingPickupDate(false);
+      setEditPickupDate('');
+    }
+  }, [isOpen]);
 
   // 상품 목록 로드
   const loadProducts = async () => {
@@ -45,11 +57,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       if (error) throw error;
       
       setProducts(data || []);
-      
-      // 첫 번째 상품의 pickup_date를 공통 수령일로 설정
-      if (data && data.length > 0 && data[0].pickup_date) {
-        setCommonPickupDate(new Date(data[0].pickup_date).toISOString().split('T')[0]);
-      }
     } catch (error) {
       console.error('상품 목록 로드 실패:', error);
     } finally {
@@ -57,41 +64,16 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     }
   };
 
-  // 공통 수령일 업데이트 (모든 상품에 적용)
-  const updateCommonPickupDate = async (newDate) => {
-    try {
-      const { error } = await supabase
-        .from('products')
-        .update({ 
-          pickup_date: newDate,
-          updated_at: new Date().toISOString() 
-        })
-        .eq('post_key', post.post_key);
-
-      if (error) throw error;
-
-      setCommonPickupDate(newDate);
-      setProducts(prev => prev.map(p => ({ ...p, pickup_date: newDate })));
-      
-      // 캐시 갱신
-      await globalMutate(key => typeof key === 'string' && key.includes(post.post_key));
-      
-      // 전역 이벤트 발생
-      window.dispatchEvent(new CustomEvent('postUpdated', { 
-        detail: { postKey: post.post_key, pickup_date: newDate } 
-      }));
-      
-      localStorage.setItem('pickupDateUpdated', Date.now().toString());
-
-    } catch (error) {
-      console.error('수령일 업데이트 실패:', error);
-      alert('수령일 업데이트에 실패했습니다.');
-    }
-  };
 
   // 상품 추가
   const addProduct = async () => {
     try {
+      // 필수 항목 검증
+      if (!newProduct.title || !newProduct.base_price) {
+        alert('상품명과 가격은 필수 항목입니다.');
+        return;
+      }
+
       // 기존 상품이 있는지 확인
       if (products.length === 0) {
         alert('기존 상품이 없어서 새 상품을 추가할 수 없습니다.');
@@ -212,10 +194,147 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     }
   };
 
+  // 수령일 편집 시작
+  const handlePickupDateEdit = () => {
+    const firstProduct = products && products.length > 0 ? products[0] : null;
+    if (firstProduct?.pickup_date) {
+      const dateStr = firstProduct.pickup_date.split('T')[0];
+      setEditPickupDate(dateStr);
+    }
+    setIsEditingPickupDate(true);
+    
+    // 캘린더 자동 활성화
+    setTimeout(() => {
+      if (dateInputRef.current) {
+        dateInputRef.current.showPicker();
+      }
+    }, 100);
+  };
+
+  // 수령일 저장
+  const handlePickupDateSave = async () => {
+    if (!editPickupDate) {
+      alert('수령일을 입력해주세요.');
+      return;
+    }
+
+    // 수령일이 게시물 작성일보다 이전인지 확인
+    if (currentPost?.posted_at) {
+      const selectedDate = new Date(editPickupDate);
+      const postedDate = new Date(currentPost.posted_at);
+      
+      // 날짜만 비교 (시간 제거)
+      const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+      const postedDateOnly = new Date(postedDate.getFullYear(), postedDate.getMonth(), postedDate.getDate());
+      
+      if (selectedDateOnly < postedDateOnly) {
+        alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
+        return;
+      }
+    }
+
+    try {
+      const postKey = post?.post_key;
+      if (!postKey) {
+        alert('게시물 정보를 찾을 수 없습니다.');
+        return;
+      }
+
+      // UTC ISO 문자열로 변환
+      const utcDate = new Date(editPickupDate).toISOString();
+
+      // products 테이블 업데이트
+      const { error: productsError } = await supabase
+        .from('products')
+        .update({ 
+          pickup_date: utcDate,
+          updated_at: new Date().toISOString()
+        })
+        .eq('post_key', postKey);
+
+      if (productsError) throw productsError;
+
+      // posts 테이블의 title 업데이트 (날짜 부분 교체)
+      if (post?.title) {
+        const currentTitle = post.title;
+        const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
+        if (dateMatch) {
+          const date = new Date(editPickupDate);
+          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+          const newTitle = `[${newDateStr}]${dateMatch[1]}`;
+          
+          const { error: postsError } = await supabase
+            .from('posts')
+            .update({ title: newTitle, updated_at: new Date().toISOString() })
+            .eq('post_key', postKey);
+
+          if (postsError) {
+            console.error('Posts title 업데이트 실패:', postsError);
+          } else {
+            // 로컬 상태 업데이트로 헤더 제목 실시간 반영
+            setCurrentPost(prev => prev ? { ...prev, title: newTitle } : null);
+          }
+        }
+      }
+
+      // 상품 title 업데이트 (날짜 부분 교체)
+      const updatedProducts = products.map(product => {
+        let newTitle = product.title;
+        const dateMatch = newTitle.match(/^\[([^\]]+)\](.*)/);
+        if (dateMatch) {
+          // UTC 메소드 사용으로 시간대 변환 방지
+          const date = new Date(editPickupDate);
+          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+          newTitle = `[${newDateStr}]${dateMatch[2]}`;
+        }
+        return { ...product, pickup_date: utcDate, title: newTitle };
+      });
+
+      // 제목 업데이트를 위해 각 상품의 title도 업데이트
+      for (const product of products) {
+        const dateMatch = product.title.match(/^\[([^\]]+)\](.*)/);  
+        if (dateMatch) {
+          const date = new Date(editPickupDate);
+          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+          const newTitle = `[${newDateStr}]${dateMatch[2]}`;
+          
+          await supabase
+            .from('products')
+            .update({ title: newTitle })
+            .eq('product_id', product.product_id);
+        }
+      }
+
+      setProducts(updatedProducts);
+      setIsEditingPickupDate(false);
+      setEditPickupDate('');
+
+      // 캐시 갱신
+      await globalMutate(key => typeof key === 'string' && key.includes(postKey));
+
+      // 전역 이벤트 발생
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('postUpdated', { 
+          detail: { postKey, pickup_date: utcDate } 
+        }));
+        localStorage.setItem('pickupDateUpdated', Date.now().toString());
+      }
+
+      alert('수령일이 성공적으로 변경되었습니다.');
+
+    } catch (error) {
+      console.error('수령일 업데이트 실패:', error);
+      alert('수령일 업데이트에 실패했습니다.');
+    }
+  };
+
   // 모달 닫기
   const handleClose = () => {
     setEditingProduct(null);
     setIsAddingNew(false);
+    setIsEditingPickupDate(false);
+    setEditPickupDate('');
+    setCurrentPost(null);
     setNewProduct({
       title: '',
       base_price: '',
@@ -235,7 +354,75 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">상품 관리</h2>
-              <p className="text-sm text-gray-500 mt-1 line-clamp-1">{post.title}</p>
+              <p className="text-sm text-gray-500 mt-1 line-clamp-1">{currentPost?.title || post.title}</p>
+              
+              {/* 수령일 표시/편집 */}
+              <div className="mt-3">
+                {isEditingPickupDate ? (
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-full">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <input
+                      ref={dateInputRef}
+                      type="date"
+                      value={editPickupDate}
+                      min={currentPost?.posted_at ? new Date(currentPost.posted_at).toISOString().split('T')[0] : undefined}
+                      onChange={(e) => setEditPickupDate(e.target.value)}
+                      className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
+                      autoFocus
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        onClick={handlePickupDateSave}
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+                      >
+                        저장
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingPickupDate(false);
+                          setEditPickupDate('');
+                        }}
+                        className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  (() => {
+                    const firstProduct = products && products.length > 0 ? products[0] : null;
+                    if (firstProduct?.pickup_date) {
+                      try {
+                        const dateStr = firstProduct.pickup_date.split('T')[0];
+                        const [year, month, day] = dateStr.split('-');
+                        const displayDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                        
+                        return (
+                          <button
+                            onClick={handlePickupDateEdit}
+                            className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
+                            title="수령일 수정"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            {displayDate.toLocaleDateString('ko-KR', {
+                              month: 'short',
+                              day: 'numeric',
+                              weekday: 'short'
+                            })} 수령
+                          </button>
+                        );
+                      } catch (e) {
+                        console.log('pickup_date 파싱 실패:', e);
+                      }
+                    }
+                    return null;
+                  })()
+                )}
+              </div>
             </div>
             <button
               onClick={handleClose}
@@ -250,24 +437,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
         {/* 본문 - 스크롤 가능 */}
         <div className="flex-1 overflow-y-auto">
-          {/* 공통 수령일 섹션 - 심플 스타일 */}
-          <div className="p-5 border-b border-gray-50">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">수령일</h3>
-              <div className="flex items-center gap-3">
-                <input
-                  type="date"
-                  value={commonPickupDate}
-                  onChange={(e) => updateCommonPickupDate(e.target.value)}
-                  className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none text-sm"
-                />
-                <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded border">
-                  전체 적용
-                </span>
-              </div>
-            </div>
-          </div>
-
           {/* 상품 목록 섹션 */}
           <div className="p-5">
             <div className="flex justify-between items-center mb-4">
@@ -312,7 +481,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">기본 가격</label>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">기본 가격 *</label>
                           <input
                             type="number"
                             placeholder="가격"
@@ -352,7 +521,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         </button>
                         <button
                           onClick={addProduct}
-                          disabled={!newProduct.title}
+                          disabled={!newProduct.title || !newProduct.base_price}
                           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-md text-sm font-medium transition-colors"
                         >
                           추가
@@ -487,17 +656,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                               {product.stock_quantity || 0}개
                             </div>
                           </div>
-                          {product.pickup_date && (
-                            <div className="bg-blue-50 rounded-md p-2">
-                              <div className="text-xs text-blue-600 mb-1">수령일</div>
-                              <div className="font-medium text-blue-700 text-sm">
-                                {(() => {
-                                  const date = new Date(product.pickup_date);
-                                  return `${date.getMonth() + 1}월${date.getDate()}일`;
-                                })()}
-                              </div>
-                            </div>
-                          )}
                         </div>
                         
                         {product.description && (
