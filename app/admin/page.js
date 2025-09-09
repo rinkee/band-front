@@ -7,9 +7,7 @@ export default function SimpleAdminPage() {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({
     totalUsers: 0,
-    activeUsers: 0,
-    totalOrders: 0,
-    totalPosts: 0
+    activeUsers: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,18 +43,10 @@ export default function SimpleAdminPage() {
       // 기본 통계 계산
       const totalUsers = usersData?.length || 0;
       const activeUsers = usersData?.filter(u => u.is_active).length || 0;
-      
-      // 주문 및 게시물 수 (간단한 카운트)
-      const [ordersResult, postsResult] = await Promise.allSettled([
-        supabase.from('orders').select('order_id', { count: 'exact', head: true }),
-        supabase.from('posts').select('post_id', { count: 'exact', head: true })
-      ]);
 
       setStats({
         totalUsers,
-        activeUsers,
-        totalOrders: ordersResult.status === 'fulfilled' ? ordersResult.value.count || 0 : 0,
-        totalPosts: postsResult.status === 'fulfilled' ? postsResult.value.count || 0 : 0
+        activeUsers
       });
 
     } catch (err) {
@@ -150,22 +140,14 @@ export default function SimpleAdminPage() {
         )}
 
         {/* 통계 카드 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-gray-900">{stats.totalUsers}</div>
+            <div className="text-3xl font-bold text-gray-900">{stats.totalUsers}</div>
             <div className="text-sm text-gray-500">총 사용자</div>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-green-600">{stats.activeUsers}</div>
+            <div className="text-3xl font-bold text-green-600">{stats.activeUsers}</div>
             <div className="text-sm text-gray-500">활성 사용자</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-blue-600">{stats.totalPosts}</div>
-            <div className="text-sm text-gray-500">총 게시물</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-purple-600">{stats.totalOrders}</div>
-            <div className="text-sm text-gray-500">총 주문</div>
           </div>
         </div>
 
