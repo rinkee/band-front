@@ -48,8 +48,8 @@ export default function SimpleAdminPage() {
       
       // 주문 및 게시물 수 (간단한 카운트)
       const [ordersResult, postsResult] = await Promise.allSettled([
-        supabase.from('orders').select('id', { count: 'exact', head: true }),
-        supabase.from('posts').select('id', { count: 'exact', head: true })
+        supabase.from('orders').select('order_id', { count: 'exact', head: true }),
+        supabase.from('posts').select('post_id', { count: 'exact', head: true })
       ]);
 
       setStats({
