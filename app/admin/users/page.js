@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import supabase from '../../lib/supabaseClient';
 import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
@@ -27,7 +27,6 @@ export default function AdminUsers() {
     totalPages: 0
   });
   const { fetchAdminApi } = useAdminApi();
-  const supabase = createClientComponentClient();
 
   useEffect(() => {
     fetchUsers();
