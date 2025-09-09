@@ -951,7 +951,18 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             const day = pickupDate.getUTCDate();
             const days = ['일', '월', '화', '수', '목', '금', '토'];
             const dayName = days[pickupDate.getUTCDay()];
-            return `${month}월${day}일 ${dayName} 수령`;
+            
+            // 시간 정보 추가 (24시간 형식)
+            const hours = pickupDate.getUTCHours();
+            const minutes = pickupDate.getUTCMinutes();
+            
+            // 시간이 00:00이 아닌 경우에만 시간 표시
+            if (hours !== 0 || minutes !== 0) {
+              const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+              return `${month}월${day}일 ${dayName} ${timeStr} 수령`;
+            } else {
+              return `${month}월${day}일 ${dayName} 수령`;
+            }
           }
         } catch (e) {
           console.log('pickup_date 파싱 실패:', e);
