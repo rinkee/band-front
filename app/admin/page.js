@@ -23,16 +23,14 @@ export default function SimpleAdminPage() {
       const { data: usersData, error: usersError } = await supabase
         .from('users')
         .select(`
-          id,
           user_id,
           login_id,
           login_password,
           store_name,
           owner_name,
-          email,
           phone_number,
           is_active,
-          is_super_admin,
+          role,
           created_at,
           last_login_at,
           band_url,
@@ -200,14 +198,14 @@ export default function SimpleAdminPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {users.map((user) => (
-                  <tr key={user.id} className={!user.is_active ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                  <tr key={user.user_id} className={!user.is_active ? 'bg-red-50' : 'hover:bg-gray-50'}>
                     {/* 사용자 정보 */}
                     <td className="px-6 py-4">
                       <div>
                         <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
                         <div className="text-sm text-gray-500">ID: {user.login_id}</div>
-                        <div className="text-sm text-gray-500">{user.email}</div>
-                        {user.is_super_admin && (
+                        <div className="text-sm text-gray-500">{user.phone_number}</div>
+                        {user.role === 'admin' && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 mt-1">
                             관리자
                           </span>
