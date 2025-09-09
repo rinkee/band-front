@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import AdminGuard from '../components/AdminGuard';
 import AdminLayout from '../components/AdminLayout';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
-import { MagnifyingGlassIcon, UserPlusIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, UserPlusIcon, ArrowDownTrayIcon, KeyIcon } from '@heroicons/react/24/outline';
 import { useAdminApi } from '../hooks/useAdminApi';
 import ErrorMessage from '../components/ErrorMessage';
 import RefreshButton from '../components/RefreshButton';
@@ -26,6 +27,7 @@ export default function AdminUsers() {
     totalPages: 0
   });
   const { fetchAdminApi } = useAdminApi();
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
     fetchUsers();
@@ -78,10 +80,41 @@ export default function AdminUsers() {
     }
   };
 
-  const toggleUserStatus = (userId, currentStatus) => {
-    if (confirm(`사용자를 ${currentStatus ? '비활성화' : '활성화'}하시겠습니까?`)) {
-      handleUserUpdate(userId, { is_active: !currentStatus });
+  const toggleUserStatus = async (userId, currentStatus) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ is_active: !currentStatus })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      
+      // UI 업데이트
+      setUsers(users.map(user => 
+        user.user_id === userId 
+          ? { ...user, is_active: !currentStatus }
+          : user
+      ));
+    } catch (err) {
+      alert('상태 변경 실패: ' + err.message);
     }
+  };
+
+  // Poder 자동 로그인 함수
+  const handlePoderAccess = (user) => {
+    if (!user.login_id || !user.login_password) {
+      alert('로그인 정보가 없습니다.');
+      return;
+    }
+
+    // 로그인 정보를 sessionStorage에 저장
+    sessionStorage.setItem('autoLogin', JSON.stringify({
+      loginId: user.login_id,
+      password: user.login_password
+    }));
+    
+    // 로그인 페이지를 새 탭에서 열기
+    window.open('/login?autoLogin=true', '_blank');
   };
 
   // CSV 다운로드
@@ -321,17 +354,29 @@ export default function AdminUsers() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDate(user.last_login_at)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <button
-                              onClick={() => toggleUserStatus(user.user_id, user.is_active)}
-                              className={`px-3 py-1 rounded text-white text-xs ${
-                                user.is_active 
-                                  ? 'bg-gray-600 hover:bg-gray-700' 
-                                  : 'bg-green-600 hover:bg-green-700'
-                              }`}
-                            >
-                              {user.is_active ? '비활성화' : '활성화'}
-                            </button>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm space-y-1">
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={() => toggleUserStatus(user.user_id, user.is_active)}
+                                className={`px-3 py-1 rounded text-white text-xs ${
+                                  user.is_active 
+                                    ? 'bg-red-600 hover:bg-red-700' 
+                                    : 'bg-green-600 hover:bg-green-700'
+                                }`}
+                              >
+                                {user.is_active ? '비활성화' : '활성화'}
+                              </button>
+                              
+                              {user.login_id && user.login_password && (
+                                <button
+                                  onClick={() => handlePoderAccess(user)}
+                                  className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs flex items-center justify-center gap-1"
+                                >
+                                  <KeyIcon className="w-3 h-3" />
+                                  Poder 접근
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

@@ -34,6 +34,37 @@ export default function LoginPage() {
   const [rememberPassword, setRememberPassword] = useState(false); // '비밀번호 저장' 체크박스 상태
 
   useEffect(() => {
+    // 0. 자동 로그인 확인 (Admin에서 접근한 경우)
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoLoginParam = urlParams.get('autoLogin');
+    
+    if (autoLoginParam === 'true') {
+      const autoLoginData = sessionStorage.getItem('autoLogin');
+      if (autoLoginData) {
+        try {
+          const { loginId: autoLoginId, password: autoPassword } = JSON.parse(autoLoginData);
+          setLoginId(autoLoginId);
+          setLoginPassword(autoPassword);
+          
+          // 자동 로그인 데이터 제거
+          sessionStorage.removeItem('autoLogin');
+          
+          // 약간 지연 후 자동 로그인 실행
+          setTimeout(() => {
+            const form = document.querySelector('form');
+            if (form) {
+              form.requestSubmit();
+            }
+          }, 500);
+          
+          return; // 자동 로그인 처리 중이므로 다른 로직 실행 안 함
+        } catch (e) {
+          console.error('자동 로그인 데이터 파싱 오류:', e);
+          sessionStorage.removeItem('autoLogin');
+        }
+      }
+    }
+
     // 1. 이미 로그인된 사용자인지 확인
     const userDataSession = sessionStorage.getItem("userData");
     if (userDataSession) {
