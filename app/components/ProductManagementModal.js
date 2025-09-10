@@ -479,6 +479,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                       value={editPickupTime}
                       onChange={(e) => setEditPickupTime(e.target.value)}
                       className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
+                      step="60"
+                      lang="en-US"
                     />
                     <div className="flex gap-1">
                       <button
