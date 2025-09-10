@@ -301,11 +301,13 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       // 기존 pickup_date 가져오기 (미수령 상태 초기화를 위해)
       const firstProduct = products && products.length > 0 ? products[0] : null;
       const oldPickupDate = firstProduct?.pickup_date ? new Date(firstProduct.pickup_date) : null;
-      const currentTime = new Date();
+      
+      // 현재 시간을 UTC로 통일 (newPickupDateTime이 UTC이므로)
+      const currentTimeUTC = new Date(Date.now());
       
       // 새로운 수령일이 현재 시간보다 미래인지 확인 (미수령 상태 초기화 조건)
-      const shouldResetUndeliveredStatus = newPickupDateTime > currentTime && 
-        (!oldPickupDate || oldPickupDate <= currentTime);
+      const shouldResetUndeliveredStatus = newPickupDateTime > currentTimeUTC && 
+        (!oldPickupDate || oldPickupDate <= currentTimeUTC);
 
       // UTC ISO 문자열로 변환
       const utcDate = newPickupDateTime.toISOString();
@@ -322,7 +324,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       if (productsError) throw productsError;
 
-      // 미수령 상태 초기화 (수령일이 미래로 변경된 경우)
+      // 주문 상태 업데이트 (수령일 기준)
       if (shouldResetUndeliveredStatus) {
         console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
         
@@ -341,6 +343,26 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           // 에러가 발생해도 수령일 업데이트는 계속 진행
         } else {
           console.log('미수령 주문 상태 초기화 완료');
+        }
+      } else if (newPickupDateTime <= currentTimeUTC) {
+        // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
+        console.log('수령일이 과거로 설정되어 해당 주문들을 미수령으로 처리합니다.');
+        
+        const { error: ordersUndeliveredError } = await supabase
+          .from('orders')
+          .update({ 
+            sub_status: '미수령',
+            updated_at: new Date().toISOString()
+          })
+          .eq('post_key', postKey)
+          .eq('user_id', userId)
+          .eq('status', '주문완료')  // 주문완료 상태인 것만 미수령으로 변경
+          .neq('status', '수령완료'); // 이미 수령완료된 것은 제외
+
+        if (ordersUndeliveredError) {
+          console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
+        } else {
+          console.log('미수령 상태 설정 완료');
         }
       }
 
@@ -415,9 +437,12 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         localStorage.setItem('pickupDateUpdated', Date.now().toString());
       }
 
-      const successMsg = shouldResetUndeliveredStatus 
-        ? '수령일이 성공적으로 변경되었습니다.\n미수령 주문 상태도 초기화되었습니다.'
-        : '수령일이 성공적으로 변경되었습니다.';
+      let successMsg = '수령일이 성공적으로 변경되었습니다.';
+      if (shouldResetUndeliveredStatus) {
+        successMsg += '\n미수령 주문 상태도 초기화되었습니다.';
+      } else if (newPickupDateTime <= currentTimeUTC) {
+        successMsg += '\n해당 주문들을 미수령 상태로 설정했습니다.';
+      }
       alert(successMsg);
 
     } catch (error) {
