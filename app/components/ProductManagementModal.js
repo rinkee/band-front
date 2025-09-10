@@ -267,8 +267,10 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       return;
     }
 
-    // 날짜와 시간을 합쳐서 새로운 수령일 생성
-    const newPickupDateTime = new Date(`${editPickupDate}T${editPickupTime}:00`);
+    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (시간대 문제 해결을 위해 직접 UTC로 생성)
+    const [year, month, day] = editPickupDate.split('-').map(Number);
+    const [hours, minutes] = editPickupTime.split(':').map(Number);
+    const newPickupDateTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
     
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
@@ -342,24 +344,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       }
 
-      // posts 테이블의 title 업데이트 (날짜와 시간 정보 포함)
+      // posts 테이블의 title 업데이트 (날짜 정보만 포함, 시간 제외)
       if (post?.title) {
         const currentTitle = post.title;
         const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
         if (dateMatch) {
           const month = newPickupDateTime.getUTCMonth() + 1;
           const day = newPickupDateTime.getUTCDate();
-          const hours = newPickupDateTime.getUTCHours();
-          const minutes = newPickupDateTime.getUTCMinutes();
           
-          let newDateStr = `${month}월${day}일`;
-          
-          // 시간이 00:00이 아니면 시간 정보 추가
-          if (hours !== 0 || minutes !== 0) {
-            const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-            newDateStr += ` ${timeStr}`;
-          }
-          
+          const newDateStr = `${month}월${day}일`;
           const newTitle = `[${newDateStr}]${dateMatch[1]}`;
           
           const { error: postsError } = await supabase
@@ -377,19 +370,11 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       }
 
-      // 상품 title 업데이트 (날짜와 시간 정보 포함)
+      // 상품 title 업데이트 (날짜 정보만 포함, 시간 제외)
       const month = newPickupDateTime.getUTCMonth() + 1;
       const day = newPickupDateTime.getUTCDate();
-      const hours = newPickupDateTime.getUTCHours();
-      const minutes = newPickupDateTime.getUTCMinutes();
       
-      let newDateStr = `${month}월${day}일`;
-      
-      // 시간이 00:00이 아니면 시간 정보 추가
-      if (hours !== 0 || minutes !== 0) {
-        const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-        newDateStr += ` ${timeStr}`;
-      }
+      const newDateStr = `${month}월${day}일`;
 
       const updatedProducts = products.map(product => {
         let newTitle = product.title;
@@ -489,12 +474,30 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                     <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <input
-                      type="time"
+                    <select
                       value={editPickupTime}
                       onChange={(e) => setEditPickupTime(e.target.value)}
                       className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
-                    />
+                    >
+                      {Array.from({ length: 14 }, (_, index) => {
+                        const hour = 7 + index; // 7시부터 20시까지
+                        return Array.from({ length: 2 }, (_, halfIndex) => {
+                          const minute = halfIndex * 30;
+                          const timeValue = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                          
+                          // 오전/오후 표시 형식으로 변환
+                          const displayHour = hour > 12 ? hour - 12 : hour;
+                          const amPm = hour < 12 ? '오전' : '오후';
+                          const displayValue = `${amPm} ${displayHour}:${minute.toString().padStart(2, '0')}`;
+                          
+                          return (
+                            <option key={timeValue} value={timeValue}>
+                              {displayValue}
+                            </option>
+                          );
+                        });
+                      }).flat()}
+                    </select>
                     <div className="flex gap-1">
                       <button
                         onClick={handlePickupDateSave}
@@ -531,7 +534,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         
                         // 시간이 00:00이 아니면 시간 정보 추가
                         if (hours !== 0 || minutes !== 0) {
-                          const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                          const displayHour = hours > 12 ? hours - 12 : hours;
+                          const amPm = hours < 12 ? '오전' : '오후';
+                          const timeStr = `${amPm} ${displayHour}:${minutes.toString().padStart(2, '0')}`;
                           displayText += ` ${timeStr}`;
                         }
                         

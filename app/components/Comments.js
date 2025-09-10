@@ -597,6 +597,7 @@ const CommentsModal = ({
   const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
   const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
+  const dateInputRef = useRef(null); // 수령일 input ref
   const scrollContainerRef = useRef(null);
   const { mutate: globalMutate } = useSWRConfig();
 
@@ -1222,40 +1223,9 @@ const CommentsModal = ({
                       </h2>
                       
                       <div className="flex items-center gap-4 flex-wrap">
-                        {/* 수령일 표시/편집 */}
-                        {isEditingPickupDate ? (
-                          // 편집 모드
-                          <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-full">
-                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                            </svg>
-                            <input
-                              ref={dateInputRef}
-                              type="date"
-                              value={editPickupDate}
-                              min={activePost?.posted_at ? new Date(activePost.posted_at).toISOString().split('T')[0] : undefined}
-                              onChange={(e) => {
-                                const selectedDate = e.target.value;
-                                setEditPickupDate(selectedDate);
-                                // 날짜 선택 시 바로 저장 - 선택한 날짜를 직접 전달
-                                if (selectedDate) {
-                                  setTimeout(() => {
-                                    handlePickupDateSave(selectedDate);
-                                  }, 100);
-                                }
-                              }}
-                              className="text-lg bg-transparent border-none outline-none text-blue-700 font-medium w-40 h-10"
-                              style={{
-                                fontSize: '16px',
-                                padding: '8px',
-                                minWidth: '160px',
-                                height: '40px'
-                              }}
-                              autoFocus
-                            />
-                          </div>
-                        ) : (
-                          // 표시 모드
+                        {/* 수령일 표시 (수정 불가) */}
+                        {(
+                          // 표시 모드 (수정 불가, 단순 표시만)
                           (() => {
                             // products 테이블의 pickup_date 필드가 있으면 우선 사용
                             const firstProduct = products && products.length > 0 ? products[0] : null;
@@ -1268,11 +1238,7 @@ const CommentsModal = ({
                                 
                                 if (!isNaN(displayDate.getTime())) {
                                   return (
-                                    <button
-                                      onClick={handlePickupDateEdit}
-                                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium rounded-full transition-colors cursor-pointer"
-                                      title="수령일 수정"
-                                    >
+                                    <div className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
                                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                       </svg>
@@ -1281,7 +1247,7 @@ const CommentsModal = ({
                                         day: 'numeric',
                                         weekday: 'short'
                                       })} 수령
-                                    </button>
+                                    </div>
                                   );
                                 }
                               } catch (e) {
