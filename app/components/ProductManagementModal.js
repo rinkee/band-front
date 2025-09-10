@@ -534,7 +534,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         
                         // 시간이 00:00이 아니면 시간 정보 추가
                         if (hours !== 0 || minutes !== 0) {
-                          const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                          const displayHour = hours > 12 ? hours - 12 : hours;
+                          const amPm = hours < 12 ? '오전' : '오후';
+                          const timeStr = `${amPm} ${displayHour}:${minutes.toString().padStart(2, '0')}`;
                           displayText += ` ${timeStr}`;
                         }
                         
