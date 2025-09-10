@@ -724,9 +724,7 @@ export default function OrdersPage() {
   };
 
   // 편집 관련 함수들
-  const fetchProductsForPost = async (postId, bandKey) => {
-    // sessionStorage에서 userId 가져오기
-    const userId = sessionStorage.getItem('userId');
+  const fetchProductsForPost = async (postId, bandKey, userId) => {
     if (!userId) {
       console.error('userId가 없습니다. 로그인이 필요합니다.');
       return [];
@@ -779,10 +777,10 @@ export default function OrdersPage() {
     console.log('Edit start - order:', order);
     console.log('Using postKey:', postKey, 'bandKey:', bandKey);
     
-    if (postKey && bandKey) {
-      await fetchProductsForPost(postKey, bandKey);
+    if (postKey && bandKey && userData?.userId) {
+      await fetchProductsForPost(postKey, bandKey, userData.userId);
     } else {
-      console.error('post_key 또는 band_key가 없습니다:', order);
+      console.error('post_key, band_key 또는 userId가 없습니다:', { postKey, bandKey, userId: userData?.userId });
     }
   };
 
