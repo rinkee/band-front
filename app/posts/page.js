@@ -804,16 +804,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
   // 이미지 URL 파싱 개선
   const getImageUrls = () => {
-    // 디버깅을 위한 로그 (개발 환경에서만)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Post image data:', {
-        post_key: post.post_key,
-        image_urls: post.image_urls,
-        photos_data: post.photos_data,
-        image_urls_type: typeof post.image_urls,
-        photos_data_type: typeof post.photos_data
-      });
-    }
 
     // 1. image_urls 필드 확인 (가장 우선순위)
     if (post.image_urls) {
