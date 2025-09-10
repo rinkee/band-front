@@ -597,6 +597,7 @@ const CommentsModal = ({
   const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
   const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
+  const dateInputRef = useRef(null); // 수령일 input ref
   const scrollContainerRef = useRef(null);
   const { mutate: globalMutate } = useSWRConfig();
 
