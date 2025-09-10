@@ -231,8 +231,18 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     const firstProduct = products && products.length > 0 ? products[0] : null;
     if (firstProduct?.pickup_date) {
       const pickupDateTime = new Date(firstProduct.pickup_date);
-      const dateStr = pickupDateTime.toISOString().split('T')[0];
-      const timeStr = pickupDateTime.toTimeString().slice(0, 5);
+      
+      // UTC 시간으로 날짜 설정
+      const year = pickupDateTime.getUTCFullYear();
+      const month = String(pickupDateTime.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(pickupDateTime.getUTCDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      
+      // UTC 시간으로 시간 설정
+      const hours = String(pickupDateTime.getUTCHours()).padStart(2, '0');
+      const minutes = String(pickupDateTime.getUTCMinutes()).padStart(2, '0');
+      const timeStr = `${hours}:${minutes}`;
+      
       setEditPickupDate(dateStr);
       setEditPickupTime(timeStr);
     } else {
