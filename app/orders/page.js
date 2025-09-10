@@ -725,6 +725,13 @@ export default function OrdersPage() {
 
   // 편집 관련 함수들
   const fetchProductsForPost = async (postId, bandKey) => {
+    // sessionStorage에서 userId 가져오기
+    const userId = sessionStorage.getItem('userId');
+    if (!userId) {
+      console.error('userId가 없습니다. 로그인이 필요합니다.');
+      return [];
+    }
+
     // 캐시 키를 band_key와 post_key 조합으로 변경
     const cacheKey = `${bandKey}_${postId}`;
     
@@ -733,10 +740,10 @@ export default function OrdersPage() {
     }
 
     try {
-      // band_key를 쿼리 파라미터로 추가
+      // user_id와 band_key를 쿼리 파라미터로 추가
       const url = bandKey 
-        ? `${window.location.origin}/api/posts/${postId}/products?band_key=${bandKey}`
-        : `${window.location.origin}/api/posts/${postId}/products`;
+        ? `${window.location.origin}/api/posts/${postId}/products?user_id=${userId}&band_key=${bandKey}`
+        : `${window.location.origin}/api/posts/${postId}/products?user_id=${userId}`;
       
       const response = await fetch(url);
       const result = await response.json();
@@ -747,6 +754,8 @@ export default function OrdersPage() {
           [cacheKey]: result.data
         }));
         return result.data;
+      } else {
+        console.error('상품 목록 조회 실패:', result.error);
       }
     } catch (error) {
       console.error('상품 목록 조회 실패:', error);
