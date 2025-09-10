@@ -801,7 +801,6 @@ export default function ProductsPage() {
       if (productIds.length > 0) {
         fetchProductOrderStats(productIds)
           .then(statsMap => {
-            console.log('받아온 statsMap:', statsMap);
             
             // 주문 통계를 상품 데이터에 추가
             const productsWithStats = productsData.data.map(p => ({
@@ -841,7 +840,7 @@ export default function ProductsPage() {
       // posts 테이블에서 이미지 데이터 가져오기
       if (uniquePairs.length > 0) {
         fetchPostsImages(uniquePairs).then(() => {
-          console.log('✅ 이미지 데이터 로드 완료');
+          // 이미지 데이터 로드 완료
         }).catch(error => {
           console.error('❌ 이미지 로드 실패:', error);
         });
@@ -886,10 +885,6 @@ export default function ProductsPage() {
           console.log('사용자 데이터 가져오기 실패:', userError);
         } else if (userData?.excluded_customers && Array.isArray(userData.excluded_customers)) {
           excludedCustomerNames = userData.excluded_customers;
-          console.log(`제외 고객 수: ${excludedCustomerNames.length}`);
-          if (excludedCustomerNames.length > 0) {
-            console.log('제외 고객 이름 목록:', excludedCustomerNames);
-          }
         }
       }
       
@@ -913,39 +908,11 @@ export default function ProductsPage() {
       }
       
       // 3. 클라이언트 측에서 제외 고객 필터링 (이름으로 필터링)
-      console.log('필터링 전 주문 샘플:', allOrders?.slice(0, 5).map(o => ({
-        customer_name: o.customer_name,
-        quantity: o.quantity,
-        product_id: o.product_id
-      })));
-      
       const filteredOrders = allOrders?.filter(order => {
         // 제외 고객 이름 목록에 포함되어 있으면 필터링
         const isExcluded = excludedCustomerNames.includes(order.customer_name);
-        if (isExcluded) {
-          console.log(`제외됨: customer_name "${order.customer_name}", quantity ${order.quantity}`);
-          return false;
-        }
-        return true;
+        return !isExcluded;
       }) || [];
-      
-      console.log(`전체 주문 수: ${allOrders?.length || 0}, 필터링 후: ${filteredOrders.length}`);
-      
-      // 디버깅: 제외된 주문 수 확인
-      const excludedOrdersCount = (allOrders?.length || 0) - filteredOrders.length;
-      if (excludedOrdersCount > 0) {
-        console.log(`제외 고객의 주문 ${excludedOrdersCount}개 필터링됨`);
-        
-        // 제외된 주문들의 상세 정보
-        const excludedOrders = allOrders?.filter(order => 
-          excludedCustomerNames.includes(order.customer_name)
-        );
-        console.log('제외된 주문들:', excludedOrders?.map(o => ({
-          customer_name: o.customer_name,
-          quantity: o.quantity,
-          product_id: o.product_id
-        })));
-      }
       
       // 4. 상품별로 통계 집계 (필터링된 데이터 사용)
       const statsMap = {};
@@ -978,8 +945,6 @@ export default function ProductsPage() {
   // posts 테이블에서 이미지 데이터 가져오기
   const fetchPostsImages = async (postKeyPairs) => {
     try {
-      console.log('🔄 fetchPostsImages 시작, 요청 수:', postKeyPairs.length);
-      console.log('📝 요청 샘플:', postKeyPairs.slice(0, 3));
       
       // 30일 이내 게시물로 제한 (필요시 조정 가능)
       const thirtyDaysAgo = new Date();
@@ -1009,7 +974,6 @@ export default function ProductsPage() {
       
       // band_key_post_key를 키로 하는 이미지 맵 생성
       const imageMap = {};
-      console.log('🔍 이미지 맵 생성 시작, 전체 posts 데이터:', data?.length || 0, '개');
       
       data?.forEach(post => {
         const key = `${post.band_key}_${post.post_key}`;
@@ -1017,15 +981,9 @@ export default function ProductsPage() {
         // image_urls 전체 배열 저장 (다중 상품 지원)
         if (post.image_urls && Array.isArray(post.image_urls) && post.image_urls.length > 0) {
           imageMap[key] = post.image_urls; // 전체 배열 저장
-          console.log(`✅ ${key}: image_urls 배열 저장:`, post.image_urls.length, '개 이미지');
-        } else {
-          console.log(`❌ ${key}: image_urls 없음 또는 빈 배열`);
         }
       });
       
-      console.log('📊 최종 이미지 맵:', Object.keys(imageMap).length, '개 이미지');
-      console.log('🗺️ 이미지 맵 키 샘플:', Object.keys(imageMap).slice(0, 5));
-      console.log('📅 30일 이내 게시물만 조회 (최대 1000개)');
       setPostsImages(imageMap);
     } catch (error) {
       console.error('Posts 이미지 가져오기 예외:', error);

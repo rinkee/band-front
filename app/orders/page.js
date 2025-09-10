@@ -1107,7 +1107,6 @@ export default function OrdersPage() {
     if (userData?.userId) {
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
       mutateOrders(undefined, { revalidate: true }); // 페이지 진입 시 주문 데이터도 새로고침
-      console.log('Orders 페이지 진입: 상품 및 주문 데이터 새로고침');
     }
   }, [userData?.userId, mutateProducts, mutateOrders]);
 
