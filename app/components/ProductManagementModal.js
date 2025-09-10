@@ -474,14 +474,24 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                     <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <input
-                      type="time"
+                    <select
                       value={editPickupTime}
                       onChange={(e) => setEditPickupTime(e.target.value)}
                       className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
-                      step="60"
-                      lang="en-US"
-                    />
+                    >
+                      {Array.from({ length: 24 }, (_, hour) => 
+                        Array.from({ length: 60/15 }, (_, quarterIndex) => {
+                          const minute = quarterIndex * 15;
+                          const timeValue = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                          const displayValue = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                          return (
+                            <option key={timeValue} value={timeValue}>
+                              {displayValue}
+                            </option>
+                          );
+                        })
+                      ).flat()}
+                    </select>
                     <div className="flex gap-1">
                       <button
                         onClick={handlePickupDateSave}
