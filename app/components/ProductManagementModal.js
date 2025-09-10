@@ -484,9 +484,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         return Array.from({ length: 2 }, (_, halfIndex) => {
                           const minute = halfIndex * 30;
                           const timeValue = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                          
+                          // 오전/오후 표시 형식으로 변환
+                          const displayHour = hour > 12 ? hour - 12 : hour;
+                          const amPm = hour < 12 ? '오전' : '오후';
+                          const displayValue = `${amPm} ${displayHour}:${minute.toString().padStart(2, '0')}`;
+                          
                           return (
                             <option key={timeValue} value={timeValue}>
-                              {timeValue}
+                              {displayValue}
                             </option>
                           );
                         });
