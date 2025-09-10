@@ -267,8 +267,10 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       return;
     }
 
-    // 날짜와 시간을 합쳐서 새로운 수령일 생성
-    const newPickupDateTime = new Date(`${editPickupDate}T${editPickupTime}:00`);
+    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (시간대 문제 해결을 위해 직접 UTC로 생성)
+    const [year, month, day] = editPickupDate.split('-').map(Number);
+    const [hours, minutes] = editPickupTime.split(':').map(Number);
+    const newPickupDateTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
     
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
@@ -342,24 +344,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       }
 
-      // posts 테이블의 title 업데이트 (날짜와 시간 정보 포함)
+      // posts 테이블의 title 업데이트 (날짜 정보만 포함, 시간 제외)
       if (post?.title) {
         const currentTitle = post.title;
         const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
         if (dateMatch) {
           const month = newPickupDateTime.getUTCMonth() + 1;
           const day = newPickupDateTime.getUTCDate();
-          const hours = newPickupDateTime.getUTCHours();
-          const minutes = newPickupDateTime.getUTCMinutes();
           
-          let newDateStr = `${month}월${day}일`;
-          
-          // 시간이 00:00이 아니면 시간 정보 추가
-          if (hours !== 0 || minutes !== 0) {
-            const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-            newDateStr += ` ${timeStr}`;
-          }
-          
+          const newDateStr = `${month}월${day}일`;
           const newTitle = `[${newDateStr}]${dateMatch[1]}`;
           
           const { error: postsError } = await supabase
@@ -377,19 +370,11 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       }
 
-      // 상품 title 업데이트 (날짜와 시간 정보 포함)
+      // 상품 title 업데이트 (날짜 정보만 포함, 시간 제외)
       const month = newPickupDateTime.getUTCMonth() + 1;
       const day = newPickupDateTime.getUTCDate();
-      const hours = newPickupDateTime.getUTCHours();
-      const minutes = newPickupDateTime.getUTCMinutes();
       
-      let newDateStr = `${month}월${day}일`;
-      
-      // 시간이 00:00이 아니면 시간 정보 추가
-      if (hours !== 0 || minutes !== 0) {
-        const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-        newDateStr += ` ${timeStr}`;
-      }
+      const newDateStr = `${month}월${day}일`;
 
       const updatedProducts = products.map(product => {
         let newTitle = product.title;
