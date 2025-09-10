@@ -1,479 +1,295 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import AdminGuard from './components/AdminGuard';
-import AdminLayout from './components/AdminLayout';
-import { LoadingSpinner } from '@/app/components/LoadingSpinner';
-import { useAdminApi } from './hooks/useAdminApi';
-import ErrorMessage from './components/ErrorMessage';
-import RefreshButton from './components/RefreshButton';
-import { 
-  ChartBarIcon, 
-  ShoppingCartIcon, 
-  UsersIcon, 
-  DocumentTextIcon, 
-  ArrowUpIcon, 
-  ArrowDownIcon,
-  FireIcon,
-  ClockIcon,
-  ExclamationCircleIcon,
-  CurrencyDollarIcon
-} from '@heroicons/react/24/outline';
+import supabase from '../lib/supabaseClient';
 
-/**
- * 관리자 대시보드 메인 페이지
- */
-export default function AdminDashboard() {
-  const [stats, setStats] = useState(null);
-  const [recentBands, setRecentBands] = useState([]);
-  const [recentOrders, setRecentOrders] = useState([]);
-  const [popularProducts, setPopularProducts] = useState([]);
+export default function SimpleAdminPage() {
+  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    activeUsers: 0
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const { fetchAdminApi } = useAdminApi();
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    setError(null);
-    
+  // 데이터 로드
+  const loadData = async () => {
     try {
-      // 병렬로 모든 데이터 가져오기
-      const [statsData, bandsData, ordersData] = await Promise.allSettled([
-        fetchAdminApi('/api/admin/stats'),
-        fetchAdminApi('/api/admin/bands?limit=10&sortBy=last_post_at'),
-        fetchAdminApi('/api/admin/orders?limit=10')
-      ]);
-
-      // 통계 데이터 처리
-      if (statsData.status === 'fulfilled') {
-        setStats(statsData.value);
-      } else {
-        setStats({
-          total_users: 0,
-          total_bands: 0,
-          total_posts: 0,
-          total_orders: 0,
-          total_sales: 0,
-          today_orders: 0,
-          today_sales: 0,
-          yesterday_orders: 0,
-          yesterday_sales: 0,
-          pending_orders: 0,
-          inactive_bands: 0,
-          new_users_today: 0,
-          active_bands: 0,
-          today_posts: 0
-        });
-      }
-
-      // 밴드 데이터 처리
-      if (bandsData.status === 'fulfilled') {
-        setRecentBands(bandsData.value.bands || []);
-      }
-
-      // 주문 데이터 처리 및 인기 상품 추출
-      if (ordersData.status === 'fulfilled') {
-        setRecentOrders(ordersData.value.orders || []);
-        
-        // 주문 데이터에서 인기 상품 추출
-        const productCounts = {};
-        (ordersData.value.orders || []).forEach(order => {
-          const productName = order.product_name || '상품명 없음';
-          if (!productCounts[productName]) {
-            productCounts[productName] = {
-              name: productName,
-              count: 0,
-              total_amount: 0
-            };
-          }
-          productCounts[productName].count += (order.quantity || 1);
-          productCounts[productName].total_amount += (order.total_amount || 0);
-        });
-        
-        const popular = Object.values(productCounts)
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
-        setPopularProducts(popular);
-      }
-
-      setLastUpdated(new Date());
+      setLoading(true);
       
-      // 모든 요청이 실패한 경우에만 에러 표시
-      if (statsData.status === 'rejected' && 
-          bandsData.status === 'rejected' && 
-          ordersData.status === 'rejected') {
-        setError('데이터를 불러오는 중 오류가 발생했습니다.');
-      }
-    } catch (error) {
-      setError('데이터를 불러오는 중 오류가 발생했습니다.');
+      // 사용자 데이터 로드
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select(`
+          user_id,
+          login_id,
+          login_password,
+          store_name,
+          owner_name,
+          phone_number,
+          is_active,
+          role,
+          created_at,
+          last_login_at,
+          band_url,
+          band_number,
+          function_number
+        `)
+        .order('created_at', { ascending: false });
+
+      if (usersError) throw usersError;
+      setUsers(usersData || []);
+
+      // 기본 통계 계산
+      const totalUsers = usersData?.length || 0;
+      const activeUsers = usersData?.filter(u => u.is_active).length || 0;
+
+      setStats({
+        totalUsers,
+        activeUsers
+      });
+
+    } catch (err) {
+      setError(err.message);
+      console.error('데이터 로드 오류:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // 오늘의 통계 계산
-  const todayStats = {
-    todayOrders: stats?.today_orders || 0,
-    todaySales: stats?.today_sales || 0,
-    yesterdayOrders: stats?.yesterday_orders || 0,
-    yesterdaySales: stats?.yesterday_sales || 0,
+  // is_active 토글
+  const toggleUserActive = async (userId, currentStatus) => {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ is_active: !currentStatus })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      
+      // UI 업데이트
+      setUsers(users.map(user => 
+        user.user_id === userId 
+          ? { ...user, is_active: !currentStatus }
+          : user
+      ));
+
+      // 통계 업데이트
+      setStats(prev => ({
+        ...prev,
+        activeUsers: !currentStatus ? prev.activeUsers + 1 : prev.activeUsers - 1
+      }));
+
+    } catch (err) {
+      alert('상태 변경 실패: ' + err.message);
+    }
   };
 
-  const calculateChange = (today, yesterday) => {
-    if (!yesterday || yesterday === 0) return { value: 0, isIncrease: true };
-    const change = ((today - yesterday) / yesterday * 100).toFixed(1);
-    return { 
-      value: Math.abs(change), 
-      isIncrease: change >= 0 
-    };
+  // Poder 자동 로그인
+  const handlePoderAccess = (user) => {
+    if (!user.login_id || !user.login_password) {
+      alert('로그인 정보가 없습니다.');
+      return;
+    }
+
+    // 로그인 정보를 sessionStorage에 저장
+    sessionStorage.setItem('autoLogin', JSON.stringify({
+      loginId: user.login_id,
+      password: user.login_password
+    }));
+    
+    // 로그인 페이지를 새 탭에서 열기
+    window.open('/login?autoLogin=true', '_blank');
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">로딩중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <AdminGuard>
-      <AdminLayout title="대시보드">
-        {/* 헤더 영역 */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">대시보드</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                실시간 매장 현황을 한눈에 확인하세요
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {lastUpdated && (
-                <span className="text-xs text-gray-400">
-                  마지막 업데이트: {lastUpdated.toLocaleTimeString('ko-KR')}
-                </span>
-              )}
-              <RefreshButton 
-                onRefresh={() => fetchDashboardData(false)} 
-                autoRefresh={true}
-                interval={60000}
-              />
-            </div>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* 헤더 */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">관리자 대시보드</h1>
+          <p className="text-gray-600">사용자 관리 및 시스템 현황</p>
+          <button
+            onClick={loadData}
+            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          >
+            새로고침
+          </button>
+        </div>
+
+        {/* 에러 표시 */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">오류: {error}</p>
+          </div>
+        )}
+
+        {/* 통계 카드 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-3xl font-bold text-gray-900">{stats.totalUsers}</div>
+            <div className="text-sm text-gray-500">총 사용자</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-3xl font-bold text-green-600">{stats.activeUsers}</div>
+            <div className="text-sm text-gray-500">활성 사용자</div>
           </div>
         </div>
 
-        {/* 에러 메시지 */}
-        {error && (
-          <div className="mb-4">
-            <ErrorMessage 
-              message={error} 
-              onClose={() => setError(null)}
-              type="error"
-            />
+        {/* 사용자 테이블 */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">사용자 관리</h2>
           </div>
-        )}
-
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <LoadingSpinner />
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* 주요 지표 카드 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">오늘 주문</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{todayStats.todayOrders.toLocaleString()}</p>
-                    <div className="flex items-center mt-3">
-                      {calculateChange(todayStats.todayOrders, todayStats.yesterdayOrders).isIncrease ? (
-                        <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
-                      ) : (
-                        <ArrowDownIcon className="w-4 h-4 text-red-500 mr-1" />
-                      )}
-                      <span className={`text-sm font-medium ${
-                        calculateChange(todayStats.todayOrders, todayStats.yesterdayOrders).isIncrease 
-                          ? 'text-emerald-500' : 'text-red-500'
-                      }`}>
-                        {calculateChange(todayStats.todayOrders, todayStats.yesterdayOrders).value}%
-                      </span>
-                      <span className="text-sm text-gray-400 ml-2">전일 대비</span>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-emerald-50 rounded-lg">
-                    <ShoppingCartIcon className="w-6 h-6 text-emerald-600" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">오늘 매출</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">
-                      {todayStats.todaySales >= 10000 
-                        ? `${(todayStats.todaySales / 10000).toFixed(1)}만원`
-                        : `${todayStats.todaySales.toLocaleString()}원`
-                      }
-                    </p>
-                    <div className="flex items-center mt-3">
-                      {calculateChange(todayStats.todaySales, todayStats.yesterdaySales).isIncrease ? (
-                        <ArrowUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
-                      ) : (
-                        <ArrowDownIcon className="w-4 h-4 text-red-500 mr-1" />
-                      )}
-                      <span className={`text-sm font-medium ${
-                        calculateChange(todayStats.todaySales, todayStats.yesterdaySales).isIncrease 
-                          ? 'text-emerald-500' : 'text-red-500'
-                      }`}>
-                        {calculateChange(todayStats.todaySales, todayStats.yesterdaySales).value}%
-                      </span>
-                      <span className="text-sm text-gray-400 ml-2">전일 대비</span>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <CurrencyDollarIcon className="w-6 h-6 text-blue-600" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">총 게시물</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.total_posts?.toLocaleString() || '0'}</p>
-                    <div className="flex items-center mt-3">
-                      <span className="text-sm text-gray-500">오늘 {stats?.today_posts || 0}건 추가</span>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <DocumentTextIcon className="w-6 h-6 text-purple-600" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl p-6 border border-gray-100 hover:shadow-lg transition-all duration-300">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">활성 밴드</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-2">{stats?.active_bands || stats?.total_bands || '0'}</p>
-                    <div className="flex items-center mt-3">
-                      <span className="text-sm text-gray-500">총 {stats?.total_users || 0}개 등록</span>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-amber-50 rounded-lg">
-                    <ChartBarIcon className="w-6 h-6 text-amber-600" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 주요 컨텐츠 영역 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* 최근 주문 - 2/3 너비 */}
-              <div className="lg:col-span-2 bg-white rounded-xl p-6 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">최근 주문 현황</h3>
-                  <button className="text-sm text-gray-500 hover:text-gray-700">
-                    전체보기
-                  </button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 rounded-lg">
-                      <tr>
-                        <th className="px-4 py-3 text-left">시간</th>
-                        <th className="px-4 py-3 text-left">고객명</th>
-                        <th className="px-4 py-3 text-left">상품</th>
-                        <th className="px-4 py-3 text-center">수량</th>
-                        <th className="px-4 py-3 text-right">금액</th>
-                        <th className="px-4 py-3 text-center">상태</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {recentOrders.slice(0, 8).map((order, index) => (
-                        <tr key={`order-${index}-${order.order_id}`} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {new Date(order.created_at).toLocaleTimeString('ko-KR', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-sm font-medium text-gray-900">
-                              {order.customer_name}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-sm text-gray-700 truncate max-w-[200px]">
-                              {order.product_name}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="text-sm font-medium text-gray-900">
-                              {order.quantity}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="text-sm font-semibold text-gray-900">
-                              {order.total_amount?.toLocaleString()}원
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
-                              완료
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {recentOrders.length === 0 && (
-                    <div className="text-center py-8">
-                      <p className="text-gray-400 text-sm">최근 주문 내역이 없습니다</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 인기 상품 TOP 5 - 1/3 너비 */}
-              <div className="bg-white rounded-xl p-6 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">인기 상품 TOP 5</h3>
-                  <FireIcon className="w-5 h-5 text-orange-500" />
-                </div>
-                <div className="space-y-3">
-                  {popularProducts.map((product, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                      <div className="flex items-center flex-1">
-                        <div className={`
-                          w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                          ${
-                            index === 0 ? 'bg-yellow-100 text-yellow-700' :
-                            index === 1 ? 'bg-gray-100 text-gray-700' :
-                            index === 2 ? 'bg-orange-100 text-orange-700' :
-                            'bg-gray-50 text-gray-600'
-                          }
-                        `}>
-                          {index + 1}
-                        </div>
-                        <div className="ml-3 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {product.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {product.total_amount ? `${(product.total_amount / 10000).toFixed(1)}만원` : ''}
-                          </p>
-                        </div>
+          
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    사용자 정보
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    스토어 정보
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    상태
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Function
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    작업
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {users.map((user) => (
+                  <tr key={user.user_id} className={!user.is_active ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                    {/* 사용자 정보 */}
+                    <td className="px-6 py-4">
+                      <div>
+                        <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
+                        <div className="text-sm text-gray-500">ID: {user.login_id}</div>
+                        <div className="text-sm text-gray-500">{user.phone_number}</div>
+                        {user.role === 'admin' && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 mt-1">
+                            관리자
+                          </span>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-semibold text-gray-900">
-                          {product.count}건
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  {popularProducts.length === 0 && (
-                    <div className="text-center py-8">
-                      <p className="text-gray-400 text-sm">주문 데이터가 없습니다</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                    </td>
 
-            {/* 활성 밴드 및 주의 필요 사항 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 활성 밴드 현황 */}
-              <div className="bg-white rounded-xl p-6 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">활성 밴드 현황</h3>
-                  <ClockIcon className="w-5 h-5 text-gray-400" />
-                </div>
-                <div className="space-y-3">
-                  {recentBands.slice(0, 5).map((band) => (
-                    <div key={band.user_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{band.store_name}</p>
-                        <p className="text-xs text-gray-500">
-                          게시물 {band.post_count} | 주문 {band.order_count}
-                        </p>
+                    {/* 스토어 정보 */}
+                    <td className="px-6 py-4">
+                      <div>
+                        <div className="font-medium text-gray-900">{user.store_name || '스토어명 없음'}</div>
+                        {user.band_number && (
+                          <div className="text-sm text-gray-500">밴드: {user.band_number}</div>
+                        )}
+                        {user.band_url && (
+                          <a 
+                            href={user.band_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:text-blue-800"
+                          >
+                            밴드 링크 →
+                          </a>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500">
-                          {band.last_post_at ? 
-                            `${Math.floor((Date.now() - new Date(band.last_post_at)) / (1000 * 60 * 60))}시간 전` : 
-                            '활동 없음'
-                          }
-                        </p>
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-1 ${
-                          band.function_number === 1 ? 'bg-blue-100 text-blue-700' :
-                          band.function_number === 2 ? 'bg-emerald-100 text-emerald-700' :
-                          'bg-gray-100 text-gray-700'
+                    </td>
+
+                    {/* 상태 */}
+                    <td className="px-6 py-4">
+                      <div>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          user.is_active 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
                         }`}>
-                          F#{band.function_number}
+                          {user.is_active ? '활성' : '비활성'}
                         </span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          가입: {new Date(user.created_at).toLocaleDateString('ko-KR')}
+                        </div>
+                        {user.last_login_at && (
+                          <div className="text-xs text-gray-500">
+                            로그인: {new Date(user.last_login_at).toLocaleDateString('ko-KR')}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
-                  {recentBands.length === 0 && (
-                    <div className="text-center py-8">
-                      <p className="text-gray-400 text-sm">활성 밴드가 없습니다</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+                    </td>
 
-              {/* 주의 필요 사항 */}
-              <div className="bg-white rounded-xl p-6 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">주의 필요 사항</h3>
-                  <ExclamationCircleIcon className="w-5 h-5 text-amber-500" />
-                </div>
-                <div className="space-y-3">
-                  {/* 미처리 주문 */}
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <div className="flex items-start">
-                      <ExclamationCircleIcon className="w-5 h-5 text-amber-600 mt-0.5 mr-3 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">미처리 주문</p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          24시간 이상 처리되지 않은 주문이 <span className="font-semibold">{stats?.pending_orders || 0}건</span> 있습니다
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                    {/* Function */}
+                    <td className="px-6 py-4">
+                      {user.function_number !== null ? (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          user.function_number === 1 ? 'bg-blue-100 text-blue-800' :
+                          user.function_number === 2 ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          #{user.function_number}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
 
-                  {/* 비활성 밴드 */}
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <div className="flex items-start">
-                      <ClockIcon className="w-5 h-5 text-gray-600 mt-0.5 mr-3 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">비활성 밴드</p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          7일 이상 활동이 없는 밴드가 <span className="font-semibold">{stats?.inactive_bands || 0}개</span> 있습니다
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                    {/* 작업 */}
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-2">
+                        {/* 활성화/비활성화 버튼 */}
+                        <button
+                          onClick={() => toggleUserActive(user.user_id, user.is_active)}
+                          className={`px-3 py-1 rounded text-xs font-medium ${
+                            user.is_active
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          }`}
+                        >
+                          {user.is_active ? '비활성화' : '활성화'}
+                        </button>
 
-                  {/* 신규 가입 */}
-                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <div className="flex items-start">
-                      <UsersIcon className="w-5 h-5 text-emerald-600 mt-0.5 mr-3 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">오늘 신규 가입</p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          오늘 <span className="font-semibold">{stats?.new_users_today || 0}명</span>의 새로운 사용자가 가입했습니다
-                        </p>
+                        {/* Poder 접근 버튼 */}
+                        {user.login_id && user.login_password && (
+                          <button
+                            onClick={() => handlePoderAccess(user)}
+                            className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-medium"
+                          >
+                            🔑 Poder 접근
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </AdminLayout>
-    </AdminGuard>
+
+          {users.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">등록된 사용자가 없습니다.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

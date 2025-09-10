@@ -17,6 +17,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false);
   const [editPickupDate, setEditPickupDate] = useState('');
+  const [editPickupTime, setEditPickupTime] = useState('00:00');
   const [currentPost, setCurrentPost] = useState(null);
   const dateInputRef = useRef(null);
 
@@ -41,6 +42,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     if (!isOpen) {
       setIsEditingPickupDate(false);
       setEditPickupDate('');
+      setEditPickupTime('00:00');
     }
   }, [isOpen]);
 
@@ -228,8 +230,25 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const handlePickupDateEdit = () => {
     const firstProduct = products && products.length > 0 ? products[0] : null;
     if (firstProduct?.pickup_date) {
-      const dateStr = firstProduct.pickup_date.split('T')[0];
+      const pickupDateTime = new Date(firstProduct.pickup_date);
+      
+      // UTC 시간으로 날짜 설정
+      const year = pickupDateTime.getUTCFullYear();
+      const month = String(pickupDateTime.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(pickupDateTime.getUTCDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      
+      // UTC 시간으로 시간 설정
+      const hours = String(pickupDateTime.getUTCHours()).padStart(2, '0');
+      const minutes = String(pickupDateTime.getUTCMinutes()).padStart(2, '0');
+      const timeStr = `${hours}:${minutes}`;
+      
       setEditPickupDate(dateStr);
+      setEditPickupTime(timeStr);
+    } else {
+      // 기본값 설정
+      setEditPickupDate(new Date().toISOString().split('T')[0]);
+      setEditPickupTime('00:00');
     }
     setIsEditingPickupDate(true);
     
@@ -248,16 +267,14 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       return;
     }
 
+    // 날짜와 시간을 합쳐서 새로운 수령일 생성
+    const newPickupDateTime = new Date(`${editPickupDate}T${editPickupTime}:00`);
+    
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
-      const selectedDate = new Date(editPickupDate);
       const postedDate = new Date(currentPost.posted_at);
       
-      // 날짜만 비교 (시간 제거)
-      const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-      const postedDateOnly = new Date(postedDate.getFullYear(), postedDate.getMonth(), postedDate.getDate());
-      
-      if (selectedDateOnly < postedDateOnly) {
+      if (newPickupDateTime < postedDate) {
         alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
         return;
       }
@@ -279,8 +296,17 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         return;
       }
 
+      // 기존 pickup_date 가져오기 (미수령 상태 초기화를 위해)
+      const firstProduct = products && products.length > 0 ? products[0] : null;
+      const oldPickupDate = firstProduct?.pickup_date ? new Date(firstProduct.pickup_date) : null;
+      const currentTime = new Date();
+      
+      // 새로운 수령일이 현재 시간보다 미래인지 확인 (미수령 상태 초기화 조건)
+      const shouldResetUndeliveredStatus = newPickupDateTime > currentTime && 
+        (!oldPickupDate || oldPickupDate <= currentTime);
+
       // UTC ISO 문자열로 변환
-      const utcDate = new Date(editPickupDate).toISOString();
+      const utcDate = newPickupDateTime.toISOString();
 
       // products 테이블 업데이트 - user_id 필터 추가
       const { error: productsError } = await supabase
@@ -294,13 +320,46 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       if (productsError) throw productsError;
 
-      // posts 테이블의 title 업데이트 (날짜 부분 교체)
+      // 미수령 상태 초기화 (수령일이 미래로 변경된 경우)
+      if (shouldResetUndeliveredStatus) {
+        console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
+        
+        const { error: ordersResetError } = await supabase
+          .from('orders')
+          .update({ 
+            sub_status: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('post_key', postKey)
+          .eq('user_id', userId)
+          .not('sub_status', 'is', null);  // sub_status가 null이 아닌 것만 업데이트
+
+        if (ordersResetError) {
+          console.error('주문 상태 초기화 실패:', ordersResetError);
+          // 에러가 발생해도 수령일 업데이트는 계속 진행
+        } else {
+          console.log('미수령 주문 상태 초기화 완료');
+        }
+      }
+
+      // posts 테이블의 title 업데이트 (날짜와 시간 정보 포함)
       if (post?.title) {
         const currentTitle = post.title;
         const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
         if (dateMatch) {
-          const date = new Date(editPickupDate);
-          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+          const month = newPickupDateTime.getUTCMonth() + 1;
+          const day = newPickupDateTime.getUTCDate();
+          const hours = newPickupDateTime.getUTCHours();
+          const minutes = newPickupDateTime.getUTCMinutes();
+          
+          let newDateStr = `${month}월${day}일`;
+          
+          // 시간이 00:00이 아니면 시간 정보 추가
+          if (hours !== 0 || minutes !== 0) {
+            const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            newDateStr += ` ${timeStr}`;
+          }
+          
           const newTitle = `[${newDateStr}]${dateMatch[1]}`;
           
           const { error: postsError } = await supabase
@@ -318,14 +377,24 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       }
 
-      // 상품 title 업데이트 (날짜 부분 교체)
+      // 상품 title 업데이트 (날짜와 시간 정보 포함)
+      const month = newPickupDateTime.getUTCMonth() + 1;
+      const day = newPickupDateTime.getUTCDate();
+      const hours = newPickupDateTime.getUTCHours();
+      const minutes = newPickupDateTime.getUTCMinutes();
+      
+      let newDateStr = `${month}월${day}일`;
+      
+      // 시간이 00:00이 아니면 시간 정보 추가
+      if (hours !== 0 || minutes !== 0) {
+        const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        newDateStr += ` ${timeStr}`;
+      }
+
       const updatedProducts = products.map(product => {
         let newTitle = product.title;
         const dateMatch = newTitle.match(/^\[([^\]]+)\](.*)/);
         if (dateMatch) {
-          // UTC 메소드 사용으로 시간대 변환 방지
-          const date = new Date(editPickupDate);
-          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
           newTitle = `[${newDateStr}]${dateMatch[2]}`;
         }
         return { ...product, pickup_date: utcDate, title: newTitle };
@@ -335,8 +404,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       for (const product of products) {
         const dateMatch = product.title.match(/^\[([^\]]+)\](.*)/);  
         if (dateMatch) {
-          const date = new Date(editPickupDate);
-          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
           const newTitle = `[${newDateStr}]${dateMatch[2]}`;
           
           await supabase
@@ -350,6 +417,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       setProducts(updatedProducts);
       setIsEditingPickupDate(false);
       setEditPickupDate('');
+      setEditPickupTime('00:00');
 
       // 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(postKey));
@@ -362,7 +430,10 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         localStorage.setItem('pickupDateUpdated', Date.now().toString());
       }
 
-      alert('수령일이 성공적으로 변경되었습니다.');
+      const successMsg = shouldResetUndeliveredStatus 
+        ? '수령일이 성공적으로 변경되었습니다.\n미수령 주문 상태도 초기화되었습니다.'
+        : '수령일이 성공적으로 변경되었습니다.';
+      alert(successMsg);
 
     } catch (error) {
       console.error('수령일 업데이트 실패:', error);
@@ -376,6 +447,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     setIsAddingNew(false);
     setIsEditingPickupDate(false);
     setEditPickupDate('');
+    setEditPickupTime('00:00');
     setCurrentPost(null);
     setNewProduct({
       title: '',
@@ -414,6 +486,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                       className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
                       autoFocus
                     />
+                    <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <input
+                      type="time"
+                      value={editPickupTime}
+                      onChange={(e) => setEditPickupTime(e.target.value)}
+                      className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
+                    />
                     <div className="flex gap-1">
                       <button
                         onClick={handlePickupDateSave}
@@ -425,6 +506,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         onClick={() => {
                           setIsEditingPickupDate(false);
                           setEditPickupDate('');
+                          setEditPickupTime('00:00');
                         }}
                         className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded"
                       >
@@ -437,9 +519,23 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                     const firstProduct = products && products.length > 0 ? products[0] : null;
                     if (firstProduct?.pickup_date) {
                       try {
-                        const dateStr = firstProduct.pickup_date.split('T')[0];
-                        const [year, month, day] = dateStr.split('-');
-                        const displayDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                        const pickupDateTime = new Date(firstProduct.pickup_date);
+                        const month = pickupDateTime.getUTCMonth() + 1;
+                        const day = pickupDateTime.getUTCDate();
+                        const hours = pickupDateTime.getUTCHours();
+                        const minutes = pickupDateTime.getUTCMinutes();
+                        const days = ['일', '월', '화', '수', '목', '금', '토'];
+                        const dayName = days[pickupDateTime.getUTCDay()];
+                        
+                        let displayText = `${month}월${day}일 ${dayName}`;
+                        
+                        // 시간이 00:00이 아니면 시간 정보 추가
+                        if (hours !== 0 || minutes !== 0) {
+                          const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                          displayText += ` ${timeStr}`;
+                        }
+                        
+                        displayText += ' 수령';
                         
                         return (
                           <button
@@ -450,11 +546,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            {displayDate.toLocaleDateString('ko-KR', {
-                              month: 'short',
-                              day: 'numeric',
-                              weekday: 'short'
-                            })} 수령
+                            {displayText}
                           </button>
                         );
                       } catch (e) {

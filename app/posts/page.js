@@ -804,16 +804,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
   // 이미지 URL 파싱 개선
   const getImageUrls = () => {
-    // 디버깅을 위한 로그 (개발 환경에서만)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Post image data:', {
-        post_key: post.post_key,
-        image_urls: post.image_urls,
-        photos_data: post.photos_data,
-        image_urls_type: typeof post.image_urls,
-        photos_data_type: typeof post.photos_data
-      });
-    }
 
     // 1. image_urls 필드 확인 (가장 우선순위)
     if (post.image_urls) {
@@ -951,7 +941,18 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             const day = pickupDate.getUTCDate();
             const days = ['일', '월', '화', '수', '목', '금', '토'];
             const dayName = days[pickupDate.getUTCDay()];
-            return `${month}월${day}일 ${dayName} 수령`;
+            
+            // 시간 정보 추가 (24시간 형식)
+            const hours = pickupDate.getUTCHours();
+            const minutes = pickupDate.getUTCMinutes();
+            
+            // 시간이 00:00이 아닌 경우에만 시간 표시
+            if (hours !== 0 || minutes !== 0) {
+              const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+              return `${month}월${day}일 ${dayName} ${timeStr} 수령`;
+            } else {
+              return `${month}월${day}일 ${dayName} 수령`;
+            }
           }
         } catch (e) {
           console.log('pickup_date 파싱 실패:', e);

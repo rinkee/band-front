@@ -1103,10 +1103,7 @@ export default function SettingsPage() {
 
       if (error) {
         // 테이블이 존재하지 않는 경우 등 다른 에러도 기본값으로 처리
-        console.warn(
-          "Auto crawl settings table not accessible, using defaults:",
-          error.message
-        );
+        // Auto crawl settings table not accessible, using defaults
         const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
         setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
         setCrawlInterval(defaultSettings.interval);
@@ -1151,8 +1148,6 @@ export default function SettingsPage() {
     if (sessionDataString) {
       try {
         const sessionUserData = JSON.parse(sessionDataString);
-
-        console.log("세션에서 userData 로드:", sessionUserData);
         setOwnerName(sessionUserData.owner_name || "");
         setStoreName(sessionUserData.store_name || "");
         setBandNumber(sessionUserData.band_number || ""); // 밴드 번호는 보통 변경되지 않으므로 세션 우선도 가능
@@ -1161,11 +1156,6 @@ export default function SettingsPage() {
             ? sessionUserData.excluded_customers
             : []
         );
-        console.log("[세션 로드] 바코드/AI 설정 로드:", {
-          session_auto_barcode_generation:
-            sessionUserData.auto_barcode_generation,
-          session_force_ai_processing: sessionUserData.force_ai_processing,
-        });
 
         // 바코드와 AI 설정은 SWR 데이터가 로드되기 전까지 임시로만 설정
         // (SWR 데이터가 우선되므로 초기값은 설정하지 않음)
@@ -1342,7 +1332,6 @@ export default function SettingsPage() {
         }
       }
       if (!sessionUserId) {
-        console.log("세션에 userId 없음, 로그인 페이지로 이동");
         router.replace("/login");
         setInitialLoading(false);
         return;
@@ -1350,7 +1339,6 @@ export default function SettingsPage() {
     }
 
     setUserId(sessionUserId);
-    console.log("최종 설정된 userId:", sessionUserId);
 
     // manualCrawlTaskId, fetchAutoCrawlSettings 등 기타 초기화 로직
     const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
@@ -1369,10 +1357,6 @@ export default function SettingsPage() {
       const userDataFromServer = swrUserData.data || swrUserData; // 실제 데이터 객체 접근
 
       if (userDataFromServer && typeof userDataFromServer === "object") {
-        console.log(
-          "[SWR Effect] SWR User Data로 UI 및 세션 업데이트:",
-          userDataFromServer
-        );
 
         // UI 상태 업데이트
         setOwnerName(userDataFromServer.owner_name || "");
@@ -1383,13 +1367,6 @@ export default function SettingsPage() {
             ? userDataFromServer.excluded_customers
             : []
         );
-        console.log("[SWR Effect] 바코드 설정 동기화:", {
-          server_auto_barcode_generation:
-            userDataFromServer.auto_barcode_generation,
-          current_autoBarcodeGeneration: autoBarcodeGeneration,
-          server_force_ai_processing: userDataFromServer.force_ai_processing,
-          current_forceAiProcessing: forceAiProcessing,
-        });
 
         setAutoBarcodeGeneration(
           userDataFromServer.auto_barcode_generation ?? false
@@ -1424,7 +1401,6 @@ export default function SettingsPage() {
         } else {
           // DB에서 명시적으로 저장된 값 사용 (null이나 undefined가 아닌 경우)
           const savedLevel = userDataFromServer.ai_analysis_level;
-          console.log('DB에서 가져온 AI 분석 레벨:', savedLevel);
           
           // 'off', 'smart', 'aggressive' 중 하나인지 확인
           const validLevels = ['off', 'smart', 'aggressive'];

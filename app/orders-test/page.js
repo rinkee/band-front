@@ -1950,21 +1950,9 @@ export default function OrdersPage() {
       ? Math.round((globalStatsData?.data?.statusCounts?.["수령완료"] / globalStatsData?.data?.totalOrders) * 100)
       : 0;
 
-  // 개발 환경에서만 날짜 범위 로그 출력
-  if (process.env.NODE_ENV === "development" && globalStatsData) {
-    console.log("=== 통계 날짜 필터 ===");
-    console.log("filterDateRange:", filterDateRange);
-    console.log("startDate:", globalStatsDateParams.startDate);
-    console.log("endDate:", globalStatsDateParams.endDate);
-    console.log("globalStatsData:", globalStatsData);
-    console.log("totalOrders:", globalStatsData?.data?.totalOrders);
-    console.log("statusCounts:", globalStatsData?.data?.statusCounts);
-    console.log("subStatusCounts:", globalStatsData?.data?.subStatusCounts);
-    console.log("===================");
-    // 디버깅용 전역 변수 설정
-    if (typeof window !== 'undefined') {
-      window.globalStatsDataDebug = globalStatsData;
-    }
+  // 디버깅용 전역 변수 설정
+  if (typeof window !== 'undefined' && globalStatsData) {
+    window.globalStatsDataDebug = globalStatsData;
   }
 
   // --- 메인 UI ---

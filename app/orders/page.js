@@ -724,7 +724,12 @@ export default function OrdersPage() {
   };
 
   // 편집 관련 함수들
-  const fetchProductsForPost = async (postId, bandKey) => {
+  const fetchProductsForPost = async (postId, bandKey, userId) => {
+    if (!userId) {
+      console.error('userId가 없습니다. 로그인이 필요합니다.');
+      return [];
+    }
+
     // 캐시 키를 band_key와 post_key 조합으로 변경
     const cacheKey = `${bandKey}_${postId}`;
     
@@ -733,10 +738,10 @@ export default function OrdersPage() {
     }
 
     try {
-      // band_key를 쿼리 파라미터로 추가
+      // user_id와 band_key를 쿼리 파라미터로 추가
       const url = bandKey 
-        ? `${window.location.origin}/api/posts/${postId}/products?band_key=${bandKey}`
-        : `${window.location.origin}/api/posts/${postId}/products`;
+        ? `${window.location.origin}/api/posts/${postId}/products?user_id=${userId}&band_key=${bandKey}`
+        : `${window.location.origin}/api/posts/${postId}/products?user_id=${userId}`;
       
       const response = await fetch(url);
       const result = await response.json();
@@ -747,6 +752,8 @@ export default function OrdersPage() {
           [cacheKey]: result.data
         }));
         return result.data;
+      } else {
+        console.error('상품 목록 조회 실패:', result.error);
       }
     } catch (error) {
       console.error('상품 목록 조회 실패:', error);
@@ -770,10 +777,10 @@ export default function OrdersPage() {
     console.log('Edit start - order:', order);
     console.log('Using postKey:', postKey, 'bandKey:', bandKey);
     
-    if (postKey && bandKey) {
-      await fetchProductsForPost(postKey, bandKey);
+    if (postKey && bandKey && userData?.userId) {
+      await fetchProductsForPost(postKey, bandKey, userData.userId);
     } else {
-      console.error('post_key 또는 band_key가 없습니다:', order);
+      console.error('post_key, band_key 또는 userId가 없습니다:', { postKey, bandKey, userId: userData?.userId });
     }
   };
 
@@ -1100,7 +1107,6 @@ export default function OrdersPage() {
     if (userData?.userId) {
       mutateProducts(); // 페이지 진입 시 상품 데이터 새로고침
       mutateOrders(undefined, { revalidate: true }); // 페이지 진입 시 주문 데이터도 새로고침
-      console.log('Orders 페이지 진입: 상품 및 주문 데이터 새로고침');
     }
   }, [userData?.userId, mutateProducts, mutateOrders]);
 
