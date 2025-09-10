@@ -479,18 +479,18 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                       onChange={(e) => setEditPickupTime(e.target.value)}
                       className="bg-transparent border-none outline-none text-blue-700 font-medium text-sm"
                     >
-                      {Array.from({ length: 24 }, (_, hour) => 
-                        Array.from({ length: 60/15 }, (_, quarterIndex) => {
-                          const minute = quarterIndex * 15;
+                      {Array.from({ length: 14 }, (_, index) => {
+                        const hour = 7 + index; // 7시부터 20시까지
+                        return Array.from({ length: 2 }, (_, halfIndex) => {
+                          const minute = halfIndex * 30;
                           const timeValue = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-                          const displayValue = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
                           return (
                             <option key={timeValue} value={timeValue}>
-                              {displayValue}
+                              {timeValue}
                             </option>
                           );
-                        })
-                      ).flat()}
+                        });
+                      }).flat()}
                     </select>
                     <div className="flex gap-1">
                       <button
