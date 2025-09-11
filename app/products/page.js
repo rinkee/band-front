@@ -1972,11 +1972,18 @@ export default function ProductsPage() {
                               </div>
                             )}
                             
-                            {/* 바코드 추천 드롭다운 */}
+                            {/* 바코드 추천 드롭다운 - 우측에 표시 */}
                             {focusedProductId === product.product_id && 
                              barcodeSuggestions[product.product_id]?.length > 0 && (
-                              <div className="barcode-suggestions-dropdown absolute z-50 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
-                                   style={{ minWidth: '320px', width: 'max-content', maxWidth: '400px' }}>
+                              <div className="barcode-suggestions-dropdown absolute z-50 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
+                                   style={{ 
+                                     minWidth: '320px', 
+                                     width: 'max-content', 
+                                     maxWidth: '400px',
+                                     left: '100%',
+                                     marginLeft: '8px',
+                                     top: '0'
+                                   }}>
                                 {loadingSuggestions[product.product_id] ? (
                                   <div className="p-2 text-center">
                                     <LoadingSpinner className="h-4 w-4 mx-auto" />
