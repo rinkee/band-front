@@ -637,8 +637,6 @@ export function useOrderClientMutations() {
       updateFields.completed_at = updateData.completed_at;
     if (updateData.canceled_at !== undefined)
       updateFields.canceled_at = updateData.canceled_at;
-    if (updateData.pickupTime !== undefined)
-      updateFields.pickup_time = updateData.pickupTime;
 
     const { data, error } = await supabase
       .from("orders")
@@ -757,6 +755,7 @@ export function useOrderClientMutations() {
     if (newStatus === "수령완료") {
       updateFields.completed_at = nowISO;
       updateFields.canceled_at = null;
+      updateFields.sub_status = null;  // 수령완료 시 미수령 상태 제거
     } else if (newStatus === "주문취소") {
       updateFields.canceled_at = nowISO;
       updateFields.completed_at = null;
