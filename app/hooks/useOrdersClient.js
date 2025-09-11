@@ -759,6 +759,7 @@ export function useOrderClientMutations() {
     } else if (newStatus === "주문취소") {
       updateFields.canceled_at = nowISO;
       updateFields.completed_at = null;
+      updateFields.sub_status = null;  // 주문취소 시 미수령 상태 제거
     } else if (newStatus === "주문완료") {
       updateFields.completed_at = null;
       updateFields.canceled_at = null;

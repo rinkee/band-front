@@ -1406,6 +1406,7 @@ export default function OrdersPage() {
       } else if (newStatus === "주문취소") {
         updateData.canceled_at = nowISO;
         updateData.completed_at = null;
+        updateData.sub_status = null;  // 주문취소 시 미수령 상태 제거
       } else if (newStatus === "주문완료") {
         updateData.completed_at = null;
         updateData.canceled_at = null;
