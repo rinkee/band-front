@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from '@/utils/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 
 export async function GET(request) {
   try {
@@ -14,7 +14,18 @@ export async function GET(request) {
       );
     }
     
-    const supabase = await createClient();
+    // Supabase 클라이언트 초기화
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        { error: 'Supabase 설정이 필요합니다.' },
+        { status: 500 }
+      );
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
     
     // 날짜 패턴 제거 (예: [9월11일] -> '')
     const cleanTitle = productTitle.replace(/^\[.*?\]\s*/, '').trim();
