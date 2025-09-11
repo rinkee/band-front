@@ -105,9 +105,7 @@ const fetchOrders = async (key) => {
   }
 
   // 검색 필터링 - post_key 우선 처리
-  if (filters.search && filters.search !== "undefined" && !needsPickupDateFilter) {
-    // 뷰 모드에서만 서버사이드 검색 수행
-    // 조인 모드에서는 모든 데이터를 가져온 후 클라이언트에서 필터링
+  if (filters.search && filters.search !== "undefined") {
     const searchTerm = filters.search;
 
     // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
@@ -125,10 +123,11 @@ const fetchOrders = async (key) => {
     };
 
     if (isPostKeySearch) {
-      // post_key 정확 매칭
+      // post_key 정확 매칭 - 조인 모드와 뷰 모드 모두에서 작동
       query = query.eq("post_key", searchTerm);
-    } else {
-      // 뷰 모드: 기존 방식 유지
+    } else if (!needsPickupDateFilter) {
+      // 뷰 모드에서만 일반 검색 수행 (상품명, 바코드 포함)
+      // 조인 모드에서는 클라이언트 사이드 필터링으로 처리
       try {
         const normalizedTerm = normalizeForSearch(searchTerm);
         const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
@@ -143,6 +142,7 @@ const fetchOrders = async (key) => {
         query = query.ilike("customer_name", `%${normalizedTerm}%`);
       }
     }
+    // 조인 모드에서 일반 검색어는 아래 클라이언트 사이드 필터링으로 처리됨
   }
 
   // 정확한 고객명 필터링
@@ -227,11 +227,13 @@ const fetchOrders = async (key) => {
       band_key: order.products?.band_key || order.band_key
     }));
     
-    // 조인 모드에서 상품명/바코드 검색이 필요한 경우 클라이언트에서 필터링
+    // 조인 모드에서 클라이언트 사이드 필터링
+    // 포스트키 검색은 이미 서버사이드에서 처리되므로 일반 검색어만 처리
     if (filters.search && filters.search !== "undefined") {
       const searchTerm = filters.search;
       const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
       
+      // 포스트키 검색이 아닌 경우에만 클라이언트 사이드 필터링 수행
       if (!isPostKeySearch) {
         const normalizeForSearch = (str) => {
           let normalized = str.replace(/\([^)]*\)/g, ' ');
@@ -250,7 +252,7 @@ const fetchOrders = async (key) => {
         }
         
         // 상품명이나 바코드에서 검색어가 포함된 항목만 필터링
-        console.log('Client-side filtering:', {
+        console.log('Client-side filtering (join mode):', {
           searchTerm,
           searchPatterns,
           originalDataLength: processedData.length
@@ -288,6 +290,7 @@ const fetchOrders = async (key) => {
         
         console.log('Filtered data length:', processedData.length);
       }
+      // 포스트키 검색인 경우는 이미 서버사이드에서 필터링됨
     }
   }
 
