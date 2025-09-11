@@ -100,6 +100,11 @@ const fetchOrders = async (key) => {
         .filter((s) => s);
       if (subStatusValues.length > 0) {
         query = query.in("sub_status", subStatusValues);
+        
+        // 미수령 필터가 포함되어 있으면 수령완료 상태 제외
+        if (subStatusValues.includes("미수령")) {
+          query = query.neq("status", "수령완료");
+        }
       }
     }
   }
