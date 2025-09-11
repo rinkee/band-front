@@ -625,6 +625,8 @@ export function useOrderClientMutations() {
     // 선택적 필드들
     if (updateData.subStatus !== undefined)
       updateFields.sub_status = updateData.subStatus;
+    if (updateData.sub_status !== undefined)  // sub_status 필드도 처리
+      updateFields.sub_status = updateData.sub_status;
     if (updateData.shippingInfo !== undefined)
       updateFields.shipping_info = updateData.shippingInfo;
     if (updateData.cancelReason !== undefined)
@@ -635,6 +637,8 @@ export function useOrderClientMutations() {
       updateFields.completed_at = updateData.completed_at;
     if (updateData.canceled_at !== undefined)
       updateFields.canceled_at = updateData.canceled_at;
+    if (updateData.pickupTime !== undefined)
+      updateFields.pickup_time = updateData.pickupTime;
 
     const { data, error } = await supabase
       .from("orders")

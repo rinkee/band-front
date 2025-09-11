@@ -1403,6 +1403,7 @@ export default function OrdersPage() {
         updateData.pickupTime = nowISO;
         updateData.completed_at = nowISO;
         updateData.canceled_at = null;
+        updateData.sub_status = null;  // 수령완료 시 미수령 상태 제거
       } else if (newStatus === "주문취소") {
         updateData.canceled_at = nowISO;
         updateData.pickupTime = null;
