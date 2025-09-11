@@ -1925,10 +1925,13 @@ export default function ProductsPage() {
                               value={editingBarcodes[product.product_id] ?? product.barcode ?? ''}
                               onChange={(e) => handleBarcodeChange(product.product_id, e.target.value)}
                               onFocus={() => {
-                                setFocusedProductId(product.product_id);
-                                if (!barcodeSuggestions[product.product_id]) {
-                                  fetchBarcodeSuggestions(product.product_id, product.title);
-                                }
+                                // 포커스 변경을 약간 지연시켜 이전 blur 이벤트가 완료되도록 함
+                                setTimeout(() => {
+                                  setFocusedProductId(product.product_id);
+                                  if (!barcodeSuggestions[product.product_id]) {
+                                    fetchBarcodeSuggestions(product.product_id, product.title);
+                                  }
+                                }, 50);
                               }}
                               onBlur={(e) => {
                                 // 추천 바코드 영역으로 포커스가 이동하는 경우는 무시
@@ -1936,11 +1939,18 @@ export default function ProductsPage() {
                                 const isClickingSuggestion = relatedTarget && 
                                   relatedTarget.closest('.barcode-suggestions-dropdown');
                                 
-                                if (!isClickingSuggestion) {
+                                // 다른 바코드 입력창으로 이동하는 경우 체크
+                                const isAnotherBarcodeInput = relatedTarget && 
+                                  relatedTarget.placeholder === '바코드 입력';
+                                
+                                if (!isClickingSuggestion && !isAnotherBarcodeInput) {
                                   setTimeout(() => {
                                     handleBarcodeSave(product);
                                     setFocusedProductId(null);
                                   }, 200);
+                                } else if (isAnotherBarcodeInput) {
+                                  // 다른 바코드 입력창으로 이동 시 저장만 하고 포커스는 유지
+                                  handleBarcodeSave(product);
                                 }
                               }}
                               onKeyDown={(e) => handleBarcodeKeyDown(e, product, index)}
