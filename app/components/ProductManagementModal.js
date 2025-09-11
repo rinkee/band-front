@@ -303,7 +303,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       const oldPickupDate = firstProduct?.pickup_date ? new Date(firstProduct.pickup_date) : null;
       
       // 현재 시간을 UTC로 통일 (newPickupDateTime이 UTC이므로)
-      const currentTimeUTC = new Date(Date.now());
+      const now = new Date();
+      const currentTimeUTC = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        now.getUTCSeconds()
+      ));
       
       // 새로운 수령일이 현재 시간보다 미래인지 확인 (미수령 상태 초기화 조건)
       const shouldResetUndeliveredStatus = newPickupDateTime > currentTimeUTC && 
