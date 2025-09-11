@@ -1246,8 +1246,10 @@ export default function ProductsPage() {
       ...prev,
       [productId]: suggestion.barcode
     }));
-    // 포커스 제거하여 추천 목록 숨기기
-    setFocusedProductId(null);
+    // 추천 목록은 숨기지만 포커스는 유지하지 않음 (자동 저장 방지)
+    setTimeout(() => {
+      setFocusedProductId(null);
+    }, 100);
   };
 
   // 바코드 변경 핸들러
@@ -1928,11 +1930,18 @@ export default function ProductsPage() {
                                   fetchBarcodeSuggestions(product.product_id, product.title);
                                 }
                               }}
-                              onBlur={() => {
-                                setTimeout(() => {
-                                  handleBarcodeSave(product);
-                                  setFocusedProductId(null);
-                                }, 200);
+                              onBlur={(e) => {
+                                // 추천 바코드 영역으로 포커스가 이동하는 경우는 무시
+                                const relatedTarget = e.relatedTarget;
+                                const isClickingSuggestion = relatedTarget && 
+                                  relatedTarget.closest('.barcode-suggestions-dropdown');
+                                
+                                if (!isClickingSuggestion) {
+                                  setTimeout(() => {
+                                    handleBarcodeSave(product);
+                                    setFocusedProductId(null);
+                                  }, 200);
+                                }
                               }}
                               onKeyDown={(e) => handleBarcodeKeyDown(e, product, index)}
                               onClick={(e) => e.stopPropagation()}
@@ -1956,7 +1965,7 @@ export default function ProductsPage() {
                             {/* 바코드 추천 드롭다운 */}
                             {focusedProductId === product.product_id && 
                              barcodeSuggestions[product.product_id]?.length > 0 && (
-                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                              <div className="barcode-suggestions-dropdown absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                                 {loadingSuggestions[product.product_id] ? (
                                   <div className="p-3 text-center">
                                     <LoadingSpinner className="h-4 w-4 mx-auto" />
@@ -1967,11 +1976,17 @@ export default function ProductsPage() {
                                       <button
                                         key={idx}
                                         type="button"
+                                        tabIndex={0}
                                         onMouseDown={(e) => {
                                           e.preventDefault();
+                                          e.stopPropagation();
                                           applyBarcodeSuggestion(product.product_id, suggestion);
+                                          // 적용 후 입력란으로 포커스 복귀
+                                          setTimeout(() => {
+                                            barcodeInputRefs.current[product.product_id]?.focus();
+                                          }, 10);
                                         }}
-                                        className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0"
+                                        className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
                                       >
                                         <div className="flex items-center justify-between">
                                           <div>
