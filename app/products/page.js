@@ -1975,7 +1975,8 @@ export default function ProductsPage() {
                             {/* 바코드 추천 드롭다운 */}
                             {focusedProductId === product.product_id && 
                              barcodeSuggestions[product.product_id]?.length > 0 && (
-                              <div className="barcode-suggestions-dropdown absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-72 overflow-y-auto">
+                              <div className="barcode-suggestions-dropdown absolute z-50 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-72 overflow-y-auto"
+                                   style={{ minWidth: '400px', width: 'max-content', maxWidth: '600px' }}>
                                 {loadingSuggestions[product.product_id] ? (
                                   <div className="p-3 text-center">
                                     <LoadingSpinner className="h-4 w-4 mx-auto" />
@@ -1983,8 +1984,8 @@ export default function ProductsPage() {
                                 ) : (
                                   <div>
                                     {/* 추천 바코드 레이블 */}
-                                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-                                      <span className="text-xs font-medium text-gray-600">추천 바코드</span>
+                                    <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                                      <span className="text-sm font-semibold text-gray-700">추천 바코드</span>
                                     </div>
                                     <div className="py-1">
                                       {barcodeSuggestions[product.product_id].map((suggestion, idx) => {
@@ -2014,22 +2015,22 @@ export default function ProductsPage() {
                                                 barcodeInputRefs.current[product.product_id]?.focus();
                                               }, 10);
                                             }}
-                                            className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
+                                            className="w-full px-4 py-3 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
                                           >
-                                            <div className="flex items-start gap-2">
+                                            <div className="flex items-start gap-3">
                                               <div className="flex-shrink-0">
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                                                <span className="inline-flex items-center px-2.5 py-1 rounded text-sm font-medium bg-orange-100 text-orange-800">
                                                   추천 {idx + 1}
                                                 </span>
                                               </div>
-                                              <div className="flex-1">
+                                              <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
-                                                  <span className="text-xs text-gray-500">({reason})</span>
+                                                  <span className="text-sm text-gray-600 font-medium">({reason})</span>
                                                 </div>
-                                                <div className="text-sm font-mono font-medium text-gray-900">
+                                                <div className="text-base font-mono font-semibold text-gray-900 mb-1">
                                                   {suggestion.barcode}
                                                 </div>
-                                                <div className="text-xs text-gray-500 mt-1">
+                                                <div className="text-sm text-gray-600 whitespace-nowrap">
                                                   {suggestion.clean_title} • {suggestion.price?.toLocaleString()}원
                                                 </div>
                                               </div>
