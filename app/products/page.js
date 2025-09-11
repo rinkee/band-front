@@ -638,6 +638,9 @@ export default function ProductsPage() {
   const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
   const barcodeInputRefs = useRef({}); // 바코드 입력칸 ref
   const [inputValue, setInputValue] = useState("");
+  const [barcodeSuggestions, setBarcodeSuggestions] = useState({}); // 각 상품별 바코드 추천
+  const [loadingSuggestions, setLoadingSuggestions] = useState({}); // 추천 로딩 상태
+  const [focusedProductId, setFocusedProductId] = useState(null); // 현재 포커스된 상품 ID
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -1205,6 +1208,40 @@ export default function ProductsPage() {
   // 클라이언트 사이드 mutation 함수들
   const { patchProduct, deleteProduct: deleteProductMutation } =
     useProductClientMutations();
+
+  // 바코드 추천 가져오기
+  const fetchBarcodeSuggestions = async (productId, title) => {
+    if (!title || !userId) return;
+
+    setLoadingSuggestions(prev => ({ ...prev, [productId]: true }));
+    try {
+      const response = await fetch(
+        `/api/products/barcode-suggestions?title=${encodeURIComponent(title)}&userId=${userId}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBarcodeSuggestions(prev => ({
+          ...prev,
+          [productId]: data.suggestions || []
+        }));
+      }
+    } catch (error) {
+      console.error('바코드 추천 가져오기 실패:', error);
+    } finally {
+      setLoadingSuggestions(prev => ({ ...prev, [productId]: false }));
+    }
+  };
+
+  // 바코드 추천 적용
+  const applyBarcodeSuggestion = (productId, suggestion) => {
+    setEditingBarcodes(prev => ({
+      ...prev,
+      [productId]: suggestion.barcode
+    }));
+    // 포커스 제거하여 추천 목록 숨기기
+    setFocusedProductId(null);
+  };
 
   // 바코드 변경 핸들러
   const handleBarcodeChange = (productId, value) => {
@@ -1878,7 +1915,18 @@ export default function ProductsPage() {
                               type="text"
                               value={editingBarcodes[product.product_id] ?? product.barcode ?? ''}
                               onChange={(e) => handleBarcodeChange(product.product_id, e.target.value)}
-                              onBlur={() => handleBarcodeSave(product)}
+                              onFocus={() => {
+                                setFocusedProductId(product.product_id);
+                                if (!barcodeSuggestions[product.product_id]) {
+                                  fetchBarcodeSuggestions(product.product_id, product.title);
+                                }
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  handleBarcodeSave(product);
+                                  setFocusedProductId(null);
+                                }, 200);
+                              }}
                               onKeyDown={(e) => handleBarcodeKeyDown(e, product, index)}
                               onClick={(e) => e.stopPropagation()}
                               placeholder="바코드 입력"
@@ -1895,6 +1943,48 @@ export default function ProductsPage() {
                             {savingBarcodes[product.product_id] && (
                               <div className="absolute inset-y-0 right-0 flex items-center pr-2">
                                 <LoadingSpinner className="h-4 w-4" color="text-orange-500" />
+                              </div>
+                            )}
+                            
+                            {/* 바코드 추천 드롭다운 */}
+                            {focusedProductId === product.product_id && 
+                             barcodeSuggestions[product.product_id]?.length > 0 && (
+                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                {loadingSuggestions[product.product_id] ? (
+                                  <div className="p-3 text-center">
+                                    <LoadingSpinner className="h-4 w-4 mx-auto" />
+                                  </div>
+                                ) : (
+                                  <div className="py-1">
+                                    {barcodeSuggestions[product.product_id].map((suggestion, idx) => (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          applyBarcodeSuggestion(product.product_id, suggestion);
+                                        }}
+                                        className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div>
+                                            <div className="text-sm font-medium text-gray-900">
+                                              {suggestion.barcode}
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                              {suggestion.clean_title} • {suggestion.price?.toLocaleString()}원
+                                            </div>
+                                          </div>
+                                          {suggestion.days_ago <= 7 && (
+                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                              최근
+                                            </span>
+                                          )}
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
