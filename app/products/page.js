@@ -1211,7 +1211,14 @@ export default function ProductsPage() {
 
   // 바코드 추천 가져오기
   const fetchBarcodeSuggestions = async (productId, title) => {
-    if (!title || !userId) return;
+    if (!title) return;
+    
+    // sessionStorage에서 userId 가져오기
+    const sessionData = sessionStorage.getItem("userData");
+    const userData = sessionData ? JSON.parse(sessionData) : null;
+    const userId = userData?.userId;
+    
+    if (!userId) return;
 
     setLoadingSuggestions(prev => ({ ...prev, [productId]: true }));
     try {
