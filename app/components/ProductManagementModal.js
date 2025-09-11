@@ -356,8 +356,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           })
           .eq('post_key', postKey)
           .eq('user_id', userId)
-          .eq('status', '주문완료')  // 주문완료 상태인 것만 미수령으로 변경
-          .neq('status', '수령완료'); // 이미 수령완료된 것은 제외
+          .eq('status', '주문완료');  // 주문완료 상태인 것만 미수령으로 변경
 
         if (ordersUndeliveredError) {
           console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
