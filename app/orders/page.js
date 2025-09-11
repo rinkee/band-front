@@ -1400,19 +1400,17 @@ export default function OrdersPage() {
 
       // 상태별 추가 필드 설정
       if (newStatus === "수령완료") {
-        updateData.pickupTime = nowISO;
         updateData.completed_at = nowISO;
         updateData.canceled_at = null;
+        updateData.sub_status = null;  // 수령완료 시 미수령 상태 제거
       } else if (newStatus === "주문취소") {
         updateData.canceled_at = nowISO;
-        updateData.pickupTime = null;
         updateData.completed_at = null;
+        updateData.sub_status = null;  // 주문취소 시 미수령 상태 제거
       } else if (newStatus === "주문완료") {
-        updateData.pickupTime = null;
         updateData.completed_at = null;
         updateData.canceled_at = null;
       } else if (newStatus === "확인필요") {
-        updateData.pickupTime = null;
         updateData.completed_at = null;
         updateData.canceled_at = null;
       }

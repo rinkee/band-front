@@ -232,22 +232,26 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     if (firstProduct?.pickup_date) {
       const pickupDateTime = new Date(firstProduct.pickup_date);
       
-      // UTC 시간으로 날짜 설정
-      const year = pickupDateTime.getUTCFullYear();
-      const month = String(pickupDateTime.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(pickupDateTime.getUTCDate()).padStart(2, '0');
+      // 한국 시간으로 날짜 설정 (로컬 시간대 사용)
+      const year = pickupDateTime.getFullYear();
+      const month = String(pickupDateTime.getMonth() + 1).padStart(2, '0');
+      const day = String(pickupDateTime.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
       
-      // UTC 시간으로 시간 설정
-      const hours = String(pickupDateTime.getUTCHours()).padStart(2, '0');
-      const minutes = String(pickupDateTime.getUTCMinutes()).padStart(2, '0');
+      // 한국 시간으로 시간 설정 (로컬 시간대 사용)
+      const hours = String(pickupDateTime.getHours()).padStart(2, '0');
+      const minutes = String(pickupDateTime.getMinutes()).padStart(2, '0');
       const timeStr = `${hours}:${minutes}`;
       
       setEditPickupDate(dateStr);
       setEditPickupTime(timeStr);
     } else {
-      // 기본값 설정
-      setEditPickupDate(new Date().toISOString().split('T')[0]);
+      // 기본값 설정 (오늘 날짜, 한국 시간 기준)
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      setEditPickupDate(`${year}-${month}-${day}`);
       setEditPickupTime('00:00');
     }
     setIsEditingPickupDate(true);
@@ -267,10 +271,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       return;
     }
 
-    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (시간대 문제 해결을 위해 직접 UTC로 생성)
+    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (한국 시간 기준으로 입력받아 UTC로 변환)
     const [year, month, day] = editPickupDate.split('-').map(Number);
     const [hours, minutes] = editPickupTime.split(':').map(Number);
-    const newPickupDateTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+    
+    // 한국 시간으로 Date 객체 생성
+    const koreanDateTime = new Date(year, month - 1, day, hours, minutes);
+    
+    // UTC로 변환 (getTime()은 UTC 기준 밀리초를 반환)
+    const newPickupDateTime = new Date(koreanDateTime.getTime());
     
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
@@ -302,8 +311,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       const firstProduct = products && products.length > 0 ? products[0] : null;
       const oldPickupDate = firstProduct?.pickup_date ? new Date(firstProduct.pickup_date) : null;
       
-      // 현재 시간을 UTC로 통일 (newPickupDateTime이 UTC이므로)
-      const currentTimeUTC = new Date(Date.now());
+      // 현재 시간 가져오기 (Date 객체는 내부적으로 UTC 기준으로 저장됨)
+      const currentTimeUTC = new Date();
       
       // 새로운 수령일이 현재 시간보다 미래인지 확인 (미수령 상태 초기화 조건)
       const shouldResetUndeliveredStatus = newPickupDateTime > currentTimeUTC && 
@@ -356,8 +365,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           })
           .eq('post_key', postKey)
           .eq('user_id', userId)
-          .eq('status', '주문완료')  // 주문완료 상태인 것만 미수령으로 변경
-          .neq('status', '수령완료'); // 이미 수령완료된 것은 제외
+          .eq('status', '주문완료');  // 주문완료 상태인 것만 미수령으로 변경
 
         if (ordersUndeliveredError) {
           console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
@@ -371,8 +379,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         const currentTitle = post.title;
         const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
         if (dateMatch) {
-          const month = newPickupDateTime.getUTCMonth() + 1;
-          const day = newPickupDateTime.getUTCDate();
+          // 한국 시간 기준으로 날짜 표시
+          const month = newPickupDateTime.getMonth() + 1;
+          const day = newPickupDateTime.getDate();
           
           const newDateStr = `${month}월${day}일`;
           const newTitle = `[${newDateStr}]${dateMatch[1]}`;
@@ -393,8 +402,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       }
 
       // 상품 title 업데이트 (날짜 정보만 포함, 시간 제외)
-      const month = newPickupDateTime.getUTCMonth() + 1;
-      const day = newPickupDateTime.getUTCDate();
+      // 한국 시간 기준으로 날짜 표시
+      const month = newPickupDateTime.getMonth() + 1;
+      const day = newPickupDateTime.getDate();
       
       const newDateStr = `${month}월${day}일`;
 
@@ -548,18 +558,19 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                     if (firstProduct?.pickup_date) {
                       try {
                         const pickupDateTime = new Date(firstProduct.pickup_date);
-                        const month = pickupDateTime.getUTCMonth() + 1;
-                        const day = pickupDateTime.getUTCDate();
-                        const hours = pickupDateTime.getUTCHours();
-                        const minutes = pickupDateTime.getUTCMinutes();
+                        // 한국 시간으로 표시 (로컬 시간대 사용)
+                        const month = pickupDateTime.getMonth() + 1;
+                        const day = pickupDateTime.getDate();
+                        const hours = pickupDateTime.getHours();
+                        const minutes = pickupDateTime.getMinutes();
                         const days = ['일', '월', '화', '수', '목', '금', '토'];
-                        const dayName = days[pickupDateTime.getUTCDay()];
+                        const dayName = days[pickupDateTime.getDay()];
                         
                         let displayText = `${month}월${day}일 ${dayName}`;
                         
                         // 시간이 00:00이 아니면 시간 정보 추가
                         if (hours !== 0 || minutes !== 0) {
-                          const displayHour = hours > 12 ? hours - 12 : hours;
+                          const displayHour = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
                           const amPm = hours < 12 ? '오전' : '오후';
                           const timeStr = `${amPm} ${displayHour}:${minutes.toString().padStart(2, '0')}`;
                           displayText += ` ${timeStr}`;

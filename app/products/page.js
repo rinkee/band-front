@@ -638,6 +638,9 @@ export default function ProductsPage() {
   const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
   const barcodeInputRefs = useRef({}); // 바코드 입력칸 ref
   const [inputValue, setInputValue] = useState("");
+  const [barcodeSuggestions, setBarcodeSuggestions] = useState({}); // 각 상품별 바코드 추천
+  const [loadingSuggestions, setLoadingSuggestions] = useState({}); // 추천 로딩 상태
+  const [focusedProductId, setFocusedProductId] = useState(null); // 현재 포커스된 상품 ID
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -1205,6 +1208,49 @@ export default function ProductsPage() {
   // 클라이언트 사이드 mutation 함수들
   const { patchProduct, deleteProduct: deleteProductMutation } =
     useProductClientMutations();
+
+  // 바코드 추천 가져오기
+  const fetchBarcodeSuggestions = async (productId, title) => {
+    if (!title) return;
+    
+    // sessionStorage에서 userId 가져오기
+    const sessionData = sessionStorage.getItem("userData");
+    const userData = sessionData ? JSON.parse(sessionData) : null;
+    const userId = userData?.userId;
+    
+    if (!userId) return;
+
+    setLoadingSuggestions(prev => ({ ...prev, [productId]: true }));
+    try {
+      const response = await fetch(
+        `/api/products/barcode-suggestions?title=${encodeURIComponent(title)}&userId=${userId}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBarcodeSuggestions(prev => ({
+          ...prev,
+          [productId]: data.suggestions || []
+        }));
+      }
+    } catch (error) {
+      console.error('바코드 추천 가져오기 실패:', error);
+    } finally {
+      setLoadingSuggestions(prev => ({ ...prev, [productId]: false }));
+    }
+  };
+
+  // 바코드 추천 적용
+  const applyBarcodeSuggestion = (productId, suggestion) => {
+    setEditingBarcodes(prev => ({
+      ...prev,
+      [productId]: suggestion.barcode
+    }));
+    // 추천 목록은 숨기지만 포커스는 유지하지 않음 (자동 저장 방지)
+    setTimeout(() => {
+      setFocusedProductId(null);
+    }, 100);
+  };
 
   // 바코드 변경 핸들러
   const handleBarcodeChange = (productId, value) => {
@@ -1878,7 +1924,35 @@ export default function ProductsPage() {
                               type="text"
                               value={editingBarcodes[product.product_id] ?? product.barcode ?? ''}
                               onChange={(e) => handleBarcodeChange(product.product_id, e.target.value)}
-                              onBlur={() => handleBarcodeSave(product)}
+                              onFocus={() => {
+                                // 포커스 변경을 약간 지연시켜 이전 blur 이벤트가 완료되도록 함
+                                setTimeout(() => {
+                                  setFocusedProductId(product.product_id);
+                                  if (!barcodeSuggestions[product.product_id]) {
+                                    fetchBarcodeSuggestions(product.product_id, product.title);
+                                  }
+                                }, 50);
+                              }}
+                              onBlur={(e) => {
+                                // 추천 바코드 영역으로 포커스가 이동하는 경우는 무시
+                                const relatedTarget = e.relatedTarget;
+                                const isClickingSuggestion = relatedTarget && 
+                                  relatedTarget.closest('.barcode-suggestions-dropdown');
+                                
+                                // 다른 바코드 입력창으로 이동하는 경우 체크
+                                const isAnotherBarcodeInput = relatedTarget && 
+                                  relatedTarget.placeholder === '바코드 입력';
+                                
+                                if (!isClickingSuggestion && !isAnotherBarcodeInput) {
+                                  setTimeout(() => {
+                                    handleBarcodeSave(product);
+                                    setFocusedProductId(null);
+                                  }, 200);
+                                } else if (isAnotherBarcodeInput) {
+                                  // 다른 바코드 입력창으로 이동 시 저장만 하고 포커스는 유지
+                                  handleBarcodeSave(product);
+                                }
+                              }}
                               onKeyDown={(e) => handleBarcodeKeyDown(e, product, index)}
                               onClick={(e) => e.stopPropagation()}
                               placeholder="바코드 입력"
@@ -1895,6 +1969,83 @@ export default function ProductsPage() {
                             {savingBarcodes[product.product_id] && (
                               <div className="absolute inset-y-0 right-0 flex items-center pr-2">
                                 <LoadingSpinner className="h-4 w-4" color="text-orange-500" />
+                              </div>
+                            )}
+                            
+                            {/* 바코드 추천 드롭다운 - 우측에 표시 */}
+                            {focusedProductId === product.product_id && 
+                             barcodeSuggestions[product.product_id]?.length > 0 && (
+                              <div className="barcode-suggestions-dropdown absolute z-50 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
+                                   style={{ 
+                                     minWidth: '320px', 
+                                     width: 'max-content', 
+                                     maxWidth: '400px',
+                                     left: '100%',
+                                     marginLeft: '8px',
+                                     top: '0'
+                                   }}>
+                                {loadingSuggestions[product.product_id] ? (
+                                  <div className="p-2 text-center">
+                                    <LoadingSpinner className="h-4 w-4 mx-auto" />
+                                  </div>
+                                ) : (
+                                  <div>
+                                    {/* 추천 바코드 레이블 */}
+                                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200">
+                                      <span className="text-xs font-medium text-gray-600">추천 바코드</span>
+                                    </div>
+                                    <div className="py-0.5">
+                                      {barcodeSuggestions[product.product_id].map((suggestion, idx) => {
+                                        // 추천 이유 결정
+                                        let reason = "";
+                                        if (idx === 0) {
+                                          reason = "유사도 최고";
+                                        } else if (suggestion.days_ago <= 7) {
+                                          reason = "최근";
+                                        } else if (suggestion.similarity_score >= 0.8) {
+                                          reason = "높은 유사도";
+                                        } else {
+                                          reason = "유사";
+                                        }
+                                        
+                                        return (
+                                          <button
+                                            key={idx}
+                                            type="button"
+                                            tabIndex={0}
+                                            onMouseDown={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              applyBarcodeSuggestion(product.product_id, suggestion);
+                                              // 적용 후 입력란으로 포커스 복귀
+                                              setTimeout(() => {
+                                                barcodeInputRefs.current[product.product_id]?.focus();
+                                              }, 10);
+                                            }}
+                                            className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 whitespace-nowrap">
+                                                {idx + 1}
+                                              </span>
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm font-mono font-medium text-gray-900">
+                                                    {suggestion.barcode}
+                                                  </span>
+                                                  <span className="text-xs text-gray-500">({reason})</span>
+                                                </div>
+                                                <div className="text-xs text-gray-500 truncate">
+                                                  {suggestion.clean_title} • ₩{(suggestion.price || 0).toLocaleString()}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
