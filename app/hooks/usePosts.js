@@ -1,15 +1,13 @@
 // hooks/usePosts.js (또는 유사한 파일)
 import useSWR, { useSWRConfig } from "swr";
-// import { axiosFetcher, api } from "../lib/fetcher"; // 제거
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트
-import { supabaseFunctionFetcher } from "../lib/fetcher";
 
 // 환경 변수
 const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
- * 게시물 목록을 가져오는 훅 (Supabase Function 용)
+ * 게시물 목록을 가져오는 훅 (Supabase 직접 쿼리)
  * @param {string | null | undefined} bandNumber - 밴드 ID (필수)
  * @param {number} page - 페이지 번호
  * @param {Object} filters - 필터링 옵션 (status, search, startDate, endDate 등)
@@ -17,35 +15,88 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
  * @returns {Object} SWR 응답 { data: { data: Post[], pagination: {...} }, error, isLoading, mutate }
  */
 export function usePosts(bandNumber, page = 1, filters = {}, options = {}) {
-  // SWR 키 생성 함수
-  const getKey = () => {
-    if (!bandNumber) {
-      console.warn("usePosts: bandNumber is required.");
-      return null; // bandNumber 없으면 요청 안 함
+  // Supabase 직접 쿼리를 사용하는 fetcher 함수
+  const fetcher = async () => {
+    const limit = 20;
+    const startIndex = (page - 1) * limit;
+
+    let query = supabase
+      .from("posts")
+      .select(`
+        post_id,
+        band_number,
+        band_post_url,
+        author_name,
+        title,
+        content,
+        posted_at,
+        updated_at,
+        comment_count,
+        view_count,
+        like_count,
+        is_product,
+        status,
+        post_number,
+        multiple_products,
+        image_urls,
+        created_at,
+        band_key,
+        post_key
+      `, { count: "exact" })
+      .eq("band_number", bandNumber)
+      .range(startIndex, startIndex + limit - 1)
+      .order("posted_at", { ascending: false });
+
+    // 필터 적용
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
+    if (filters.search) {
+      query = query.ilike("title", `%${filters.search}%`);
+    }
+    if (filters.startDate && filters.endDate) {
+      query = query
+        .gte("posted_at", filters.startDate)
+        .lte("posted_at", filters.endDate);
+    }
+    if (filters.is_product !== undefined) {
+      query = query.eq("is_product", filters.is_product);
     }
 
-    const params = new URLSearchParams();
-    params.append("bandNumber", bandNumber); // <<<--- bandNumber 쿼리 파라미터 추가
-    params.append("page", page.toString());
+    const { data, error, count } = await query;
 
-    // filters 객체의 키-값을 파라미터로 추가
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== "") {
-        // 배열 값 처리 (필요 시)
-        if (Array.isArray(value)) {
-          if (value.length > 0) params.append(key, value.join(","));
-        } else {
-          params.append(key, value.toString());
-        }
+    if (error) {
+      console.error("Error fetching posts:", error);
+      throw error;
+    }
+
+    return {
+      success: true,
+      data: data || [],
+      pagination: {
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+        currentPage: page,
+        limit
       }
-    });
-
-    // 최종 함수 URL 생성
-    return `${functionsBaseUrl}/posts-get-all?${params.toString()}`;
+    };
   };
 
-  // useSWR 훅 호출
-  return useSWR(getKey, supabaseFunctionFetcher, options);
+  // 기본 SWR 옵션과 사용자 정의 옵션 병합
+  const swrOptions = {
+    revalidateIfStale: false,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 5000,
+    ...options,
+  };
+
+  // useSWR 훅 호출 - 키를 배열로 변경하여 더 나은 캐시 관리
+  return useSWR(
+    bandNumber ? ["posts", bandNumber, page, filters] : null,
+    fetcher,
+    swrOptions
+  );
 }
 
 /**

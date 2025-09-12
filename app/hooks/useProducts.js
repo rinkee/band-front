@@ -1,45 +1,75 @@
 // hooks/useProducts.js (또는 유사한 파일)
 import useSWR, { useSWRConfig } from "swr";
-// import { axiosFetcher, api } from "../lib/fetcher"; // 제거
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트
-import { supabaseFunctionFetcher } from "../lib/fetcher";
 
 // 환경 변수
 const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
- * 상품 목록을 가져오는 훅 (Supabase Function 용)
- * @param {string | null | undefined} userId - 사용자 ID (JWT 제거 시 필수)
+ * 상품 목록을 가져오는 훅 (Supabase 직접 쿼리)
+ * @param {string | null | undefined} userId - 사용자 ID
  * @param {number} page - 페이지 번호
  * @param {Object} filters - 필터링 옵션 (status, search 등)
  * @param {Object} options - SWR 옵션
  * @returns {Object} SWR 응답 { data: { data: Product[], pagination: {...} }, error, isLoading, mutate }
  */
 export function useProducts(userId, page = 1, filters = {}, options = {}) {
-  // SWR 키 생성 함수
-  const getKey = () => {
-    if (!userId) {
-      return null;
+  // Supabase 직접 쿼리를 사용하는 fetcher 함수
+  const fetcher = async () => {
+    const limit = 20;
+    const startIndex = (page - 1) * limit;
+
+    let query = supabase
+      .from("products")
+      .select(`
+        product_id,
+        title,
+        base_price,
+        quantity,
+        category,
+        status,
+        barcode,
+        created_at,
+        updated_at,
+        stock_quantity,
+        quantity_text,
+        posted_at,
+        user_id,
+        post_id
+      `, { count: "exact" })
+      .eq("user_id", userId)
+      .range(startIndex, startIndex + limit - 1)
+      .order("posted_at", { ascending: false });
+
+    // 필터 적용
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
+    if (filters.search) {
+      query = query.or(`title.ilike.%${filters.search}%,barcode.ilike.%${filters.search}%`);
+    }
+    if (filters.category) {
+      query = query.eq("category", filters.category);
     }
 
-    const params = new URLSearchParams();
-    params.append("userId", userId); // <<<--- userId 쿼리 파라미터 추가
-    params.append("page", page.toString());
+    const { data, error, count } = await query;
 
-    // filters 객체의 키-값을 파라미터로 추가
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== "") {
-        if (Array.isArray(value)) {
-          if (value.length > 0) params.append(key, value.join(","));
-        } else {
-          params.append(key, value.toString());
-        }
+    if (error) {
+      console.error("Error fetching products:", error);
+      throw error;
+    }
+
+    return {
+      success: true,
+      data: data || [],
+      pagination: {
+        totalItems: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+        currentPage: page,
+        limit
       }
-    });
-
-    // 최종 함수 URL 생성 (Edge Function 이름 확인!)
-    return `${functionsBaseUrl}/products-get-all?${params.toString()}`;
+    };
   };
 
   // 기본 SWR 옵션과 사용자 정의 옵션 병합
@@ -51,8 +81,12 @@ export function useProducts(userId, page = 1, filters = {}, options = {}) {
     ...options,
   };
 
-  // useSWR 훅 호출
-  return useSWR(getKey, supabaseFunctionFetcher, swrOptions);
+  // useSWR 훅 호출 - 키를 배열로 변경하여 더 나은 캐시 관리
+  return useSWR(
+    userId ? ["products", userId, page, filters] : null,
+    fetcher,
+    swrOptions
+  );
 }
 
 /**
