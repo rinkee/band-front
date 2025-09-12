@@ -1196,8 +1196,26 @@ export default function OrdersPage() {
     if (hrs < 24) return `${hrs}시간 전`;
     return `${Math.floor(mins / 1440)}일 전`;
   };
-  const getProductNameById = (id) =>
-    products.find((p) => p.product_id === id)?.title || "상품명 없음";
+  const getProductNameById = (id) => {
+    // products 배열에서 product_id로 찾기
+    const product = products.find((p) => p.product_id === id);
+    if (product?.title) {
+      return product.title;
+    }
+    
+    // orders 데이터에서 product_name 필드 사용 (폴백)
+    const order = orders.find((o) => o.product_id === id);
+    if (order?.product_name && order.product_name !== "상품명 없음") {
+      return order.product_name;
+    }
+    
+    // product_title 필드도 확인 (orders_with_products 뷰에서)
+    if (order?.product_title) {
+      return order.product_title;
+    }
+    
+    return "상품명 없음";
+  };
 
   // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
   const parseProductName = (productName) => {
