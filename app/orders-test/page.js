@@ -1765,6 +1765,13 @@ export default function OrdersPage() {
     
     // product의 content 필드에 게시물 내용이 저장되어 있음
     const postContent = product?.content || product?.description || "";
+    
+    // 디버깅용 로그
+    console.log("Opening comments for order:", order.order_id);
+    console.log("Product ID:", order.product_id);
+    console.log("Found product:", product);
+    console.log("Product content:", product?.content);
+    console.log("Final postContent:", postContent);
 
     setSelectedPostForComments({
       postKey,
