@@ -25,6 +25,7 @@ export function useProducts(userId, page = 1, filters = {}, options = {}) {
       .select(`
         product_id,
         title,
+        content,
         base_price,
         quantity,
         category,
