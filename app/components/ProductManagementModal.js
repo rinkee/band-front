@@ -290,11 +290,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     const [year, month, day] = editPickupDate.split('-').map(Number);
     const [hours, minutes] = editPickupTime.split(':').map(Number);
     
-    console.log('수령일 저장 - 입력값:', {
-      editPickupDate,
-      editPickupTime,
-      year, month, day, hours, minutes
-    });
     
     // 한국 시간으로 Date 객체 생성
     const newPickupDateTime = new Date(year, month - 1, day, hours, minutes);
@@ -304,8 +299,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     const adjustedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
     const kstDateString = adjustedDate.toISOString();
     
-    console.log('수령일 저장 - 입력한 한국 시간:', `${year}-${month}-${day} ${hours}:${minutes}`);
-    console.log('수령일 저장 - DB에 저장될 값:', kstDateString);
     
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
@@ -396,9 +389,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       } else if (newPickupDateTime <= currentTime) {
         // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
-        console.log('수령일이 과거로 설정되어 해당 주문들을 미수령으로 처리합니다.');
-        console.log('수령일:', newPickupDateTime);
-        console.log('현재시간:', currentTime);
+        // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
         
         const { error: ordersUndeliveredError } = await supabase
           .from('orders')

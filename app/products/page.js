@@ -641,6 +641,7 @@ export default function ProductsPage() {
   const [barcodeSuggestions, setBarcodeSuggestions] = useState({}); // 각 상품별 바코드 추천
   const [loadingSuggestions, setLoadingSuggestions] = useState({}); // 추천 로딩 상태
   const [focusedProductId, setFocusedProductId] = useState(null); // 현재 포커스된 상품 ID
+  const [barcodeIndex, setBarcodeIndex] = useState(null); // 전체 바코드 인덱스 (빠른 검색용)
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -791,6 +792,15 @@ export default function ProductsPage() {
     };
     checkAuth();
   }, [router, handleLogout]);
+
+  // 바코드 인덱스 구축 useEffect
+  useEffect(() => {
+    if (products && products.length > 0) {
+      const index = buildBarcodeIndex(products);
+      setBarcodeIndex(index);
+      console.log('바코드 인덱스 구축 완료:', index.size, '개 바코드');
+    }
+  }, [products]);
 
   // 상품 목록 상태 업데이트 useEffect
   useEffect(() => {
@@ -1209,6 +1219,225 @@ export default function ProductsPage() {
   const { patchProduct, deleteProduct: deleteProductMutation } =
     useProductClientMutations();
 
+  // 문자열 유사도 계산 함수 (클라이언트 사이드)
+  const calculateSimilarity = (str1, str2) => {
+    if (!str1 || !str2) return 0;
+    
+    // 소문자로 변환하고 공백으로 분리
+    const words1 = str1.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    const words2 = str2.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    
+    if (words1.length === 0 || words2.length === 0) return 0;
+    
+    // 중요한 단위 차이 체크 (반박스 vs 1박스)
+    const hasHalfBox1 = str1.includes('반박스');
+    const hasHalfBox2 = str2.includes('반박스');
+    const hasFullBox1 = str1.includes('1박스') || (str1.includes('박스') && !str1.includes('반박스'));
+    const hasFullBox2 = str2.includes('1박스') || (str2.includes('박스') && !str2.includes('반박스'));
+    
+    // 반박스와 1박스가 다른 경우 유사도 크게 감소
+    if ((hasHalfBox1 && hasFullBox2) || (hasFullBox1 && hasHalfBox2)) {
+      return 0.2; // 매우 낮은 유사도
+    }
+    
+    // 공통 단어 찾기
+    let matchCount = 0;
+    const used = new Set();
+    
+    for (const word1 of words1) {
+      for (let i = 0; i < words2.length; i++) {
+        if (!used.has(i)) {
+          const word2 = words2[i];
+          
+          // 완전 일치 또는 부분 일치 체크
+          if (word1 === word2) {
+            matchCount += 1.0;
+            used.add(i);
+            break;
+          } else if (word1.includes(word2) || word2.includes(word1)) {
+            // 부분 일치는 낮은 점수
+            matchCount += 0.5;
+            used.add(i);
+            break;
+          }
+        }
+      }
+    }
+    
+    // 유사도 점수 계산 (0~1 범위)
+    const maxWords = Math.max(words1.length, words2.length);
+    let similarity = matchCount / maxWords;
+    
+    // 시작 부분이 같으면 보너스 점수
+    if (words1[0] === words2[0]) {
+      similarity = Math.min(1.0, similarity + 0.1);
+    }
+    
+    // 핵심 키워드 가중치 (숫자나 단위는 낮은 가중치)
+    const isNumberOrUnit = (word) => /^\d+$|^[\d.]+kg$|^[\d.]+g$|박스$|개$|통$|수$/i.test(word);
+    
+    // 핵심 단어(숫자/단위가 아닌 것)의 일치율 계산
+    const coreWords1 = words1.filter(w => !isNumberOrUnit(w));
+    const coreWords2 = words2.filter(w => !isNumberOrUnit(w));
+    
+    if (coreWords1.length > 0 && coreWords2.length > 0) {
+      let coreMatchCount = 0;
+      for (const word1 of coreWords1) {
+        if (coreWords2.some(word2 => word1 === word2)) {
+          coreMatchCount++;
+        }
+      }
+      const coreSimilarity = coreMatchCount / Math.max(coreWords1.length, coreWords2.length);
+      
+      // 핵심 단어 유사도를 더 높은 가중치로 반영
+      similarity = similarity * 0.4 + coreSimilarity * 0.6;
+    }
+    
+    return Math.min(1.0, similarity);
+  };
+
+  // 바코드 인덱스 구축 함수
+  const buildBarcodeIndex = (productsList) => {
+    const index = new Map();
+    
+    productsList.forEach(product => {
+      // 기본 바코드 처리
+      if (product.barcode && product.barcode.trim() !== '') {
+        const key = product.barcode;
+        if (!index.has(key)) {
+          index.set(key, {
+            barcode: product.barcode,
+            products: []
+          });
+        }
+        index.get(key).products.push({
+          product_id: product.product_id,
+          title: product.title,
+          clean_title: product.title.replace(/^\[.*?\]\s*/, '').trim(),
+          price: product.base_price || 0,
+          date: product.created_at
+        });
+      }
+      
+      // barcode_options 처리
+      if (product.barcode_options?.options?.length > 0) {
+        product.barcode_options.options.forEach(option => {
+          if (option.barcode && option.barcode.trim() !== '') {
+            const key = option.barcode;
+            if (!index.has(key)) {
+              index.set(key, {
+                barcode: option.barcode,
+                products: []
+              });
+            }
+            index.get(key).products.push({
+              product_id: product.product_id,
+              title: product.title,
+              clean_title: product.title.replace(/^\[.*?\]\s*/, '').trim(),
+              price: option.price || product.base_price || 0,
+              option_name: option.name,
+              date: product.created_at
+            });
+          }
+        });
+      }
+    });
+    
+    return index;
+  };
+
+  // 즉시 바코드 추천 가져오기 (메모리에서)
+  const getInstantSuggestions = (productTitle, currentProductId, index) => {
+    if (!productTitle || !index) return [];
+    
+    // 날짜 패턴 제거
+    const cleanTitle = productTitle.replace(/^\[.*?\]\s*/, '').trim();
+    if (!cleanTitle) return [];
+    
+    const suggestions = [];
+    const now = new Date();
+    
+    // 인덱스에서 검색
+    index.forEach((item, barcodeKey) => {
+      // 현재 상품은 제외
+      const filteredProducts = item.products.filter(p => p.product_id !== currentProductId);
+      if (filteredProducts.length === 0) return;
+      
+      // 모든 상품에 대해 유사도 계산하고 가장 높은 것 선택
+      let bestSimilarity = 0;
+      let bestProduct = null;
+      
+      for (const product of filteredProducts) {
+        const similarity = calculateSimilarity(cleanTitle, product.clean_title);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          bestProduct = product;
+        }
+      }
+      
+      // 유사도가 너무 낮으면 제외 (0.3 이상만)
+      if (bestSimilarity < 0.3 || !bestProduct) return;
+      
+      const lastUsedDate = new Date(bestProduct.date);
+      const daysAgo = Math.floor((now - lastUsedDate) / (1000 * 60 * 60 * 24));
+      
+      suggestions.push({
+        barcode: item.barcode,
+        product_title: bestProduct.title,
+        clean_title: bestProduct.clean_title,
+        option_name: bestProduct.option_name,
+        price: bestProduct.price,
+        last_used: lastUsedDate.toISOString().split('T')[0],
+        days_ago: daysAgo,
+        used_count: filteredProducts.length,
+        similarity_score: bestSimilarity,
+        // 가격 범위 (여러 번 사용된 경우)
+        price_range: filteredProducts.length > 1 ? {
+          min: Math.min(...filteredProducts.map(p => p.price)),
+          max: Math.max(...filteredProducts.map(p => p.price))
+        } : null,
+        // 최근 3개 사용 이력
+        recent_uses: filteredProducts.slice(0, 3).map(p => ({
+          title: p.title,
+          price: p.price,
+          date: new Date(p.date).toISOString().split('T')[0]
+        }))
+      });
+    });
+    
+    // 정렬: 1) 유사도 (0.6 이상) 2) 최근 사용 3) 사용 빈도
+    suggestions.sort((a, b) => {
+      // 유사도 기반 정렬 (0.6 이상이면 유사한 것으로 간주)
+      const aSimilar = a.similarity_score >= 0.6 ? a.similarity_score : 0;
+      const bSimilar = b.similarity_score >= 0.6 ? b.similarity_score : 0;
+      
+      // 유사도가 둘 다 0.6 이상이면 유사도 순으로
+      if (aSimilar > 0 && bSimilar > 0) {
+        if (Math.abs(aSimilar - bSimilar) > 0.1) {
+          return bSimilar - aSimilar;
+        }
+      } else if (aSimilar !== bSimilar) {
+        return bSimilar - aSimilar;
+      }
+      
+      // 최근 사용 우선 (7일 이내)
+      const aRecent = a.days_ago <= 7 ? 1 : 0;
+      const bRecent = b.days_ago <= 7 ? 1 : 0;
+      if (aRecent !== bRecent) return bRecent - aRecent;
+      
+      // 사용 빈도
+      if (a.used_count !== b.used_count) {
+        return b.used_count - a.used_count;
+      }
+      
+      // 날짜순
+      return a.days_ago - b.days_ago;
+    });
+    
+    // 상위 5개만 반환
+    return suggestions.slice(0, 5);
+  };
+
   // 바코드 추천 가져오기
   const fetchBarcodeSuggestions = async (productId, title) => {
     if (!title) return;
@@ -1223,7 +1452,7 @@ export default function ProductsPage() {
     setLoadingSuggestions(prev => ({ ...prev, [productId]: true }));
     try {
       const response = await fetch(
-        `/api/products/barcode-suggestions?title=${encodeURIComponent(title)}&userId=${userId}`
+        `/api/products/barcode-suggestions?title=${encodeURIComponent(title)}&userId=${userId}&excludeProductId=${productId}`
       );
       
       if (response.ok) {
@@ -1925,13 +2154,35 @@ export default function ProductsPage() {
                               value={editingBarcodes[product.product_id] ?? product.barcode ?? ''}
                               onChange={(e) => handleBarcodeChange(product.product_id, e.target.value)}
                               onFocus={() => {
-                                // 포커스 변경을 약간 지연시켜 이전 blur 이벤트가 완료되도록 함
-                                setTimeout(() => {
-                                  setFocusedProductId(product.product_id);
-                                  if (!barcodeSuggestions[product.product_id]) {
-                                    fetchBarcodeSuggestions(product.product_id, product.title);
-                                  }
-                                }, 50);
+                                // 즉시 포커스 설정 (지연 제거)
+                                setFocusedProductId(product.product_id);
+                                
+                                // 현재 상품에 이미 바코드가 있으면 추천하지 않음
+                                const currentBarcode = editingBarcodes[product.product_id] ?? product.barcode;
+                                if (currentBarcode && currentBarcode.trim() !== '') {
+                                  // 이미 바코드가 있으면 추천 목록 비우기
+                                  setBarcodeSuggestions(prev => ({
+                                    ...prev,
+                                    [product.product_id]: []
+                                  }));
+                                  return;
+                                }
+                                
+                                // 바코드 인덱스가 있으면 메모리에서 즉시 추천 가져오기
+                                if (barcodeIndex && !barcodeSuggestions[product.product_id]) {
+                                  const suggestions = getInstantSuggestions(
+                                    product.title,
+                                    product.product_id,
+                                    barcodeIndex
+                                  );
+                                  setBarcodeSuggestions(prev => ({
+                                    ...prev,
+                                    [product.product_id]: suggestions
+                                  }));
+                                } else if (!barcodeIndex && !barcodeSuggestions[product.product_id]) {
+                                  // 인덱스가 없는 경우만 API 호출 (폴백)
+                                  fetchBarcodeSuggestions(product.product_id, product.title);
+                                }
                               }}
                               onBlur={(e) => {
                                 // 추천 바코드 영역으로 포커스가 이동하는 경우는 무시
@@ -1996,18 +2247,6 @@ export default function ProductsPage() {
                                     </div>
                                     <div className="py-0.5">
                                       {barcodeSuggestions[product.product_id].map((suggestion, idx) => {
-                                        // 추천 이유 결정
-                                        let reason = "";
-                                        if (idx === 0) {
-                                          reason = "유사도 최고";
-                                        } else if (suggestion.days_ago <= 7) {
-                                          reason = "최근";
-                                        } else if (suggestion.similarity_score >= 0.8) {
-                                          reason = "높은 유사도";
-                                        } else {
-                                          reason = "유사";
-                                        }
-                                        
                                         return (
                                           <button
                                             key={idx}
@@ -2022,21 +2261,24 @@ export default function ProductsPage() {
                                                 barcodeInputRefs.current[product.product_id]?.focus();
                                               }, 10);
                                             }}
-                                            className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
+                                            className="w-full px-3 py-2.5 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
                                           >
                                             <div className="flex items-center gap-2">
                                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 whitespace-nowrap">
                                                 {idx + 1}
                                               </span>
                                               <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-sm font-mono font-medium text-gray-900">
+                                                {/* 상품명을 크고 진하게 상단에 배치 */}
+                                                <div className="text-sm font-semibold text-gray-900 mb-0.5">
+                                                  {suggestion.clean_title}
+                                                </div>
+                                                {/* 바코드와 가격 정보를 아래에 작게 */}
+                                                <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                  <span className="font-mono">
                                                     {suggestion.barcode}
                                                   </span>
-                                                  <span className="text-xs text-gray-500">({reason})</span>
-                                                </div>
-                                                <div className="text-xs text-gray-500 truncate">
-                                                  {suggestion.clean_title} • ₩{(suggestion.price || 0).toLocaleString()}
+                                                  <span className="text-gray-400">•</span>
+                                                  <span>₩{(suggestion.price || 0).toLocaleString()}</span>
                                                 </div>
                                               </div>
                                             </div>
