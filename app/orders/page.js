@@ -2406,7 +2406,8 @@ export default function OrdersPage() {
                                       >
                                         [{(() => {
                                           const date = new Date(pickupDate);
-                                          return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+                                          // 로컬 시간대(한국)로 표시
+                                          return `${date.getMonth() + 1}월${date.getDate()}일`;
                                         })()}]
                                         {isAvailable && (
                                           <span className="ml-1 text-gray-500">
