@@ -2380,8 +2380,10 @@ export default function OrdersPage() {
                                 );
                                 const { name } =
                                   parseProductName(productName);
-                                // product_pickup_date 필드에서 수령일 가져오기
-                                const pickupDate = order.product_pickup_date;
+                                // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
+                                // 없으면 products 테이블의 pickup_date 사용
+                                const product = getProductById(order.product_id);
+                                const pickupDate = order.product_pickup_date || product?.pickup_date;
                                 const isAvailable =
                                   isClient && pickupDate
                                     ? isPickupAvailable(pickupDate)
@@ -2877,8 +2879,10 @@ export default function OrdersPage() {
                       selectedOrder.product_id
                     );
                     const { name } = parseProductName(productName);
-                    // product_pickup_date 필드에서 수령일 가져오기
-                    const pickupDate = selectedOrder.product_pickup_date;
+                    // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
+                    // 없으면 products 테이블의 pickup_date 사용
+                    const product = getProductById(selectedOrder.product_id);
+                    const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
                     const isAvailable =
                       isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
@@ -3146,8 +3150,10 @@ export default function OrdersPage() {
                             );
                             const { name } =
                               parseProductName(productName);
-                            // product_pickup_date 필드에서 수령일 가져오기
-                            const pickupDate = selectedOrder.product_pickup_date;
+                            // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
+                            // 없으면 products 테이블의 pickup_date 사용
+                            const product = getProductById(selectedOrder.product_id);
+                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
                             const isAvailable =
                               isClient && pickupDate
                                 ? isPickupAvailable(pickupDate)
@@ -3211,8 +3217,13 @@ export default function OrdersPage() {
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
-                          // DB에서 직접 가져온 product_pickup_date 사용
-                          value: selectedOrder.product_pickup_date ? formatDate(selectedOrder.product_pickup_date) : "-",
+                          // DB에서 직접 가져온 product_pickup_date 사용 (orders 테이블)
+                          // 없으면 products 테이블의 pickup_date 사용
+                          value: (() => {
+                            const product = getProductById(selectedOrder.product_id);
+                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                            return pickupDate ? formatDate(pickupDate) : "-";
+                          })(),
                           readOnly: true,
                         },
                         {
