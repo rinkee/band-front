@@ -72,6 +72,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const productTitle = searchParams.get('title');
     const userId = searchParams.get('userId');
+    const excludeProductId = searchParams.get('excludeProductId');
     
     if (!productTitle || !userId) {
       return NextResponse.json(
@@ -101,7 +102,7 @@ export async function GET(request) {
     }
     
     // 비슷한 상품명으로 바코드 검색
-    const { data: products, error } = await supabase
+    let query = supabase
       .from('products')
       .select(`
         product_id,
@@ -117,6 +118,13 @@ export async function GET(request) {
       .ilike('title', `%${cleanTitle}%`)
       .order('created_at', { ascending: false })
       .limit(50);
+    
+    // 현재 편집 중인 상품은 제외
+    if (excludeProductId) {
+      query = query.neq('product_id', excludeProductId);
+    }
+    
+    const { data: products, error } = await query;
     
     if (error) {
       console.error('바코드 추천 조회 오류:', error);

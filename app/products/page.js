@@ -1223,7 +1223,7 @@ export default function ProductsPage() {
     setLoadingSuggestions(prev => ({ ...prev, [productId]: true }));
     try {
       const response = await fetch(
-        `/api/products/barcode-suggestions?title=${encodeURIComponent(title)}&userId=${userId}`
+        `/api/products/barcode-suggestions?title=${encodeURIComponent(title)}&userId=${userId}&excludeProductId=${productId}`
       );
       
       if (response.ok) {
