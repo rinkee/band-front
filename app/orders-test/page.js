@@ -1282,8 +1282,21 @@ export default function OrdersPage() {
     // 오늘 날짜 이전이거나 당일이면 수령 가능
     return pickupDate <= today;
   };
-  const getProductBarcode = (id) =>
-    products.find((p) => p.product_id === id)?.barcode || "";
+  const getProductBarcode = (id) => {
+    // products 배열에서 product_id로 찾기
+    const product = products.find((p) => p.product_id === id);
+    if (product?.barcode) {
+      return product.barcode;
+    }
+    
+    // orders 데이터에서 product_barcode 필드 사용 (폴백)
+    const order = orders.find((o) => o.product_id === id);
+    if (order?.product_barcode) {
+      return order.product_barcode;
+    }
+    
+    return "";
+  };
   const getProductById = (id) =>
     products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
