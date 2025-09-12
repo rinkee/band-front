@@ -36,8 +36,7 @@ export function useProducts(userId, page = 1, filters = {}, options = {}) {
         quantity_text,
         posted_at,
         user_id,
-        post_id,
-        multiple_products
+        post_id
       `, { count: "exact" })
       .eq("user_id", userId)
       .range(startIndex, startIndex + limit - 1)
