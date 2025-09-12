@@ -1352,7 +1352,14 @@ export default function OrdersPage() {
     if (!pickupDate || isNaN(pickupDate.getTime())) return false;
 
     const today = new Date();
-    // 현재 한국 시간 기준으로 비교
+    
+    // 디버깅용 로그
+    console.log('수령 가능 체크:', {
+      pickupDateInput: dateInput,
+      pickupDate: pickupDate.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      currentTime: today.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      isAvailable: pickupDate <= today
+    });
     
     // 수령일이 현재 시간 이전이면 수령 가능
     return pickupDate <= today;

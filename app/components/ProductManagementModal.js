@@ -335,7 +335,22 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 기존 pickup_date 가져오기 (미수령 상태 초기화를 위해)
       const firstProduct = products && products.length > 0 ? products[0] : null;
-      const oldPickupDate = firstProduct?.pickup_date ? new Date(firstProduct.pickup_date + '+09:00') : null;
+      let oldPickupDate = null;
+      if (firstProduct?.pickup_date) {
+        if (firstProduct.pickup_date.includes('T')) {
+          // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
+          const tempDate = new Date(firstProduct.pickup_date);
+          oldPickupDate = new Date(
+            tempDate.getUTCFullYear(),
+            tempDate.getUTCMonth(),
+            tempDate.getUTCDate(),
+            tempDate.getUTCHours(),
+            tempDate.getUTCMinutes()
+          );
+        } else {
+          oldPickupDate = new Date(firstProduct.pickup_date);
+        }
+      }
       
       // 현재 한국 시간 가져오기
       const currentTime = new Date();
@@ -382,6 +397,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       } else if (newPickupDateTime <= currentTime) {
         // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
         console.log('수령일이 과거로 설정되어 해당 주문들을 미수령으로 처리합니다.');
+        console.log('수령일:', newPickupDateTime);
+        console.log('현재시간:', currentTime);
         
         const { error: ordersUndeliveredError } = await supabase
           .from('orders')
