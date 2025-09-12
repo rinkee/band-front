@@ -2217,18 +2217,6 @@ export default function ProductsPage() {
                                     </div>
                                     <div className="py-0.5">
                                       {barcodeSuggestions[product.product_id].map((suggestion, idx) => {
-                                        // 추천 이유 결정
-                                        let reason = "";
-                                        if (idx === 0) {
-                                          reason = "유사도 최고";
-                                        } else if (suggestion.days_ago <= 7) {
-                                          reason = "최근";
-                                        } else if (suggestion.similarity_score >= 0.8) {
-                                          reason = "높은 유사도";
-                                        } else {
-                                          reason = "유사";
-                                        }
-                                        
                                         return (
                                           <button
                                             key={idx}
@@ -2243,21 +2231,24 @@ export default function ProductsPage() {
                                                 barcodeInputRefs.current[product.product_id]?.focus();
                                               }, 10);
                                             }}
-                                            className="w-full px-3 py-2 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
+                                            className="w-full px-3 py-2.5 text-left hover:bg-orange-50 border-b border-gray-100 last:border-b-0 focus:bg-orange-100 focus:outline-none"
                                           >
                                             <div className="flex items-center gap-2">
                                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 whitespace-nowrap">
                                                 {idx + 1}
                                               </span>
                                               <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-sm font-mono font-medium text-gray-900">
+                                                {/* 상품명을 크고 진하게 상단에 배치 */}
+                                                <div className="text-sm font-semibold text-gray-900 mb-0.5">
+                                                  {suggestion.clean_title}
+                                                </div>
+                                                {/* 바코드와 가격 정보를 아래에 작게 */}
+                                                <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                  <span className="font-mono">
                                                     {suggestion.barcode}
                                                   </span>
-                                                  <span className="text-xs text-gray-500">({reason})</span>
-                                                </div>
-                                                <div className="text-xs text-gray-500 truncate">
-                                                  {suggestion.clean_title} • ₩{(suggestion.price || 0).toLocaleString()}
+                                                  <span className="text-gray-400">•</span>
+                                                  <span>₩{(suggestion.price || 0).toLocaleString()}</span>
                                                 </div>
                                               </div>
                                             </div>
