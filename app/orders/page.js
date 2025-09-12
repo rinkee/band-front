@@ -1320,10 +1320,17 @@ export default function OrdersPage() {
 
     let pickupDate;
 
-    // ISO 형식 우선 처리 (타임존 정보 포함)
+    // ISO 형식 우선 처리 (UTC로 저장되어 있지만 실제로는 한국 시간)
     if (typeof dateInput === 'string' && dateInput.includes('T')) {
-      // "2025-09-14T07:00:00+09:00" 또는 "2025-09-08T00:00:00.000Z" 형식
-      pickupDate = new Date(dateInput);
+      // "2025-09-14T07:00:00Z" 형식 → 한국 시간 07:00으로 해석
+      const tempDate = new Date(dateInput);
+      pickupDate = new Date(
+        tempDate.getUTCFullYear(),
+        tempDate.getUTCMonth(),
+        tempDate.getUTCDate(),
+        tempDate.getUTCHours(),
+        tempDate.getUTCMinutes()
+      );
     }
     // 한국 시간 형식 "YYYY-MM-DD HH:mm:ss"
     else if (typeof dateInput === 'string' && dateInput.includes(' ')) {
@@ -2413,9 +2420,10 @@ export default function OrdersPage() {
                                         [{(() => {
                                           // DB에 저장된 날짜 문자열 파싱
                                           if (pickupDate.includes('T')) {
-                                            // ISO 형식 "2025-09-14T07:00:00+09:00"
+                                            // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
                                             const date = new Date(pickupDate);
-                                            return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                            // UTC 값을 한국 시간으로 해석
+                                            return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
                                           } else if (pickupDate.includes(' ')) {
                                             // "2025-09-14 07:00:00" 형식
                                             const [datePart] = pickupDate.split(' ');

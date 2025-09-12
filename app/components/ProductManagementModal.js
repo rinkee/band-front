@@ -235,13 +235,16 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       let year, month, day, hours = '00', minutes = '00';
       
       if (pickupDateStr.includes('T')) {
-        // ISO 형식 "2025-09-14T07:00:00+09:00" 또는 "2025-09-14T07:00:00Z"
+        // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
+        // "2025-09-14T07:00:00Z" → 한국 시간 07:00으로 해석
         const dateObj = new Date(pickupDateStr);
-        year = dateObj.getFullYear();
-        month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        day = String(dateObj.getDate()).padStart(2, '0');
-        hours = String(dateObj.getHours()).padStart(2, '0');
-        minutes = String(dateObj.getMinutes()).padStart(2, '0');
+        
+        // UTC 시간을 한국 시간으로 해석 (변환 없이)
+        year = dateObj.getUTCFullYear();
+        month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+        day = String(dateObj.getUTCDate()).padStart(2, '0');
+        hours = String(dateObj.getUTCHours()).padStart(2, '0');
+        minutes = String(dateObj.getUTCMinutes()).padStart(2, '0');
       } else if (pickupDateStr.includes(' ')) {
         // "2025-09-14 07:00:00" 형식
         const [datePart, timePart] = pickupDateStr.split(' ');
@@ -296,9 +299,12 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     // 한국 시간으로 Date 객체 생성
     const newPickupDateTime = new Date(year, month - 1, day, hours, minutes);
     
-    // ISO 8601 형식으로 한국 시간 문자열 생성 (+09:00 타임존 명시)
-    const kstDateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+09:00`;
+    // UTC로 변환하지 않고 한국 시간을 그대로 UTC 문자열로 만들기
+    // 예: 한국 시간 오전 7시를 UTC 오전 7시로 저장
+    const adjustedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+    const kstDateString = adjustedDate.toISOString();
     
+    console.log('수령일 저장 - 입력한 한국 시간:', `${year}-${month}-${day} ${hours}:${minutes}`);
     console.log('수령일 저장 - DB에 저장될 값:', kstDateString);
     
     // 수령일이 게시물 작성일보다 이전인지 확인
@@ -582,12 +588,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         let month, day, hours, minutes, pickupDate;
                         
                         if (pickupDateStr.includes('T')) {
-                          // ISO 형식
+                          // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
                           pickupDate = new Date(pickupDateStr);
-                          month = pickupDate.getMonth() + 1;
-                          day = pickupDate.getDate();
-                          hours = pickupDate.getHours();
-                          minutes = pickupDate.getMinutes();
+                          // UTC 값을 한국 시간으로 해석
+                          month = pickupDate.getUTCMonth() + 1;
+                          day = pickupDate.getUTCDate();
+                          hours = pickupDate.getUTCHours();
+                          minutes = pickupDate.getUTCMinutes();
+                          // 요일 계산용 Date 객체 재생성
+                          pickupDate = new Date(pickupDate.getUTCFullYear(), pickupDate.getUTCMonth(), pickupDate.getUTCDate());
                         } else if (pickupDateStr.includes(' ')) {
                           // "2025-09-14 07:00:00" 형식
                           const [datePart, timePart] = pickupDateStr.split(' ');
