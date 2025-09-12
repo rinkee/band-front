@@ -1762,10 +1762,9 @@ export default function OrdersPage() {
     }
 
     const product = getProductById(order.product_id);
-    const postContent =
-      product?.description ||
-      product?.content ||
-      `📢무거우시면 말씀하세요  배달 한번 갈게요📢\n\n        💥초초초 특가 😋\n\n\n🍉하우스 흑수박🍉\n.\n.\n.\n수박 시즌이 돌아왔습니다!!\n하우스수박은 비와 눈을 피해 자라면서 \n귀하디 귀하게 키운답니당!!\n맛도 좋구 식감도 좋으네요👍\n\n수박 과일이 결코 쉽진 않습니다\n1~2통을 맛보고 전체를 선택 매입하기 때문에\n간혹 않좋은게 있을수 있답니다\n문제가 있을땐 언제든 개인톡 남겨주세요🙏\n\n😋 초.특.가 \n하우스 흑수박 1통 9키로내외\n        👉👉  21,900원‼️\n\n오늘 오후 12시에 도착합니다 \n주문은 댓글로 시작할께요`;
+    
+    // product의 content 필드에 게시물 내용이 저장되어 있음
+    const postContent = product?.content || product?.description || "";
 
     setSelectedPostForComments({
       postKey,
