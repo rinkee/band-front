@@ -1353,14 +1353,6 @@ export default function OrdersPage() {
 
     const today = new Date();
     
-    // 디버깅용 로그
-    console.log('수령 가능 체크:', {
-      pickupDateInput: dateInput,
-      pickupDate: pickupDate.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
-      currentTime: today.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
-      isAvailable: pickupDate <= today
-    });
-    
     // 수령일이 현재 시간 이전이면 수령 가능
     return pickupDate <= today;
   };
