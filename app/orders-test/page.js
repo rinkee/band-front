@@ -1282,8 +1282,21 @@ export default function OrdersPage() {
     // 오늘 날짜 이전이거나 당일이면 수령 가능
     return pickupDate <= today;
   };
-  const getProductBarcode = (id) =>
-    products.find((p) => p.product_id === id)?.barcode || "";
+  const getProductBarcode = (id) => {
+    // products 배열에서 product_id로 찾기
+    const product = products.find((p) => p.product_id === id);
+    if (product?.barcode) {
+      return product.barcode;
+    }
+    
+    // orders 데이터에서 product_barcode 필드 사용 (폴백)
+    const order = orders.find((o) => o.product_id === id);
+    if (order?.product_barcode) {
+      return order.product_barcode;
+    }
+    
+    return "";
+  };
   const getProductById = (id) =>
     products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
@@ -1749,10 +1762,16 @@ export default function OrdersPage() {
     }
 
     const product = getProductById(order.product_id);
-    const postContent =
-      product?.description ||
-      product?.content ||
-      `📢무거우시면 말씀하세요  배달 한번 갈게요📢\n\n        💥초초초 특가 😋\n\n\n🍉하우스 흑수박🍉\n.\n.\n.\n수박 시즌이 돌아왔습니다!!\n하우스수박은 비와 눈을 피해 자라면서 \n귀하디 귀하게 키운답니당!!\n맛도 좋구 식감도 좋으네요👍\n\n수박 과일이 결코 쉽진 않습니다\n1~2통을 맛보고 전체를 선택 매입하기 때문에\n간혹 않좋은게 있을수 있답니다\n문제가 있을땐 언제든 개인톡 남겨주세요🙏\n\n😋 초.특.가 \n하우스 흑수박 1통 9키로내외\n        👉👉  21,900원‼️\n\n오늘 오후 12시에 도착합니다 \n주문은 댓글로 시작할께요`;
+    
+    // product의 content 필드에 게시물 내용이 저장되어 있음
+    const postContent = product?.content || product?.description || "";
+    
+    // 디버깅용 로그
+    console.log("Opening comments for order:", order.order_id);
+    console.log("Product ID:", order.product_id);
+    console.log("Found product:", product);
+    console.log("Product content:", product?.content);
+    console.log("Final postContent:", postContent);
 
     setSelectedPostForComments({
       postKey,

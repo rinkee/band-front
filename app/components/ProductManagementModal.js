@@ -230,17 +230,32 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const handlePickupDateEdit = () => {
     const firstProduct = products && products.length > 0 ? products[0] : null;
     if (firstProduct?.pickup_date) {
-      const pickupDateTime = new Date(firstProduct.pickup_date);
+      // DB에 저장된 날짜 문자열 파싱
+      const pickupDateStr = firstProduct.pickup_date;
+      let year, month, day, hours = '00', minutes = '00';
       
-      // 한국 시간으로 날짜 설정 (로컬 시간대 사용)
-      const year = pickupDateTime.getFullYear();
-      const month = String(pickupDateTime.getMonth() + 1).padStart(2, '0');
-      const day = String(pickupDateTime.getDate()).padStart(2, '0');
+      if (pickupDateStr.includes('T')) {
+        // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
+        // "2025-09-14T07:00:00Z" → 한국 시간 07:00으로 해석
+        const dateObj = new Date(pickupDateStr);
+        
+        // UTC 시간을 한국 시간으로 해석 (변환 없이)
+        year = dateObj.getUTCFullYear();
+        month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+        day = String(dateObj.getUTCDate()).padStart(2, '0');
+        hours = String(dateObj.getUTCHours()).padStart(2, '0');
+        minutes = String(dateObj.getUTCMinutes()).padStart(2, '0');
+      } else if (pickupDateStr.includes(' ')) {
+        // "2025-09-14 07:00:00" 형식
+        const [datePart, timePart] = pickupDateStr.split(' ');
+        [year, month, day] = datePart.split('-');
+        [hours, minutes] = timePart ? timePart.split(':') : ['00', '00'];
+      } else {
+        // "2025-09-14" 형식
+        [year, month, day] = pickupDateStr.split('-');
+      }
+      
       const dateStr = `${year}-${month}-${day}`;
-      
-      // 한국 시간으로 시간 설정 (로컬 시간대 사용)
-      const hours = String(pickupDateTime.getHours()).padStart(2, '0');
-      const minutes = String(pickupDateTime.getMinutes()).padStart(2, '0');
       const timeStr = `${hours}:${minutes}`;
       
       setEditPickupDate(dateStr);
@@ -271,15 +286,26 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       return;
     }
 
-    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (한국 시간 기준으로 입력받아 UTC로 변환)
+    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (한국 시간 기준으로 저장)
     const [year, month, day] = editPickupDate.split('-').map(Number);
     const [hours, minutes] = editPickupTime.split(':').map(Number);
     
-    // 한국 시간으로 Date 객체 생성
-    const koreanDateTime = new Date(year, month - 1, day, hours, minutes);
+    console.log('수령일 저장 - 입력값:', {
+      editPickupDate,
+      editPickupTime,
+      year, month, day, hours, minutes
+    });
     
-    // UTC로 변환 (getTime()은 UTC 기준 밀리초를 반환)
-    const newPickupDateTime = new Date(koreanDateTime.getTime());
+    // 한국 시간으로 Date 객체 생성
+    const newPickupDateTime = new Date(year, month - 1, day, hours, minutes);
+    
+    // UTC로 변환하지 않고 한국 시간을 그대로 UTC 문자열로 만들기
+    // 예: 한국 시간 오전 7시를 UTC 오전 7시로 저장
+    const adjustedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+    const kstDateString = adjustedDate.toISOString();
+    
+    console.log('수령일 저장 - 입력한 한국 시간:', `${year}-${month}-${day} ${hours}:${minutes}`);
+    console.log('수령일 저장 - DB에 저장될 값:', kstDateString);
     
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
@@ -309,23 +335,38 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 기존 pickup_date 가져오기 (미수령 상태 초기화를 위해)
       const firstProduct = products && products.length > 0 ? products[0] : null;
-      const oldPickupDate = firstProduct?.pickup_date ? new Date(firstProduct.pickup_date) : null;
+      let oldPickupDate = null;
+      if (firstProduct?.pickup_date) {
+        if (firstProduct.pickup_date.includes('T')) {
+          // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
+          const tempDate = new Date(firstProduct.pickup_date);
+          oldPickupDate = new Date(
+            tempDate.getUTCFullYear(),
+            tempDate.getUTCMonth(),
+            tempDate.getUTCDate(),
+            tempDate.getUTCHours(),
+            tempDate.getUTCMinutes()
+          );
+        } else {
+          oldPickupDate = new Date(firstProduct.pickup_date);
+        }
+      }
       
-      // 현재 시간 가져오기 (Date 객체는 내부적으로 UTC 기준으로 저장됨)
-      const currentTimeUTC = new Date();
+      // 현재 한국 시간 가져오기
+      const currentTime = new Date();
       
       // 새로운 수령일이 현재 시간보다 미래인지 확인 (미수령 상태 초기화 조건)
-      const shouldResetUndeliveredStatus = newPickupDateTime > currentTimeUTC && 
-        (!oldPickupDate || oldPickupDate <= currentTimeUTC);
+      const shouldResetUndeliveredStatus = newPickupDateTime > currentTime && 
+        (!oldPickupDate || oldPickupDate <= currentTime);
 
-      // UTC ISO 문자열로 변환
-      const utcDate = newPickupDateTime.toISOString();
+      // 한국 시간을 그대로 저장 (시간대 정보 없이)
+      const dateToSave = kstDateString;
 
       // products 테이블 업데이트 - user_id 필터 추가
       const { error: productsError } = await supabase
         .from('products')
         .update({ 
-          pickup_date: utcDate,
+          pickup_date: dateToSave,
           updated_at: new Date().toISOString()
         })
         .eq('post_key', postKey)
@@ -353,9 +394,11 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         } else {
           console.log('미수령 주문 상태 초기화 완료');
         }
-      } else if (newPickupDateTime <= currentTimeUTC) {
+      } else if (newPickupDateTime <= currentTime) {
         // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
         console.log('수령일이 과거로 설정되어 해당 주문들을 미수령으로 처리합니다.');
+        console.log('수령일:', newPickupDateTime);
+        console.log('현재시간:', currentTime);
         
         const { error: ordersUndeliveredError } = await supabase
           .from('orders')
@@ -414,7 +457,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         if (dateMatch) {
           newTitle = `[${newDateStr}]${dateMatch[2]}`;
         }
-        return { ...product, pickup_date: utcDate, title: newTitle };
+        return { ...product, pickup_date: dateToSave, title: newTitle };
       });
 
       // 제목 업데이트를 위해 각 상품의 title도 업데이트
@@ -442,7 +485,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       // 전역 이벤트 발생
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('postUpdated', { 
-          detail: { postKey, pickup_date: utcDate } 
+          detail: { postKey, pickup_date: dateToSave } 
         }));
         localStorage.setItem('pickupDateUpdated', Date.now().toString());
       }
@@ -450,7 +493,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       let successMsg = '수령일이 성공적으로 변경되었습니다.';
       if (shouldResetUndeliveredStatus) {
         successMsg += '\n미수령 주문 상태도 초기화되었습니다.';
-      } else if (newPickupDateTime <= currentTimeUTC) {
+      } else if (newPickupDateTime <= currentTime) {
         successMsg += '\n해당 주문들을 미수령 상태로 설정했습니다.';
       }
       alert(successMsg);
@@ -557,14 +600,42 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                     const firstProduct = products && products.length > 0 ? products[0] : null;
                     if (firstProduct?.pickup_date) {
                       try {
-                        const pickupDateTime = new Date(firstProduct.pickup_date);
-                        // 한국 시간으로 표시 (로컬 시간대 사용)
-                        const month = pickupDateTime.getMonth() + 1;
-                        const day = pickupDateTime.getDate();
-                        const hours = pickupDateTime.getHours();
-                        const minutes = pickupDateTime.getMinutes();
+                        // DB에 저장된 날짜 문자열 파싱
+                        const pickupDateStr = firstProduct.pickup_date;
+                        let month, day, hours, minutes, pickupDate;
+                        
+                        if (pickupDateStr.includes('T')) {
+                          // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
+                          pickupDate = new Date(pickupDateStr);
+                          // UTC 값을 한국 시간으로 해석
+                          month = pickupDate.getUTCMonth() + 1;
+                          day = pickupDate.getUTCDate();
+                          hours = pickupDate.getUTCHours();
+                          minutes = pickupDate.getUTCMinutes();
+                          // 요일 계산용 Date 객체 재생성
+                          pickupDate = new Date(pickupDate.getUTCFullYear(), pickupDate.getUTCMonth(), pickupDate.getUTCDate());
+                        } else if (pickupDateStr.includes(' ')) {
+                          // "2025-09-14 07:00:00" 형식
+                          const [datePart, timePart] = pickupDateStr.split(' ');
+                          const [year, monthStr, dayStr] = datePart.split('-');
+                          const [hoursStr, minutesStr] = timePart ? timePart.split(':') : ['00', '00'];
+                          
+                          month = parseInt(monthStr);
+                          day = parseInt(dayStr);
+                          hours = parseInt(hoursStr);
+                          minutes = parseInt(minutesStr);
+                          pickupDate = new Date(year, month - 1, day);
+                        } else {
+                          // 날짜만 있는 경우
+                          pickupDate = new Date(pickupDateStr);
+                          month = pickupDate.getMonth() + 1;
+                          day = pickupDate.getDate();
+                          hours = 0;
+                          minutes = 0;
+                        }
+                        
                         const days = ['일', '월', '화', '수', '목', '금', '토'];
-                        const dayName = days[pickupDateTime.getDay()];
+                        const dayName = days[pickupDate.getDay()];
                         
                         let displayText = `${month}월${day}일 ${dayName}`;
                         

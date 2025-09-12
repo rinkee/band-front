@@ -1320,10 +1320,24 @@ export default function OrdersPage() {
 
     let pickupDate;
 
-    // DB pickup_date 직접 처리 (ISO 형식)
+    // ISO 형식 우선 처리 (UTC로 저장되어 있지만 실제로는 한국 시간)
     if (typeof dateInput === 'string' && dateInput.includes('T')) {
-      // "2025-09-08T00:00:00.000Z" 형식
-      pickupDate = new Date(dateInput.split('T')[0]); // 타임존 변환 방지를 위해 날짜 부분만 사용
+      // "2025-09-14T07:00:00Z" 형식 → 한국 시간 07:00으로 해석
+      const tempDate = new Date(dateInput);
+      pickupDate = new Date(
+        tempDate.getUTCFullYear(),
+        tempDate.getUTCMonth(),
+        tempDate.getUTCDate(),
+        tempDate.getUTCHours(),
+        tempDate.getUTCMinutes()
+      );
+    }
+    // 한국 시간 형식 "YYYY-MM-DD HH:mm:ss"
+    else if (typeof dateInput === 'string' && dateInput.includes(' ')) {
+      const [datePart, timePart] = dateInput.split(' ');
+      const [year, month, day] = datePart.split('-');
+      const [hours, minutes] = timePart ? timePart.split(':') : [0, 0];
+      pickupDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
     }
     // "YYYY-MM-DD" 형식
     else if (typeof dateInput === 'string' && dateInput.includes('-') && dateInput.length === 10) {
@@ -1338,14 +1352,33 @@ export default function OrdersPage() {
     if (!pickupDate || isNaN(pickupDate.getTime())) return false;
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 시간 부분을 제거하여 날짜만 비교
-    pickupDate.setHours(0, 0, 0, 0);
-
-    // 오늘 날짜 이전이거나 당일이면 수령 가능
+    
+    // 디버깅용 로그
+    console.log('수령 가능 체크:', {
+      pickupDateInput: dateInput,
+      pickupDate: pickupDate.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      currentTime: today.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      isAvailable: pickupDate <= today
+    });
+    
+    // 수령일이 현재 시간 이전이면 수령 가능
     return pickupDate <= today;
   };
-  const getProductBarcode = (id) =>
-    products.find((p) => p.product_id === id)?.barcode || "";
+  const getProductBarcode = (id) => {
+    // products 배열에서 product_id로 찾기
+    const product = products.find((p) => p.product_id === id);
+    if (product?.barcode) {
+      return product.barcode;
+    }
+    
+    // orders 데이터에서 product_barcode 필드 사용 (폴백)
+    const order = orders.find((o) => o.product_id === id);
+    if (order?.product_barcode) {
+      return order.product_barcode;
+    }
+    
+    return "";
+  };
   const getProductById = (id) =>
     products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
@@ -1744,10 +1777,15 @@ export default function OrdersPage() {
     }
 
     const product = getProductById(order.product_id);
-    const postContent =
-      product?.description ||
-      product?.content ||
-      `📢무거우시면 말씀하세요  배달 한번 갈게요📢\n\n        💥초초초 특가 😋\n\n\n🍉하우스 흑수박🍉\n.\n.\n.\n수박 시즌이 돌아왔습니다!!\n하우스수박은 비와 눈을 피해 자라면서 \n귀하디 귀하게 키운답니당!!\n맛도 좋구 식감도 좋으네요👍\n\n수박 과일이 결코 쉽진 않습니다\n1~2통을 맛보고 전체를 선택 매입하기 때문에\n간혹 않좋은게 있을수 있답니다\n문제가 있을땐 언제든 개인톡 남겨주세요🙏\n\n😋 초.특.가 \n하우스 흑수박 1통 9키로내외\n        👉👉  21,900원‼️\n\n오늘 오후 12시에 도착합니다 \n주문은 댓글로 시작할께요`;
+    // product의 content 필드에 게시물 내용이 저장되어 있음
+    const postContent = product?.content || product?.description || "";
+    
+    // 디버깅용 로그
+    console.log("Opening comments for order:", order.order_id);
+    console.log("Product ID:", order.product_id);
+    console.log("Found product:", product);
+    console.log("Product content:", product?.content);
+    console.log("Final postContent:", postContent);
 
     setSelectedPostForComments({
       postKey,
@@ -2362,8 +2400,10 @@ export default function OrdersPage() {
                                 );
                                 const { name } =
                                   parseProductName(productName);
-                                // product_pickup_date 필드에서 수령일 가져오기
-                                const pickupDate = order.product_pickup_date;
+                                // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
+                                // 없으면 products 테이블의 pickup_date 사용
+                                const product = getProductById(order.product_id);
+                                const pickupDate = order.product_pickup_date || product?.pickup_date;
                                 const isAvailable =
                                   isClient && pickupDate
                                     ? isPickupAvailable(pickupDate)
@@ -2385,8 +2425,22 @@ export default function OrdersPage() {
                                         className="text-xs mt-0.5 text-gray-500"
                                       >
                                         [{(() => {
-                                          const date = new Date(pickupDate);
-                                          return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+                                          // DB에 저장된 날짜 문자열 파싱
+                                          if (pickupDate.includes('T')) {
+                                            // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
+                                            const date = new Date(pickupDate);
+                                            // UTC 값을 한국 시간으로 해석
+                                            return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+                                          } else if (pickupDate.includes(' ')) {
+                                            // "2025-09-14 07:00:00" 형식
+                                            const [datePart] = pickupDate.split(' ');
+                                            const [year, month, day] = datePart.split('-');
+                                            return `${parseInt(month)}월${parseInt(day)}일`;
+                                          } else {
+                                            // 기타 형식 fallback
+                                            const date = new Date(pickupDate);
+                                            return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                          }
                                         })()}]
                                         {isAvailable && (
                                           <span className="ml-1 text-gray-500">
@@ -2859,8 +2913,10 @@ export default function OrdersPage() {
                       selectedOrder.product_id
                     );
                     const { name } = parseProductName(productName);
-                    // product_pickup_date 필드에서 수령일 가져오기
-                    const pickupDate = selectedOrder.product_pickup_date;
+                    // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
+                    // 없으면 products 테이블의 pickup_date 사용
+                    const product = getProductById(selectedOrder.product_id);
+                    const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
                     const isAvailable =
                       isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
@@ -3128,8 +3184,10 @@ export default function OrdersPage() {
                             );
                             const { name } =
                               parseProductName(productName);
-                            // product_pickup_date 필드에서 수령일 가져오기
-                            const pickupDate = selectedOrder.product_pickup_date;
+                            // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
+                            // 없으면 products 테이블의 pickup_date 사용
+                            const product = getProductById(selectedOrder.product_id);
+                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
                             const isAvailable =
                               isClient && pickupDate
                                 ? isPickupAvailable(pickupDate)
@@ -3193,8 +3251,13 @@ export default function OrdersPage() {
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
-                          // DB에서 직접 가져온 product_pickup_date 사용
-                          value: selectedOrder.product_pickup_date ? formatDate(selectedOrder.product_pickup_date) : "-",
+                          // DB에서 직접 가져온 product_pickup_date 사용 (orders 테이블)
+                          // 없으면 products 테이블의 pickup_date 사용
+                          value: (() => {
+                            const product = getProductById(selectedOrder.product_id);
+                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                            return pickupDate ? formatDate(pickupDate) : "-";
+                          })(),
                           readOnly: true,
                         },
                         {

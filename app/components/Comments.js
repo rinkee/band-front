@@ -751,7 +751,8 @@ const CommentsModal = ({
         const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
         if (dateMatch) {
           const date = new Date(dateToSave);
-          const newDateStr = `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
+          // 로컬 시간대(한국)로 표시
+          const newDateStr = `${date.getMonth() + 1}월${date.getDate()}일`;
           const newTitle = `[${newDateStr}]${dateMatch[1]}`;
           
           const { error: postsError } = await supabase
