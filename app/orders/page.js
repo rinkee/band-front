@@ -1320,17 +1320,17 @@ export default function OrdersPage() {
 
     let pickupDate;
 
+    // ISO 형식 우선 처리 (타임존 정보 포함)
+    if (typeof dateInput === 'string' && dateInput.includes('T')) {
+      // "2025-09-14T07:00:00+09:00" 또는 "2025-09-08T00:00:00.000Z" 형식
+      pickupDate = new Date(dateInput);
+    }
     // 한국 시간 형식 "YYYY-MM-DD HH:mm:ss"
-    if (typeof dateInput === 'string' && dateInput.includes(' ')) {
+    else if (typeof dateInput === 'string' && dateInput.includes(' ')) {
       const [datePart, timePart] = dateInput.split(' ');
       const [year, month, day] = datePart.split('-');
       const [hours, minutes] = timePart ? timePart.split(':') : [0, 0];
       pickupDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
-    }
-    // DB pickup_date 직접 처리 (ISO 형식)
-    else if (typeof dateInput === 'string' && dateInput.includes('T')) {
-      // "2025-09-08T00:00:00.000Z" 형식
-      pickupDate = new Date(dateInput);
     }
     // "YYYY-MM-DD" 형식
     else if (typeof dateInput === 'string' && dateInput.includes('-') && dateInput.length === 10) {
@@ -2411,14 +2411,18 @@ export default function OrdersPage() {
                                         className="text-xs mt-0.5 text-gray-500"
                                       >
                                         [{(() => {
-                                          // DB에 한국 시간으로 저장된 문자열 파싱
-                                          if (pickupDate.includes(' ')) {
+                                          // DB에 저장된 날짜 문자열 파싱
+                                          if (pickupDate.includes('T')) {
+                                            // ISO 형식 "2025-09-14T07:00:00+09:00"
+                                            const date = new Date(pickupDate);
+                                            return `${date.getMonth() + 1}월${date.getDate()}일`;
+                                          } else if (pickupDate.includes(' ')) {
                                             // "2025-09-14 07:00:00" 형식
                                             const [datePart] = pickupDate.split(' ');
                                             const [year, month, day] = datePart.split('-');
                                             return `${parseInt(month)}월${parseInt(day)}일`;
                                           } else {
-                                            // ISO 형식인 경우 fallback
+                                            // 기타 형식 fallback
                                             const date = new Date(pickupDate);
                                             return `${date.getMonth() + 1}월${date.getDate()}일`;
                                           }

@@ -230,14 +230,27 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const handlePickupDateEdit = () => {
     const firstProduct = products && products.length > 0 ? products[0] : null;
     if (firstProduct?.pickup_date) {
-      // DB에 저장된 한국 시간 문자열을 그대로 파싱
-      // "2025-09-14 07:00:00" 형식으로 저장되어 있음
+      // DB에 저장된 날짜 문자열 파싱
       const pickupDateStr = firstProduct.pickup_date;
+      let year, month, day, hours = '00', minutes = '00';
       
-      // 날짜와 시간 부분 분리
-      const [datePart, timePart] = pickupDateStr.split(' ');
-      const [year, month, day] = datePart.split('-');
-      const [hours, minutes] = timePart ? timePart.split(':') : ['00', '00'];
+      if (pickupDateStr.includes('T')) {
+        // ISO 형식 "2025-09-14T07:00:00+09:00" 또는 "2025-09-14T07:00:00Z"
+        const dateObj = new Date(pickupDateStr);
+        year = dateObj.getFullYear();
+        month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        day = String(dateObj.getDate()).padStart(2, '0');
+        hours = String(dateObj.getHours()).padStart(2, '0');
+        minutes = String(dateObj.getMinutes()).padStart(2, '0');
+      } else if (pickupDateStr.includes(' ')) {
+        // "2025-09-14 07:00:00" 형식
+        const [datePart, timePart] = pickupDateStr.split(' ');
+        [year, month, day] = datePart.split('-');
+        [hours, minutes] = timePart ? timePart.split(':') : ['00', '00'];
+      } else {
+        // "2025-09-14" 형식
+        [year, month, day] = pickupDateStr.split('-');
+      }
       
       const dateStr = `${year}-${month}-${day}`;
       const timeStr = `${hours}:${minutes}`;
@@ -274,11 +287,19 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     const [year, month, day] = editPickupDate.split('-').map(Number);
     const [hours, minutes] = editPickupTime.split(':').map(Number);
     
+    console.log('수령일 저장 - 입력값:', {
+      editPickupDate,
+      editPickupTime,
+      year, month, day, hours, minutes
+    });
+    
     // 한국 시간으로 Date 객체 생성
     const newPickupDateTime = new Date(year, month - 1, day, hours, minutes);
     
-    // 한국 시간 문자열 생성 (ISO 형식이지만 시간대 정보 없이)
-    const kstDateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+    // ISO 8601 형식으로 한국 시간 문자열 생성 (+09:00 타임존 명시)
+    const kstDateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+09:00`;
+    
+    console.log('수령일 저장 - DB에 저장될 값:', kstDateString);
     
     // 수령일이 게시물 작성일보다 이전인지 확인
     if (currentPost?.posted_at) {
@@ -556,19 +577,37 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                     const firstProduct = products && products.length > 0 ? products[0] : null;
                     if (firstProduct?.pickup_date) {
                       try {
-                        // DB에 저장된 한국 시간 문자열을 그대로 파싱
+                        // DB에 저장된 날짜 문자열 파싱
                         const pickupDateStr = firstProduct.pickup_date;
-                        const [datePart, timePart] = pickupDateStr.split(' ');
-                        const [year, monthStr, dayStr] = datePart.split('-');
-                        const [hoursStr, minutesStr] = timePart ? timePart.split(':') : ['00', '00'];
+                        let month, day, hours, minutes, pickupDate;
                         
-                        const month = parseInt(monthStr);
-                        const day = parseInt(dayStr);
-                        const hours = parseInt(hoursStr);
-                        const minutes = parseInt(minutesStr);
+                        if (pickupDateStr.includes('T')) {
+                          // ISO 형식
+                          pickupDate = new Date(pickupDateStr);
+                          month = pickupDate.getMonth() + 1;
+                          day = pickupDate.getDate();
+                          hours = pickupDate.getHours();
+                          minutes = pickupDate.getMinutes();
+                        } else if (pickupDateStr.includes(' ')) {
+                          // "2025-09-14 07:00:00" 형식
+                          const [datePart, timePart] = pickupDateStr.split(' ');
+                          const [year, monthStr, dayStr] = datePart.split('-');
+                          const [hoursStr, minutesStr] = timePart ? timePart.split(':') : ['00', '00'];
+                          
+                          month = parseInt(monthStr);
+                          day = parseInt(dayStr);
+                          hours = parseInt(hoursStr);
+                          minutes = parseInt(minutesStr);
+                          pickupDate = new Date(year, month - 1, day);
+                        } else {
+                          // 날짜만 있는 경우
+                          pickupDate = new Date(pickupDateStr);
+                          month = pickupDate.getMonth() + 1;
+                          day = pickupDate.getDate();
+                          hours = 0;
+                          minutes = 0;
+                        }
                         
-                        // 요일 계산을 위한 Date 객체 생성
-                        const pickupDate = new Date(year, month - 1, day);
                         const days = ['일', '월', '화', '수', '목', '금', '토'];
                         const dayName = days[pickupDate.getDay()];
                         
