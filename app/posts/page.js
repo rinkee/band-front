@@ -937,14 +937,14 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         try {
           const pickupDate = new Date(firstProduct.pickup_date);
           if (!isNaN(pickupDate.getTime())) {
-            const month = pickupDate.getUTCMonth() + 1;
-            const day = pickupDate.getUTCDate();
+            const month = pickupDate.getMonth() + 1;
+            const day = pickupDate.getDate();
             const days = ['일', '월', '화', '수', '목', '금', '토'];
-            const dayName = days[pickupDate.getUTCDay()];
+            const dayName = days[pickupDate.getDay()];
             
             // 시간 정보 추가 (24시간 형식)
-            const hours = pickupDate.getUTCHours();
-            const minutes = pickupDate.getUTCMinutes();
+            const hours = pickupDate.getHours();
+            const minutes = pickupDate.getMinutes();
             
             // 시간이 00:00이 아닌 경우에만 시간 표시
             if (hours !== 0 || minutes !== 0) {
