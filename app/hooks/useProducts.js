@@ -17,7 +17,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export function useProducts(userId, page = 1, filters = {}, options = {}) {
   // Supabase 직접 쿼리를 사용하는 fetcher 함수
   const fetcher = async () => {
-    const limit = 20;
+    const limit = filters.limit || 20;
     const startIndex = (page - 1) * limit;
 
     let query = supabase
