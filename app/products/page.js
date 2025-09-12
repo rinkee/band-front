@@ -1229,6 +1229,17 @@ export default function ProductsPage() {
     
     if (words1.length === 0 || words2.length === 0) return 0;
     
+    // 중요한 단위 차이 체크 (반박스 vs 1박스)
+    const hasHalfBox1 = str1.includes('반박스');
+    const hasHalfBox2 = str2.includes('반박스');
+    const hasFullBox1 = str1.includes('1박스') || (str1.includes('박스') && !str1.includes('반박스'));
+    const hasFullBox2 = str2.includes('1박스') || (str2.includes('박스') && !str2.includes('반박스'));
+    
+    // 반박스와 1박스가 다른 경우 유사도 크게 감소
+    if ((hasHalfBox1 && hasFullBox2) || (hasFullBox1 && hasHalfBox2)) {
+      return 0.2; // 매우 낮은 유사도
+    }
+    
     // 공통 단어 찾기
     let matchCount = 0;
     const used = new Set();
@@ -1352,26 +1363,34 @@ export default function ProductsPage() {
       const filteredProducts = item.products.filter(p => p.product_id !== currentProductId);
       if (filteredProducts.length === 0) return;
       
-      const latestProduct = filteredProducts[0];
-      const lastUsedDate = new Date(latestProduct.date);
-      const daysAgo = Math.floor((now - lastUsedDate) / (1000 * 60 * 60 * 24));
+      // 모든 상품에 대해 유사도 계산하고 가장 높은 것 선택
+      let bestSimilarity = 0;
+      let bestProduct = null;
       
-      // 유사도 점수 계산
-      const similarity = calculateSimilarity(cleanTitle, latestProduct.clean_title);
+      for (const product of filteredProducts) {
+        const similarity = calculateSimilarity(cleanTitle, product.clean_title);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          bestProduct = product;
+        }
+      }
       
       // 유사도가 너무 낮으면 제외 (0.3 이상만)
-      if (similarity < 0.3) return;
+      if (bestSimilarity < 0.3 || !bestProduct) return;
+      
+      const lastUsedDate = new Date(bestProduct.date);
+      const daysAgo = Math.floor((now - lastUsedDate) / (1000 * 60 * 60 * 24));
       
       suggestions.push({
         barcode: item.barcode,
-        product_title: latestProduct.title,
-        clean_title: latestProduct.clean_title,
-        option_name: latestProduct.option_name,
-        price: latestProduct.price,
+        product_title: bestProduct.title,
+        clean_title: bestProduct.clean_title,
+        option_name: bestProduct.option_name,
+        price: bestProduct.price,
         last_used: lastUsedDate.toISOString().split('T')[0],
         days_ago: daysAgo,
         used_count: filteredProducts.length,
-        similarity_score: similarity,
+        similarity_score: bestSimilarity,
         // 가격 범위 (여러 번 사용된 경우)
         price_range: filteredProducts.length > 1 ? {
           min: Math.min(...filteredProducts.map(p => p.price)),
@@ -2137,6 +2156,17 @@ export default function ProductsPage() {
                               onFocus={() => {
                                 // 즉시 포커스 설정 (지연 제거)
                                 setFocusedProductId(product.product_id);
+                                
+                                // 현재 상품에 이미 바코드가 있으면 추천하지 않음
+                                const currentBarcode = editingBarcodes[product.product_id] ?? product.barcode;
+                                if (currentBarcode && currentBarcode.trim() !== '') {
+                                  // 이미 바코드가 있으면 추천 목록 비우기
+                                  setBarcodeSuggestions(prev => ({
+                                    ...prev,
+                                    [product.product_id]: []
+                                  }));
+                                  return;
+                                }
                                 
                                 // 바코드 인덱스가 있으면 메모리에서 즉시 추천 가져오기
                                 if (barcodeIndex && !barcodeSuggestions[product.product_id]) {
