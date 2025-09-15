@@ -1906,39 +1906,50 @@ export default function ProductsPage() {
                 바코드
               </div>
               <div className="bg-white px-4 py-3">
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showBarcodeRecommendations}
-                    onChange={(e) => {
-                      const shouldShow = e.target.checked;
-                      setShowBarcodeRecommendations(shouldShow);
-                      // 추천 표시를 켜면 모든 상품의 추천 바코드를 미리 로드
-                      if (shouldShow && barcodeIndex && products) {
-                        const newSuggestions = {};
-                        products.forEach(product => {
-                          if (!product.barcode || product.barcode.trim() === '') {
-                            const suggestions = getInstantSuggestions(
-                              product.title,
-                              product.product_id,
-                              barcodeIndex
-                            );
-                            if (suggestions.length > 0) {
-                              newSuggestions[product.product_id] = suggestions;
+                <label className={`flex items-center cursor-pointer ${
+                  isDataLoading ? "opacity-50 cursor-not-allowed" : ""
+                }`}>
+                  <div
+                    onClick={() => {
+                      if (!isDataLoading) {
+                        const shouldShow = !showBarcodeRecommendations;
+                        setShowBarcodeRecommendations(shouldShow);
+                        // 추천 표시를 켜면 모든 상품의 추천 바코드를 미리 로드
+                        if (shouldShow && barcodeIndex && products) {
+                          const newSuggestions = {};
+                          products.forEach(product => {
+                            if (!product.barcode || product.barcode.trim() === '') {
+                              const suggestions = getInstantSuggestions(
+                                product.title,
+                                product.product_id,
+                                barcodeIndex
+                              );
+                              if (suggestions.length > 0) {
+                                newSuggestions[product.product_id] = suggestions;
+                              }
                             }
-                          }
-                        });
-                        setBarcodeSuggestions(prev => ({
-                          ...prev,
-                          ...newSuggestions
-                        }));
+                          });
+                          setBarcodeSuggestions(prev => ({
+                            ...prev,
+                            ...newSuggestions
+                          }));
+                        }
                       }
                     }}
-                    disabled={isDataLoading}
-                    className="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500 focus:ring-2"
-                  />
-                  <span className={`ml-2 text-sm ${showBarcodeRecommendations ? 'text-gray-700 font-medium' : 'text-gray-600'}`}>
-                    추천 바코드 표시 {showBarcodeRecommendations && <span className="text-gray-500 font-normal">(바코드 없는 상품)</span>}
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mr-2 flex-shrink-0 ${
+                      showBarcodeRecommendations
+                        ? "bg-orange-500 border-orange-500"
+                        : "bg-white border-gray-300 hover:border-gray-400"
+                    } ${isDataLoading ? "!bg-gray-100 !border-gray-200" : ""}`}
+                  >
+                    {showBarcodeRecommendations && (
+                      <CheckIcon className="w-3.5 h-3.5 text-white" />
+                    )}
+                  </div>
+                  <span className={`text-sm ${
+                    isDataLoading ? "text-gray-400" : "text-gray-700"
+                  }`}>
+                    추천 바코드 표시 {showBarcodeRecommendations && <span className="text-gray-500">(바코드 없는 상품)</span>}
                   </span>
                 </label>
               </div>
