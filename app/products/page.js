@@ -1908,9 +1908,9 @@ export default function ProductsPage() {
                     onChange={(e) => {
                       setShowBarcodeRecommendations(e.target.checked);
                       // 스위치를 켜면 모든 상품의 추천 바코드를 미리 로드
-                      if (e.target.checked && barcodeIndex) {
+                      if (e.target.checked && barcodeIndex && products) {
                         const newSuggestions = {};
-                        filteredProducts.forEach(product => {
+                        products.forEach(product => {
                           if (!product.barcode || product.barcode.trim() === '') {
                             const suggestions = getInstantSuggestions(
                               product.title,
