@@ -97,6 +97,9 @@ function LayoutContent({ children }) {
   const isAuthPage =
     pathname === "/login" || pathname === "/signup" || pathname === "/";
 
+  // admin 페이지인지 확인 (헤더 숨김 여부 결정)
+  const isAdminPage = pathname === "/admin";
+
   // 인증 상태 확인을 위한 useEffect 훅
   useEffect(() => {
     // 인증 상태를 확인하는 함수
@@ -205,9 +208,9 @@ function LayoutContent({ children }) {
         />
       </head>
       <body suppressHydrationWarning>
-        <div className="flex flex-col h-screen overflow-hidden bg-gray-100 ">
-          {/* 로그인 상태일 때만 헤더 표시 */}
-          {isLoggedIn && (
+        <div className={`flex flex-col h-screen overflow-hidden ${isAdminPage ? 'bg-gray-50' : 'bg-gray-100'}`}>
+          {/* 로그인 상태이고 admin 페이지가 아닐 때만 헤더 표시 */}
+          {isLoggedIn && !isAdminPage && (
             <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full  ">
               <div className="flex items-center justify-between px-4 py-2  mx-auto">
                 <div className="flex items-center">
