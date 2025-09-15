@@ -121,27 +121,28 @@ export default function AdminPage() {
       // 세션에서 userId 가져오기 - 여러 가능한 키 확인
       let userId = null;
 
-      // 1. 'session' 키 확인
-      const sessionData = sessionStorage.getItem('session');
-      if (sessionData) {
-        const parsed = JSON.parse(sessionData);
-        userId = parsed.userId;
-      }
-
-      // 2. 'user' 키 확인 (대체 키)
-      if (!userId) {
-        const userData = sessionStorage.getItem('user');
-        if (userData) {
-          const parsed = JSON.parse(userData);
+      // 1. 'userData' 키 확인 (실제로 사용되는 키)
+      const userDataString = sessionStorage.getItem('userData');
+      if (userDataString) {
+        try {
+          const parsed = JSON.parse(userDataString);
           userId = parsed.userId;
+        } catch (e) {
+          console.error('userData 파싱 오류:', e);
         }
       }
 
-      // 3. sessionStorage의 모든 키 확인 (디버깅용)
-      console.log('Session storage keys:', Object.keys(sessionStorage));
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        console.log(`Key: ${key}, Value:`, sessionStorage.getItem(key));
+      // 2. 'session' 키 확인 (대체 키)
+      if (!userId) {
+        const sessionData = sessionStorage.getItem('session');
+        if (sessionData) {
+          try {
+            const parsed = JSON.parse(sessionData);
+            userId = parsed.userId;
+          } catch (e) {
+            console.error('session 파싱 오류:', e);
+          }
+        }
       }
 
       if (!userId) {
@@ -150,8 +151,6 @@ export default function AdminPage() {
         return;
       }
 
-      console.log('Found userId:', userId);
-
       // 데이터베이스에서 직접 role 확인
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -159,16 +158,12 @@ export default function AdminPage() {
         .eq('user_id', userId)
         .single();
 
-      console.log('DB 조회 결과:', userData, '에러:', userError);
-
       if (userError || !userData) {
-        console.log('사용자 데이터를 찾을 수 없습니다');
         setIsAuthorized(false);
         return;
       }
 
       // role이 admin인지 확인
-      console.log('User role:', userData.role);
       if (userData.role === 'admin') {
         setIsAuthorized(true);
         await loadData(); // 권한이 있으면 데이터 로드
