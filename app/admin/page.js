@@ -320,8 +320,8 @@ export default function AdminPage() {
 
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* 상단 헤더 - 컴팩트 */}
-        <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        {/* 상단 헤더 - 컴팩트 (스크롤 가능) */}
+        <div className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-3 py-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
