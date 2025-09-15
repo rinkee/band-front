@@ -271,7 +271,7 @@ export default function AdminPage() {
                         user.function_number === 1 ? 'bg-blue-100 text-blue-700' :
                         'bg-green-100 text-green-700'
                       }`}>
-                        Function #{user.function_number}
+                        F #{user.function_number}
                       </span>
                     )}
 
