@@ -264,14 +264,14 @@ export default function AdminPage() {
                       {user.is_active ? '활성' : '비활성'}
                     </span>
 
-                    {/* Function 번호 배지 */}
+                    {/* 서버 배지 */}
                     {user.function_number !== null && (
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                         user.function_number === 0 ? 'bg-gray-100 text-gray-700' :
                         user.function_number === 1 ? 'bg-blue-100 text-blue-700' :
                         'bg-green-100 text-green-700'
                       }`}>
-                        F #{user.function_number}
+                        서버 {user.function_number === 0 ? 'D' : user.function_number === 1 ? 'A' : 'B'}
                       </span>
                     )}
 
