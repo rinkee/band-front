@@ -237,28 +237,30 @@ export default function AdminPage() {
                     {user.store_name || '스토어명 없음'}
                   </p>
 
-                  {/* 세부 정보 (작은 크기, 회색) */}
+                  {/* 세부 정보 (작은 크기, 회색) - 모든 필드 표시 */}
                   <div className="space-y-1.5 text-sm text-gray-500">
                     <div className="flex items-center">
                       <span className="font-medium mr-2">ID:</span>
-                      <span>{user.login_id}</span>
+                      <span>{user.login_id || '-'}</span>
                     </div>
-                    {user.phone_number && (
-                      <div className="flex items-center">
-                        <span className="font-medium mr-2">연락처:</span>
-                        <span>{user.phone_number}</span>
-                      </div>
-                    )}
-                    {user.band_number && (
-                      <div className="flex items-center">
-                        <span className="font-medium mr-2">밴드:</span>
-                        <span>#{user.band_number}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center">
+                      <span className="font-medium mr-2">연락처:</span>
+                      <span>{user.phone_number || '-'}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="font-medium mr-2">밴드:</span>
+                      <span>{user.band_number ? `#${user.band_number}` : '-'}</span>
+                    </div>
                     <div className="flex items-center">
                       <span className="font-medium mr-2">가입:</span>
-                      <span>{new Date(user.created_at).toLocaleDateString('ko-KR')}</span>
+                      <span>{user.created_at ? new Date(user.created_at).toLocaleDateString('ko-KR') : '-'}</span>
                     </div>
+                    {user.last_login_at && (
+                      <div className="flex items-center">
+                        <span className="font-medium mr-2">최근 로그인:</span>
+                        <span>{new Date(user.last_login_at).toLocaleDateString('ko-KR')}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -266,7 +268,7 @@ export default function AdminPage() {
                 {user.login_id && user.login_password && (
                   <button
                     onClick={() => handlePoderAccess(user)}
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                    className="w-full bg-blue-200 hover:bg-blue-400 text-blue-500 py-2.5 px-4 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                   >
                     Poder 접근
                   </button>
