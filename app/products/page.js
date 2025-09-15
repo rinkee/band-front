@@ -642,6 +642,7 @@ export default function ProductsPage() {
   const [loadingSuggestions, setLoadingSuggestions] = useState({}); // 추천 로딩 상태
   const [focusedProductId, setFocusedProductId] = useState(null); // 현재 포커스된 상품 ID
   const [barcodeIndex, setBarcodeIndex] = useState(null); // 전체 바코드 인덱스 (빠른 검색용)
+  const [showBarcodeRecommendations, setShowBarcodeRecommendations] = useState(false); // 추천 바코드 표시 여부
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -1898,6 +1899,61 @@ export default function ProductsPage() {
               </div>
               {/* --- 👆 검색창 및 버튼 레이아웃 수정 끝 👆 --- */}
             </div>
+            {/* 바코드 추천 표시 옵션 */}
+            <div className="grid grid-cols-[max-content_1fr] items-center">
+              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                <QrCodeIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                바코드
+              </div>
+              <div className="bg-white px-4 py-3">
+                <label className={`flex items-center cursor-pointer ${
+                  isDataLoading ? "opacity-50 cursor-not-allowed" : ""
+                }`}>
+                  <div
+                    onClick={() => {
+                      if (!isDataLoading) {
+                        const shouldShow = !showBarcodeRecommendations;
+                        setShowBarcodeRecommendations(shouldShow);
+                        // 추천 표시를 켜면 모든 상품의 추천 바코드를 미리 로드
+                        if (shouldShow && barcodeIndex && products) {
+                          const newSuggestions = {};
+                          products.forEach(product => {
+                            if (!product.barcode || product.barcode.trim() === '') {
+                              const suggestions = getInstantSuggestions(
+                                product.title,
+                                product.product_id,
+                                barcodeIndex
+                              );
+                              if (suggestions.length > 0) {
+                                newSuggestions[product.product_id] = suggestions;
+                              }
+                            }
+                          });
+                          setBarcodeSuggestions(prev => ({
+                            ...prev,
+                            ...newSuggestions
+                          }));
+                        }
+                      }
+                    }}
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mr-2 flex-shrink-0 ${
+                      showBarcodeRecommendations
+                        ? "bg-orange-500 border-orange-500"
+                        : "bg-white border-gray-300 hover:border-gray-400"
+                    } ${isDataLoading ? "!bg-gray-100 !border-gray-200" : ""}`}
+                  >
+                    {showBarcodeRecommendations && (
+                      <CheckIcon className="w-3.5 h-3.5 text-white" />
+                    )}
+                  </div>
+                  <span className={`text-sm ${
+                    isDataLoading ? "text-gray-400" : "text-gray-700"
+                  }`}>
+                    추천 바코드 표시 {showBarcodeRecommendations && <span className="text-gray-500">(바코드 없는 상품)</span>}
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
         </LightCard>
 
@@ -2224,7 +2280,8 @@ export default function ProductsPage() {
                             )}
                             
                             {/* 바코드 추천 드롭다운 - 우측에 표시 */}
-                            {focusedProductId === product.product_id && 
+                            {((focusedProductId === product.product_id) ||
+                              (showBarcodeRecommendations && (!product.barcode || product.barcode.trim() === ''))) &&
                              barcodeSuggestions[product.product_id]?.length > 0 && (
                               <div className="barcode-suggestions-dropdown absolute z-50 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
                                    style={{ 
