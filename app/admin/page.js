@@ -164,60 +164,112 @@ export default function AdminPage() {
   );
 
   // 사용자 정보 페이지 (개선된 디자인)
-  const UsersView = () => (
-    <div className="min-h-screen bg-gray-50">
-      {/* 상단 헤더 - 고정 */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setCurrentView('menu')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                aria-label="메뉴로 돌아가기"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">사용자 정보</h1>
-                <p className="text-sm text-gray-500">{users.length}명의 사용자</p>
+  const UsersView = () => {
+    const [filter, setFilter] = useState('all'); // 'all', 'active', 'inactive'
+
+    // 필터링된 사용자 목록
+    const filteredUsers = users.filter(user => {
+      if (filter === 'active') return user.is_active;
+      if (filter === 'inactive') return !user.is_active;
+      return true;
+    });
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* 상단 헤더 - 고정 */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setCurrentView('menu')}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="메뉴로 돌아가기"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">사용자 정보</h1>
+                  <p className="text-sm text-gray-500">{filteredUsers.length}명의 사용자</p>
+                </div>
               </div>
+              <button
+                onClick={loadData}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                새로고침
+              </button>
             </div>
-            <button
-              onClick={loadData}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              새로고침
-            </button>
+          </div>
+
+          {/* 필터 버튼 영역 */}
+          <div className="max-w-6xl mx-auto px-4 py-3 bg-gray-50">
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filter === 'all'
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                전체 ({users.length})
+              </button>
+              <button
+                onClick={() => setFilter('active')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filter === 'active'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                활성 ({users.filter(u => u.is_active).length})
+              </button>
+              <button
+                onClick={() => setFilter('inactive')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filter === 'inactive'
+                    ? 'bg-gray-500 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                비활성 ({users.filter(u => !u.is_active).length})
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* 컨텐츠 영역 */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* 사용자 카드 그리드 - 반응형 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {users.map((user) => (
-            <div
-              key={user.user_id}
-              className={`bg-white rounded-2xl overflow-hidden border transition-all hover:shadow-lg ${
-                user.is_active ? 'border-gray-200' : 'border-gray-300 opacity-75'
-              }`}
-            >
-              {/* 카드 바디 - 주요 정보 */}
-              <div className="p-6">
-                {/* 사용자 기본 정보 - 명확한 계층 구조 */}
-                <div className="mb-6">
-                  {/* 주요 정보 (크고 굵게) */}
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">
-                    {user.owner_name || '이름 없음'}
-                  </h3>
-                  {/* 부가 정보 (중간 크기) */}
-                  <p className="text-base text-gray-700 mb-3">
-                    {user.store_name || '스토어명 없음'}
-                  </p>
+        {/* 컨텐츠 영역 */}
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          {/* 사용자 카드 그리드 - 반응형 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredUsers.map((user) => (
+              <div
+                key={user.user_id}
+                className={`rounded-2xl overflow-hidden border transition-all hover:shadow-lg ${
+                  user.is_active
+                    ? 'bg-white border-gray-200'
+                    : 'bg-gray-100 border-gray-300 opacity-60'
+                }`}
+              >
+                {/* 카드 바디 - 주요 정보 */}
+                <div className="p-6">
+                  {/* 사용자 기본 정보 - 명확한 계층 구조 */}
+                  <div className="mb-6">
+                    {/* 주요 정보 (크고 굵게) */}
+                    <h3 className={`text-lg font-bold mb-1 ${
+                      user.is_active ? 'text-gray-900' : 'text-gray-500'
+                    }`}>
+                      {user.owner_name || '이름 없음'}
+                    </h3>
+                    {/* 부가 정보 (중간 크기) */}
+                    <p className={`text-base mb-3 ${
+                      user.is_active ? 'text-gray-700' : 'text-gray-500'
+                    }`}>
+                      {user.store_name || '스토어명 없음'}
+                    </p>
 
                   {/* 세부 정보 (작은 크기, 회색) - 모든 필드 표시 */}
                   <div className="space-y-1.5 text-sm text-gray-500">
@@ -288,24 +340,29 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* 빈 상태 */}
-        {users.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <UserGroupIcon className="w-8 h-8 text-gray-400" />
+          {/* 빈 상태 */}
+          {filteredUsers.length === 0 && !loading && (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <UserGroupIcon className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 text-lg">
+                {filter === 'active' ? '활성 사용자가 없습니다' :
+                 filter === 'inactive' ? '비활성 사용자가 없습니다' :
+                 '등록된 사용자가 없습니다'}
+              </p>
+              <button
+                onClick={loadData}
+                className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+              >
+                새로고침
+              </button>
             </div>
-            <p className="text-gray-500 text-lg">등록된 사용자가 없습니다</p>
-            <button
-              onClick={loadData}
-              className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
-            >
-              새로고침
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // 활성 관리 페이지 (개선된 디자인)
   const ActivationView = () => (
