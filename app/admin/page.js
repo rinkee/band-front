@@ -206,24 +206,6 @@ export default function AdminPage() {
                 user.is_active ? 'border-gray-200' : 'border-gray-300 opacity-75'
               }`}
             >
-              {/* 카드 헤더 - 상태 표시 */}
-              <div className={`px-6 py-3 ${
-                user.is_active ? 'bg-green-50' : 'bg-gray-50'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-semibold uppercase tracking-wider ${
-                    user.is_active ? 'text-green-700' : 'text-gray-500'
-                  }`}>
-                    {user.is_active ? '● 활성' : '○ 비활성'}
-                  </span>
-                  {user.role === 'admin' && (
-                    <span className="text-xs font-semibold text-purple-700 uppercase tracking-wider">
-                      관리자
-                    </span>
-                  )}
-                </div>
-              </div>
-
               {/* 카드 바디 - 주요 정보 */}
               <div className="p-6">
                 {/* 사용자 기본 정보 - 명확한 계층 구조 */}
@@ -274,16 +256,35 @@ export default function AdminPage() {
                   </button>
                 )}
 
-                {/* Function 번호 표시 */}
-                {user.function_number !== null && (
+                {/* 상태 배지 영역 - 활성 상태, Function, 관리자 모두 표시 */}
+                {(user.function_number !== null || user.is_admin) && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-                      user.function_number === 0 ? 'bg-gray-100 text-gray-700' :
-                      user.function_number === 1 ? 'bg-blue-100 text-blue-700' :
-                      'bg-green-100 text-green-700'
-                    }`}>
-                      Function #{user.function_number}
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {/* 활성 상태 배지 */}
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                        user.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {user.is_active ? '활성' : '비활성'}
+                      </span>
+
+                      {/* Function 번호 배지 */}
+                      {user.function_number !== null && (
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                          user.function_number === 0 ? 'bg-gray-100 text-gray-700' :
+                          user.function_number === 1 ? 'bg-blue-100 text-blue-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          Function #{user.function_number}
+                        </span>
+                      )}
+
+                      {/* 관리자 배지 */}
+                      {user.is_admin && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-700">
+                          관리자
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
