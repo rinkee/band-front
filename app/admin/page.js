@@ -563,49 +563,49 @@ export default function AdminPage() {
               key={user.user_id}
               className="bg-white rounded-xl border border-gray-200 transition-all hover:shadow-md"
             >
-              <div className="p-6">
-                <div className="flex items-center justify-between">
+              <div className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                   {/* 왼쪽: 사용자 정보 - 계층 구조 적용 */}
                   <div className="flex-1">
-                    <div className="flex items-start space-x-4">
+                    <div className="flex items-start space-x-3 sm:space-x-4">
                       {/* 상태 인디케이터 */}
                       <div className={`w-2 h-12 rounded-full flex-shrink-0 ${
                         user.is_active ? 'bg-green-400' : 'bg-gray-300'
                       }`} />
 
                       {/* 정보 계층 */}
-                      <div className="flex-1">
-                        {/* 주요 정보 - 관리자 표시 우측에 */}
-                        <div className="flex items-center space-x-2">
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {user.owner_name || '이름 없음'}
-                          </h3>
+                      <div className="flex-1 min-w-0">
+                        {/* 주요 정보 */}
+                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                          {user.owner_name || '이름 없음'}
+                        </h3>
+
+                        {/* 부가 정보 */}
+                        <p className="text-sm sm:text-base text-gray-700 mb-1 truncate">
+                          {user.store_name || '스토어명 없음'}
+                        </p>
+
+                        {/* 세부 정보 및 배지 */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-500">
+                          <span className="truncate">{user.login_id}</span>
+                          {user.band_number && (
+                            <>
+                              <span className="hidden sm:inline">•</span>
+                              <span className="truncate">밴드 #{user.band_number}</span>
+                            </>
+                          )}
                           {user.role === 'admin' && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
                               관리자
                             </span>
                           )}
                         </div>
-                        {/* 부가 정보 */}
-                        <p className="text-base text-gray-700 mb-1">
-                          {user.store_name || '스토어명 없음'}
-                        </p>
-                        {/* 세부 정보 */}
-                        <div className="flex items-center space-x-3 text-sm text-gray-500">
-                          <span>{user.login_id}</span>
-                          {user.band_number && (
-                            <>
-                              <span>•</span>
-                              <span>밴드 #{user.band_number}</span>
-                            </>
-                          )}
-                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* 오른쪽: 활성화 스위치 with 레이블 */}
-                  <div className="ml-6 text-center">
+                  {/* 오른쪽: 활성화 스위치 - 모바일에서는 우측 정렬 */}
+                  <div className="mt-4 sm:mt-0 sm:ml-4 flex flex-col items-end sm:items-center">
                     <p className="text-xs text-gray-600 font-medium mb-1">고객 활성</p>
                     <button
                       onClick={() => toggleUserActive(user.user_id, user.is_active)}
