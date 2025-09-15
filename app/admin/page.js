@@ -2,8 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import supabase from '../lib/supabaseClient';
+import {
+  UserGroupIcon,
+  CogIcon,
+  ChevronRightIcon,
+  UserIcon,
+  BuildingStorefrontIcon,
+  PhoneIcon,
+  CalendarIcon,
+  KeyIcon,
+  CheckCircleIcon,
+  XCircleIcon
+} from '@heroicons/react/24/outline';
 
-export default function SimpleAdminPage() {
+export default function AdminPage() {
+  const [currentView, setCurrentView] = useState('menu'); // 'menu', 'users', 'activation'
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -16,7 +29,7 @@ export default function SimpleAdminPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      
+
       // 사용자 데이터 로드
       const { data: usersData, error: usersError } = await supabase
         .from('users')
@@ -66,10 +79,10 @@ export default function SimpleAdminPage() {
         .eq('user_id', userId);
 
       if (error) throw error;
-      
+
       // UI 업데이트
-      setUsers(users.map(user => 
-        user.user_id === userId 
+      setUsers(users.map(user =>
+        user.user_id === userId
           ? { ...user, is_active: !currentStatus }
           : user
       ));
@@ -97,7 +110,7 @@ export default function SimpleAdminPage() {
       loginId: user.login_id,
       password: user.login_password
     }));
-    
+
     // 로그인 페이지를 새 탭에서 열기
     window.open('/login?autoLogin=true', '_blank');
   };
@@ -106,9 +119,225 @@ export default function SimpleAdminPage() {
     loadData();
   }, []);
 
+  // 메인 메뉴 화면
+  const MenuView = () => (
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="max-w-md mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">관리자 메뉴</h1>
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* 사용자 정보 메뉴 */}
+          <button
+            onClick={() => setCurrentView('users')}
+            className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow flex flex-col items-center justify-center space-y-3"
+          >
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+              <UserGroupIcon className="w-8 h-8 text-blue-600" />
+            </div>
+            <span className="text-gray-700 font-medium">사용자 정보</span>
+          </button>
+
+          {/* 활성 관리 메뉴 */}
+          <button
+            onClick={() => setCurrentView('activation')}
+            className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow flex flex-col items-center justify-center space-y-3"
+          >
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+              <CogIcon className="w-8 h-8 text-green-600" />
+            </div>
+            <span className="text-gray-700 font-medium">활성 관리</span>
+          </button>
+        </div>
+
+        {/* 통계 표시 */}
+        <div className="mt-6 bg-white rounded-xl p-4 shadow">
+          <div className="flex justify-around">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-900">{stats.totalUsers}</div>
+              <div className="text-xs text-gray-500">총 사용자</div>
+            </div>
+            <div className="w-px bg-gray-200"></div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{stats.activeUsers}</div>
+              <div className="text-xs text-gray-500">활성 사용자</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // 사용자 정보 페이지 (카드 디자인)
+  const UsersView = () => (
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="max-w-md mx-auto">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => setCurrentView('menu')}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            ← 뒤로
+          </button>
+          <h1 className="text-xl font-bold text-gray-900">사용자 정보</h1>
+          <button
+            onClick={loadData}
+            className="text-blue-600 hover:text-blue-800 text-sm"
+          >
+            새로고침
+          </button>
+        </div>
+
+        {/* 사용자 카드 목록 */}
+        <div className="space-y-4">
+          {users.map((user) => (
+            <div key={user.user_id} className={`bg-white rounded-xl p-4 shadow ${!user.is_active ? 'opacity-60' : ''}`}>
+              {/* 상태 배지 */}
+              <div className="flex justify-between items-start mb-3">
+                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                  user.is_active
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {user.is_active ? '활성' : '비활성'}
+                </span>
+                {user.role === 'admin' && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
+                    관리자
+                  </span>
+                )}
+              </div>
+
+              {/* 사용자 정보 */}
+              <div className="space-y-2 mb-4">
+                <div className="flex items-start space-x-2">
+                  <UserIcon className="w-4 h-4 text-gray-400 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
+                    <div className="text-xs text-gray-500">ID: {user.login_id}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <BuildingStorefrontIcon className="w-4 h-4 text-gray-400" />
+                  <div className="flex-1">
+                    <div className="text-sm text-gray-700">{user.store_name || '스토어명 없음'}</div>
+                    {user.band_number && (
+                      <div className="text-xs text-gray-500">밴드: {user.band_number}</div>
+                    )}
+                  </div>
+                </div>
+
+                {user.phone_number && (
+                  <div className="flex items-center space-x-2">
+                    <PhoneIcon className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-700">{user.phone_number}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <CalendarIcon className="w-4 h-4 text-gray-400" />
+                  <span className="text-xs text-gray-500">
+                    가입: {new Date(user.created_at).toLocaleDateString('ko-KR')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Poder 접근 버튼 */}
+              {user.login_id && user.login_password && (
+                <button
+                  onClick={() => handlePoderAccess(user)}
+                  className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors"
+                >
+                  <KeyIcon className="w-4 h-4" />
+                  <span className="text-sm font-medium">Poder 접근</span>
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {users.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <p className="text-gray-500">등록된 사용자가 없습니다.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // 활성 관리 페이지
+  const ActivationView = () => (
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="max-w-md mx-auto">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => setCurrentView('menu')}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            ← 뒤로
+          </button>
+          <h1 className="text-xl font-bold text-gray-900">활성 관리</h1>
+          <button
+            onClick={loadData}
+            className="text-blue-600 hover:text-blue-800 text-sm"
+          >
+            새로고침
+          </button>
+        </div>
+
+        {/* 사용자 활성화 카드 목록 */}
+        <div className="space-y-4">
+          {users.map((user) => (
+            <div key={user.user_id} className="bg-white rounded-xl p-4 shadow">
+              <div className="flex items-center justify-between">
+                {/* 사용자 정보 */}
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
+                  <div className="text-sm text-gray-500">{user.store_name || '스토어명 없음'}</div>
+                  <div className="text-xs text-gray-400">ID: {user.login_id}</div>
+                </div>
+
+                {/* 활성화 스위치 */}
+                <button
+                  onClick={() => toggleUserActive(user.user_id, user.is_active)}
+                  className={`relative inline-flex h-12 w-24 items-center rounded-full transition-colors ${
+                    user.is_active ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className="sr-only">활성화 토글</span>
+                  <span
+                    className={`inline-block h-10 w-10 transform rounded-full bg-white shadow transition-transform ${
+                      user.is_active ? 'translate-x-12' : 'translate-x-1'
+                    }`}
+                  >
+                    {user.is_active ? (
+                      <CheckCircleIcon className="h-10 w-10 text-green-500" />
+                    ) : (
+                      <XCircleIcon className="h-10 w-10 text-gray-400" />
+                    )}
+                  </span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {users.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <p className="text-gray-500">등록된 사용자가 없습니다.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // 로딩 화면
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">로딩중...</p>
@@ -117,179 +346,32 @@ export default function SimpleAdminPage() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* 헤더 */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">관리자 대시보드</h1>
-          <p className="text-gray-600">사용자 관리 및 시스템 현황</p>
-          <button
-            onClick={loadData}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            새로고침
-          </button>
-        </div>
-
-        {/* 에러 표시 */}
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+  // 에러 화면
+  if (error && currentView !== 'menu') {
+    return (
+      <div className="min-h-screen bg-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800">오류: {error}</p>
+            <button
+              onClick={() => setCurrentView('menu')}
+              className="mt-2 text-blue-600 hover:text-blue-800 text-sm"
+            >
+              메뉴로 돌아가기
+            </button>
           </div>
-        )}
-
-        {/* 통계 카드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-3xl font-bold text-gray-900">{stats.totalUsers}</div>
-            <div className="text-sm text-gray-500">총 사용자</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-3xl font-bold text-green-600">{stats.activeUsers}</div>
-            <div className="text-sm text-gray-500">활성 사용자</div>
-          </div>
-        </div>
-
-        {/* 사용자 테이블 */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">사용자 관리</h2>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    사용자 정보
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    스토어 정보
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    상태
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Function
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    작업
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {users.map((user) => (
-                  <tr key={user.user_id} className={!user.is_active ? 'bg-red-50' : 'hover:bg-gray-50'}>
-                    {/* 사용자 정보 */}
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
-                        <div className="text-sm text-gray-500">ID: {user.login_id}</div>
-                        <div className="text-sm text-gray-500">{user.phone_number}</div>
-                        {user.role === 'admin' && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 mt-1">
-                            관리자
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* 스토어 정보 */}
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="font-medium text-gray-900">{user.store_name || '스토어명 없음'}</div>
-                        {user.band_number && (
-                          <div className="text-sm text-gray-500">밴드: {user.band_number}</div>
-                        )}
-                        {user.band_url && (
-                          <a 
-                            href={user.band_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:text-blue-800"
-                          >
-                            밴드 링크 →
-                          </a>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* 상태 */}
-                    <td className="px-6 py-4">
-                      <div>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          user.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {user.is_active ? '활성' : '비활성'}
-                        </span>
-                        <div className="text-xs text-gray-500 mt-1">
-                          가입: {new Date(user.created_at).toLocaleDateString('ko-KR')}
-                        </div>
-                        {user.last_login_at && (
-                          <div className="text-xs text-gray-500">
-                            로그인: {new Date(user.last_login_at).toLocaleDateString('ko-KR')}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Function */}
-                    <td className="px-6 py-4">
-                      {user.function_number !== null ? (
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          user.function_number === 1 ? 'bg-blue-100 text-blue-800' :
-                          user.function_number === 2 ? 'bg-green-100 text-green-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          #{user.function_number}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-
-                    {/* 작업 */}
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-2">
-                        {/* 활성화/비활성화 버튼 */}
-                        <button
-                          onClick={() => toggleUserActive(user.user_id, user.is_active)}
-                          className={`px-3 py-1 rounded text-xs font-medium ${
-                            user.is_active
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-green-100 text-green-700 hover:bg-green-200'
-                          }`}
-                        >
-                          {user.is_active ? '비활성화' : '활성화'}
-                        </button>
-
-                        {/* Poder 접근 버튼 */}
-                        {user.login_id && user.login_password && (
-                          <button
-                            onClick={() => handlePoderAccess(user)}
-                            className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-medium"
-                          >
-                            🔑 Poder 접근
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {users.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">등록된 사용자가 없습니다.</p>
-            </div>
-          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // 현재 뷰에 따라 화면 렌더링
+  switch (currentView) {
+    case 'users':
+      return <UsersView />;
+    case 'activation':
+      return <ActivationView />;
+    default:
+      return <MenuView />;
+  }
 }
