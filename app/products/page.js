@@ -1898,17 +1898,23 @@ export default function ProductsPage() {
                 </div>
               </div>
               {/* --- 👆 검색창 및 버튼 레이아웃 수정 끝 👆 --- */}
-
-              {/* 추천 바코드 표시 스위치 */}
-              <div className="mt-4 flex items-center gap-2">
-                <label className="relative inline-flex items-center cursor-pointer">
+            </div>
+            {/* 바코드 추천 표시 옵션 */}
+            <div className="grid grid-cols-[max-content_1fr] items-center">
+              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                <QrCodeIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                바코드
+              </div>
+              <div className="bg-white px-4 py-3">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="checkbox"
                     checked={showBarcodeRecommendations}
                     onChange={(e) => {
-                      setShowBarcodeRecommendations(e.target.checked);
-                      // 스위치를 켜면 모든 상품의 추천 바코드를 미리 로드
-                      if (e.target.checked && barcodeIndex && products) {
+                      const shouldShow = e.target.checked;
+                      setShowBarcodeRecommendations(shouldShow);
+                      // 추천 표시를 켜면 모든 상품의 추천 바코드를 미리 로드
+                      if (shouldShow && barcodeIndex && products) {
                         const newSuggestions = {};
                         products.forEach(product => {
                           if (!product.barcode || product.barcode.trim() === '') {
@@ -1928,18 +1934,13 @@ export default function ProductsPage() {
                         }));
                       }
                     }}
-                    className="sr-only peer"
+                    disabled={isDataLoading}
+                    className="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500 focus:ring-2"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                  <span className="ml-3 text-sm font-medium text-gray-700">
-                    추천 바코드 보기
+                  <span className={`ml-2 text-sm ${showBarcodeRecommendations ? 'text-gray-700 font-medium' : 'text-gray-600'}`}>
+                    추천 바코드 표시 {showBarcodeRecommendations && <span className="text-gray-500 font-normal">(바코드 없는 상품)</span>}
                   </span>
                 </label>
-                {showBarcodeRecommendations && (
-                  <span className="text-xs text-gray-500">
-                    (바코드가 없는 상품의 추천 바코드가 표시됩니다)
-                  </span>
-                )}
               </div>
             </div>
           </div>
