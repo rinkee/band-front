@@ -349,11 +349,7 @@ export default function AdminPage() {
           {users.map((user) => (
             <div
               key={user.user_id}
-              className={`bg-white rounded-xl border transition-all ${
-                user.is_active
-                  ? 'border-green-200 hover:shadow-md'
-                  : 'border-gray-200 hover:shadow-md'
-              }`}
+              className="bg-white rounded-xl border border-gray-200 transition-all hover:shadow-md"
             >
               <div className="p-6">
                 <div className="flex items-center justify-between">
@@ -396,8 +392,9 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* 오른쪽: 간단한 활성화 스위치 */}
-                  <div className="ml-6">
+                  {/* 오른쪽: 활성화 스위치 with 레이블 */}
+                  <div className="ml-6 text-center">
+                    <p className="text-xs text-gray-600 font-medium mb-1">고객 활성</p>
                     <button
                       onClick={() => toggleUserActive(user.user_id, user.is_active)}
                       className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
