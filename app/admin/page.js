@@ -20,6 +20,8 @@ export default function AdminPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   // 데이터 로드
   const loadData = async () => {
@@ -111,8 +113,54 @@ export default function AdminPage() {
     window.open('/login?autoLogin=true', '_blank');
   };
 
+  // 관리자 권한 확인
+  const checkAdminAuth = async () => {
+    try {
+      setCheckingAuth(true);
+
+      // 세션에서 userId 가져오기
+      const sessionData = sessionStorage.getItem('session');
+      if (!sessionData) {
+        setIsAuthorized(false);
+        return;
+      }
+
+      const { userId } = JSON.parse(sessionData);
+      if (!userId) {
+        setIsAuthorized(false);
+        return;
+      }
+
+      // 데이터베이스에서 직접 role 확인
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      if (userError || !userData) {
+        setIsAuthorized(false);
+        return;
+      }
+
+      // role이 admin인지 확인
+      if (userData.role === 'admin') {
+        setIsAuthorized(true);
+        await loadData(); // 권한이 있으면 데이터 로드
+      } else {
+        setIsAuthorized(false);
+      }
+
+    } catch (err) {
+      console.error('권한 확인 오류:', err);
+      setIsAuthorized(false);
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
   useEffect(() => {
-    loadData();
+    checkAdminAuth();
   }, []);
 
   // 메인 메뉴 화면
@@ -251,7 +299,7 @@ export default function AdminPage() {
                 className={`rounded-2xl overflow-hidden border transition-all hover:shadow-lg ${
                   user.is_active
                     ? 'bg-white border-gray-200'
-                    : 'bg-gray-100 border-gray-300 opacity-60'
+                    : 'bg-gray-200 border-gray-300 opacity-60'
                 }`}
               >
                 {/* 카드 바디 - 주요 정보 */}
@@ -525,6 +573,41 @@ export default function AdminPage() {
       </div>
     </div>
   );
+
+  // 권한 확인 중
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">권한 확인중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 권한 없음
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-8">
+            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h2 className="text-xl font-bold text-red-800 mb-2">접근 권한이 없습니다</h2>
+            <p className="text-red-600 mb-6">관리자만 이 페이지에 접근할 수 있습니다.</p>
+            <button
+              onClick={() => window.location.href = '/'}
+              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              홈으로 돌아가기
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 로딩 화면
   if (loading) {
