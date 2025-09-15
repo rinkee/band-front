@@ -642,6 +642,7 @@ export default function ProductsPage() {
   const [loadingSuggestions, setLoadingSuggestions] = useState({}); // 추천 로딩 상태
   const [focusedProductId, setFocusedProductId] = useState(null); // 현재 포커스된 상품 ID
   const [barcodeIndex, setBarcodeIndex] = useState(null); // 전체 바코드 인덱스 (빠른 검색용)
+  const [showBarcodeRecommendations, setShowBarcodeRecommendations] = useState(false); // 추천 바코드 표시 여부
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("posted_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -1897,6 +1898,49 @@ export default function ProductsPage() {
                 </div>
               </div>
               {/* --- 👆 검색창 및 버튼 레이아웃 수정 끝 👆 --- */}
+
+              {/* 추천 바코드 표시 스위치 */}
+              <div className="mt-4 flex items-center gap-2">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showBarcodeRecommendations}
+                    onChange={(e) => {
+                      setShowBarcodeRecommendations(e.target.checked);
+                      // 스위치를 켜면 모든 상품의 추천 바코드를 미리 로드
+                      if (e.target.checked && barcodeIndex) {
+                        const newSuggestions = {};
+                        filteredProducts.forEach(product => {
+                          if (!product.barcode || product.barcode.trim() === '') {
+                            const suggestions = getInstantSuggestions(
+                              product.title,
+                              product.product_id,
+                              barcodeIndex
+                            );
+                            if (suggestions.length > 0) {
+                              newSuggestions[product.product_id] = suggestions;
+                            }
+                          }
+                        });
+                        setBarcodeSuggestions(prev => ({
+                          ...prev,
+                          ...newSuggestions
+                        }));
+                      }
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  <span className="ml-3 text-sm font-medium text-gray-700">
+                    추천 바코드 보기
+                  </span>
+                </label>
+                {showBarcodeRecommendations && (
+                  <span className="text-xs text-gray-500">
+                    (바코드가 없는 상품의 추천 바코드가 표시됩니다)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </LightCard>
@@ -2224,7 +2268,8 @@ export default function ProductsPage() {
                             )}
                             
                             {/* 바코드 추천 드롭다운 - 우측에 표시 */}
-                            {focusedProductId === product.product_id && 
+                            {((focusedProductId === product.product_id) ||
+                              (showBarcodeRecommendations && (!product.barcode || product.barcode.trim() === ''))) &&
                              barcodeSuggestions[product.product_id]?.length > 0 && (
                               <div className="barcode-suggestions-dropdown absolute z-50 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
                                    style={{ 
