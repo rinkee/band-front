@@ -367,10 +367,17 @@ export default function AdminPage() {
 
                       {/* 정보 계층 */}
                       <div className="flex-1">
-                        {/* 주요 정보 */}
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {user.owner_name || '이름 없음'}
-                        </h3>
+                        {/* 주요 정보 - 관리자 표시 우측에 */}
+                        <div className="flex items-center space-x-2">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {user.owner_name || '이름 없음'}
+                          </h3>
+                          {user.role === 'admin' && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                              관리자
+                            </span>
+                          )}
+                        </div>
                         {/* 부가 정보 */}
                         <p className="text-base text-gray-700 mb-1">
                           {user.store_name || '스토어명 없음'}
@@ -384,56 +391,29 @@ export default function AdminPage() {
                               <span>밴드 #{user.band_number}</span>
                             </>
                           )}
-                          {user.role === 'admin' && (
-                            <>
-                              <span>•</span>
-                              <span className="text-purple-600 font-medium">관리자</span>
-                            </>
-                          )}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* 오른쪽: 활성화 스위치 - 시각적 포인트 */}
+                  {/* 오른쪽: 간단한 활성화 스위치 */}
                   <div className="ml-6">
                     <button
                       onClick={() => toggleUserActive(user.user_id, user.is_active)}
-                      className={`relative inline-flex h-14 w-28 items-center rounded-full transition-all duration-200 focus:outline-none focus:ring-4 ${
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                         user.is_active
-                          ? 'bg-green-500 hover:bg-green-600 focus:ring-green-200'
-                          : 'bg-gray-300 hover:bg-gray-400 focus:ring-gray-200'
+                          ? 'bg-green-500 hover:bg-green-600 focus:ring-green-500'
+                          : 'bg-gray-300 hover:bg-gray-400 focus:ring-gray-500'
                       }`}
                       aria-label={`${user.owner_name} 활성화 상태 변경`}
                     >
                       <span className="sr-only">활성화 토글</span>
-                      {/* 스위치 핸들 */}
                       <span
-                        className={`absolute h-10 w-10 transform rounded-full bg-white shadow-lg transition-transform duration-200 flex items-center justify-center ${
-                          user.is_active ? 'translate-x-[60px]' : 'translate-x-1'
+                        className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                          user.is_active ? 'translate-x-7' : 'translate-x-1'
                         }`}
-                      >
-                        {user.is_active ? (
-                          <CheckIcon className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <XMarkIcon className="h-5 w-5 text-gray-400" />
-                        )}
-                      </span>
-                      {/* ON/OFF 텍스트 */}
-                      <span className={`absolute inset-x-0 text-center text-xs font-bold ${
-                        user.is_active
-                          ? 'text-white mr-10'
-                          : 'text-gray-600 ml-10'
-                      }`}>
-                        {user.is_active ? 'ON' : 'OFF'}
-                      </span>
+                      />
                     </button>
-                    {/* 상태 텍스트 */}
-                    <p className={`text-xs mt-2 text-center font-medium ${
-                      user.is_active ? 'text-green-600' : 'text-gray-500'
-                    }`}>
-                      {user.is_active ? '활성' : '비활성'}
-                    </p>
                   </div>
                 </div>
 
