@@ -121,7 +121,7 @@ export default function AdminPage() {
 
   // 메인 메뉴 화면
   const MenuView = () => (
-    <div className="min-h-screen bg-gray-100 p-4">
+    <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-md mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">관리자 메뉴</h1>
 
@@ -169,8 +169,8 @@ export default function AdminPage() {
 
   // 사용자 정보 페이지 (카드 디자인)
   const UsersView = () => (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-md mx-auto">
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-2xl mx-auto">
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-6">
           <button
@@ -188,72 +188,77 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* 사용자 카드 목록 */}
-        <div className="space-y-4">
+        {/* 사용자 카드 목록 - 2열 그리드 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {users.map((user) => (
-            <div key={user.user_id} className={`bg-white rounded-xl p-4 shadow ${!user.is_active ? 'opacity-60' : ''}`}>
-              {/* 상태 배지 */}
-              <div className="flex justify-between items-start mb-3">
-                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  user.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {user.is_active ? '활성' : '비활성'}
-                </span>
-                {user.role === 'admin' && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
-                    관리자
+            <div key={user.user_id} className="relative bg-white rounded-3xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+              {/* 상태 배지 - 우상단 */}
+              <div className="absolute top-6 right-6">
+                {user.is_active ? (
+                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-gray-800 text-white">
+                    활성
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium border border-gray-300 text-gray-500">
+                    비활성
                   </span>
                 )}
               </div>
 
-              {/* 사용자 정보 */}
-              <div className="space-y-2 mb-4">
-                <div className="flex items-start space-x-2">
-                  <UserIcon className="w-4 h-4 text-gray-400 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
-                    <div className="text-xs text-gray-500">ID: {user.login_id}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <BuildingStorefrontIcon className="w-4 h-4 text-gray-400" />
-                  <div className="flex-1">
-                    <div className="text-sm text-gray-700">{user.store_name || '스토어명 없음'}</div>
-                    {user.band_number && (
-                      <div className="text-xs text-gray-500">밴드: {user.band_number}</div>
-                    )}
-                  </div>
-                </div>
-
-                {user.phone_number && (
-                  <div className="flex items-center space-x-2">
-                    <PhoneIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-700">{user.phone_number}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center space-x-2">
-                  <CalendarIcon className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500">
-                    가입: {new Date(user.created_at).toLocaleDateString('ko-KR')}
+              {/* 프로필 아이콘 영역 */}
+              <div className="mb-6">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
+                  <span className="text-white text-2xl font-bold">
+                    {(user.owner_name || user.store_name || 'U').charAt(0).toUpperCase()}
                   </span>
                 </div>
               </div>
 
-              {/* Poder 접근 버튼 */}
-              {user.login_id && user.login_password && (
-                <button
-                  onClick={() => handlePoderAccess(user)}
-                  className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 py-2 px-4 rounded-lg flex items-center justify-center space-x-2 transition-colors"
-                >
-                  <KeyIcon className="w-4 h-4" />
-                  <span className="text-sm font-medium">Poder 접근</span>
-                  <ChevronRightIcon className="w-4 h-4" />
-                </button>
-              )}
+              {/* 사용자 정보 - 메인 */}
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-1">
+                  {user.owner_name || '이름 없음'}
+                </h3>
+                <p className="text-lg text-gray-700 mb-4">
+                  {user.store_name || '스토어명 없음'}
+                </p>
+
+                {/* 태그 형식의 추가 정보 */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
+                    {user.login_id}
+                  </span>
+                  {user.band_number && (
+                    <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
+                      밴드 #{user.band_number}
+                    </span>
+                  )}
+                  {user.role === 'admin' && (
+                    <span className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium">
+                      관리자
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 하단 정보 및 액션 */}
+              <div className="space-y-4">
+                {/* 메타 정보 */}
+                <div className="text-sm text-gray-500">
+                  <div className="mb-1">{user.phone_number || '전화번호 없음'}</div>
+                  <div>가입일: {new Date(user.created_at).toLocaleDateString('ko-KR')}</div>
+                </div>
+
+                {/* Poder 접근 버튼 */}
+                {user.login_id && user.login_password && (
+                  <button
+                    onClick={() => handlePoderAccess(user)}
+                    className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 px-4 rounded-xl font-medium transition-colors"
+                  >
+                    Poder 접근
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -269,8 +274,8 @@ export default function AdminPage() {
 
   // 활성 관리 페이지
   const ActivationView = () => (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-md mx-auto">
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-2xl mx-auto">
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-6">
           <button
@@ -288,38 +293,71 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* 사용자 활성화 카드 목록 */}
-        <div className="space-y-4">
+        {/* 사용자 활성화 카드 목록 - 2열 그리드 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {users.map((user) => (
-            <div key={user.user_id} className="bg-white rounded-xl p-4 shadow">
-              <div className="flex items-center justify-between">
-                {/* 사용자 정보 */}
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">{user.owner_name || '이름 없음'}</div>
-                  <div className="text-sm text-gray-500">{user.store_name || '스토어명 없음'}</div>
-                  <div className="text-xs text-gray-400">ID: {user.login_id}</div>
+            <div key={user.user_id} className="bg-white rounded-3xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+              {/* 프로필 영역 */}
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center space-x-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xl font-bold">
+                      {(user.owner_name || user.store_name || 'U').charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">
+                      {user.owner_name || '이름 없음'}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {user.store_name || '스토어명 없음'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {user.login_id}
+                    </p>
+                  </div>
                 </div>
+              </div>
 
-                {/* 활성화 스위치 */}
+              {/* 활성화 스위치 - 중앙 정렬 */}
+              <div className="flex justify-center">
                 <button
                   onClick={() => toggleUserActive(user.user_id, user.is_active)}
-                  className={`relative inline-flex h-12 w-24 items-center rounded-full transition-colors ${
-                    user.is_active ? 'bg-green-500' : 'bg-gray-300'
+                  className={`relative inline-flex h-16 w-32 items-center rounded-full transition-all duration-300 ${
+                    user.is_active
+                      ? 'bg-gradient-to-r from-green-400 to-green-500 shadow-lg'
+                      : 'bg-gray-200'
                   }`}
                 >
                   <span className="sr-only">활성화 토글</span>
                   <span
-                    className={`inline-block h-10 w-10 transform rounded-full bg-white shadow transition-transform ${
-                      user.is_active ? 'translate-x-12' : 'translate-x-1'
+                    className={`absolute h-14 w-14 transform rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${
+                      user.is_active ? 'translate-x-[68px]' : 'translate-x-[2px]'
                     }`}
                   >
                     {user.is_active ? (
-                      <CheckCircleIcon className="h-10 w-10 text-green-500" />
+                      <CheckCircleIcon className="h-8 w-8 text-green-500" />
                     ) : (
-                      <XCircleIcon className="h-10 w-10 text-gray-400" />
+                      <XCircleIcon className="h-8 w-8 text-gray-400" />
                     )}
                   </span>
+                  <span className={`absolute text-xs font-medium transition-opacity duration-300 ${
+                    user.is_active
+                      ? 'left-3 text-white opacity-100'
+                      : 'right-3 text-gray-500 opacity-100'
+                  }`}>
+                    {user.is_active ? 'ON' : 'OFF'}
+                  </span>
                 </button>
+              </div>
+
+              {/* 상태 텍스트 */}
+              <div className="text-center mt-4">
+                <span className={`text-sm font-medium ${
+                  user.is_active ? 'text-green-600' : 'text-gray-500'
+                }`}>
+                  {user.is_active ? '서비스 활성화됨' : '서비스 비활성화됨'}
+                </span>
               </div>
             </div>
           ))}
@@ -337,7 +375,7 @@ export default function AdminPage() {
   // 로딩 화면
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">로딩중...</p>
@@ -349,7 +387,7 @@ export default function AdminPage() {
   // 에러 화면
   if (error && currentView !== 'menu') {
     return (
-      <div className="min-h-screen bg-gray-100 p-4">
+      <div className="min-h-screen bg-gray-50 p-4">
         <div className="max-w-md mx-auto">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800">오류: {error}</p>
