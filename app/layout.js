@@ -98,7 +98,7 @@ function LayoutContent({ children }) {
     pathname === "/login" || pathname === "/signup" || pathname === "/";
 
   // admin 페이지인지 확인 (헤더 숨김 여부 결정)
-  const isAdminPage = pathname === "/admin";
+  const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
 
   // 인증 상태 확인을 위한 useEffect 훅
   useEffect(() => {
