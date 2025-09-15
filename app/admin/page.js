@@ -22,6 +22,9 @@ export default function AdminPage() {
   const [error, setError] = useState(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [inactiveReason, setInactiveReason] = useState('');
 
   // 데이터 로드
   const loadData = async () => {
@@ -39,6 +42,7 @@ export default function AdminPage() {
           owner_name,
           phone_number,
           is_active,
+          inactive_reason,
           role,
           created_at,
           last_login_at,
@@ -70,10 +74,23 @@ export default function AdminPage() {
 
   // is_active 토글
   const toggleUserActive = async (userId, currentStatus) => {
+    // 비활성화 시도 시 모달 표시
+    if (currentStatus) {
+      setSelectedUserId(userId);
+      setShowReasonModal(true);
+      return;
+    }
+
+    // 활성화는 바로 처리
     try {
+      const updateData = {
+        is_active: true,
+        inactive_reason: null // 활성화 시 이유 제거
+      };
+
       const { error } = await supabase
         .from('users')
-        .update({ is_active: !currentStatus })
+        .update(updateData)
         .eq('user_id', userId);
 
       if (error) throw error;
@@ -81,15 +98,58 @@ export default function AdminPage() {
       // UI 업데이트
       setUsers(users.map(user =>
         user.user_id === userId
-          ? { ...user, is_active: !currentStatus }
+          ? { ...user, is_active: true, inactive_reason: null }
           : user
       ));
 
       // 통계 업데이트
       setStats(prev => ({
         ...prev,
-        activeUsers: !currentStatus ? prev.activeUsers + 1 : prev.activeUsers - 1
+        activeUsers: prev.activeUsers + 1
       }));
+
+    } catch (err) {
+      alert('상태 변경 실패: ' + err.message);
+    }
+  };
+
+  // 비활성화 처리 (이유 포함)
+  const handleDeactivate = async () => {
+    if (!inactiveReason.trim()) {
+      alert('비활성화 이유를 입력해주세요.');
+      return;
+    }
+
+    try {
+      const updateData = {
+        is_active: false,
+        inactive_reason: inactiveReason.trim()
+      };
+
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('user_id', selectedUserId);
+
+      if (error) throw error;
+
+      // UI 업데이트
+      setUsers(users.map(user =>
+        user.user_id === selectedUserId
+          ? { ...user, is_active: false, inactive_reason: inactiveReason.trim() }
+          : user
+      ));
+
+      // 통계 업데이트
+      setStats(prev => ({
+        ...prev,
+        activeUsers: prev.activeUsers - 1
+      }));
+
+      // 모달 닫기
+      setShowReasonModal(false);
+      setInactiveReason('');
+      setSelectedUserId(null);
 
     } catch (err) {
       alert('상태 변경 실패: ' + err.message);
@@ -236,11 +296,25 @@ export default function AdminPage() {
   // 사용자 정보 페이지 (개선된 디자인)
   const UsersView = () => {
     const [filter, setFilter] = useState('all'); // 'all', 'active', 'inactive'
+    const [searchQuery, setSearchQuery] = useState(''); // 검색어
 
     // 필터링된 사용자 목록
     const filteredUsers = users.filter(user => {
-      if (filter === 'active') return user.is_active;
-      if (filter === 'inactive') return !user.is_active;
+      // 활성/비활성 필터
+      if (filter === 'active' && !user.is_active) return false;
+      if (filter === 'inactive' && user.is_active) return false;
+
+      // 검색 필터
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          (user.store_name && user.store_name.toLowerCase().includes(query)) ||
+          (user.owner_name && user.owner_name.toLowerCase().includes(query)) ||
+          (user.login_id && user.login_id.toLowerCase().includes(query)) ||
+          (user.phone_number && user.phone_number.includes(query))
+        );
+      }
+
       return true;
     });
 
@@ -274,8 +348,20 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* 필터 버튼 영역 */}
+          {/* 검색 및 필터 영역 */}
           <div className="max-w-6xl mx-auto px-4 py-3 bg-gray-50">
+            {/* 검색 입력 */}
+            <div className="mb-3">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="지점명, 고객명, ID, 연락처로 검색..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* 필터 버튼 */}
             <div className="flex space-x-2">
               <button
                 onClick={() => setFilter('all')}
@@ -540,6 +626,15 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* 비활성 이유 표시 */}
+                {!user.is_active && user.inactive_reason && (
+                  <div className="mt-4 p-3 bg-red-50 rounded-lg">
+                    <p className="text-sm text-red-700">
+                      <span className="font-medium">비활성 이유:</span> {user.inactive_reason}
+                    </p>
+                  </div>
+                )}
+
                 {/* 추가 정보 - 필요시 표시 */}
                 {user.last_login_at && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
@@ -645,12 +740,80 @@ export default function AdminPage() {
   }
 
   // 현재 뷰에 따라 화면 렌더링
-  switch (currentView) {
-    case 'users':
-      return <UsersView />;
-    case 'activation':
-      return <ActivationView />;
-    default:
-      return <MenuView />;
-  }
+  return (
+    <>
+      {/* 비활성 이유 입력 모달 */}
+      {showReasonModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            {/* 배경 오버레이 */}
+            <div
+              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+              onClick={() => {
+                setShowReasonModal(false);
+                setInactiveReason('');
+                setSelectedUserId(null);
+              }}
+            />
+
+            {/* 모달 컨텐츠 */}
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      고객 비활성화
+                    </h3>
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-500 mb-3">
+                        비활성화 이유를 입력해주세요:
+                      </p>
+                      <textarea
+                        value={inactiveReason}
+                        onChange={(e) => setInactiveReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                        rows={3}
+                        placeholder="예: 장기 미결제, 서비스 해지 요청, 연락 두절 등..."
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={handleDeactivate}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  비활성화
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReasonModal(false);
+                    setInactiveReason('');
+                    setSelectedUserId(null);
+                  }}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 현재 뷰 렌더링 */}
+      {currentView === 'users' && <UsersView />}
+      {currentView === 'activation' && <ActivationView />}
+      {currentView === 'menu' && <MenuView />}
+    </>
+  );
 }
