@@ -5,12 +5,8 @@ import supabase from '../lib/supabaseClient';
 import {
   UserGroupIcon,
   CogIcon,
-  ChevronRightIcon,
-  UserIcon,
-  BuildingStorefrontIcon,
-  PhoneIcon,
-  CalendarIcon,
-  KeyIcon,
+  CheckIcon,
+  XMarkIcon,
   CheckCircleIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline';
@@ -312,100 +308,185 @@ export default function AdminPage() {
     </div>
   );
 
-  // 활성 관리 페이지
+  // 활성 관리 페이지 (개선된 디자인)
   const ActivationView = () => (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => setCurrentView('menu')}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            ← 뒤로
-          </button>
-          <h1 className="text-xl font-bold text-gray-900">활성 관리</h1>
-          <button
-            onClick={loadData}
-            className="text-blue-600 hover:text-blue-800 text-sm"
-          >
-            새로고침
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* 상단 헤더 - 고정 */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setCurrentView('menu')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="메뉴로 돌아가기"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">활성 관리</h1>
+                <p className="text-sm text-gray-500">
+                  {users.filter(u => u.is_active).length}/{users.length}명 활성
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={loadData}
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              새로고침
+            </button>
+          </div>
         </div>
+      </div>
 
-        {/* 사용자 활성화 카드 목록 - 2열 그리드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* 컨텐츠 영역 */}
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* 활성화 카드 목록 - 단일 열로 간결하게 */}
+        <div className="space-y-4">
           {users.map((user) => (
-            <div key={user.user_id} className="bg-white rounded-3xl p-6 shadow-lg hover:shadow-xl transition-shadow">
-              {/* 프로필 영역 */}
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center flex-shrink-0">
-                    <span className="text-white text-xl font-bold">
-                      {(user.owner_name || user.store_name || 'U').charAt(0).toUpperCase()}
-                    </span>
+            <div
+              key={user.user_id}
+              className={`bg-white rounded-xl border transition-all ${
+                user.is_active
+                  ? 'border-green-200 hover:shadow-md'
+                  : 'border-gray-200 hover:shadow-md'
+              }`}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between">
+                  {/* 왼쪽: 사용자 정보 - 계층 구조 적용 */}
+                  <div className="flex-1">
+                    <div className="flex items-start space-x-4">
+                      {/* 상태 인디케이터 */}
+                      <div className={`w-2 h-12 rounded-full flex-shrink-0 ${
+                        user.is_active ? 'bg-green-400' : 'bg-gray-300'
+                      }`} />
+
+                      {/* 정보 계층 */}
+                      <div className="flex-1">
+                        {/* 주요 정보 */}
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {user.owner_name || '이름 없음'}
+                        </h3>
+                        {/* 부가 정보 */}
+                        <p className="text-base text-gray-700 mb-1">
+                          {user.store_name || '스토어명 없음'}
+                        </p>
+                        {/* 세부 정보 */}
+                        <div className="flex items-center space-x-3 text-sm text-gray-500">
+                          <span>{user.login_id}</span>
+                          {user.band_number && (
+                            <>
+                              <span>•</span>
+                              <span>밴드 #{user.band_number}</span>
+                            </>
+                          )}
+                          {user.role === 'admin' && (
+                            <>
+                              <span>•</span>
+                              <span className="text-purple-600 font-medium">관리자</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">
-                      {user.owner_name || '이름 없음'}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {user.store_name || '스토어명 없음'}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {user.login_id}
+
+                  {/* 오른쪽: 활성화 스위치 - 시각적 포인트 */}
+                  <div className="ml-6">
+                    <button
+                      onClick={() => toggleUserActive(user.user_id, user.is_active)}
+                      className={`relative inline-flex h-14 w-28 items-center rounded-full transition-all duration-200 focus:outline-none focus:ring-4 ${
+                        user.is_active
+                          ? 'bg-green-500 hover:bg-green-600 focus:ring-green-200'
+                          : 'bg-gray-300 hover:bg-gray-400 focus:ring-gray-200'
+                      }`}
+                      aria-label={`${user.owner_name} 활성화 상태 변경`}
+                    >
+                      <span className="sr-only">활성화 토글</span>
+                      {/* 스위치 핸들 */}
+                      <span
+                        className={`absolute h-10 w-10 transform rounded-full bg-white shadow-lg transition-transform duration-200 flex items-center justify-center ${
+                          user.is_active ? 'translate-x-[60px]' : 'translate-x-1'
+                        }`}
+                      >
+                        {user.is_active ? (
+                          <CheckIcon className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <XMarkIcon className="h-5 w-5 text-gray-400" />
+                        )}
+                      </span>
+                      {/* ON/OFF 텍스트 */}
+                      <span className={`absolute inset-x-0 text-center text-xs font-bold ${
+                        user.is_active
+                          ? 'text-white mr-10'
+                          : 'text-gray-600 ml-10'
+                      }`}>
+                        {user.is_active ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+                    {/* 상태 텍스트 */}
+                    <p className={`text-xs mt-2 text-center font-medium ${
+                      user.is_active ? 'text-green-600' : 'text-gray-500'
+                    }`}>
+                      {user.is_active ? '활성' : '비활성'}
                     </p>
                   </div>
                 </div>
-              </div>
 
-              {/* 활성화 스위치 - 중앙 정렬 */}
-              <div className="flex justify-center">
-                <button
-                  onClick={() => toggleUserActive(user.user_id, user.is_active)}
-                  className={`relative inline-flex h-16 w-32 items-center rounded-full transition-all duration-300 ${
-                    user.is_active
-                      ? 'bg-gradient-to-r from-green-400 to-green-500 shadow-lg'
-                      : 'bg-gray-200'
-                  }`}
-                >
-                  <span className="sr-only">활성화 토글</span>
-                  <span
-                    className={`absolute h-14 w-14 transform rounded-full bg-white shadow-md transition-transform duration-300 flex items-center justify-center ${
-                      user.is_active ? 'translate-x-[68px]' : 'translate-x-[2px]'
-                    }`}
-                  >
-                    {user.is_active ? (
-                      <CheckCircleIcon className="h-8 w-8 text-green-500" />
-                    ) : (
-                      <XCircleIcon className="h-8 w-8 text-gray-400" />
-                    )}
-                  </span>
-                  <span className={`absolute text-xs font-medium transition-opacity duration-300 ${
-                    user.is_active
-                      ? 'left-3 text-white opacity-100'
-                      : 'right-3 text-gray-500 opacity-100'
-                  }`}>
-                    {user.is_active ? 'ON' : 'OFF'}
-                  </span>
-                </button>
-              </div>
-
-              {/* 상태 텍스트 */}
-              <div className="text-center mt-4">
-                <span className={`text-sm font-medium ${
-                  user.is_active ? 'text-green-600' : 'text-gray-500'
-                }`}>
-                  {user.is_active ? '서비스 활성화됨' : '서비스 비활성화됨'}
-                </span>
+                {/* 추가 정보 - 필요시 표시 */}
+                {user.last_login_at && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-xs text-gray-500">
+                      마지막 로그인: {new Date(user.last_login_at).toLocaleDateString('ko-KR')} {new Date(user.last_login_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
 
+        {/* 빈 상태 */}
         {users.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">등록된 사용자가 없습니다.</p>
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <CogIcon className="w-8 h-8 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-lg">등록된 사용자가 없습니다</p>
+            <button
+              onClick={loadData}
+              className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+            >
+              새로고침
+            </button>
+          </div>
+        )}
+
+        {/* 통계 요약 - 하단 고정 */}
+        {users.length > 0 && (
+          <div className="mt-8 p-4 bg-white rounded-xl border border-gray-200">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{users.length}</p>
+                <p className="text-sm text-gray-500">전체</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">
+                  {users.filter(u => u.is_active).length}
+                </p>
+                <p className="text-sm text-gray-500">활성</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-400">
+                  {users.filter(u => !u.is_active).length}
+                </p>
+                <p className="text-sm text-gray-500">비활성</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
