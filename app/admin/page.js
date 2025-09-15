@@ -306,17 +306,17 @@ export default function AdminPage() {
                 <div className="p-6">
                   {/* 사용자 기본 정보 - 명확한 계층 구조 */}
                   <div className="mb-6">
-                    {/* 주요 정보 (크고 굵게) */}
+                    {/* 주요 정보 (크고 굵게) - 지점명 */}
                     <h3 className={`text-lg font-bold mb-1 ${
                       user.is_active ? 'text-gray-900' : 'text-gray-500'
                     }`}>
-                      {user.owner_name || '이름 없음'}
+                      {user.store_name || '스토어명 없음'}
                     </h3>
-                    {/* 부가 정보 (중간 크기) */}
+                    {/* 부가 정보 (중간 크기) - 고객명 */}
                     <p className={`text-base mb-3 ${
                       user.is_active ? 'text-gray-700' : 'text-gray-500'
                     }`}>
-                      {user.store_name || '스토어명 없음'}
+                      {user.owner_name || '이름 없음'}
                     </p>
 
                   {/* 세부 정보 (작은 크기, 회색) - 모든 필드 표시 */}
