@@ -167,105 +167,145 @@ export default function AdminPage() {
     </div>
   );
 
-  // 사용자 정보 페이지 (카드 디자인)
+  // 사용자 정보 페이지 (개선된 디자인)
   const UsersView = () => (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => setCurrentView('menu')}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            ← 뒤로
-          </button>
-          <h1 className="text-xl font-bold text-gray-900">사용자 정보</h1>
-          <button
-            onClick={loadData}
-            className="text-blue-600 hover:text-blue-800 text-sm"
-          >
-            새로고침
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* 상단 헤더 - 고정 */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setCurrentView('menu')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="메뉴로 돌아가기"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">사용자 정보</h1>
+                <p className="text-sm text-gray-500">{users.length}명의 사용자</p>
+              </div>
+            </div>
+            <button
+              onClick={loadData}
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              새로고침
+            </button>
+          </div>
         </div>
+      </div>
 
-        {/* 사용자 카드 목록 - 2열 그리드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* 컨텐츠 영역 */}
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* 사용자 카드 그리드 - 반응형 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {users.map((user) => (
-            <div key={user.user_id} className="relative bg-white rounded-3xl p-6 shadow-lg hover:shadow-xl transition-shadow">
-              {/* 상태 배지 - 우상단 */}
-              <div className="absolute top-6 right-6">
-                {user.is_active ? (
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-gray-800 text-white">
-                    활성
+            <div
+              key={user.user_id}
+              className={`bg-white rounded-2xl overflow-hidden border transition-all hover:shadow-lg ${
+                user.is_active ? 'border-gray-200' : 'border-gray-300 opacity-75'
+              }`}
+            >
+              {/* 카드 헤더 - 상태 표시 */}
+              <div className={`px-6 py-3 ${
+                user.is_active ? 'bg-green-50' : 'bg-gray-50'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-semibold uppercase tracking-wider ${
+                    user.is_active ? 'text-green-700' : 'text-gray-500'
+                  }`}>
+                    {user.is_active ? '● 활성' : '○ 비활성'}
                   </span>
-                ) : (
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium border border-gray-300 text-gray-500">
-                    비활성
-                  </span>
-                )}
-              </div>
-
-              {/* 프로필 아이콘 영역 */}
-              <div className="mb-6">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
-                  <span className="text-white text-2xl font-bold">
-                    {(user.owner_name || user.store_name || 'U').charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              {/* 사용자 정보 - 메인 */}
-              <div className="mb-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-1">
-                  {user.owner_name || '이름 없음'}
-                </h3>
-                <p className="text-lg text-gray-700 mb-4">
-                  {user.store_name || '스토어명 없음'}
-                </p>
-
-                {/* 태그 형식의 추가 정보 */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
-                    {user.login_id}
-                  </span>
-                  {user.band_number && (
-                    <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
-                      밴드 #{user.band_number}
-                    </span>
-                  )}
                   {user.role === 'admin' && (
-                    <span className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium">
+                    <span className="text-xs font-semibold text-purple-700 uppercase tracking-wider">
                       관리자
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* 하단 정보 및 액션 */}
-              <div className="space-y-4">
-                {/* 메타 정보 */}
-                <div className="text-sm text-gray-500">
-                  <div className="mb-1">{user.phone_number || '전화번호 없음'}</div>
-                  <div>가입일: {new Date(user.created_at).toLocaleDateString('ko-KR')}</div>
+              {/* 카드 바디 - 주요 정보 */}
+              <div className="p-6">
+                {/* 사용자 기본 정보 - 명확한 계층 구조 */}
+                <div className="mb-6">
+                  {/* 주요 정보 (크고 굵게) */}
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">
+                    {user.owner_name || '이름 없음'}
+                  </h3>
+                  {/* 부가 정보 (중간 크기) */}
+                  <p className="text-base text-gray-700 mb-3">
+                    {user.store_name || '스토어명 없음'}
+                  </p>
+
+                  {/* 세부 정보 (작은 크기, 회색) */}
+                  <div className="space-y-1.5 text-sm text-gray-500">
+                    <div className="flex items-center">
+                      <span className="font-medium mr-2">ID:</span>
+                      <span>{user.login_id}</span>
+                    </div>
+                    {user.phone_number && (
+                      <div className="flex items-center">
+                        <span className="font-medium mr-2">연락처:</span>
+                        <span>{user.phone_number}</span>
+                      </div>
+                    )}
+                    {user.band_number && (
+                      <div className="flex items-center">
+                        <span className="font-medium mr-2">밴드:</span>
+                        <span>#{user.band_number}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center">
+                      <span className="font-medium mr-2">가입:</span>
+                      <span>{new Date(user.created_at).toLocaleDateString('ko-KR')}</span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Poder 접근 버튼 */}
+                {/* 액션 버튼 - 시각적 포인트 */}
                 {user.login_id && user.login_password && (
                   <button
                     onClick={() => handlePoderAccess(user)}
-                    className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 px-4 rounded-xl font-medium transition-colors"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   >
-                    Poder 접근
+                    Poder 접근 →
                   </button>
+                )}
+
+                {/* Function 번호 표시 */}
+                {user.function_number !== null && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                      user.function_number === 0 ? 'bg-gray-100 text-gray-700' :
+                      user.function_number === 1 ? 'bg-blue-100 text-blue-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      Function #{user.function_number}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
           ))}
         </div>
 
+        {/* 빈 상태 */}
         {users.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">등록된 사용자가 없습니다.</p>
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <UserGroupIcon className="w-8 h-8 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-lg">등록된 사용자가 없습니다</p>
+            <button
+              onClick={loadData}
+              className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+            >
+              새로고침
+            </button>
           </div>
         )}
       </div>
