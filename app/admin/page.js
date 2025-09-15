@@ -145,9 +145,9 @@ export default function AdminPage() {
         }
       }
 
+      // 로그인 상태가 아니면 로그인 페이지로
       if (!userId) {
-        console.log('userId를 찾을 수 없습니다');
-        setIsAuthorized(false);
+        window.location.href = '/login';
         return;
       }
 
@@ -159,7 +159,8 @@ export default function AdminPage() {
         .single();
 
       if (userError || !userData) {
-        setIsAuthorized(false);
+        // 사용자를 찾을 수 없으면 대시보드로
+        window.location.href = '/dashboard';
         return;
       }
 
@@ -168,12 +169,13 @@ export default function AdminPage() {
         setIsAuthorized(true);
         await loadData(); // 권한이 있으면 데이터 로드
       } else {
-        setIsAuthorized(false);
+        // 관리자가 아니면 대시보드로
+        window.location.href = '/dashboard';
       }
 
     } catch (err) {
       console.error('권한 확인 오류:', err);
-      setIsAuthorized(false);
+      window.location.href = '/dashboard';
     } finally {
       setCheckingAuth(false);
     }
@@ -606,27 +608,9 @@ export default function AdminPage() {
     );
   }
 
-  // 권한 없음
+  // 권한 없음 (이미 리다이렉트 처리했으므로 여기까지 오지 않아야 함)
   if (!isAuthorized) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md mx-auto text-center">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-8">
-            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <h2 className="text-xl font-bold text-red-800 mb-2">접근 권한이 없습니다</h2>
-            <p className="text-red-600 mb-6">관리자만 이 페이지에 접근할 수 있습니다.</p>
-            <button
-              onClick={() => window.location.href = '/'}
-              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              홈으로 돌아가기
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // 로딩 화면
