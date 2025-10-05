@@ -25,6 +25,7 @@ import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임�
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
+import CommentOrdersView from "./CommentOrdersView";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -338,6 +339,26 @@ const getStatusIcon = (status) => {
 
 // --- 메인 페이지 컴포넌트 ---
 export default function OrdersPage() {
+  // --- 렌더 모드 분기 (raw 모드일 때 comment_orders 화면) ---
+  if (typeof window !== "undefined") {
+    try {
+      const s = sessionStorage.getItem("userData");
+      if (s) {
+        const session = JSON.parse(s);
+        const mode =
+          session?.orderProcessingMode ||
+          session?.order_processing_mode ||
+          session?.user?.orderProcessingMode ||
+          session?.user?.order_processing_mode ||
+          "legacy";
+        const isRaw = String(mode).toLowerCase() === "raw";
+        if (isRaw) {
+          return <CommentOrdersView />;
+        }
+      }
+    } catch (_) {}
+  }
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const { scrollToTop } = useScroll();

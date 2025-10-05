@@ -316,6 +316,16 @@ export default function LoginPage() {
 
           // JWT 토큰
           token: token,
+
+          // 주문 처리 모드 (raw/legacy) - 화면 분기용 (노출/수정 금지)
+          orderProcessingMode:
+            userDetails.orderProcessingMode ??
+            userDetails.order_processing_mode ??
+            "legacy",
+          order_processing_mode:
+            userDetails.order_processing_mode ??
+            userDetails.orderProcessingMode ??
+            "legacy",
         };
 
         console.log("SessionStorage에 저장할 데이터:", userDataToStore);
@@ -414,6 +424,16 @@ export default function LoginPage() {
 
           // !!! 토큰을 이 객체 안에 포함 !!!
           token: token,
+
+          // 주문 처리 모드 (raw/legacy) - 화면 분기용 (노출/수정 금지)
+          orderProcessingMode:
+            userDetails.orderProcessingMode ??
+            userDetails.order_processing_mode ??
+            "legacy",
+          order_processing_mode:
+            userDetails.order_processing_mode ??
+            userDetails.orderProcessingMode ??
+            "legacy",
         };
         console.log("SessionStorage에 저장할 데이터:", userDataToStore);
 

@@ -28,6 +28,7 @@ import usePostsClient, {
   usePostStatsClient,
   usePostClientMutations,
 } from "./usePostsClient";
+import useCommentOrdersClient, { useCommentOrderClientMutations } from "./useCommentOrdersClient";
 
 // 모든 훅을 내보냅니다.
 export {
@@ -70,4 +71,7 @@ export {
   usePostClient,
   usePostStatsClient,
   usePostClientMutations,
+  // 댓글 기반 주문(comment_orders)
+  useCommentOrdersClient,
+  useCommentOrderClientMutations,
 };
