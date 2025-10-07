@@ -136,6 +136,15 @@ export default function CommentOrdersView() {
   const [postProductsByBandPost, setPostProductsByBandPost] = useState({});
   const [lazyProductsByCommentId, setLazyProductsByCommentId] = useState({});
   const [isClient, setIsClient] = useState(false);
+  const [expandedProducts, setExpandedProducts] = useState({});
+
+  const toggleProductExpansion = (e, commentOrderId) => {
+    e.stopPropagation();
+    setExpandedProducts(prev => ({
+        ...prev,
+        [commentOrderId]: !prev[commentOrderId]
+    }));
+  };
   // 클릭 기반 필터 상태
   const [activeCustomer, setActiveCustomer] = useState(null);
   const [activeProductId, setActiveProductId] = useState(null);
@@ -828,51 +837,82 @@ export default function CommentOrdersView() {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto px-4 py-2 sm:px-6 sm:py-4 pb-[200px]">
       <main className="max-w-[1440px] mx-auto space-y-4">
-        {/* 헤더 영역 - legacy 유사 */}
-        <div className="mb-2 flex flex-col md:flex-row justify-between items-start gap-4">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 mb-1">주문 관리</h1>
-              <p className="text-sm text-gray-500 mb-2">등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.</p>
-              <UpdateButton pageType="orders" />
-            </div>
-          </div>
-          <div className="w-full md:w-auto flex items-center gap-2">
-            <div className="grid grid-cols-4 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm w-full md:w-auto">
-              <div className="flex flex-col items-start p-2 -m-2 rounded-lg">
-                <dt className="text-sm text-gray-500 uppercase">필터된 주문</dt>
-                <dd className="font-semibold text-lg mt-0.5">{(activeProductId ? visibleItems.length : filteredTotalItems).toLocaleString()}</dd>
-              </div>
-              <div className="flex flex-col items-start p-2 -m-2 rounded-lg">
-                <dt className="text-sm text-gray-500 uppercase">현재 상태</dt>
-                <dd className="font-semibold text-lg mt-0.5">{statusSelection}</dd>
-              </div>
-              <div className="flex flex-col items-start p-2 -m-2 rounded-lg">
-                <dt className="text-sm text-gray-500 uppercase">페이지</dt>
-                <dd className="font-semibold text-lg mt-0.5">
-                  {pagination ? `${pagination.currentPage}/${pagination.totalPages}` : "-"}
-                </dd>
-              </div>
-              <div className="flex flex-col items-start p-2 -m-2 rounded-lg">
-                <dt className="text-sm text-gray-500 uppercase">모드</dt>
-                <dd className="font-semibold text-lg mt-0.5 inline-flex items-center gap-1 text-purple-700">
+        {/* 헤더 및 필터 영역 */}
+        <div className="space-y-3">
+          {/* 상단: 타이틀, 통계, 업데이트 버튼 */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div className="flex items-center gap-x-3">
+              <h1 className="text-lg font-bold text-gray-900">주문 관리</h1>
+              <div className="flex items-center gap-x-3 text-xs text-gray-500">
+                <span>
+                  필터된 주문: <span className="font-semibold text-gray-800">{(activeProductId ? visibleItems.length : filteredTotalItems).toLocaleString()}</span>
+                </span>
+                <span className="hidden sm:inline">|</span>
+                <span className="hidden sm:inline">
+                  현재 상태: <span className="font-semibold text-gray-800">{statusSelection}</span>
+                </span>
+                <span className="hidden sm:inline">|</span>
+                <span className="hidden sm:inline">
+                  페이지: <span className="font-semibold text-gray-800">{pagination ? `${pagination.currentPage}/${pagination.totalPages}` : "-"}</span>
+                </span>
+                <span className="hidden sm:inline">|</span>
+                <span className="font-semibold text-purple-700 inline-flex items-center gap-1">
                   <ChatBubbleLeftRightIcon className="w-4 h-4" /> 원시댓글
-                </dd>
+                </span>
               </div>
             </div>
+            <UpdateButton pageType="orders" />
           </div>
-        </div>
 
-        {/* 필터 영역 - legacy 유사 레이아웃 */}
-        <LightCard padding="p-0" className="overflow-hidden">
-          <div className="divide-y divide-gray-200">
-            {/* 조회 기간 */}
-            <div className="grid grid-cols-[max-content_1fr] items-center">
-              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                조회 기간
+          {/* 하단: 필터 및 검색 */}
+          <LightCard padding="p-3">
+            <div className="flex flex-wrap items-stretch justify-start gap-3">
+              {/* 검색 */}
+              <div className="flex items-center gap-2">
+                <div className="relative w-full sm:w-56">
+                  <input
+                    type="text"
+                    placeholder="고객명/댓글 검색"
+                    value={inputValue}
+                    onChange={handleSearchChange}
+                    onKeyDown={handleKeyDown}
+                    className="w-full pl-9 pr-9 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
+                  </div>
+                  {inputValue && (
+                    <button
+                      onClick={() => setInputValue("")}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                      aria-label="검색 내용 지우기"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={handleSearch}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-gray-800 text-white hover:bg-gray-900"
+                >
+                  <MagnifyingGlassIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">검색</span>
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="inline-flex items-center gap-1.5 p-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200"
+                  aria-label="검색 초기화"
+                  title="검색 및 필터 초기화"
+                >
+                  <ArrowPathIcon className="w-4 h-4" />
+                </button>
               </div>
-              <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
+
+              <div className="flex-grow"></div> {/* Spacer */}
+
+              {/* 조회 기간 */}
+              <div className="flex items-center gap-3 p-2 border border-gray-200 rounded-lg bg-white">
+                <span className="text-sm font-medium text-gray-600 flex-shrink-0">기간:</span>
                 <DatePicker
                   selectsRange
                   startDate={customStartDate}
@@ -904,14 +944,10 @@ export default function CommentOrdersView() {
                   onChange={handleDateRangeChange}
                 />
               </div>
-            </div>
-            {/* 상태 필터 */}
-            <div className="grid grid-cols-[max-content_1fr] items-center">
-              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                <FunnelIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                상태
-              </div>
-              <div className="bg-white px-4 py-3">
+
+              {/* 상태 필터 */}
+              <div className="flex items-center gap-3 p-2 border border-gray-200 rounded-lg bg-white">
+                <span className="text-sm font-medium text-gray-600 flex-shrink-0">상태:</span>
                 <CustomRadioGroup
                   name="orderStatus"
                   options={orderStatusOptions}
@@ -920,55 +956,8 @@ export default function CommentOrdersView() {
                 />
               </div>
             </div>
-            {/* 검색 */}
-            <div className="grid grid-cols-[max-content_1fr] items-center">
-              <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                검색
-              </div>
-              <div className="bg-white flex-grow w-full px-4 py-3 flex flex-wrap md:flex-nowrap md:items-center gap-2">
-                <div className="relative w-full md:flex-grow md:max-w-sm order-1">
-                  <input
-                    type="text"
-                    placeholder="고객명/댓글 검색"
-                    value={inputValue}
-                    onChange={handleSearchChange}
-                    onKeyDown={handleKeyDown}
-                    className="w-full pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                  />
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                  </div>
-                  {inputValue && (
-                    <button
-                      onClick={() => setInputValue("")}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
-                      aria-label="검색 내용 지우기"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 order-2">
-                  <button
-                    onClick={handleSearch}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium bg-gray-800 text-white hover:bg-gray-900"
-                  >
-                    <MagnifyingGlassIcon className="w-4 h-4" /> 검색
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200"
-                    aria-label="검색 초기화"
-                    title="검색 및 필터 초기화"
-                  >
-                    <ArrowPathIcon className="w-4 h-4" /> 초기화
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </LightCard>
+          </LightCard>
+        </div>
 
         {/* 일괄 처리 버튼 바 (legacy 스타일) */}
         <div className="fixed flex justify-between items-center bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
@@ -1063,7 +1052,7 @@ export default function CommentOrdersView() {
                 {visibleItems.map((row) => {
                   const checked = selectedIds.includes(row.comment_order_id);
                   return (
-                  <tr key={row.comment_order_id} onClick={() => openDetail(row)} className={`hover:bg-gray-50 cursor-pointer ${checked ? 'bg-orange-50' : ''}`}>
+                  <tr key={row.comment_order_id} className={`hover:bg-gray-50 ${checked ? 'bg-orange-50' : ''}`}>
                     <td className="w-12 px-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -1094,23 +1083,17 @@ export default function CommentOrdersView() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 align-top">
                       {(() => {
-                        const pk = row.post_key || row.postKey;
-                        const band = row.band_number || row.bandNumber;
-                        const postNum = row.post_number ?? row.postNumber;
-                        let list = [];
-                        if (pk && postProductsByPostKey[pk]) list = postProductsByPostKey[pk];
-                        else if (band != null && postNum != null) {
-                          const k = `${band}_${String(postNum)}`;
-                          if (postProductsByBandPost[k]) list = postProductsByBandPost[k];
+                        const list = getCandidateProductsForRow(row);
+                        if (!list || list.length === 0) {
+                          return <span className="text-gray-400">-</span>;
                         }
-                        if ((!list || list.length === 0) && lazyProductsByCommentId[row.comment_order_id]) {
-                          list = lazyProductsByCommentId[row.comment_order_id];
-                        }
-                        if (!list || list.length === 0) return <span className="text-gray-400">-</span>;
-                        const top = list.slice(0, 3);
+                        
+                        const isExpanded = !!expandedProducts[row.comment_order_id];
+                        const productsToShow = isExpanded ? list : list.slice(0, 3);
+
                         return (
                           <div className="space-y-2">
-                            {top.map((p) => {
+                            {productsToShow.map((p) => {
                               const img = getProductImageUrl(p);
                               return (
                                 <div
@@ -1158,7 +1141,14 @@ export default function CommentOrdersView() {
                                 </div>
                               );
                             })}
-                            {list.length > 3 && <div className="text-xs text-gray-500">외 {list.length - 3}개…</div>}
+                            {list.length > 3 && (
+                              <button 
+                                className="text-xs text-blue-600 hover:underline font-medium"
+                                onClick={(e) => toggleProductExpansion(e, row.comment_order_id)}
+                              >
+                                {isExpanded ? "간략히 보기" : `외 ${list.length - 3}개 더보기...`}
+                              </button>
+                            )}
                           </div>
                         );
                       })()}
@@ -1198,97 +1188,7 @@ export default function CommentOrdersView() {
           </div>
         </LightCard>
 
-        {/* 상세 영역 - legacy 카드 스타일 */}
-        {selected && (
-          <LightCard className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-sm text-gray-500">{selected.commenter_name}</div>
-                <div className="mt-1 text-gray-900 whitespace-pre-wrap">{processBandTags(selected.comment_body || "")}</div>
-              </div>
-              <button className="text-gray-500 text-sm" onClick={() => setSelected(null)}>
-                닫기
-              </button>
-            </div>
 
-            {/* 이미지 전체 프리뷰 */}
-            <div className="flex flex-wrap gap-2">
-              {(() => {
-                let at = selected.attachments;
-                try {
-                  if (typeof at === "string") at = JSON.parse(at);
-                } catch (_) {}
-                if (!Array.isArray(at)) return null;
-                return at.map((url, i) => (
-                  <img
-                    key={i}
-                    src={normalizeImageUrl(url)}
-                    alt="attachment"
-                    referrerPolicy="no-referrer"
-                    className="w-24 h-24 object-cover rounded-md border"
-                    onError={(e) => {
-                      e.currentTarget.onerror = null;
-                      e.currentTarget.src = "/file.svg";
-                    }}
-                  />
-                ));
-              })()}
-            </div>
-
-            {/* 상품 후보 */}
-            <div>
-              <div className="text-sm font-semibold text-gray-700 mb-2">상품 후보</div>
-              {candidates.length === 0 ? (
-                <div className="text-sm text-gray-500">상품 후보가 없습니다. 바코드를 직접 입력하거나 수량만 지정할 수 있습니다.</div>
-              ) : (
-                <div className="space-y-1">
-                  {candidates.map((p) => (
-                    <label key={p.product_id} className="flex items-center gap-2 text-sm text-gray-700">
-                      <input type="radio" name="candidate" className="h-4 w-4" checked={chosenProductId === p.product_id} onChange={() => setChosenProductId(p.product_id)} />
-                      <span className="truncate">
-                        {p.title} {p.barcode ? `(${p.barcode})` : ""} {p.base_price ? `- ₩${Number(p.base_price).toLocaleString()}` : ""} #{p.item_number}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 입력들 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">바코드(직접 입력 가능)</label>
-                <input value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} placeholder="숫자/문자열" className="w-full px-3 py-2 border rounded-md text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">수량</label>
-                <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value || "1", 10)))} className="w-full px-3 py-2 border rounded-md text-sm" />
-              </div>
-              <div className="flex items-end">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={paidChecked} onChange={(e) => setPaidChecked(e.target.checked)} />
-                  결제완료 포함(주문완료 시 paid_at)
-                </label>
-              </div>
-            </div>
-
-            {/* 액션 버튼 */}
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => onUpdate("수령완료")} disabled={isUpdating} className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-sm bg-green-600 text-white hover:bg-green-700 disabled:opacity-60">
-                <CheckCircleIcon className="w-4 h-4" /> 수령완료
-              </button>
-              <button onClick={() => onUpdate("주문완료")} disabled={isUpdating} className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
-                주문완료
-              </button>
-              <button onClick={() => onUpdate("미수령")} disabled={isUpdating} className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-sm bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60">
-                미수령
-              </button>
-              <button onClick={() => onUpdate("주문취소")} disabled={isUpdating} className="inline-flex items-center gap-1 px-3 py-2 rounded-md text-sm bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-60">
-                <XCircleIcon className="w-4 h-4" /> 주문취소
-              </button>
-            </div>
-          </LightCard>
-        )}
 
         <ToastContainer toasts={toasts} hideToast={hideToast} />
       </main>
