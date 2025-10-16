@@ -36,6 +36,7 @@ export function buildProductMap(products: ClientMatcherProduct[]): Map<number, R
       name: p.name || p.title || '',
       quantityText: p.quantityText || null,
       price: (typeof p.price === 'number' ? p.price : null),
+      keywords: Array.isArray(p.keywords) ? p.keywords : null,
     });
   });
   return map;
