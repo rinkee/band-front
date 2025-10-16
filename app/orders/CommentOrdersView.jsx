@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, forwardRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import supabase from "../lib/supabaseClient";
 import { createClient } from "@supabase/supabase-js";
 import { useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
@@ -21,8 +21,11 @@ import {
   MagnifyingGlassIcon,
   ArrowPathIcon,
   CheckIcon,
+  PhotoIcon,
 } from "@heroicons/react/24/outline";
 import JsBarcode from "jsbarcode";
+// 추천 매칭기 (@client-matcher)
+import { analyzeCommentMulti } from "../client-matcher";
 
 const processBandTags = (text) => {
   if (!text) return text;
@@ -39,6 +42,21 @@ const processBandTags = (text) => {
   processedText = processedText.replace(/<band:[^>]*\/>/g, "");
   return processedText;
 };
+
+// Extract item number from product_id suffix like "..._item3"
+function parseItemNumberFromProductId(productId) {
+  if (!productId) return undefined;
+  try {
+    const s = String(productId);
+    const matches = Array.from(s.matchAll(/item(\d+)/gi));
+    if (matches.length > 0) {
+      const last = matches[matches.length - 1];
+      const n = parseInt(last[1], 10);
+      return Number.isFinite(n) ? n : undefined;
+    }
+  } catch (_) {}
+  return undefined;
+}
 
 const StatusBadge = ({ status }) => {
   let bg = "bg-gray-100 text-gray-700";
@@ -115,12 +133,13 @@ const CustomDateInputButton = forwardRef(({ value, onClick, isActive, disabled }
 
 export default function CommentOrdersView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [userData, setUserData] = useState(null);
   const [page, setPage] = useState(1);
   // 검색/필터 (legacy 유사 UI)
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusSelection, setStatusSelection] = useState("미수령");
+  const [statusSelection, setStatusSelection] = useState("all");
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
@@ -137,6 +156,10 @@ export default function CommentOrdersView() {
   const [lazyProductsByCommentId, setLazyProductsByCommentId] = useState({});
   const [isClient, setIsClient] = useState(false);
   const [expandedProducts, setExpandedProducts] = useState({});
+  // 댓글별 추천 결과 저장: { [comment_order_id]: ClientMatcherSuggestion[] }
+  const [suggestionsByCommentId, setSuggestionsByCommentId] = useState({});
+  // 제품 이미지 로드 실패(대체 아이콘 사용) 여부: { [product_id]: true }
+  const [brokenProductImages, setBrokenProductImages] = useState({});
 
   const toggleProductExpansion = (e, commentOrderId) => {
     e.stopPropagation();
@@ -219,16 +242,24 @@ export default function CommentOrdersView() {
     customEndDate
   );
 
+  const paramPostKey = searchParams?.get('postKey') || undefined;
+  const paramPostNumber = searchParams?.get('postNumber') || undefined;
+  const paramBandNumber = searchParams?.get('bandNumber') || undefined;
+
+  const noPagination = !!activeCustomer || !!activeProductId || !!paramPostKey || !!paramPostNumber;
   const { data, error, isLoading, mutate } = useCommentOrdersClient(
     userData?.userId,
     page,
     {
       status: statusSelection,
       search: searchTerm || undefined,
-      limit: 50,
+      limit: noPagination ? 10000 : 50,
       startDate: dateFilterParams.startDate,
       endDate: dateFilterParams.endDate,
       commenterExact: activeCustomer || undefined,
+      postKey: paramPostKey,
+      postNumber: paramPostNumber,
+      bandNumber: paramBandNumber,
     },
     { revalidateOnFocus: true }
   );
@@ -397,6 +428,52 @@ export default function CommentOrdersView() {
     fetchBatchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.userId, items.map((i) => i.comment_order_id).join(",")]);
+
+  // 댓글 기반 추천 매칭 계산 (게시물 당 상품이 2개 이상인 경우에만 적용)
+  const commentListKey = React.useMemo(
+    () => (Array.isArray(items) ? items.map((i) => i.comment_order_id).join(",") : ""),
+    [items]
+  );
+  useEffect(() => {
+    if (!Array.isArray(items) || items.length === 0) {
+      // 비어있을 때는 최초 1회만 초기화
+      if (Object.keys(suggestionsByCommentId || {}).length > 0) {
+        setSuggestionsByCommentId({});
+      }
+      return;
+    }
+    const next = {};
+    for (const row of items) {
+      const list = getCandidateProductsForRow(row);
+      if (!Array.isArray(list) || list.length < 2) continue; // 단일 상품 게시물은 스킵
+      // client-matcher용 상품 배열 구성
+      const cmProducts = list.map((p, idx) => ({
+        itemNumber: (Number.isFinite(p?.item_number) && Number(p.item_number) > 0)
+          ? Number(p.item_number)
+          : (parseItemNumberFromProductId(p?.product_id) ?? (idx + 1)),
+        title: p?.title || p?.name || "",
+        name: p?.name || p?.title || "",
+        quantityText: p?.quantity_text || p?.quantityText || null,
+        price:
+          typeof p?.base_price === "number"
+            ? p.base_price
+            : typeof p?.price === "number"
+            ? p.price
+            : null,
+      }));
+      const commentText = processBandTags(row?.comment_body || "");
+      try {
+        const suggestions = analyzeCommentMulti(commentText, cmProducts, { maxSuggestions: 3 });
+        if (Array.isArray(suggestions) && suggestions.length > 0) {
+          next[row.comment_order_id] = suggestions;
+        }
+      } catch (_) {
+        // ignore per-row errors
+      }
+    }
+    setSuggestionsByCommentId(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commentListKey, postProductsByPostKey, postProductsByBandPost, lazyProductsByCommentId]);
 
   // Fallback: per-row lazy fetch if batch didn't find
   useEffect(() => {
@@ -648,7 +725,7 @@ export default function CommentOrdersView() {
   const handleReset = () => {
     setInputValue("");
     setSearchTerm("");
-    setStatusSelection("미수령");
+    setStatusSelection("all");
     setFilterDateRange("30days");
     setCustomStartDate(null);
     setCustomEndDate(null);
@@ -849,12 +926,16 @@ export default function CommentOrdersView() {
                 </span>
                 <span className="hidden sm:inline">|</span>
                 <span className="hidden sm:inline">
-                  현재 상태: <span className="font-semibold text-gray-800">{statusSelection}</span>
+                  현재 상태: <span className="font-semibold text-gray-800">{orderStatusOptions.find(o => o.value === statusSelection)?.label || statusSelection}</span>
                 </span>
-                <span className="hidden sm:inline">|</span>
-                <span className="hidden sm:inline">
-                  페이지: <span className="font-semibold text-gray-800">{pagination ? `${pagination.currentPage}/${pagination.totalPages}` : "-"}</span>
-                </span>
+                {!noPagination && (
+                  <>
+                    <span className="hidden sm:inline">|</span>
+                    <span className="hidden sm:inline">
+                      페이지: <span className="font-semibold text-gray-800">{pagination ? `${pagination.currentPage}/${pagination.totalPages}` : "-"}</span>
+                    </span>
+                  </>
+                )}
                 <span className="hidden sm:inline">|</span>
                 <span className="font-semibold text-purple-700 inline-flex items-center gap-1">
                   <ChatBubbleLeftRightIcon className="w-4 h-4" /> 원시댓글
@@ -960,60 +1041,72 @@ export default function CommentOrdersView() {
         </div>
 
         {/* 일괄 처리 버튼 바 (legacy 스타일) */}
-        <div className="fixed flex justify-between items-center bottom-0 left-0 right-0 z-40 p-5 bg-white border-t border-gray-300 shadow-md">
-          <div className="flex items-center">
-            {selectedIds.length === 0 && (
-              <span className="text-sm text-gray-500 italic">항목을 선택하여 일괄 처리하세요</span>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            {selectedIds.length > 0 ? (
-              <div className="flex flex-col">
-                <span className="text-xs text-gray-500">선택 항목</span>
-                <span className="text-sm font-semibold text-gray-900">{selectedIds.length}개 선택됨</span>
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                <span className="text-xs text-gray-500">현재 페이지</span>
-                <span className="text-sm font-semibold text-gray-900">{visibleItems.length}개 항목</span>
-              </div>
-            )}
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-transparent">
+          <div className="max-w-[1440px] mx-auto px-4 sm:px-6 p-5 flex justify-between items-center bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="flex items-center">
+              {selectedIds.length === 0 && (
+                <span className="text-sm text-gray-500 italic">항목을 선택하여 일괄 처리하세요</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedIds.length > 0 ? (
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">선택 항목</span>
+                  <span className="text-sm font-semibold text-gray-900">{selectedIds.length}개 선택됨</span>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500">현재 페이지</span>
+                  <span className="text-sm font-semibold text-gray-900">{visibleItems.length}개 항목</span>
+                </div>
+              )}
 
-            <button
-              onClick={() => handleBulkCommentOrdersUpdate('주문취소')}
-              disabled={selectedIds.length === 0 || bulkUpdating}
-              className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
-              aria-hidden={selectedIds.length === 0}
-            >
-              주문취소 ({selectedIds.length})
-            </button>
-            <button
-              onClick={() => handleBulkCommentOrdersUpdate('주문완료')}
-              disabled={selectedIds.length === 0 || bulkUpdating}
-              className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
-              aria-hidden={selectedIds.length === 0}
-            >
-              주문완료로 되돌리기 ({selectedIds.length})
-            </button>
-            <button
-              onClick={() => handleBulkCommentOrdersUpdate('수령완료')}
-              disabled={selectedIds.length === 0 || bulkUpdating}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
-              aria-hidden={selectedIds.length === 0}
-            >
-              수령완료 ({selectedIds.length})
-            </button>
+              <button
+                onClick={() => handleBulkCommentOrdersUpdate('주문취소')}
+                disabled={selectedIds.length === 0 || bulkUpdating}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                aria-hidden={selectedIds.length === 0}
+              >
+                주문취소 ({selectedIds.length})
+              </button>
+              <button
+                onClick={() => handleBulkCommentOrdersUpdate('주문완료')}
+                disabled={selectedIds.length === 0 || bulkUpdating}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                aria-hidden={selectedIds.length === 0}
+              >
+                주문완료로 되돌리기 ({selectedIds.length})
+              </button>
+              <button
+                onClick={() => handleBulkCommentOrdersUpdate('수령완료')}
+                disabled={selectedIds.length === 0 || bulkUpdating}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                aria-hidden={selectedIds.length === 0}
+              >
+                수령완료 ({selectedIds.length})
+              </button>
+            </div>
           </div>
         </div>
 
         {/* 목록 영역 - legacy 카드 스타일 */}
-        <LightCard padding="p-0" className="overflow-hidden">
+        <LightCard padding="p-0" className="overflow-hidden mb-[100px]">
          
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full table-fixed divide-y divide-gray-200">
+              <colgroup>
+                {/* 퍼센트 기반 고정 폭: 합계 100% 유지 */}
+                <col style={{ width: '2%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '25%' }} />
+                <col style={{ width: '25%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '7%' }} />
+              </colgroup>
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="w-12 px-4 py-2">
+                  <th className="px-4 py-2">
                     <input
                       type="checkbox"
                       ref={headerCheckboxRef}
@@ -1053,7 +1146,7 @@ export default function CommentOrdersView() {
                   const checked = selectedIds.includes(row.comment_order_id);
                   return (
                   <tr key={row.comment_order_id} className={`hover:bg-gray-50 ${checked ? 'bg-orange-50' : ''}`}>
-                    <td className="w-12 px-4" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
@@ -1079,7 +1172,26 @@ export default function CommentOrdersView() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-md text-gray-700">
-                      <div className="line-clamp-2">{processBandTags(row.comment_body || "")}</div>
+                      <div className="whitespace-pre-wrap break-all">{processBandTags(row.comment_body || "")}</div>
+                      {(() => {
+                        const sugg = suggestionsByCommentId[row.comment_order_id] || [];
+                        if (!sugg || sugg.length === 0) return null;
+                        // 상위 2개만 요약 표시
+                        const top = sugg.slice(0, 2);
+                        return (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {top.map((s, i) => (
+                              <span
+                                key={`${row.comment_order_id}_s_${i}`}
+                                className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700"
+                                title={`${s.reason || "추천"} · 신뢰도 ${(s.confidence * 100).toFixed(0)}%`}
+                              >
+                                추천 {s.itemNumber}번 · {s.quantity}개
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 align-top">
                       {(() => {
@@ -1087,14 +1199,75 @@ export default function CommentOrdersView() {
                         if (!list || list.length === 0) {
                           return <span className="text-gray-400">-</span>;
                         }
-                        
+                        const sugg = suggestionsByCommentId[row.comment_order_id] || [];
+                        // 원본 순서 기준 보조 itemNumber 맵(product_id -> index+1)
+                        const altIndexByProductId = new Map();
+                        list.forEach((it, idx) => {
+                          if (it && it.product_id) altIndexByProductId.set(it.product_id, idx + 1);
+                        });
+
+                        const getMatched = (p) => {
+                          if (!Array.isArray(sugg) || sugg.length === 0) return null;
+                          const altItemNumber = altIndexByProductId.get(p?.product_id);
+                          const num1 = Number(p?.item_number);
+                          const parsedNo = parseItemNumberFromProductId(p?.product_id);
+                          return sugg.find((s) => {
+                            const sNum = Number(s.itemNumber);
+                            return (Number.isFinite(num1) && sNum === num1)
+                              || (Number.isFinite(parsedNo) && sNum === parsedNo)
+                              || (Number.isFinite(altItemNumber) && sNum === altItemNumber);
+                          }) || null;
+                        };
+
+                        // 정렬 규칙
+                        // - 상품이 4개 이상이면: 추천 우선(추천 여부 → 신뢰도 → 추천 수량 → item_number)
+                        // - 상품이 3개 이하이면: 상품번호(item_number) 순서 유지
+                        let sortedList;
+                        if (Array.isArray(list) && list.length >= 4) {
+                          sortedList = [...list].sort((a, b) => {
+                            const ma = getMatched(a);
+                            const mb = getMatched(b);
+                            const ra = ma ? 1 : 0;
+                            const rb = mb ? 1 : 0;
+                            if (ra !== rb) return rb - ra; // 추천 있는 상품 우선
+                            if (ma && mb) {
+                              if (ma.confidence !== mb.confidence) return mb.confidence - ma.confidence;
+                              if (ma.quantity !== mb.quantity) return (mb.quantity || 0) - (ma.quantity || 0);
+                            }
+                            const ia = Number.isFinite(Number(a?.item_number)) && Number(a.item_number) > 0
+                              ? Number(a.item_number)
+                              : (parseItemNumberFromProductId(a?.product_id) ?? 9999);
+                            const ib = Number.isFinite(Number(b?.item_number)) && Number(b.item_number) > 0
+                              ? Number(b.item_number)
+                              : (parseItemNumberFromProductId(b?.product_id) ?? 9999);
+                            return ia - ib;
+                          });
+                        } else {
+                          sortedList = [...list].sort((a, b) => {
+                            const ia = Number.isFinite(Number(a?.item_number)) && Number(a.item_number) > 0
+                              ? Number(a.item_number)
+                              : (parseItemNumberFromProductId(a?.product_id) ?? 9999);
+                            const ib = Number.isFinite(Number(b?.item_number)) && Number(b.item_number) > 0
+                              ? Number(b.item_number)
+                              : (parseItemNumberFromProductId(b?.product_id) ?? 9999);
+                            return ia - ib;
+                          });
+                        }
+
                         const isExpanded = !!expandedProducts[row.comment_order_id];
-                        const productsToShow = isExpanded ? list : list.slice(0, 3);
+                        const productsToShow = isExpanded ? sortedList : sortedList.slice(0, 3);
+                        const showItemNumbers = Array.isArray(list) && list.length >= 2;
 
                         return (
                           <div className="space-y-2">
                             {productsToShow.map((p) => {
                               const img = getProductImageUrl(p);
+                              const isBroken = !!brokenProductImages[p.product_id];
+                              const matched = getMatched(p);
+                              const rawNo = Number.isFinite(Number(p?.item_number)) && Number(p.item_number) > 0 ? Number(p.item_number) : undefined;
+                              const parsedNo = parseItemNumberFromProductId(p?.product_id);
+                              const idxNo = altIndexByProductId.get(p?.product_id);
+                              const itemNo = showItemNumbers ? (rawNo ?? parsedNo ?? idxNo) : undefined;
                               return (
                                 <div
                                   key={p.product_id}
@@ -1105,28 +1278,39 @@ export default function CommentOrdersView() {
                                   }}
                                   title="이 상품의 댓글만 보기"
                                 >
-                                  <div className="w-16 h-16 rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex-shrink-0">
-                                    {img ? (
+                                  <div className={`w-16 h-16 rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex-shrink-0`}> 
+                                    {img && !isBroken ? (
                                       <img
                                         src={img}
                                         alt={p.title || "상품 이미지"}
                                         className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          e.currentTarget.onerror = null;
-                                          e.currentTarget.src = "/file.svg";
+                                        onError={() => {
+                                          setBrokenProductImages((prev) => ({ ...prev, [p.product_id]: true }));
                                         }}
                                       />
                                     ) : (
-                                      <img src="/file.svg" alt="no-img" className="w-full h-full object-contain p-1" />
+                                      <div className="w-full h-full flex items-center justify-center">
+                                        <PhotoIcon className="w-6 h-8 text-gray-400" aria-hidden="true" />
+                                      </div>
                                     )}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="truncate">
-                                      <span className="font-medium text-[18px]">{p.title}</span>
+                                    <div className="truncate flex items-center gap-2">
+                                      {typeof itemNo === 'number' && (
+                                        <span
+                                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[13px] font-medium flex-shrink-0 
+                                            ${matched ? 'border border-orange-200 bg-orange-50 text-orange-700' : 'border border-gray-200 bg-gray-50 text-gray-700'}`}
+                                          aria-label={`상품 ${itemNo}번`}
+                                        >
+                                          {itemNo}번
+                                        </span>
+                                      )}
+                                      <span className="font-medium text-base truncate">{p.title}</span>
                                       {typeof p.base_price !== "undefined" && p.base_price !== null && (
-                                        <span className="text-gray-500 text-[18px]"> · ₩{Number(p.base_price).toLocaleString()}</span>
+                                        <span className="text-gray-700 text-base"> {Number(p.base_price).toLocaleString()}</span>
                                       )}
                                     </div>
+                                    {/* 추천 뱃지 제거: 추천 시 번호 뱃지 색상만 강조 */}
                                     {p.barcode ? (
                                       <div className="mt-2">
                                         <div className="w-28">
@@ -1135,14 +1319,14 @@ export default function CommentOrdersView() {
                                         <div className="mt-[2px] text-[14px] leading-3 text-gray-500 ">{p.barcode}</div>
                                       </div>
                                     ) : (
-                                      <div className="mt-2 text-sm text-gray-400">바코드를 추가해주세요</div>
+                                      <div className="mt-2 text-base text-gray-400">바코드를 추가해주세요</div>
                                     )}
                                   </div>
                                 </div>
                               );
                             })}
                             {list.length > 3 && (
-                              <button 
+                              <button
                                 className="text-xs text-blue-600 hover:underline font-medium"
                                 onClick={(e) => toggleProductExpansion(e, row.comment_order_id)}
                               >
@@ -1153,8 +1337,8 @@ export default function CommentOrdersView() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-700">{formatMonthDay(getPickupDateForRow(row))}</td>
-                    <td className="px-4 py-3 text-center text-xs text-gray-500">
+                    <td className="px-4 py-3 text-center text-base text-gray-700">{formatMonthDay(getPickupDateForRow(row))}</td>
+                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -1165,27 +1349,29 @@ export default function CommentOrdersView() {
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-white">
-            <div className="text-xs text-gray-500">
-              {pagination ? `${pagination.currentPage}/${pagination.totalPages} 페이지` : ""}
+          {!noPagination && (
+            <div className="flex items-center justify-between px-4 py-3 border-t bg-white">
+              <div className="text-xs text-gray-500">
+                {pagination ? `${pagination.currentPage}/${pagination.totalPages} 페이지` : ""}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm border rounded-md bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
+                  disabled={!pagination || pagination.currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  이전
+                </button>
+                <button
+                  className="px-3 py-1.5 text-sm border rounded-md bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
+                  disabled={!pagination || pagination.currentPage >= pagination.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  다음
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1.5 text-sm border rounded-md bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
-                disabled={!pagination || pagination.currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                이전
-              </button>
-              <button
-                className="px-3 py-1.5 text-sm border rounded-md bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
-                disabled={!pagination || pagination.currentPage >= pagination.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                다음
-              </button>
-            </div>
-          </div>
+          )}
         </LightCard>
 
 

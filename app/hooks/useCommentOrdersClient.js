@@ -32,6 +32,9 @@ const fetchCommentOrders = async (key) => {
   const startIndex = (Math.max(1, page || 1) - 1) * limit;
   const status = filters.status || "미수령";
   const search = (filters.search || "").trim();
+  const postKeyFilter = filters.postKey || undefined;
+  const postNumberFilter = filters.postNumber || undefined;
+  const bandNumberFilter = filters.bandNumber || undefined;
 
   const sb = getAuthedClient();
   let query = sb
@@ -45,12 +48,90 @@ const fetchCommentOrders = async (key) => {
     query = query.eq("order_status", status);
   }
 
-  if (search) {
-    // 고객명/본문 검색
-    const q = search.replace(/%/g, "");
-    query = query.or(
-      `commenter_name.ilike.%${q}%,comment_body.ilike.%${q}%`
-    );
+  // Direct post filters take precedence over text search
+  if (postKeyFilter) {
+    query = query.eq("post_key", postKeyFilter);
+  } else if (postNumberFilter) {
+    query = query.eq("post_number", String(postNumberFilter));
+    if (bandNumberFilter !== undefined && bandNumberFilter !== null) {
+      query = query.eq("band_number", bandNumberFilter);
+    }
+  } else if (search) {
+    // 다중 토큰 부분 검색 + 상품명 매칭(포스트 기반) 포함
+    const tokens = search
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    // 댓글/고객명 필드 OR 조건 (토큰은 OR로 처리)
+    const safe = (s) => s.replace(/[%,]/g, "");
+    const textConds = tokens.flatMap((t) => [
+      `commenter_name.ilike.%${safe(t)}%`,
+      `comment_body.ilike.%${safe(t)}%`,
+    ]);
+    const postNumConds = tokens
+      .filter((t) => /^\d+$/.test(t))
+      .map((n) => `post_number.eq.${n}`);
+
+    // 상품명으로 매칭되는 게시물(Post) 기반 OR 조건 구성
+    const sb2 = getAuthedClient();
+    try {
+      let pQuery = sb2
+        .from("products")
+        .select("post_key, band_number, post_number")
+        .eq("user_id", userId);
+
+      if (tokens.length > 0) {
+        const titleOr = tokens.map((t) => `title.ilike.%${safe(t)}%`).join(",");
+        if (titleOr) pQuery = pQuery.or(titleOr);
+      }
+
+      const { data: pData, error: pErr } = await pQuery;
+      if (!pErr && Array.isArray(pData) && pData.length > 0) {
+        const pkSet = new Set();
+        const bandMap = new Map(); // band -> Set(post_number)
+        for (const p of pData) {
+          if (p?.post_key) {
+            pkSet.add(String(p.post_key));
+          } else if (
+            (p?.band_number !== undefined && p?.band_number !== null) &&
+            (p?.post_number !== undefined && p?.post_number !== null)
+          ) {
+            const b = String(p.band_number);
+            const n = String(p.post_number);
+            if (!bandMap.has(b)) bandMap.set(b, new Set());
+            bandMap.get(b).add(n);
+          }
+        }
+
+        const postConds = [];
+        if (pkSet.size > 0) {
+          const quoted = Array.from(pkSet)
+            .map((v) => `"${String(v).replace(/\"/g, '""')}"`)
+            .join(",");
+          postConds.push(`post_key.in.(${quoted})`);
+        }
+        for (const [band, numsSet] of bandMap.entries()) {
+          const values = Array.from(numsSet)
+            .map((v) => (/^\d+$/.test(v) ? v : `"${v.replace(/\"/g, '""')}"`))
+            .join(",");
+          const bandVal = /^\d+$/.test(band) ? band : `"${band.replace(/\"/g, '""')}"`;
+          postConds.push(`and(band_number.eq.${bandVal},post_number.in.(${values}))`);
+        }
+
+        const orParts = [...textConds, ...postNumConds, ...postConds];
+        if (orParts.length > 0) {
+          query = query.or(orParts.join(","));
+        }
+      } else {
+        // 상품명 매칭이 없어도 텍스트/번호 조건은 적용
+        const fallbackConds = [...textConds, ...postNumConds];
+        if (fallbackConds.length > 0) query = query.or(fallbackConds.join(","));
+      }
+    } catch (_) {
+      const fallbackConds = [...textConds, ...postNumConds];
+      if (fallbackConds.length > 0) query = query.or(fallbackConds.join(","));
+    }
   }
 
   // 특정 고객명만 보기 (정확 일치)

@@ -43,19 +43,12 @@ export function getDefaultProduct(reason = "정보 없음") {
  * @param {Object} userSettings - 사용자 설정
  * @returns {Object} 처리된 상품 정보
  */
-export function processProduct(productInfo, postTime, userSettings = null) {
+export function processProduct(productInfo, postTime, userSettings = null, content = "") {
   if (!productInfo) return getDefaultProduct("정보 없음").products[0];
   
   try {
-    // 날짜 처리
-    let pickupDate = null;
-    let pickupInfo = productInfo.pickupInfo || "";
-    
-    if (productInfo.pickupDate) {
-      pickupDate = extractPickupDate(productInfo.pickupDate, postTime);
-    } else if (pickupInfo) {
-      pickupDate = extractPickupDate(pickupInfo, postTime);
-    }
+    // 날짜 처리: 무조건 원본 컨텐츠 기반으로 추출
+    let pickupDate = extractPickupDate(content || "", postTime);
     
     // 기본값 설정
     const processed = {
@@ -69,9 +62,9 @@ export function processProduct(productInfo, postTime, userSettings = null) {
       status: productInfo.status || "판매중",
       tags: productInfo.tags || [],
       features: productInfo.features || [],
-      pickupInfo: pickupInfo,
+      pickupInfo: productInfo.pickupInfo || "",
       pickupDate: pickupDate,
-      pickupType: productInfo.pickupType || "수령",
+      pickupType: productInfo.pickupType || (pickupDate && pickupDate.type) || "수령",
       stockQuantity: productInfo.stockQuantity || null,
       itemNumber: productInfo.itemNumber || 1,
     };

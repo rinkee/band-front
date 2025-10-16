@@ -339,8 +339,8 @@ export default function PostsPage() {
       sessionStorage.setItem('postsSearchQuery', searchQuery);
     }
 
-    // 주문 관리 페이지로 이동하면서 post_key로 검색
-    router.push(`/orders?search=${encodeURIComponent(postKey)}`);
+    // 주문 관리 페이지로 이동: postKey를 직접 전달 (raw 모드 지원)
+    router.push(`/orders?postKey=${encodeURIComponent(postKey)}`);
   };
 
   // 댓글 모달 열기 함수

@@ -128,14 +128,15 @@ function matchNumberBased(comment: string, productMap: Map<number, Required<Clie
 function matchProductName(comment: string, productMap: Map<number, Required<ClientMatcherProduct>>): ClientMatcherSuggestion[] {
   const normalized = normalizeText(comment);
   const qty = extractQuantity(normalized) || 1;
+  const nameOnly = normalized.replace(/\d+/g, '').trim();
   const sims: Array<{ num: number; name: string; score: number }> = [];
   productMap.forEach((p, num) => {
     const name = p.title || p.name || '';
     // incorporate product keywords when provided
     const alt = Array.isArray((p as any).keywords) ? (p as any).keywords!.join(' ') : '';
     const ref = alt ? `${name} ${alt}` : name;
-    const j = jaccardSimilarity(normalized, ref);
-    const d = diceCoefficient(normalized, ref, 2);
+    const j = jaccardSimilarity(nameOnly || normalized, ref);
+    const d = diceCoefficient(nameOnly || normalized, ref, 2);
     const score = j * 0.5 + d * 0.5;
     if (score > 0) sims.push({ num, name, score });
   });
@@ -264,18 +265,17 @@ export function analyzeComments(
 
 // --- Multi-item extractor for a single comment (e.g., "쪽파김치1, 열무김치1, 오이소박이1") ---
 
-function afterLastSlash(text: string): string {
-  const i = text.lastIndexOf('/')
-  return i >= 0 ? text.slice(i + 1) : text;
-}
-
 function splitFragments(text: string): string[] {
-  const base = afterLastSlash(normalizeText(text));
-  // split by common separators: comma, middot, bullet
-  return base
-    .split(/[\s]*[,·•]+[\s]*/g)
+  // Split on common separators BEFORE normalization so markers are preserved.
+  // Includes: comma, slash, dot, middot, bullet, ideographic comma, Hangul dot(ㆍ)
+  const raw = String(text || '');
+  const parts = raw
+    .split(/[\s]*[,/·•、\.ㆍㅡ—–-]+[\s]*/g)
+    .map((s) => normalizeText(s))
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+  if (parts.length === 0) return [normalizeText(raw)];
+  return parts;
 }
 
 function pickBest(suggestions: ClientMatcherSuggestion[], max = 1): ClientMatcherSuggestion[] {
@@ -289,17 +289,110 @@ export function analyzeCommentMulti(
   opts: AnalyzeCommentOptions = {}
 ): ClientMatcherSuggestion[] {
   const productMap = products instanceof Map ? buildProductMap(Array.from(products.values())) : buildProductMap(products);
-  const fragments = splitFragments(comment);
+  let fragments = splitFragments(comment);
+
+  // Fallback: if a fragment likely contains multiple "word+number" chunks without explicit separators,
+  // expand it into smaller pseudo-fragments.
+  const productNames = Array.from(productMap.values()).map((p) => (p.title || p.name || ''));
+  const nameContains = (word: string) => productNames.some((nm) => containsLoose(nm, word));
+  const expanded: string[] = [];
+  for (const frag of fragments) {
+    const local: string[] = [];
+    // pattern 1: word + number + optional unit
+    const re1 = /([가-힣a-zA-Z]{1,15})\s*(\d+)\s*(개|봉지|봉|통|팩|박스|kg|키로)?/g;
+    let m: RegExpExecArray | null;
+    while ((m = re1.exec(frag)) !== null) {
+      const word = m[1];
+      const num = m[2];
+      const unit = m[3] || '';
+      if (nameContains(word)) local.push(`${word}${num}${unit}`.trim());
+    }
+    // pattern 2: number + optional unit + word (e.g., "1개당근", "4 키로 당근")
+    const re2 = /(\d+)\s*(개|봉지|봉|통|팩|박스|kg|키로)?\s*([가-힣a-zA-Z]{1,15})/g;
+    while ((m = re2.exec(frag)) !== null) {
+      const num = m[1];
+      const unit = m[2] || '';
+      const word = m[3];
+      if (nameContains(word)) local.push(`${word}${num}${unit}`.trim());
+    }
+    const uniq = Array.from(new Set(local.filter(Boolean)));
+    if (uniq.length >= 1) {
+      // push explicit combos first
+      expanded.push(...uniq);
+      // also push leftover (e.g., "... 마늘") so we can pick name-only items as 1개
+      let residual = frag;
+      for (const c of uniq) residual = residual.replace(c, ' ');
+      residual = residual.replace(/\s+/g, ' ').trim();
+      if (residual) expanded.push(residual);
+    } else {
+      expanded.push(frag);
+    }
+  }
+  fragments = expanded;
+
+  // Additional: for fragments with NO digits (likely a space-separated name list),
+  // try to pick multiple items by token-name hits; each defaults to quantity 1.
+  function matchNameListNoNumbers(commentText: string): ClientMatcherSuggestion[] {
+    const out: ClientMatcherSuggestion[] = [];
+    const tokens = tokenize(commentText);
+    if (!tokens || tokens.length === 0) return out;
+    const STOP = new Set(['상무', '봉선', '운암', '상무점', '봉선점', '운암점', '소']);
+    const scored = new Map<number, { score: number; token: string }>();
+    productMap.forEach((p, num) => {
+      const ref = (p.title || p.name || '').trim();
+      for (const t of tokens) {
+        if (!t) continue;
+        if (/^\d+$/.test(t)) continue; // pure numbers
+        if (looksLikePhoneNumber(t)) continue;
+        if (t.endsWith('점')) continue; // 상무점/봉선점/운암점 등 지점명 제거
+        if (STOP.has(t)) continue;
+        let s = 0;
+        if (containsLoose(ref, t)) s += 0.6;
+        s += jaccardSimilarity(t, ref) * 0.2;
+        s += diceCoefficient(t, ref, 2) * 0.2;
+        if (s >= 0.6) {
+          const cur = scored.get(num);
+          if (!cur || s > cur.score) scored.set(num, { score: s, token: t });
+        }
+      }
+    });
+    Array.from(scored.entries())
+      .sort((a, b) => b[1].score - a[1].score)
+      .slice(0, 10)
+      .forEach(([num, v]) => {
+        const p = productMap.get(num)!;
+        out.push({
+          itemNumber: num,
+          productName: p.title || p.name || `상품 ${num}`,
+          quantity: 1,
+          confidence: Math.min(0.95, v.score),
+          reason: '이름 나열',
+          matchMethod: 'name-list',
+        });
+      });
+    return out;
+  }
   const collected: ClientMatcherSuggestion[] = [];
   const isSingle = opts.isSingleProduct ?? (productMap.size === 1);
   // For each fragment, run number/unit/name matchers in that order, pick best
   for (const frag of fragments) {
+    const hasDigits = /\d/.test(frag);
+    const hasQtyPattern = /(\d+)\s*(개|봉지|봉|통|팩|박스|세트|kg|키로)|\d+\s*번/.test(frag);
     const agg: ClientMatcherSuggestion[] = [];
     agg.push(...matchNumberBased(frag, productMap));
     agg.push(...matchUnitPattern(frag, productMap));
     agg.push(...matchProductName(frag, productMap));
     if (agg.length === 0) {
       agg.push(...matchSimpleNumber(frag, productMap, isSingle));
+    }
+    if (!hasQtyPattern) {
+      // For name lists without explicit quantity patterns, extract multiple items (quantity=1 each)
+      const multi = matchNameListNoNumbers(frag);
+      if (multi.length > 0) {
+        const limited = multi.slice(0, 12);
+        collected.push(...limited);
+        continue;
+      }
     }
     const best = pickBest(agg, 1);
     collected.push(...best);

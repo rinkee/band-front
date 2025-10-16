@@ -3,12 +3,24 @@
 export function normalizeText(input: string): string {
   if (!input) return "";
   try {
-    return input
+    let out = input
       .toLowerCase()
       .replace(/<band:refer[^>]*>.*?<\/band:refer>\s*/g, "")
       .replace(/[~!@#$%^&*()_+\-=`{}\[\]:;"'<>?,./\\|]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+    // lightweight synonyms / variants
+    const REPLACEMENTS: Array<[RegExp, string]> = [
+      [/\b무우\b/g, '무'],
+      [/\b메론\b/g, '멜론'],
+      [/\b브로컬리\b/g, '브로콜리'],
+      [/\b오랜지\b/g, '오렌지'],
+      [/\b로메인\s*상추\b/g, '로메인상추'],
+      [/\b상추\s*\(\s*적\s*\)\b/g, '적상추'],
+      [/\b\(\s*소\s*\)/g, ' 소'], // 양배추(소) → 양배추 소
+    ];
+    for (const [re, rep] of REPLACEMENTS) out = out.replace(re, rep);
+    return out;
   } catch (_) {
     return String(input || "").toLowerCase();
   }

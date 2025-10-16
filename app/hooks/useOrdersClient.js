@@ -80,18 +80,13 @@ const fetchOrders = async (key) => {
     ) {
       query = query.is("sub_status", null);
     } else if (filters.subStatus === "수령가능") {
-      // '주문완료+수령가능' 필터: pickup_date가 현재 시간 이전인 주문들만 (실제 수령 가능)
+      // '주문완료+수령가능' 필터: pickup_date가 현재 시간(UTC) 이전인 주문들만
+      // DB에는 서울(Asia/Seoul) 기준으로 결정된 시각을 UTC로 저장하므로,
+      // 절대시간 비교는 UTC now로 충분합니다. 별도의 +9h 보정 불필요.
       if (needsPickupDateFilter) {
-        // pickup_date가 존재하고, 현재 시간 이전인 주문들
         query = query.not("products.pickup_date", "is", null);
-        
-        // 현재 시간을 KST 기준으로 계산
-        const now = new Date();
-        const kstOffset = 9 * 60; // 한국은 UTC+9
-        const kstNow = new Date(now.getTime() + (kstOffset * 60 * 1000));
-        
-        // KST 기준 현재 시간 이전의 pickup_date를 가진 주문들만 필터링
-        query = query.lte("products.pickup_date", kstNow.toISOString());
+        const nowISO = new Date().toISOString();
+        query = query.lte("products.pickup_date", nowISO);
       }
     } else {
       const subStatusValues = filters.subStatus

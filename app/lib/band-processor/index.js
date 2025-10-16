@@ -353,7 +353,8 @@ async function processPost({
           const processed = processProduct(
             prod, 
             normalizedPost.posted_at,
-            null
+            null,
+            content
           );
           products.push(processed);
         }
@@ -361,7 +362,8 @@ async function processPost({
         const processed = processProduct(
           productInfo.products[0],
           normalizedPost.posted_at,
-          null
+          null,
+          content
         );
         products.push(processed);
       }
