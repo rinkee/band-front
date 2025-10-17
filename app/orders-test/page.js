@@ -2825,8 +2825,8 @@ export default function OrdersPage() {
                                   const productName = getProductNameById(
                                     order.product_id
                                   );
-                                  const { name } = parseProductName(productName);
-                                  const pickupDate = order.product_pickup_date || product?.pickup_date;
+                                  const { name, date } = parseProductName(productName);
+                                  const pickupDate = order.product_pickup_date || product?.pickup_date || date;
                                   const isAvailable =
                                     isClient && pickupDate
                                       ? isPickupAvailable(pickupDate)
@@ -3224,9 +3224,9 @@ export default function OrdersPage() {
                   const productName = getProductNameById(
                     selectedOrder.product_id
                   );
-                  const { name } = parseProductName(productName);
+                  const { name, date } = parseProductName(productName);
                   const product = getProductById(selectedOrder.product_id);
-                  const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                  const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date || date;
                   const isAvailable =
                     isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
@@ -3498,9 +3498,9 @@ export default function OrdersPage() {
                           const productName = getProductNameById(
                             selectedOrder.product_id
                           );
-                          const { name } = parseProductName(productName);
+                          const { name, date } = parseProductName(productName);
                           const product = getProductById(selectedOrder.product_id);
-                          const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                          const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date || date;
                           const isAvailable =
                             isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
@@ -3561,8 +3561,11 @@ export default function OrdersPage() {
                       // --- ADD PRODUCT PICKUP DATE HERE ---
                       {
                         label: "상품 픽업 예정일",
-                        // Use the new helper function
-                        value: formatDate(selectedOrder.product_pickup_date),
+                        value: (() => {
+                          const product = getProductById(selectedOrder.product_id);
+                          const d = selectedOrder.product_pickup_date || product?.pickup_date;
+                          return d ? formatDate(d) : "-";
+                        })(),
                         readOnly: true,
                       },
                       {

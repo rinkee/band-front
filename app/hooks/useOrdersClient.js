@@ -83,7 +83,7 @@ const fetchOrders = async (key) => {
       // '주문완료+수령가능'은 클라이언트(KST 기준)에서 판정하도록 하고,
       // 서버 쿼리에서는 pickup_date 존재 여부만 제한한다.
       if (needsPickupDateFilter) {
-        query = query.not("products.pickup_date", "is", null);
+        // pickup_date가 비어있는 상품도 제목의 [날짜]로 판정할 수 있도록 서버에서 제외하지 않음
       }
     } else {
       const subStatusValues = filters.subStatus
@@ -284,9 +284,18 @@ const fetchOrders = async (key) => {
       return nowYmd >= inputYmd; // 오늘(KST) 날짜 이상이면 수령가능
     };
 
-    processedData = processedData.filter((o) =>
-      isPickupAvailableKST(o.product_pickup_date)
-    );
+    const extractBracketDate = (title) => {
+      if (!title || typeof title !== 'string') return null;
+      // [ ... ] 안의 내용을 추출
+      const m = title.match(/^\s*\[([^\]]+)\]/);
+      return m ? m[1] : null;
+    };
+
+    processedData = processedData.filter((o) => {
+      const titleDate = extractBracketDate(o.product_title);
+      const source = o.product_pickup_date || titleDate;
+      return isPickupAvailableKST(source);
+    });
 
     // 조인 모드에서 클라이언트 사이드 필터링
     // 포스트키 검색은 이미 서버사이드에서 처리되므로 일반 검색어만 처리

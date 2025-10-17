@@ -2454,12 +2454,12 @@ export default function OrdersPage() {
                                 const productName = getProductNameById(
                                   order.product_id
                                 );
-                                const { name } =
+                                const { name, date } =
                                   parseProductName(productName);
                                 // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
-                                // 없으면 products 테이블의 pickup_date 사용
+                                // 없으면 products 테이블의 pickup_date 사용, 둘 다 없으면 제목의 [날짜] 사용
                                 const product = getProductById(order.product_id);
-                                const pickupDate = order.product_pickup_date || product?.pickup_date;
+                                const pickupDate = order.product_pickup_date || product?.pickup_date || date;
                                 const isAvailable =
                                   isClient && pickupDate
                                     ? isPickupAvailable(pickupDate)
@@ -2947,11 +2947,11 @@ export default function OrdersPage() {
                     const productName = getProductNameById(
                       selectedOrder.product_id
                     );
-                    const { name } = parseProductName(productName);
+                    const { name, date } = parseProductName(productName);
                     // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
-                    // 없으면 products 테이블의 pickup_date 사용
+                    // 없으면 products 테이블의 pickup_date 사용, 둘 다 없으면 제목의 [날짜]
                     const product = getProductById(selectedOrder.product_id);
-                    const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                    const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date || date;
                     const isAvailable =
                       isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
@@ -3210,12 +3210,12 @@ export default function OrdersPage() {
                             const productName = getProductNameById(
                               selectedOrder.product_id
                             );
-                            const { name } =
+                            const { name, date } =
                               parseProductName(productName);
                             // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
-                            // 없으면 products 테이블의 pickup_date 사용
+                            // 없으면 products 테이블의 pickup_date 사용, 둘 다 없으면 제목의 [날짜]
                             const product = getProductById(selectedOrder.product_id);
-                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date || date;
                             const isAvailable =
                               isClient && pickupDate
                                 ? isPickupAvailable(pickupDate)
