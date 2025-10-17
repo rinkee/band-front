@@ -216,7 +216,7 @@ export function extractPickupDate(text, postTime = null) {
   };
   // 시간 추출 함수
   function extractTime(text) {
-    let hour = 12; // 기본값 정오
+    let hour = 9; // 기본값 오전 9시 (시간 정보가 없을 때)
     let minute = 0;
     // 시간 패턴 찾기 ("4시", "4시30분", "16시" 등)
     const timeMatch = text.match(/(\d{1,2})시(?:\s*(\d{1,2})분)?/);
@@ -235,9 +235,6 @@ export function extractPickupDate(text, postTime = null) {
         } else if ((amPm === "오전" || amPm === "아침") && hour === 12) {
           hour = 0;
         }
-      } else if (hour <= 7) {
-        // 명시적인 오전/오후 없이 시간이 7시 이하면 오후로 가정
-        hour += 12;
       }
     }
     return {
@@ -255,7 +252,7 @@ export function extractPickupDate(text, postTime = null) {
       // 단일 글자 요일의 경우 더 엄격한 조건 적용
       if (weekdayName.length === 1) {
         // 단일 글자 요일은 앞뒤에 특정 문자가 있으면 제외
-        const regex = new RegExp(`(?<![가-힣])${weekdayName}(?![가-힣])`);
+        const regex = new RegExp(`(?<![0-9가-힣])${weekdayName}(?![0-9가-힣])`);
         if (regex.test(text)) {
           return {
             name: weekdayName,
@@ -278,8 +275,14 @@ export function extractPickupDate(text, postTime = null) {
   function getNextWeekday(baseDate, targetWeekday) {
     const baseDayOfWeek = baseDate.getDay();
     let daysToAdd = targetWeekday - baseDayOfWeek;
-    if (daysToAdd <= 0) {
+    if (daysToAdd < 0) {
       daysToAdd += 7; // 다음 주로
+    } else if (daysToAdd === 0) {
+      const sameDayCandidate = new Date(baseDate);
+      sameDayCandidate.setHours(hour, minute, 0, 0);
+      if (sameDayCandidate < baseDate) {
+        daysToAdd = 7; // 이미 지난 시간이라면 다음 주 동일 요일
+      }
     }
     const result = new Date(baseDate);
     result.setDate(baseDate.getDate() + daysToAdd);
@@ -300,8 +303,14 @@ export function extractPickupDate(text, postTime = null) {
     );
     // 다음 해당 요일까지의 일수 계산
     let daysToAdd = weekdayInfo.number - baseDayOfWeek;
-    if (daysToAdd <= 0) {
-      daysToAdd += 7; // 다음 주의 해당 요일
+    if (daysToAdd < 0) {
+      daysToAdd += 7;
+    } else if (daysToAdd === 0) {
+      const sameDayCandidate = new Date(baseDate);
+      sameDayCandidate.setHours(hour, minute, 0, 0);
+      if (sameDayCandidate < baseDate) {
+        daysToAdd = 7;
+      }
     }
     console.log(`[DEBUG] 추가할 일수: ${daysToAdd}일`);
     extractedDate = new Date(baseDate);
@@ -340,7 +349,12 @@ export function extractPickupDate(text, postTime = null) {
       const day = parseInt(matches[2]);
       extractedDate = new Date(baseDate.getFullYear(), month, day);
       // 날짜가 과거인 경우 다음 해로 설정
-      if (extractedDate < baseDate) {
+      if (
+        extractedDate.getMonth() < baseDate.getMonth() ||
+        (extractedDate.getMonth() === baseDate.getMonth() &&
+          extractedDate.getDate() < baseDate.getDate())
+      ) {
+        // 월/일 기준으로 실제로 과거인 경우에만 다음 해로 이월
         extractedDate.setFullYear(baseDate.getFullYear() + 1);
       }
       extractedDate.setHours(hour, minute, 0, 0);

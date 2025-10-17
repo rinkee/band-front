@@ -455,6 +455,7 @@ export default function OrdersPage() {
   const orderStatusOptions = [
     { value: "all", label: "전체" },
     { value: "주문완료", label: "주문완료" },
+    { value: "주문완료+수령가능", label: "주문완료+수령가능" },
     { value: "수령완료", label: "수령완료" },
     { value: "미수령", label: "미수령" },
     { value: "주문취소", label: "주문취소" },
@@ -509,12 +510,20 @@ export default function OrdersPage() {
         if (filterSelection === "all") {
           return undefined;
         }
+        // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
+        if (filterSelection === "주문완료+수령가능") {
+          return "주문완료";
+        }
         // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
         return filterSelection;
       })(),
       subStatus: (() => {
         // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
         if (showPickupAvailableOnly) {
+          return "수령가능";
+        }
+        // '주문완료+수령가능' 선택 시 "수령가능" 서브상태 적용
+        if (filterSelection === "주문완료+수령가능") {
           return "수령가능";
         }
         // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
@@ -603,6 +612,8 @@ export default function OrdersPage() {
           return undefined;
         }
         if (filterSelection === "all") return undefined;
+        // '주문완료+수령가능' 선택 시 주문완료 상태로 전달
+        if (filterSelection === "주문완료+수령가능") return "주문완료";
         // 주문완료 상태일 때도 명시적으로 전달
         if (filterSelection === "주문완료") return "주문완료";
         return filterSelection;
@@ -610,6 +621,10 @@ export default function OrdersPage() {
       subStatus: (() => {
         // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
         if (showPickupAvailableOnly) {
+          return "수령가능";
+        }
+        // '주문완료+수령가능' 선택 시 "수령가능" 적용
+        if (filterSelection === "주문완료+수령가능") {
           return "수령가능";
         }
         if (
@@ -1267,20 +1282,95 @@ export default function OrdersPage() {
     }
   };
 
-  // 수령 가능한 상품인지 판단하는 함수 (클라이언트 사이드에서만 실행)
-  const isPickupAvailable = (dateString) => {
-    // 클라이언트 사이드 렌더링이 완료되지 않았으면 false 반환
-    if (!isClient) return false;
+  // 수령 가능 여부(KST 날짜 기준, 당일 포함)
+  const isPickupAvailable = (dateInput) => {
+    if (!isClient || !dateInput) return false;
 
-    const pickupDate = parsePickupDate(dateString);
-    if (!pickupDate) return false;
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // 시간 부분을 제거하여 날짜만 비교
-    pickupDate.setHours(0, 0, 0, 0);
+    // now in KST (Y/M/D only)
+    const nowUtc = new Date();
+    const nowKst = new Date(nowUtc.getTime() + KST_OFFSET);
+    const nowY = nowKst.getUTCFullYear();
+    const nowM = nowKst.getUTCMonth();
+    const nowD = nowKst.getUTCDate();
+    const nowYmd = nowY * 10000 + (nowM + 1) * 100 + nowD;
 
-    // 오늘 날짜 이전이거나 당일이면 수령 가능
-    return pickupDate <= today;
+    // pickup date as KST Y/M/D
+    let y, m, d;
+    try {
+      if (typeof dateInput === 'string' && dateInput.includes('T')) {
+        // ISO(UTC) → shift to KST and take YMD
+        const dt = new Date(dateInput);
+        const k = new Date(dt.getTime() + KST_OFFSET);
+        y = k.getUTCFullYear();
+        m = k.getUTCMonth() + 1;
+        d = k.getUTCDate();
+      } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+        const [datePart] = dateInput.split(' ');
+        const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+        y = yy; m = mm; d = dd;
+      } else if (typeof dateInput === 'string') {
+        // 문자열에 한국어 월/일 표기가 있는 경우
+        const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (md) {
+          const now = new Date(nowUtc.getTime() + KST_OFFSET);
+          y = now.getUTCFullYear();
+          m = parseInt(md[1], 10);
+          d = parseInt(md[2], 10);
+        } else {
+          // 일반 Date 파싱 후 KST로 보정
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear();
+          m = k.getUTCMonth() + 1;
+          d = k.getUTCDate();
+        }
+      } else if (dateInput instanceof Date) {
+        const k = new Date(dateInput.getTime() + KST_OFFSET);
+        y = k.getUTCFullYear();
+        m = k.getUTCMonth() + 1;
+        d = k.getUTCDate();
+      } else {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+
+    const pickYmd = y * 10000 + m * 100 + d;
+    return nowYmd >= pickYmd;
+  };
+
+  // 수령일 라벨(KST) 출력
+  const formatPickupKSTLabel = (dateInput) => {
+    if (!dateInput) return "";
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
+    try {
+      if (typeof dateInput === 'string' && dateInput.includes('T')) {
+        const dt = new Date(dateInput);
+        const k = new Date(dt.getTime() + KST_OFFSET);
+        const m = k.getUTCMonth() + 1;
+        const d = k.getUTCDate();
+        return `${m}월${d}일`;
+      }
+      if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+        const [datePart] = dateInput.split(' ');
+        const [, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+        return `${mm}월${dd}일`;
+      }
+      const md = typeof dateInput === 'string' ? dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) : null;
+      if (md) {
+        return `${parseInt(md[1], 10)}월${parseInt(md[2], 10)}일`;
+      }
+      const dt = new Date(dateInput);
+      const k = new Date(dt.getTime() + KST_OFFSET);
+      const m = k.getUTCMonth() + 1;
+      const d = k.getUTCDate();
+      return `${m}월${d}일`;
+    } catch (_) {
+      return "";
+    }
   };
   const getProductBarcode = (id) => {
     // products 배열에서 product_id로 찾기
@@ -2735,11 +2825,11 @@ export default function OrdersPage() {
                                   const productName = getProductNameById(
                                     order.product_id
                                   );
-                                  const { name, date } =
-                                    parseProductName(productName);
+                                  const { name } = parseProductName(productName);
+                                  const pickupDate = order.product_pickup_date || product?.pickup_date;
                                   const isAvailable =
-                                    isClient && date
-                                      ? isPickupAvailable(date)
+                                    isClient && pickupDate
+                                      ? isPickupAvailable(pickupDate)
                                       : false;
 
                                   return (
@@ -2753,13 +2843,11 @@ export default function OrdersPage() {
                                       >
                                         {name}
                                       </div>
-                                      {date && (
+                                      {pickupDate && (
                                         <div className="text-xs mt-0.5 text-gray-500">
-                                          [{date}]
+                                          [{formatPickupKSTLabel(pickupDate)}]
                                           {isAvailable && (
-                                            <span className="ml-1 text-gray-500">
-                                              ✓ 수령가능
-                                            </span>
+                                            <span className="ml-1 text-gray-500">✓ 수령가능</span>
                                           )}
                                         </div>
                                       )}
@@ -3136,9 +3224,11 @@ export default function OrdersPage() {
                   const productName = getProductNameById(
                     selectedOrder.product_id
                   );
-                  const { name, date } = parseProductName(productName);
+                  const { name } = parseProductName(productName);
+                  const product = getProductById(selectedOrder.product_id);
+                  const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
                   const isAvailable =
-                    isClient && date ? isPickupAvailable(date) : false;
+                    isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
                   return (
                     <div className="flex flex-col">
@@ -3149,7 +3239,7 @@ export default function OrdersPage() {
                       >
                         {name}
                       </div>
-                      {date && (
+                      {pickupDate && (
                         <div
                           className={`text-sm mt-1 ${
                             isAvailable
@@ -3157,7 +3247,7 @@ export default function OrdersPage() {
                               : "text-gray-500"
                           }`}
                         >
-                          [{date}]
+                          [{formatPickupKSTLabel(pickupDate)}]
                           {isAvailable && (
                             <span className="ml-1 text-orange-600 font-bold">
                               ✓ 수령가능
@@ -3408,9 +3498,11 @@ export default function OrdersPage() {
                           const productName = getProductNameById(
                             selectedOrder.product_id
                           );
-                          const { name, date } = parseProductName(productName);
+                          const { name } = parseProductName(productName);
+                          const product = getProductById(selectedOrder.product_id);
+                          const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
                           const isAvailable =
-                            isClient && date ? isPickupAvailable(date) : false;
+                            isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
                           return (
                             <div className="flex flex-col">
@@ -3421,7 +3513,7 @@ export default function OrdersPage() {
                               >
                                 {name}
                               </div>
-                              {date && (
+                              {pickupDate && (
                                 <div
                                   className={`text-sm mt-1 ${
                                     isAvailable
@@ -3429,7 +3521,7 @@ export default function OrdersPage() {
                                       : "text-gray-500"
                                   }`}
                                 >
-                                  [{date}]
+                                  [{formatPickupKSTLabel(pickupDate)}]
                                   {isAvailable && (
                                     <span className="ml-1 text-orange-600 font-bold">
                                       ✓ 수령가능

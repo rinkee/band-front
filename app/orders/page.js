@@ -1334,48 +1334,91 @@ export default function OrdersPage() {
     }
   };
 
-  // 수령 가능한 상품인지 판단하는 함수 (클라이언트 사이드에서만 실행)
+  // 수령 가능 여부(KST 날짜 기준, 당일 0시부터)를 판단하는 함수
   const isPickupAvailable = (dateInput) => {
-    // 클라이언트 사이드 렌더링이 완료되지 않았으면 false 반환
-    if (!isClient) return false;
+    if (!isClient || !dateInput) return false;
 
-    let pickupDate;
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
 
-    // ISO 형식 우선 처리 (UTC로 저장되어 있지만 실제로는 한국 시간)
-    if (typeof dateInput === 'string' && dateInput.includes('T')) {
-      // "2025-09-14T07:00:00Z" 형식 → 한국 시간 07:00으로 해석
-      const tempDate = new Date(dateInput);
-      pickupDate = new Date(
-        tempDate.getUTCFullYear(),
-        tempDate.getUTCMonth(),
-        tempDate.getUTCDate(),
-        tempDate.getUTCHours(),
-        tempDate.getUTCMinutes()
-      );
-    }
-    // 한국 시간 형식 "YYYY-MM-DD HH:mm:ss"
-    else if (typeof dateInput === 'string' && dateInput.includes(' ')) {
-      const [datePart, timePart] = dateInput.split(' ');
-      const [year, month, day] = datePart.split('-');
-      const [hours, minutes] = timePart ? timePart.split(':') : [0, 0];
-      pickupDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
-    }
-    // "YYYY-MM-DD" 형식
-    else if (typeof dateInput === 'string' && dateInput.includes('-') && dateInput.length === 10) {
-      const [year, month, day] = dateInput.split('-');
-      pickupDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    }
-    // 기존 parsePickupDate로 처리 (한국어 형식 등)
-    else {
-      pickupDate = parsePickupDate(dateInput);
+    // now in KST (Y/M/D only)
+    const nowUtc = new Date();
+    const nowKst = new Date(nowUtc.getTime() + KST_OFFSET);
+    const nowY = nowKst.getUTCFullYear();
+    const nowM = nowKst.getUTCMonth();
+    const nowD = nowKst.getUTCDate();
+    const nowYmd = nowY * 10000 + (nowM + 1) * 100 + nowD;
+
+    // pickup date as KST Y/M/D
+    let y, m, d;
+    try {
+      if (typeof dateInput === 'string' && dateInput.includes('T')) {
+        const dt = new Date(dateInput); // absolute UTC
+        const k = new Date(dt.getTime() + KST_OFFSET);
+        y = k.getUTCFullYear();
+        m = k.getUTCMonth() + 1;
+        d = k.getUTCDate();
+      } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+        const [datePart] = dateInput.split(' ');
+        const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+        y = yy; m = mm; d = dd;
+      } else if (typeof dateInput === 'string') {
+        const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (md) {
+          const now = new Date(nowUtc.getTime() + KST_OFFSET);
+          y = now.getUTCFullYear();
+          m = parseInt(md[1], 10);
+          d = parseInt(md[2], 10);
+        } else {
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear();
+          m = k.getUTCMonth() + 1;
+          d = k.getUTCDate();
+        }
+      } else if (dateInput instanceof Date) {
+        const k = new Date(dateInput.getTime() + KST_OFFSET);
+        y = k.getUTCFullYear();
+        m = k.getUTCMonth() + 1;
+        d = k.getUTCDate();
+      } else {
+        return false;
+      }
+    } catch (_) {
+      return false;
     }
 
-    if (!pickupDate || isNaN(pickupDate.getTime())) return false;
+    const pickYmd = y * 10000 + m * 100 + d;
+    return nowYmd >= pickYmd;
+  };
 
-    const today = new Date();
-    
-    // 수령일이 현재 시간 이전이면 수령 가능
-    return pickupDate <= today;
+  // KST 기준 수령일 라벨 포맷터: "[M월D일]"
+  const formatPickupKSTLabel = (dateInput) => {
+    if (!dateInput) return "";
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
+    try {
+      let y, m, d;
+      if (typeof dateInput === 'string' && dateInput.includes('T')) {
+        const dt = new Date(dateInput);
+        const k = new Date(dt.getTime() + KST_OFFSET);
+        m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        return `${m}월${d}일`;
+      }
+      if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+        const [datePart] = dateInput.split(' ');
+        const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+        return `${mm}월${dd}일`;
+      }
+      const md = typeof dateInput === 'string' ? dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) : null;
+      if (md) {
+        return `${parseInt(md[1], 10)}월${parseInt(md[2], 10)}일`;
+      }
+      const dt = new Date(dateInput);
+      const k = new Date(dt.getTime() + KST_OFFSET);
+      m = k.getUTCMonth() + 1; d = k.getUTCDate();
+      return `${m}월${d}일`;
+    } catch (_) {
+      return "";
+    }
   };
   const getProductBarcode = (id) => {
     // products 배열에서 product_id로 찾기
@@ -2434,31 +2477,10 @@ export default function OrdersPage() {
                                       {name}
                                     </div>
                                     {pickupDate && (
-                                      <div
-                                        className="text-xs mt-0.5 text-gray-500"
-                                      >
-                                        [{(() => {
-                                          // DB에 저장된 날짜 문자열 파싱
-                                          if (pickupDate.includes('T')) {
-                                            // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
-                                            const date = new Date(pickupDate);
-                                            // UTC 값을 한국 시간으로 해석
-                                            return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
-                                          } else if (pickupDate.includes(' ')) {
-                                            // "2025-09-14 07:00:00" 형식
-                                            const [datePart] = pickupDate.split(' ');
-                                            const [year, month, day] = datePart.split('-');
-                                            return `${parseInt(month)}월${parseInt(day)}일`;
-                                          } else {
-                                            // 기타 형식 fallback
-                                            const date = new Date(pickupDate);
-                                            return `${date.getMonth() + 1}월${date.getDate()}일`;
-                                          }
-                                        })()}]
+                                      <div className="text-xs mt-0.5 text-gray-500">
+                                        [{formatPickupKSTLabel(pickupDate)}]
                                         {isAvailable && (
-                                          <span className="ml-1 text-gray-500">
-                                            ✓ 수령가능
-                                          </span>
+                                          <span className="ml-1 text-gray-500">✓ 수령가능</span>
                                         )}
                                       </div>
                                     )}
@@ -2943,17 +2965,10 @@ export default function OrdersPage() {
                           {name}
                         </div>
                         {pickupDate && (
-                          <div
-                            className="text-sm mt-1 text-gray-500"
-                          >
-                            [{(() => {
-                              const date = new Date(pickupDate);
-                              return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
-                            })()}]
+                          <div className="text-sm mt-1 text-gray-500">
+                            [{formatPickupKSTLabel(pickupDate)}]
                             {isAvailable && (
-                              <span className="ml-1 text-gray-500">
-                                ✓ 수령가능
-                              </span>
+                              <span className="ml-1 text-gray-500">✓ 수령가능</span>
                             )}
                           </div>
                         )}
@@ -3218,17 +3233,10 @@ export default function OrdersPage() {
                                   {name}
                                 </div>
                                 {pickupDate && (
-                                  <div
-                                    className="text-sm mt-1 text-gray-500"
-                                  >
-                                    [{(() => {
-                                      const date = new Date(pickupDate);
-                                      return `${date.getUTCMonth() + 1}월${date.getUTCDate()}일`;
-                                    })()}]
+                                  <div className="text-sm mt-1 text-gray-500">
+                                    [{formatPickupKSTLabel(pickupDate)}]
                                     {isAvailable && (
-                                      <span className="ml-1 text-gray-500">
-                                        ✓ 수령가능
-                                      </span>
+                                      <span className="ml-1 text-gray-500">✓ 수령가능</span>
                                     )}
                                   </div>
                                 )}

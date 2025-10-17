@@ -37,7 +37,7 @@ const fetchOrders = async (key) => {
   
   let query;
   if (needsPickupDateFilter) {
-    // 주문완료+수령가능 필터: orders와 products를 조인하여 pickup_date 확인
+    // 주문완료+수령가능 필터: orders와 products를 조인
     query = supabase
       .from("orders")
       .select(`
@@ -80,13 +80,10 @@ const fetchOrders = async (key) => {
     ) {
       query = query.is("sub_status", null);
     } else if (filters.subStatus === "수령가능") {
-      // '주문완료+수령가능' 필터: pickup_date가 현재 시간(UTC) 이전인 주문들만
-      // DB에는 서울(Asia/Seoul) 기준으로 결정된 시각을 UTC로 저장하므로,
-      // 절대시간 비교는 UTC now로 충분합니다. 별도의 +9h 보정 불필요.
+      // '주문완료+수령가능'은 클라이언트(KST 기준)에서 판정하도록 하고,
+      // 서버 쿼리에서는 pickup_date 존재 여부만 제한한다.
       if (needsPickupDateFilter) {
         query = query.not("products.pickup_date", "is", null);
-        const nowISO = new Date().toISOString();
-        query = query.lte("products.pickup_date", nowISO);
       }
     } else {
       const subStatusValues = filters.subStatus
@@ -227,6 +224,70 @@ const fetchOrders = async (key) => {
       band_key: order.products?.band_key || order.band_key
     }));
     
+    // --- 클라이언트(KST) 기준 수령가능 필터 적용 ---
+    const isPickupAvailableKST = (dateInput) => {
+      if (!dateInput) return false;
+
+      const KST_OFFSET = 9 * 60 * 60 * 1000; // +09:00
+
+      // now in KST as YMD
+      const nowUtc = new Date();
+      const nowKst = new Date(nowUtc.getTime() + KST_OFFSET);
+      const nowY = nowKst.getUTCFullYear();
+      const nowM = nowKst.getUTCMonth();
+      const nowD = nowKst.getUTCDate();
+      const nowYmd = nowY * 10000 + (nowM + 1) * 100 + nowD;
+
+      // parse input as YMD in KST
+      let y, m, d;
+      try {
+        if (typeof dateInput === 'string' && dateInput.includes('T')) {
+          // ISO (UTC) -> shift to KST then take YMD
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear();
+          m = k.getUTCMonth() + 1;
+          d = k.getUTCDate();
+        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+          // 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
+          const [datePart] = dateInput.split(' ');
+          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+          y = yy; m = mm; d = dd;
+        } else if (typeof dateInput === 'string') {
+          // '10월17일' 같은 한국어 표기 케이스 (안전 처리)
+          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+          if (md) {
+            const now = new Date(nowUtc.getTime() + KST_OFFSET);
+            y = now.getUTCFullYear();
+            m = parseInt(md[1], 10);
+            d = parseInt(md[2], 10);
+          } else {
+            const dt = new Date(dateInput);
+            const k = new Date(dt.getTime() + KST_OFFSET);
+            y = k.getUTCFullYear();
+            m = k.getUTCMonth() + 1;
+            d = k.getUTCDate();
+          }
+        } else if (dateInput instanceof Date) {
+          const k = new Date(dateInput.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear();
+          m = k.getUTCMonth() + 1;
+          d = k.getUTCDate();
+        } else {
+          return false;
+        }
+      } catch (_) {
+        return false;
+      }
+
+      const inputYmd = y * 10000 + m * 100 + d;
+      return nowYmd >= inputYmd; // 오늘(KST) 날짜 이상이면 수령가능
+    };
+
+    processedData = processedData.filter((o) =>
+      isPickupAvailableKST(o.product_pickup_date)
+    );
+
     // 조인 모드에서 클라이언트 사이드 필터링
     // 포스트키 검색은 이미 서버사이드에서 처리되므로 일반 검색어만 처리
     if (filters.search && filters.search !== "undefined") {
