@@ -1226,8 +1226,9 @@ export default function OrdersPage() {
         return completedDate >= today && completedDate <= todayEnd;
       }).length;
       
-      
       setOrders(ordersData.data);
+      // Debug pickup availability per band
+      debugPickupLogging();
     }
     if (ordersError) {
       console.error("Order Error:", ordersError);
@@ -1332,6 +1333,49 @@ export default function OrdersPage() {
       console.error("날짜 파싱 오류:", error);
       return null;
     }
+  };
+
+  // KST YMD 변환 유틸
+  const toKstYmd = (dateInput) => {
+    if (!dateInput) return null;
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
+    try {
+      let y, m, d;
+      if (typeof dateInput === 'string' && dateInput.includes('T')) {
+        const dt = new Date(dateInput);
+        const k = new Date(dt.getTime() + KST_OFFSET);
+        y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+      } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+        const [datePart] = dateInput.split(' ');
+        const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+        y = yy; m = mm; d = dd;
+      } else if (typeof dateInput === 'string') {
+        const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (md) {
+          const now = new Date(new Date().getTime() + KST_OFFSET);
+          y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
+        } else {
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        }
+      } else if (dateInput instanceof Date) {
+        const k = new Date(dateInput.getTime() + KST_OFFSET);
+        y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+      } else {
+        return null;
+      }
+      return y * 10000 + m * 100 + d;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const pickEffectivePickupSource = (primary, titleDate) => {
+    const y1 = toKstYmd(primary);
+    const y2 = toKstYmd(titleDate);
+    if (y1 && y2) return y1 <= y2 ? primary : titleDate;
+    return primary || titleDate || null;
   };
 
   // 수령 가능 여부(KST 날짜 기준, 당일 0시부터)를 판단하는 함수
@@ -1439,6 +1483,56 @@ export default function OrdersPage() {
     products.find((p) => p.product_id === id) || null;
   const getPostUrlByProductId = (id) =>
     products.find((p) => p.product_id === id)?.band_post_url || "";
+
+  // --- Debug logging for pickup availability by band ---
+  const debugPickupLogging = () => {
+    if (typeof window === 'undefined') return;
+    let debug = false;
+    try { debug = window.localStorage.getItem('debugPickup') === 'true'; } catch {}
+    if (!debug) return;
+
+    try {
+      const all = orders || [];
+      const KSTflag = 'KST day-based';
+      const byBandAll = new Map();
+      const byBandAvail = new Map();
+      const samples = [];
+
+      const extractBracketDate = (title) => {
+        if (!title || typeof title !== 'string') return null;
+        const m = title.match(/^\s*\[([^\]]+)\]/);
+        return m ? m[1] : null;
+      };
+
+      for (const o of all) {
+        const bandKey = o.band_key || 'unknown';
+        byBandAll.set(bandKey, (byBandAll.get(bandKey) || 0) + 1);
+
+        const prod = getProductById(o.product_id);
+        const productName = getProductNameById(o.product_id);
+        const { date: titleDateFromName } = parseProductName(productName);
+        const titleDate = titleDateFromName || extractBracketDate(o.product_title);
+        const source = o.product_pickup_date || prod?.pickup_date || titleDate;
+        const avail = source ? isPickupAvailable(source) : false;
+        if (avail) {
+          byBandAvail.set(bandKey, (byBandAvail.get(bandKey) || 0) + 1);
+        }
+        if (samples.length < 30) {
+          samples.push({ band_key: bandKey, order_id: o.order_id, product_title: o.product_title || productName, product_pickup_date: o.product_pickup_date, products_pickup_date: prod?.pickup_date || null, titleDate, usedSource: source, available: avail });
+        }
+      }
+
+      const objFromMap = (m) => Object.fromEntries(Array.from(m.entries()));
+      console.groupCollapsed('[Pickup Debug] Orders Page');
+      console.log('filterSelection', filterSelection, '| mode:', KSTflag);
+      console.log('counts', { all: all.length, available: Array.from(byBandAvail.values()).reduce((a,b)=>a+b,0) });
+      console.log('byBand', { all: objFromMap(byBandAll), available: objFromMap(byBandAvail) });
+      console.table(samples);
+      console.groupEnd();
+    } catch (e) {
+      console.warn('Pickup debug logging failed (page):', e);
+    }
+  };
 
   // 주문 ID에서 게시물 키를 추출하는 함수
   const extractPostKeyFromOrderId = (orderId) => {
@@ -2456,10 +2550,9 @@ export default function OrdersPage() {
                                 );
                                 const { name, date } =
                                   parseProductName(productName);
-                                // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
-                                // 없으면 products 테이블의 pickup_date 사용, 둘 다 없으면 제목의 [날짜] 사용
                                 const product = getProductById(order.product_id);
-                                const pickupDate = order.product_pickup_date || product?.pickup_date || date;
+                                const primary = order.product_pickup_date || product?.pickup_date;
+                                const pickupDate = pickEffectivePickupSource(primary, date);
                                 const isAvailable =
                                   isClient && pickupDate
                                     ? isPickupAvailable(pickupDate)
@@ -2948,10 +3041,9 @@ export default function OrdersPage() {
                       selectedOrder.product_id
                     );
                     const { name, date } = parseProductName(productName);
-                    // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
-                    // 없으면 products 테이블의 pickup_date 사용, 둘 다 없으면 제목의 [날짜]
                     const product = getProductById(selectedOrder.product_id);
-                    const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date || date;
+                    const primary = selectedOrder.product_pickup_date || product?.pickup_date;
+                    const pickupDate = pickEffectivePickupSource(primary, date);
                     const isAvailable =
                       isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
 
@@ -3212,10 +3304,9 @@ export default function OrdersPage() {
                             );
                             const { name, date } =
                               parseProductName(productName);
-                            // product_pickup_date 필드에서 수령일 가져오기 (orders 테이블)
-                            // 없으면 products 테이블의 pickup_date 사용, 둘 다 없으면 제목의 [날짜]
                             const product = getProductById(selectedOrder.product_id);
-                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date || date;
+                            const primary = selectedOrder.product_pickup_date || product?.pickup_date;
+                            const pickupDate = pickEffectivePickupSource(primary, date);
                             const isAvailable =
                               isClient && pickupDate
                                 ? isPickupAvailable(pickupDate)

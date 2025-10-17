@@ -224,6 +224,20 @@ const fetchOrders = async (key) => {
       band_key: order.products?.band_key || order.band_key
     }));
     
+    // Debug flag via localStorage('debugPickup') === 'true'
+    const isDebug = (typeof window !== 'undefined') && (() => {
+      try { return window.localStorage.getItem('debugPickup') === 'true'; } catch { return false; }
+    })();
+
+    const countByBand = (arr) => {
+      const m = new Map();
+      for (const o of arr) {
+        const k = o.band_key || 'unknown';
+        m.set(k, (m.get(k) || 0) + 1);
+      }
+      return Object.fromEntries(m.entries());
+    };
+
     // --- 클라이언트(KST) 기준 수령가능 필터 적용 ---
     const isPickupAvailableKST = (dateInput) => {
       if (!dateInput) return false;
@@ -291,11 +305,102 @@ const fetchOrders = async (key) => {
       return m ? m[1] : null;
     };
 
+    // KST YMD 숫자 변환기
+    const toKstYmd = (dateInput) => {
+      if (!dateInput) return null;
+      const KST_OFFSET = 9 * 60 * 60 * 1000;
+      try {
+        let y, m, d;
+        if (typeof dateInput === 'string' && dateInput.includes('T')) {
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+          const [datePart] = dateInput.split(' ');
+          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+          y = yy; m = mm; d = dd;
+        } else if (typeof dateInput === 'string') {
+          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+          if (md) {
+            const now = new Date(new Date().getTime() + KST_OFFSET);
+            y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
+          } else {
+            const dt = new Date(dateInput);
+            const k = new Date(dt.getTime() + KST_OFFSET);
+            y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+          }
+        } else if (dateInput instanceof Date) {
+          const k = new Date(dateInput.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        } else {
+          return null;
+        }
+        return y * 10000 + m * 100 + d;
+      } catch {
+        return null;
+      }
+    };
+
+    const beforeFilter = processedData.slice();
     processedData = processedData.filter((o) => {
       const titleDate = extractBracketDate(o.product_title);
-      const source = o.product_pickup_date || titleDate;
-      return isPickupAvailableKST(source);
+      const y1 = toKstYmd(o.product_pickup_date);
+      const y2 = toKstYmd(titleDate);
+      const effectiveYmd = y1 && y2 ? Math.min(y1, y2) : (y1 || y2);
+      if (!effectiveYmd) return false;
+      // 오늘 KST YMD
+      const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+      const nowYmd = nowKst.getUTCFullYear() * 10000 + (nowKst.getUTCMonth() + 1) * 100 + nowKst.getUTCDate();
+      return nowYmd >= effectiveYmd;
     });
+
+    if (isDebug) {
+      try {
+        const filteredOut = [];
+        for (const o of beforeFilter) {
+          const titleDate = extractBracketDate(o.product_title);
+          const y1 = toKstYmd(o.product_pickup_date);
+          const y2 = toKstYmd(titleDate);
+          const effectiveYmd = y1 && y2 ? Math.min(y1, y2) : (y1 || y2);
+          const usedSource = (y1 && y2) ? (y1 <= y2 ? o.product_pickup_date : titleDate) : (o.product_pickup_date || titleDate);
+          const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+          const nowYmd = nowKst.getUTCFullYear() * 10000 + (nowKst.getUTCMonth() + 1) * 100 + nowKst.getUTCDate();
+          const isAvail = effectiveYmd ? nowYmd >= effectiveYmd : false;
+          if (!isAvail) {
+            filteredOut.push({
+              order_id: o.order_id,
+              band_key: o.band_key,
+              product_title: o.product_title,
+              product_pickup_date: o.product_pickup_date,
+              titleDate,
+              usedSource,
+              effectiveYmd,
+              reason: !effectiveYmd ? 'no_date' : 'future_date'
+            });
+          }
+        }
+        const sample = filteredOut.slice(0, 30);
+        console.groupCollapsed('[Pickup Debug] useOrdersClient join-mode');
+        console.log('filters', { status: filters.status, subStatus: filters.subStatus, sortBy, ascending, page, limit });
+        console.log('counts', {
+          before: beforeFilter.length,
+          after: processedData.length,
+          beforeByBand: countByBand(beforeFilter),
+          afterByBand: countByBand(processedData)
+        });
+        if (sample.length) {
+          console.table(sample);
+          if (filteredOut.length > sample.length) {
+            console.log(`... and ${filteredOut.length - sample.length} more filtered items`);
+          }
+        } else {
+          console.log('No filtered out items.');
+        }
+        console.groupEnd();
+      } catch (e) {
+        console.warn('Debug logging failed:', e);
+      }
+    }
 
     // 조인 모드에서 클라이언트 사이드 필터링
     // 포스트키 검색은 이미 서버사이드에서 처리되므로 일반 검색어만 처리
