@@ -46,6 +46,8 @@ jobs:
           # 클라이언트에서 사용할 공개 API 주소 설정 (예: https://api.example.com)
           # 정적 빌드 산출물이 런타임에 호출할 백엔드 주소입니다.
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npm run build
 
       # NOTE: 본 레포는 app/api 라우트를 다수 사용하고 있어

@@ -212,6 +212,82 @@ function LayoutContent({ children }) {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
+  // Naver 이미지: 혼합콘텐츠/핫링크 문제 시 프록시로 선제/폴백 처리
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.__naver_img_proxy_inited__) return;
+    window.__naver_img_proxy_inited__ = true;
+
+    const isNaverHost = (u) => {
+      try {
+        const url = new URL(u, window.location.href);
+        const h = url.hostname.toLowerCase();
+        return h.includes('.naver.');
+      } catch (e) {
+        return false;
+      }
+    };
+
+    const buildProxy = (u) => `/api/image-proxy?url=${encodeURIComponent(u)}`;
+    const mark = (img) => { img.dataset.naverProxyHandled = '1'; };
+    const alreadyHandled = (img) => img.dataset.naverProxyHandled === '1';
+    const isGitHubPagesHost = /\.github\.io$/i.test(window.location.hostname);
+    const shouldPreRewrite = (src) => {
+      // GitHub Pages는 서버 라우트가 없으므로 선제 프록시를 비활성화
+      if (isGitHubPagesHost) return false;
+      return /^http:\/\//i.test(src) && isNaverHost(src);
+    };
+
+    const attachOnErrorFallback = (img) => {
+      if (img.__naverProxyErrorBound) return;
+      img.__naverProxyErrorBound = true;
+      const original = img.getAttribute('src') || '';
+      img.addEventListener('error', () => {
+        const current = img.getAttribute('src') || '';
+        if (current.startsWith('/api/image-proxy')) return;
+        if (isNaverHost(original)) {
+          img.setAttribute('src', buildProxy(original));
+        }
+      });
+    };
+
+    const processImg = (img) => {
+      if (!img || alreadyHandled(img)) return;
+      const src = img.getAttribute('src') || '';
+      if (!src) return mark(img);
+      if (shouldPreRewrite(src)) {
+        img.setAttribute('src', buildProxy(src));
+      } else if (isNaverHost(src)) {
+        attachOnErrorFallback(img);
+      }
+      mark(img);
+    };
+
+    Array.from(document.querySelectorAll('img')).forEach(processImg);
+
+    const obs = new MutationObserver((muts) => {
+      for (const mut of muts) {
+        if (mut.type === 'childList') {
+          mut.addedNodes.forEach((node) => {
+            if (node && node.nodeType === 1) {
+              if (node.tagName === 'IMG') processImg(node);
+              node.querySelectorAll && node.querySelectorAll('img').forEach(processImg);
+            }
+          });
+        } else if (mut.type === 'attributes' && mut.target && mut.target.tagName === 'IMG' && mut.attributeName === 'src') {
+          processImg(mut.target);
+        }
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    window.__naver_img_proxy_observer__ = obs;
+
+    return () => {
+      try { obs.disconnect(); } catch (_) {}
+      delete window.__naver_img_proxy_inited__;
+    };
+  }, []);
+
   // ---- 조건부 렌더링 로직 ----
 
   // 인증 페이지인 경우, 레이아웃 없이 children만 렌더링

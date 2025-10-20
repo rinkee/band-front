@@ -1,6 +1,11 @@
 // 게시물 처리 로그 조회 페이지
 import { useState, useEffect } from 'react';
-import supabase from '../../app/lib/supabaseClient';
+
+// Supabase 클라이언트는 브라우저에서만 동적 임포트하여 정적 export 빌드 시 서버에서 초기화되지 않도록 함
+async function getSupabase() {
+  const mod = await import('../../app/lib/supabaseClient');
+  return mod.default;
+}
 
 export default function PostLogsPage() {
   const [logs, setLogs] = useState([]);
@@ -13,6 +18,7 @@ export default function PostLogsPage() {
   const fetchRecentLogs = async () => {
     setLoading(true);
     try {
+      const supabase = await getSupabase();
       const { data: user } = await supabase.auth.getUser();
       if (!user?.user) return;
 
@@ -38,6 +44,7 @@ export default function PostLogsPage() {
     
     setLoading(true);
     try {
+      const supabase = await getSupabase();
       const { data: user } = await supabase.auth.getUser();
       if (!user?.user) return;
 
@@ -67,6 +74,7 @@ export default function PostLogsPage() {
   // 통계 조회
   const fetchStats = async () => {
     try {
+      const supabase = await getSupabase();
       const { data: user } = await supabase.auth.getUser();
       if (!user?.user) return;
 
