@@ -225,9 +225,7 @@ const fetchOrders = async (key) => {
     }));
     
     // Debug flag via localStorage('debugPickup') === 'true'
-    const isDebug = (typeof window !== 'undefined') && (() => {
-      try { return window.localStorage.getItem('debugPickup') === 'true'; } catch { return false; }
-    })();
+    const isDebug = false;
 
     const countByBand = (arr) => {
       const m = new Map();

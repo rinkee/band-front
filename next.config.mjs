@@ -1,9 +1,24 @@
 /** @type {import('next').NextConfig} */
+const isGithubPages = process.env.GITHUB_PAGES === "true";
+
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // GitHub Pages(정적 호스팅) 빌드 시에만 정적 export + basePath 적용
+  ...(isGithubPages
+    ? {
+        output: "export",
+        // 리포지토리명이 band-front 이므로 basePath/assetPrefix 설정
+        basePath: "/band-front",
+        assetPrefix: "/band-front/",
+        // GitHub Pages에서는 이미지 최적화 서버가 없으므로 비활성화
+        images: { unoptimized: true },
+        // export 시 라우팅 호환을 위해 권장
+        trailingSlash: true,
+      }
+    : {}),
   async rewrites() {
     // Vercel 시스템 환경 변수를 사용하는 것이 더 안정적일 수 있습니다.
     const isVercel = !!process.env.VERCEL_ENV; // Vercel 환경인지 확인 (production, preview, development 중 하나)
@@ -23,7 +38,7 @@ const nextConfig = {
       ];
     }
 
-    // 로컬 개발 환경 등 Vercel이 아닐 경우 프록시 없음
+    // 로컬 개발/GitHub Pages 등 Vercel이 아닐 경우 프록시 없음
     console.log(
       "[next.config.js] Not applying rewrites (Non-Vercel environment)"
     );

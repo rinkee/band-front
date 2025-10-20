@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Loading…</title>
+    <meta http-equiv="refresh" content="0; url=/band-front/" />
+    <script>
+      // SPA for GitHub Pages: preserve deep links by encoding path into query
+      (function () {
+        var l = window.location;
+        var segmentCount = 1; // '/band-front' depth
+        var repoBase = l.pathname.split('/').slice(0, 1 + segmentCount).join('/');
+        var newUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+          repoBase + '/?/' +
+          l.pathname.split('/').slice(1 + segmentCount).join('/') +
+          (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+          l.hash;
+        l.replace(newUrl);
+      })();
+    </script>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { display: grid; place-items: center; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <p>페이지 이동 중…</p>
+  </body>
+  </html>
+

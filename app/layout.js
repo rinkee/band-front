@@ -35,6 +35,21 @@ function LayoutContent({ children }) {
   // ScrollContext에서 scrollableContentRef 가져오기
   const { scrollableContentRef } = useScroll(); // <<< Context에서 ref 가져오기
 
+  // GitHub Pages(SPA) 경로 복원: 404.html이 `?/<path>`로 리다이렉트한 경우 원래 경로로 복원
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const l = window.location;
+    if (l.search && l.search.startsWith("?/")) {
+      const decoded = l.search
+        .slice(2)
+        .split("&")
+        .map((s) => s.replace(/~and~/g, "&"))
+        .join("?");
+      const base = l.pathname.endsWith("/") ? l.pathname.slice(0, -1) : l.pathname;
+      window.history.replaceState(null, "", `${base}/${decoded}${l.hash}`);
+    }
+  }, []);
+
   // --- 주문 관리 메뉴 클릭 핸들러 추가 ---
   const handleOrdersMenuClick = () => {
     // 주문 관리 메뉴 클릭됨, 데이터 갱신 시도
@@ -92,6 +107,38 @@ function LayoutContent({ children }) {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]); // pathname이 변경될 때 이 effect가 실행됩니다.
+
+  // 정적(비상) 모드에서 '/api/*' 호출을 외부 API로 우회 (선택)
+  useEffect(() => {
+    const isFallback = process.env.NEXT_PUBLIC_FALLBACK_MODE === "true";
+    const base = process.env.NEXT_PUBLIC_API_URL;
+    if (!isFallback || !base || typeof window === "undefined" || !window.fetch) {
+      return;
+    }
+    const origFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      try {
+        const toStr = (x) => (typeof x === "string" ? x : x?.url || "");
+        const needsProxy = (u) => typeof u === "string" && u.startsWith("/api/");
+        const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+        const url = toStr(input);
+        if (needsProxy(url)) {
+          const proxied = prefix.endsWith("/api")
+            ? `${prefix}${url.replace(/^\/api/, "")}`
+            : `${prefix}${url}`;
+          if (typeof input === "string") {
+            return origFetch(proxied, init);
+          }
+          const req = new Request(proxied, input);
+          return origFetch(req, init);
+        }
+      } catch (_) {}
+      return origFetch(input, init);
+    };
+    return () => {
+      window.fetch = origFetch;
+    };
+  }, []);
 
   // 현재 경로가 로그인, 회원가입 또는 루트 경로인지 확인합니다. (헤더/레이아웃 표시 여부 결정)
   const isAuthPage =
@@ -208,6 +255,12 @@ function LayoutContent({ children }) {
         />
       </head>
       <body suppressHydrationWarning>
+        {/* 비상(정적) 모드 안내 배너 */}
+        {process.env.NEXT_PUBLIC_FALLBACK_MODE === "true" && (
+          <div className="w-full text-center text-sm text-white bg-orange-500 py-1">
+            제한 모드: 현재 정적 백업 페이지가 제공 중입니다. 기능이 제한될 수 있습니다.
+          </div>
+        )}
         <div className={`flex flex-col h-screen overflow-hidden ${isAdminPage ? 'bg-gray-50' : 'bg-gray-100'}`}>
           {/* 로그인 상태이고 admin 페이지가 아닐 때만 헤더 표시 */}
           {isLoggedIn && !isAdminPage && (

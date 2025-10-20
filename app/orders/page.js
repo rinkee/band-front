@@ -620,8 +620,14 @@ export default function OrdersPage() {
     search: searchTerm.trim() || undefined, // 일반 검색어
     exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
     // --- 👆 검색 관련 파라미터 수정 👆 ---
-    startDate: dateFilterParams.startDate,
-    endDate: dateFilterParams.endDate,
+    startDate:
+      filterSelection === "주문완료+수령가능"
+        ? undefined
+        : dateFilterParams.startDate,
+    endDate:
+      filterSelection === "주문완료+수령가능"
+        ? undefined
+        : dateFilterParams.endDate,
   };
   
   
@@ -1225,10 +1231,7 @@ export default function OrdersPage() {
         const completedDate = new Date(order.completed_at);
         return completedDate >= today && completedDate <= todayEnd;
       }).length;
-      
       setOrders(ordersData.data);
-      // Debug pickup availability per band
-      debugPickupLogging();
     }
     if (ordersError) {
       console.error("Order Error:", ordersError);

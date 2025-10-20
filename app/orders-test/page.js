@@ -542,16 +542,22 @@ export default function OrdersPage() {
       search: searchTerm.trim() || undefined, // 일반 검색어
       exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
       // --- 👆 검색 관련 파라미터 수정 👆 ---
-      startDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).startDate,
-      endDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).endDate,
+      startDate: (() => {
+        const p = calculateDateFilterParams(
+          filterDateRange,
+          customStartDate,
+          customEndDate
+        );
+        return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.startDate;
+      })(),
+      endDate: (() => {
+        const p = calculateDateFilterParams(
+          filterDateRange,
+          customStartDate,
+          customEndDate
+        );
+        return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.endDate;
+      })(),
       dateType: filterDateType, // 날짜 필터 타입 추가
     },
     swrOptions
