@@ -343,8 +343,34 @@ export default function PostsPage() {
     router.push(`/orders?postKey=${encodeURIComponent(postKey)}`);
   };
 
-  // 댓글 모달 열기 함수
+  // 댓글 보기 동작 - Row 모드에서는 밴드 원본으로 이동, 기본은 모달
   const handleViewComments = (post) => {
+    // Row 모드 감지: 쿼리 파라미터 또는 세션 저장값을 폭넓게 지원
+    const isRowMode = (() => {
+      if (typeof window === 'undefined') return false;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const qp = (params.get('view') || params.get('layout') || params.get('mode') || '').toLowerCase();
+        if (qp === 'row' || qp === 'rows' || qp === 'list' || qp === 'row-mode') return true;
+
+        const keys = ['postsViewMode', 'posts_layout', 'postsLayout', 'posts_view_mode'];
+        for (const k of keys) {
+          const v = (sessionStorage.getItem(k) || '').toLowerCase();
+          if (v === 'row' || v === 'rows' || v === 'list' || v === 'row-mode' || v === '1' || v === 'true') return true;
+        }
+      } catch (_) {}
+      return false;
+    })();
+
+    // Row 모드에서는 실시간 댓글 클릭 시 밴드 게시물 새 탭으로 이동
+    if (isRowMode && post?.band_post_url) {
+      if (typeof window !== 'undefined') {
+        window.open(post.band_post_url, '_blank', 'noopener');
+      }
+      return;
+    }
+
+    // 기본 동작: 댓글 모달 열기
     if (!userData?.band_access_token) {
       alert("BAND 토큰이 없습니다. 설정에서 BAND 연동을 확인해주세요.");
       return;
@@ -782,23 +808,27 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
-    const date = new Date(dateString);
-    const now = new Date();
+    const raw = new Date(dateString);
+    if (Number.isNaN(raw.getTime())) return "-";
+    // 화면 표시를 KST처럼 보이도록 +9시간 보정
+    const date = new Date(raw.getTime() + 9 * 60 * 60 * 1000);
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const diffMs = now - date;
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      return date.toLocaleTimeString("ko-KR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      // KST 기준 시각 출력 (UTC 컴포넌트로 안전하게 구성)
+      const hh = String(date.getUTCHours()).padStart(2, '0');
+      const mm = String(date.getUTCMinutes()).padStart(2, '0');
+      const h12 = ((Number(hh) % 12) || 12).toString();
+      const ampm = Number(hh) < 12 ? '오전' : '오후';
+      return `${ampm} ${h12}:${mm}`;
     } else if (diffDays < 7) {
       return `${diffDays}일 전`;
     } else {
-      return date.toLocaleDateString("ko-KR", {
-        month: "short",
-        day: "numeric",
-      });
+      const m = date.getUTCMonth() + 1;
+      const d = date.getUTCDate();
+      return `${m}월 ${d}일`;
     }
   };
 
@@ -929,43 +959,56 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   const title = post.title || '';
   const content = post.content || '';
   
-  // products 테이블의 pickup_date 기반으로 수령일 계산
+  // posts 테이블의 pickup_date 기반으로 수령일 계산 (KST 표기를 위해 +9h 보정)
+  const getPickupDateFromPost = () => {
+    const pd = post?.pickup_date;
+    if (!pd) return null;
+    try {
+      const raw = new Date(pd);
+      if (isNaN(raw.getTime())) return null;
+      const kst = new Date(raw.getTime() + 9 * 60 * 60 * 1000);
+      const month = kst.getUTCMonth() + 1;
+      const day = kst.getUTCDate();
+      const hours = kst.getUTCHours();
+      const minutes = kst.getUTCMinutes();
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      const dow = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate())).getUTCDay();
+      const dayName = days[dow];
+      if (hours !== 0 || minutes !== 0) {
+        const hh12 = hours % 12 === 0 ? 12 : hours % 12;
+        const ampm = hours < 12 ? '오전' : '오후';
+        const timeStr = `${ampm} ${hh12}:${minutes.toString().padStart(2, '0')}`;
+        return `${month}월${day}일 ${dayName} ${timeStr} 수령`;
+      }
+      return `${month}월${day}일 ${dayName} 수령`;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // products 테이블의 pickup_date 기반으로 수령일 계산 (백업용, KST 표기 +9h)
   const getPickupDateFromProducts = () => {
     if (post.products && post.products.length > 0) {
       const firstProduct = post.products[0];
       if (firstProduct.pickup_date) {
         try {
-          const pickupDate = new Date(firstProduct.pickup_date);
-          if (!isNaN(pickupDate.getTime())) {
-            // UTC로 저장된 시간을 한국 시간으로 해석
-            let month, day, hours, minutes, dayName;
-            
-            if (firstProduct.pickup_date.includes('T')) {
-              // ISO 형식 - UTC를 한국 시간으로 해석
-              month = pickupDate.getUTCMonth() + 1;
-              day = pickupDate.getUTCDate();
-              hours = pickupDate.getUTCHours();
-              minutes = pickupDate.getUTCMinutes();
-              const days = ['일', '월', '화', '수', '목', '금', '토'];
-              const koreanDate = new Date(pickupDate.getUTCFullYear(), pickupDate.getUTCMonth(), pickupDate.getUTCDate());
-              dayName = days[koreanDate.getDay()];
-            } else {
-              // 기존 형식
-              month = pickupDate.getMonth() + 1;
-              day = pickupDate.getDate();
-              hours = pickupDate.getHours();
-              minutes = pickupDate.getMinutes();
-              const days = ['일', '월', '화', '수', '목', '금', '토'];
-              dayName = days[pickupDate.getDay()];
-            }
-            
-            // 시간이 00:00이 아닌 경우에만 시간 표시
+          const raw = new Date(firstProduct.pickup_date);
+          if (!isNaN(raw.getTime())) {
+            const kst = new Date(raw.getTime() + 9 * 60 * 60 * 1000);
+            const month = kst.getUTCMonth() + 1;
+            const day = kst.getUTCDate();
+            const hours = kst.getUTCHours();
+            const minutes = kst.getUTCMinutes();
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const dow = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate())).getUTCDay();
+            const dayName = days[dow];
             if (hours !== 0 || minutes !== 0) {
-              const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+              const hh12 = hours % 12 === 0 ? 12 : hours % 12;
+              const ampm = hours < 12 ? '오전' : '오후';
+              const timeStr = `${ampm} ${hh12}:${minutes.toString().padStart(2, '0')}`;
               return `${month}월${day}일 ${dayName} ${timeStr} 수령`;
-            } else {
-              return `${month}월${day}일 ${dayName} 수령`;
             }
+            return `${month}월${day}일 ${dayName} 수령`;
           }
         } catch (e) {
           console.log('pickup_date 파싱 실패:', e);
@@ -975,7 +1018,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
     return null;
   };
   
-  const deliveryDate = getPickupDateFromProducts() || extractDeliveryDate(title);
+  const deliveryDate = getPickupDateFromPost() || getPickupDateFromProducts() || extractDeliveryDate(title);
   const cleanTitle = extractCleanTitle(title);
   const shortContent = formatContent(content);
 
@@ -1015,8 +1058,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
               </div>
             </div>
           </div>
-          {/* 수령일 표시 */}
-          {deliveryDate && (
+          {/* 수령일 표시 - 공지사항(is_product가 false)이 아닌 경우만 표시 */}
+          {deliveryDate && post.is_product !== false && (
             <div className="text-xs text-gray-600 font-medium bg-blue-50 px-2 py-1 rounded">
               {deliveryDate}
             </div>
@@ -1092,18 +1135,33 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             </svg>
             <span className="text-sm text-gray-600 mt-0.5">주문</span>
           </button>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewComments(post);
-            }}
-            className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-sm text-gray-600 mt-0.5">실시간 댓글</span>
-          </button>
+          {post?.band_post_url ? (
+            <a
+              href={post.band_post_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="text-sm text-gray-600 mt-0.5">실시간 댓글</span>
+            </a>
+          ) : (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewComments(post);
+              }}
+              className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="text-sm text-gray-600 mt-0.5">실시간 댓글</span>
+            </button>
+          )}
         </div>
 
         

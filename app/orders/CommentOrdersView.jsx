@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState, forwardRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import supabase from "../lib/supabaseClient";
-import { createClient } from "@supabase/supabase-js";
+import getAuthedClient from "../lib/authedSupabaseClient";
 import { useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
@@ -63,9 +63,10 @@ const StatusBadge = ({ status }) => {
   if (status === "미수령") bg = "bg-red-100 text-red-700";
   else if (status === "주문완료") bg = "bg-blue-100 text-blue-700";
   else if (status === "수령완료") bg = "bg-green-100 text-green-700";
-  else if (status === "주문취소") bg = "bg-gray-200 text-gray-600";
+  else if (status === "주문취소") bg = "bg-[#f06595] text-white";
+  else if (status === "확인필요") bg = "bg-[#ffe5e5] text-[#ff0000]"; // 완전한 빨강 텍스트 + 연한 배경
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${bg}`}>
+    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold ${bg}`}>
       {status}
     </span>
   );
@@ -160,6 +161,44 @@ export default function CommentOrdersView() {
   const [suggestionsByCommentId, setSuggestionsByCommentId] = useState({});
   // 제품 이미지 로드 실패(대체 아이콘 사용) 여부: { [product_id]: true }
   const [brokenProductImages, setBrokenProductImages] = useState({});
+
+  // Debug utilities
+  const getDebugFlag = () => {
+    try {
+      // Dev default ON (can be turned off with ?debugReco=0 or localStorage 'debug_reco'='0')
+      if (process.env.NODE_ENV !== "production") {
+        try {
+          const sp = new URLSearchParams(window.location.search);
+          const qOff = sp.get('debugReco') === '0' || sp.get('debug_reco') === '0';
+          const lsOff = window.localStorage?.getItem?.('debug_reco') === '0';
+          if (!qOff && !lsOff) return true;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    try {
+      // URL ?debugReco=1 or ?debug_reco=1
+      if (typeof window !== "undefined") {
+        const sp = new URLSearchParams(window.location.search);
+        const q1 = sp.get('debugReco') || sp.get('debug_reco');
+        if (q1 === '1' || q1 === 'true') return true;
+      }
+    } catch (_) {}
+    try {
+      if (typeof window !== "undefined") {
+        const v = window.localStorage?.getItem?.("debug_reco");
+        if (v === "1" || v === "true") return true;
+      }
+    } catch (_) {}
+    try {
+      if (process.env.NEXT_PUBLIC_DEBUG_RECO === "true") return true;
+    } catch (_) {}
+    try {
+      if (typeof window !== 'undefined' && (window).DEBUG_RECO) return true;
+    } catch (_) {}
+    return false;
+  };
+  const loggedHighlightsRef = React.useRef(new Set());
+  const loggedChipsRef = React.useRef(new Set());
 
   const toggleProductExpansion = (e, commentOrderId) => {
     e.stopPropagation();
@@ -261,7 +300,7 @@ export default function CommentOrdersView() {
       postNumber: paramPostNumber,
       bandNumber: paramBandNumber,
     },
-    { revalidateOnFocus: true }
+    { revalidateOnFocus: false, revalidateOnReconnect: false, dedupingInterval: 15000 }
   );
 
   const { updateCommentOrder } = useCommentOrderClientMutations();
@@ -270,19 +309,26 @@ export default function CommentOrdersView() {
   const pagination = data?.pagination;
   const filteredTotalItems = pagination?.totalItems || 0;
 
-  // 시간 표시 포맷: "10월3일 오전 10:14"
+  // 시간 표시 포맷: "10월28일\n오후 7:07" (줄바꿈 포함)
   const formatKoreanDateTime = (value) => {
     if (!value) return "-";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "-";
-    const month = d.getMonth() + 1;
-    const day = d.getDate();
-    let hours = d.getHours();
-    const minutes = String(d.getMinutes()).padStart(2, "0");
+    // 웹 표시를 KST로 보이도록 +9시간 보정
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    const month = kst.getUTCMonth() + 1;
+    const day = kst.getUTCDate();
+    let hours = kst.getUTCHours();
+    const minutes = String(kst.getUTCMinutes()).padStart(2, "0");
     const ampm = hours < 12 ? "오전" : "오후";
     hours = hours % 12;
     if (hours === 0) hours = 12;
-    return `${month}월${day}일 ${ampm} ${hours}:${minutes}`;
+    return (
+      <span className="inline-flex flex-col leading-tight">
+        <span>{`${month}월${day}일`}</span>
+        <span>{`${ampm} ${hours}:${minutes}`}</span>
+      </span>
+    );
   };
 
   // 바코드 컴포넌트 (CODE128)
@@ -333,23 +379,11 @@ export default function CommentOrdersView() {
   };
 
   // Create authed client with JWT if available (for RLS)
-  const getAuthedClient = () => {
-    if (typeof window === "undefined") return supabase;
-    try {
-      const s = sessionStorage.getItem("userData");
-      const token = s ? JSON.parse(s)?.token : null;
-      if (!token) return supabase;
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!url || !anon) return supabase;
-      return createClient(url, anon, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-        auth: { persistSession: false, detectSessionInUrl: false },
-      });
-    } catch (_) {
-      return supabase;
-    }
-  };
+  // getAuthedClient imported (shared singleton per token)
+
+  // Track batch lifecycle and in-flight per-row fetches to avoid duplicate calls
+  const batchKeyRef = React.useRef("");
+  const inflightProductsRef = React.useRef(new Set());
 
   // Batch-load products for all listed comments' posts
   useEffect(() => {
@@ -357,6 +391,7 @@ export default function CommentOrdersView() {
       if (!userData?.userId || items.length === 0) {
         setPostProductsByPostKey({});
         setPostProductsByBandPost({});
+        batchKeyRef.current = "";
         return;
       }
       const uid = userData.userId;
@@ -365,6 +400,7 @@ export default function CommentOrdersView() {
       const postKeys = Array.from(
         new Set(items.map((r) => r.post_key || r.postKey).filter(Boolean))
       );
+      const currentKey = items.map((r) => r.comment_order_id).join(",");
       const bandMap = new Map();
       items.forEach((r) => {
         if (!r.post_key && !r.postKey) {
@@ -406,6 +442,9 @@ export default function CommentOrdersView() {
         }
       } catch (e) {
         console.warn("상품 배치 조회 실패:", e?.message || e);
+      } finally {
+        // Mark batch attempt finished for this items set
+        batchKeyRef.current = currentKey;
       }
 
       // Build maps
@@ -467,6 +506,40 @@ export default function CommentOrdersView() {
         if (Array.isArray(suggestions) && suggestions.length > 0) {
           next[row.comment_order_id] = suggestions;
         }
+        // Debug log per comment row
+        if (getDebugFlag()) {
+          try {
+            const summarize = (arr) => (arr || []).map((p, idx) => {
+              const rawNo = Number.isFinite(Number(p?.item_number)) && Number(p.item_number) > 0 ? Number(p.item_number) : undefined;
+              const parsedNo = parseItemNumberFromProductId(p?.product_id);
+              const itemNo = rawNo ?? parsedNo ?? (idx + 1);
+              return { no: itemNo, id: p?.product_id, title: p?.title || p?.name || '', barcode: p?.barcode || null };
+            });
+            const altIndexByProductId = new Map();
+            list.forEach((it, idx) => { if (it?.product_id) altIndexByProductId.set(it.product_id, idx + 1); });
+            const sNums = new Set((suggestions || []).map((s) => Number(s.itemNumber)));
+            const willHighlight = (p) => {
+              const n1 = Number(p?.item_number);
+              const n2 = parseItemNumberFromProductId(p?.product_id);
+              const n3 = altIndexByProductId.get(p?.product_id);
+              return (Number.isFinite(n1) && sNums.has(n1)) || (Number.isFinite(n2) && sNums.has(n2)) || (Number.isFinite(n3) && sNums.has(n3));
+            };
+            const highlights = (list || []).filter(willHighlight).map((p, idx) => {
+              const rawNo = Number.isFinite(Number(p?.item_number)) && Number(p.item_number) > 0 ? Number(p.item_number) : undefined;
+              const parsedNo = parseItemNumberFromProductId(p?.product_id);
+              const itemNo = rawNo ?? parsedNo ?? (idx + 1);
+              return itemNo;
+            });
+            // Plain logs (no collapsed group) so it always shows
+            console.log(`[RECO] coid=${row.comment_order_id} name=${row.commenter_name || ''}`);
+            console.log(`[RECO] comment:`, commentText);
+            console.log(`[RECO] candidates:`, summarize(list));
+            console.log(`[RECO] suggestions:`, (suggestions || []).map((s) => ({ no: s.itemNumber, qty: s.quantity, conf: Number(((s.confidence||0)).toFixed ? (s.confidence).toFixed(2) : s.confidence), reason: s.reason, method: s.matchMethod })));
+            console.log(`[RECO] willHighlight:`, highlights);
+          } catch (e) {
+            console.warn("[RECO][debug] logging failed", e);
+          }
+        }
       } catch (_) {
         // ignore per-row errors
       }
@@ -482,6 +555,9 @@ export default function CommentOrdersView() {
       const uid = userData.userId;
       const sb = getAuthedClient();
       const updates = {};
+      const currentKey = items.map((r) => r.comment_order_id).join(",");
+      // Wait for batch attempt to complete for this items set
+      if (batchKeyRef.current !== currentKey) return;
       for (const row of items) {
         const coid = row.comment_order_id;
         const hasBatch = (() => {
@@ -500,6 +576,9 @@ export default function CommentOrdersView() {
           // 1) post_key 우선
           const postKey = row.post_key || row.postKey;
           if (postKey) {
+            const fetchKey = `pk:${postKey}`;
+            if (inflightProductsRef.current.has(fetchKey)) continue;
+            inflightProductsRef.current.add(fetchKey);
             const { data: a, error: e } = await sb
               .from("products")
               .select("*")
@@ -507,12 +586,16 @@ export default function CommentOrdersView() {
               .eq("post_key", postKey)
               .order("item_number", { ascending: true });
             if (!e && Array.isArray(a)) list = a;
+            inflightProductsRef.current.delete(fetchKey);
           }
           // 2) band_key + post_number
           if (list.length === 0) {
             const bandKey = row.band_key || row.bandKey;
             const postNum = row.post_number ?? row.postNumber;
             if (bandKey && postNum != null) {
+              const fetchKey = `bk:${bandKey}:${String(postNum)}`;
+              if (inflightProductsRef.current.has(fetchKey)) continue;
+              inflightProductsRef.current.add(fetchKey);
               const { data: b, error: e2 } = await sb
                 .from("products")
                 .select("*")
@@ -521,6 +604,7 @@ export default function CommentOrdersView() {
                 .eq("post_number", String(postNum))
                 .order("item_number", { ascending: true });
               if (!e2 && Array.isArray(b)) list = b;
+              inflightProductsRef.current.delete(fetchKey);
             }
           }
           // 3) band_number + post_number
@@ -528,6 +612,9 @@ export default function CommentOrdersView() {
             const bandNum = row.band_number || row.bandNumber;
             const postNum = row.post_number ?? row.postNumber;
             if (bandNum != null && postNum != null) {
+              const fetchKey = `bn:${bandNum}:${String(postNum)}`;
+              if (inflightProductsRef.current.has(fetchKey)) continue;
+              inflightProductsRef.current.add(fetchKey);
               const { data: c, error: e3 } = await sb
                 .from("products")
                 .select("*")
@@ -536,6 +623,7 @@ export default function CommentOrdersView() {
                 .eq("post_number", String(postNum))
                 .order("item_number", { ascending: true });
               if (!e3 && Array.isArray(c)) list = c;
+              inflightProductsRef.current.delete(fetchKey);
             }
           }
           if (list.length > 0) {
@@ -551,7 +639,7 @@ export default function CommentOrdersView() {
     };
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userData?.userId, items, postProductsByPostKey, postProductsByBandPost]);
+  }, [userData?.userId, commentListKey, postProductsByPostKey, postProductsByBandPost]);
 
   const openDetail = async (row) => {
     setSelected(row);
@@ -794,6 +882,70 @@ export default function CommentOrdersView() {
         const m = val.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
         if (m) {
           return `${parseInt(m[1], 10)}월${parseInt(m[2], 10)}일`;
+        }
+      }
+    } catch (_) {}
+    return "-";
+  };
+
+  // 수령일을 '주문일시'와 같은 두 줄 레이아웃으로 표시
+  // - ISO 또는 Date 객체면 시간까지 표시
+  // - 'YYYY-MM-DD' 또는 'M월D일' 텍스트면 날짜만 표시하고 시간은 대시로 표시
+  const formatPickupKoreanDateTime = (value) => {
+    if (!value) return "-";
+    try {
+      // ISO / Date 객체 처리 (시간 표시)
+      let dt = null;
+      if (value instanceof Date) {
+        dt = value;
+      } else if (typeof value === 'string' && value.includes('T')) {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) dt = d;
+      }
+      if (dt) {
+        const kst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+        const month = kst.getUTCMonth() + 1;
+        const day = kst.getUTCDate();
+        let hours = kst.getUTCHours();
+        const minutes = String(kst.getUTCMinutes()).padStart(2, '0');
+        const ampm = hours < 12 ? '오전' : '오후';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span>{`${month}월${day}일`}</span>
+            <span>{`${ampm} ${hours}:${minutes}`}</span>
+          </span>
+        );
+      }
+
+      // YYYY-MM-DD 형식 (날짜만 표시)
+      if (typeof value === 'string' && /\d{4}-\d{1,2}-\d{1,2}/.test(value)) {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) {
+          const month = d.getMonth() + 1;
+          const day = d.getDate();
+          return (
+            <span className="inline-flex flex-col leading-tight">
+              <span>{`${month}월${day}일`}</span>
+              <span className="text-gray-400">—</span>
+            </span>
+          );
+        }
+      }
+
+      // 'M월D일' 패턴 (날짜만 표시)
+      if (typeof value === 'string') {
+        const m = value.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (m) {
+          const month = parseInt(m[1], 10);
+          const day = parseInt(m[2], 10);
+          return (
+            <span className="inline-flex flex-col leading-tight">
+              <span>{`${month}월${day}일`}</span>
+              <span className="text-gray-400">—</span>
+            </span>
+          );
         }
       }
     } catch (_) {}
@@ -1093,16 +1245,16 @@ export default function CommentOrdersView() {
         <LightCard padding="p-0" className="overflow-hidden mb-[100px]">
          
           <div className="overflow-x-auto">
-            <table className="min-w-full table-fixed divide-y divide-gray-200">
+            <table className="min-w-full table-fixed divide-y divide-gray-200 table-text-plus2">
               <colgroup>
                 {/* 퍼센트 기반 고정 폭: 합계 100% 유지 */}
                 <col style={{ width: '2%' }} />
                 <col style={{ width: '8%' }} />
-                <col style={{ width: '25%' }} />
-                <col style={{ width: '25%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '10%' }} />
                 <col style={{ width: '7%' }} />
+                <col style={{ width: '25%' }} />
+                <col style={{ width: '25%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '10%' }} />
               </colgroup>
               <thead className="bg-gray-50">
                 <tr>
@@ -1117,11 +1269,11 @@ export default function CommentOrdersView() {
                     />
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">고객명</th>
+                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">상품</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">수령일</th>
+                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">수령일시</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">주문일시</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1171,27 +1323,13 @@ export default function CommentOrdersView() {
                         "-"
                       )}
                     </td>
+                    {/* 상태 열 - 댓글 왼쪽으로 이동 */}
+                    <td className="px-4 py-3 text-center">
+                      <StatusBadge status={row.order_status} />
+                    </td>
                     <td className="px-4 py-3 text-md text-gray-700">
                       <div className="whitespace-pre-wrap break-all">{processBandTags(row.comment_body || "")}</div>
-                      {(() => {
-                        const sugg = suggestionsByCommentId[row.comment_order_id] || [];
-                        if (!sugg || sugg.length === 0) return null;
-                        // 상위 2개만 요약 표시
-                        const top = sugg.slice(0, 2);
-                        return (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {top.map((s, i) => (
-                              <span
-                                key={`${row.comment_order_id}_s_${i}`}
-                                className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700"
-                                title={`${s.reason || "추천"} · 신뢰도 ${(s.confidence * 100).toFixed(0)}%`}
-                              >
-                                추천 {s.itemNumber}번 · {s.quantity}개
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      })()}
+                      {(() => { return null; })()}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 align-top">
                       {(() => {
@@ -1200,6 +1338,22 @@ export default function CommentOrdersView() {
                           return <span className="text-gray-400">-</span>;
                         }
                         const sugg = suggestionsByCommentId[row.comment_order_id] || [];
+                        // Extract explicit numbers from comment for highlight scope in product list
+                        const explicitNums = (() => {
+                          try {
+                            const t = processBandTags(row?.comment_body || "");
+                            const out = new Set();
+                            const re = /(\d+)\s*번/g;
+                            let m;
+                            while ((m = re.exec(t)) !== null) {
+                              const n = parseInt(m[1], 10);
+                              if (Number.isFinite(n)) out.add(n);
+                            }
+                            return out;
+                          } catch (_) {
+                            return new Set();
+                          }
+                        })();
                         // 원본 순서 기준 보조 itemNumber 맵(product_id -> index+1)
                         const altIndexByProductId = new Map();
                         list.forEach((it, idx) => {
@@ -1211,11 +1365,16 @@ export default function CommentOrdersView() {
                           const altItemNumber = altIndexByProductId.get(p?.product_id);
                           const num1 = Number(p?.item_number);
                           const parsedNo = parseItemNumberFromProductId(p?.product_id);
+                          const allowAlt = !Number.isFinite(num1) && !Number.isFinite(parsedNo);
+                          const sNums = (explicitNums && explicitNums.size > 0)
+                            ? explicitNums
+                            : new Set((sugg || []).map((s) => Number(s.itemNumber)));
+                          // if explicit numbers exist in comment, only accept those
                           return sugg.find((s) => {
                             const sNum = Number(s.itemNumber);
-                            return (Number.isFinite(num1) && sNum === num1)
-                              || (Number.isFinite(parsedNo) && sNum === parsedNo)
-                              || (Number.isFinite(altItemNumber) && sNum === altItemNumber);
+                            return ((Number.isFinite(num1) && sNums.has(num1) && sNum === num1)
+                              || (Number.isFinite(parsedNo) && sNums.has(parsedNo) && sNum === parsedNo)
+                              || (allowAlt && Number.isFinite(altItemNumber) && sNums.has(altItemNumber) && sNum === altItemNumber));
                           }) || null;
                         };
 
@@ -1255,6 +1414,30 @@ export default function CommentOrdersView() {
                         }
 
                         const isExpanded = !!expandedProducts[row.comment_order_id];
+                        // DEBUG: once per row — what UI will highlight
+                        if (getDebugFlag() && !loggedHighlightsRef.current.has(row.comment_order_id)) {
+                          try {
+                            const sNums = (explicitNums && explicitNums.size > 0)
+                              ? explicitNums
+                              : new Set((sugg || []).map((s) => Number(s.itemNumber)));
+                            const will = list.filter((p) => {
+                              const num1 = Number(p?.item_number);
+                              const parsedNo = parseItemNumberFromProductId(p?.product_id);
+                              const idxNo = altIndexByProductId.get(p?.product_id);
+                              const allowAlt = !Number.isFinite(num1) && !Number.isFinite(parsedNo);
+                              return (Number.isFinite(num1) && sNums.has(num1))
+                                || (Number.isFinite(parsedNo) && sNums.has(parsedNo))
+                                || (allowAlt && Number.isFinite(idxNo) && sNums.has(idxNo));
+                            }).map((p, idx) => {
+                              const rawNo = Number.isFinite(Number(p?.item_number)) && Number(p.item_number) > 0 ? Number(p.item_number) : undefined;
+                              const parsedNo = parseItemNumberFromProductId(p?.product_id);
+                              const itemNo = rawNo ?? parsedNo ?? (idx + 1);
+                              return itemNo;
+                            });
+                            console.log(`[RECO][UI] coid=${row.comment_order_id} highlight numbers:`, will);
+                            loggedHighlightsRef.current.add(row.comment_order_id);
+                          } catch (e) {}
+                        }
                         const productsToShow = isExpanded ? sortedList : sortedList.slice(0, 3);
                         const showItemNumbers = Array.isArray(list) && list.length >= 2;
 
@@ -1305,9 +1488,9 @@ export default function CommentOrdersView() {
                                           {itemNo}번
                                         </span>
                                       )}
-                                      <span className="font-medium text-base truncate">{p.title}</span>
+                                      <span className="font-semibold text-base truncate text-gray-600">{p.title}</span>
                                       {typeof p.base_price !== "undefined" && p.base_price !== null && (
-                                        <span className="text-gray-700 text-base"> {Number(p.base_price).toLocaleString()}</span>
+                                        <span className="text-gray-600 text-base"> {Number(p.base_price).toLocaleString()}</span>
                                       )}
                                     </div>
                                     {/* 추천 뱃지 제거: 추천 시 번호 뱃지 색상만 강조 */}
@@ -1337,13 +1520,11 @@ export default function CommentOrdersView() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-center text-base text-gray-700">{formatMonthDay(getPickupDateForRow(row))}</td>
+                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupKoreanDateTime(getPickupDateForRow(row))}</td>
                     <td className="px-4 py-3 text-center text-[14px] text-gray-700">
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <StatusBadge status={row.order_status} />
-                    </td>
+                    
                   </tr>
                 );})}
               </tbody>

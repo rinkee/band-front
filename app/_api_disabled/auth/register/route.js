@@ -24,6 +24,8 @@ export async function POST(request) {
       storeAddress,
       ownerName,
       phoneNumber,
+      order_processing_mode,
+      orderProcessingMode,
     } = body;
 
     // 필수 필드 검증
@@ -90,6 +92,11 @@ export async function POST(request) {
         storeAddress,
         ownerName: ownerName || loginId,
         phoneNumber: phoneNumber || "",
+        // 주문 처리 모드 전달 (raw/legacy)
+        order_processing_mode:
+          order_processing_mode || orderProcessingMode || "legacy",
+        orderProcessingMode:
+          orderProcessingMode || order_processing_mode || "legacy",
       }),
     });
 

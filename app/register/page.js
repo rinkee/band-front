@@ -6,6 +6,8 @@ import Link from "next/link";
 
 export default function RegisterPage() {
   const router = useRouter();
+  // 가입 방식: api(레거시, API버전) | raw(확장프로그램 버전)
+  const [mode, setMode] = useState("raw");
   const [formData, setFormData] = useState({
     loginId: "",
     naverId: "",
@@ -35,7 +37,10 @@ export default function RegisterPage() {
     setLoading(true);
 
     // 필수 필드 확인
-    const requiredFields = ["loginId", "bandUrl", "storeName"];
+    const requiredFields =
+      mode === "raw"
+        ? ["loginId", "bandUrl", "storeName", "ownerName", "phoneNumber"]
+        : ["loginId", "bandUrl", "storeName"];
     const missingFields = requiredFields.filter((field) => !formData[field]);
 
     if (missingFields.length > 0) {
@@ -67,28 +72,28 @@ export default function RegisterPage() {
       return;
     }
 
-    // 네이버 아이디가 있는데 비밀번호가 없는 경우
-    if (!formData.loginId) {
-      setError("아이디가 입력되지 않았습니다.");
-      setLoading(false);
-      return;
-    }
-
-    // 네이버 아이디가 있는데 비밀번호가 없는 경우
-    if (formData.naverId && !formData.naverPassword) {
+    // 네이버 아이디가 있는데 비밀번호가 없는 경우 (API 모드에서만 검사)
+    if (mode === "api" && formData.naverId && !formData.naverPassword) {
       setError("네이버 아이디가 입력된 경우 비밀번호도 필수입니다.");
       setLoading(false);
       return;
     }
 
     try {
-      console.log("회원가입 요청 데이터:", formData);
+      const orderProcessingMode = mode === "raw" ? "raw" : "legacy";
+      const payload = {
+        ...formData,
+        order_processing_mode: orderProcessingMode,
+        orderProcessingMode: orderProcessingMode,
+      };
+
+      console.log("회원가입 요청 데이터:", payload);
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -126,6 +131,40 @@ export default function RegisterPage() {
           </p>
         </div>
 
+        {/* 가입 방식 선택 */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            가입 방식 선택
+          </label>
+          <div className="grid grid-cols-2 rounded-md border border-gray-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMode("raw")}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                mode === "raw"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              확장프로그램 버전
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("api")}
+              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-200 ${
+                mode === "api"
+                  ? "bg-gray-100 text-gray-900"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              레거시
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            레거시는 기존 API 연동 방식, 확장프로그램은 전용 간편 가입입니다.
+          </p>
+        </div>
+
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label
@@ -148,39 +187,43 @@ export default function RegisterPage() {
             </p>
           </div>
 
-          <div>
-            <label
-              htmlFor="naverId"
-              className="block text-sm font-medium text-gray-700"
-            >
-              네이버 아이디
-            </label>
-            <input
-              id="naverId"
-              name="naverId"
-              type="text"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              value={formData.naverId}
-              onChange={handleChange}
-            />
-          </div>
+          {mode === "api" && (
+            <div>
+              <label
+                htmlFor="naverId"
+                className="block text-sm font-medium text-gray-700"
+              >
+                네이버 아이디
+              </label>
+              <input
+                id="naverId"
+                name="naverId"
+                type="text"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                value={formData.naverId}
+                onChange={handleChange}
+              />
+            </div>
+          )}
 
-          <div>
-            <label
-              htmlFor="naverPassword"
-              className="block text-sm font-medium text-gray-700"
-            >
-              네이버 비밀번호
-            </label>
-            <input
-              id="naverPassword"
-              name="naverPassword"
-              type="password"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              value={formData.naverPassword}
-              onChange={handleChange}
-            />
-          </div>
+          {mode === "api" && (
+            <div>
+              <label
+                htmlFor="naverPassword"
+                className="block text-sm font-medium text-gray-700"
+              >
+                네이버 비밀번호
+              </label>
+              <input
+                id="naverPassword"
+                name="naverPassword"
+                type="password"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                value={formData.naverPassword}
+                onChange={handleChange}
+              />
+            </div>
+          )}
 
           <div>
             <label
@@ -204,54 +247,58 @@ export default function RegisterPage() {
             </p>
           </div>
 
-          <div>
-            <label
-              htmlFor="bandAccessToken"
-              className="block text-sm font-medium text-gray-700"
-            >
-              밴드 액세스 토큰
-            </label>
-            <input
-              id="bandAccessToken"
-              name="bandAccessToken"
-              type="text"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              placeholder="밴드 API 액세스 토큰을 입력해주세요"
-              value={formData.bandAccessToken}
-              onChange={handleChange}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              밴드 API 연동을 위한 액세스 토큰입니다.
-            </p>
-          </div>
+          {mode === "api" && (
+            <div>
+              <label
+                htmlFor="bandAccessToken"
+                className="block text-sm font-medium text-gray-700"
+              >
+                밴드 액세스 토큰
+              </label>
+              <input
+                id="bandAccessToken"
+                name="bandAccessToken"
+                type="text"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="밴드 API 액세스 토큰을 입력해주세요"
+                value={formData.bandAccessToken}
+                onChange={handleChange}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                밴드 API 연동을 위한 액세스 토큰입니다.
+              </p>
+            </div>
+          )}
 
-          <div>
-            <label
-              htmlFor="bandKey"
-              className="block text-sm font-medium text-gray-700"
-            >
-              밴드 키
-            </label>
-            <input
-              id="bandKey"
-              name="bandKey"
-              type="text"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              placeholder="밴드 인증 키를 입력해주세요"
-              value={formData.bandKey}
-              onChange={handleChange}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              밴드 데이터 접근을 위한 인증 키입니다.
-            </p>
-          </div>
+          {mode === "api" && (
+            <div>
+              <label
+                htmlFor="bandKey"
+                className="block text-sm font-medium text-gray-700"
+              >
+                밴드 키
+              </label>
+              <input
+                id="bandKey"
+                name="bandKey"
+                type="text"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="밴드 인증 키를 입력해주세요"
+                value={formData.bandKey}
+                onChange={handleChange}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                밴드 데이터 접근을 위한 인증 키입니다.
+              </p>
+            </div>
+          )}
 
           <div>
             <label
               htmlFor="storeName"
               className="block text-sm font-medium text-gray-700"
             >
-              매장명 <span className="text-red-500">*</span>
+              {mode === "raw" ? "밴드명" : "매장명"} <span className="text-red-500">*</span>
             </label>
             <input
               id="storeName"
@@ -264,34 +311,37 @@ export default function RegisterPage() {
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="storeAddress"
-              className="block text-sm font-medium text-gray-700"
-            >
-              매장 주소
-            </label>
-            <input
-              id="storeAddress"
-              name="storeAddress"
-              type="text"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              value={formData.storeAddress}
-              onChange={handleChange}
-            />
-          </div>
+          {mode === "api" && (
+            <div>
+              <label
+                htmlFor="storeAddress"
+                className="block text-sm font-medium text-gray-700"
+              >
+                매장 주소
+              </label>
+              <input
+                id="storeAddress"
+                name="storeAddress"
+                type="text"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                value={formData.storeAddress}
+                onChange={handleChange}
+              />
+            </div>
+          )}
 
           <div>
             <label
               htmlFor="ownerName"
               className="block text-sm font-medium text-gray-700"
             >
-              사장님 이름
+              사장님 이름{mode === "raw" && <span className="text-red-500"> *</span>}
             </label>
             <input
               id="ownerName"
               name="ownerName"
               type="text"
+              required={mode === "raw"}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               value={formData.ownerName}
               onChange={handleChange}
@@ -303,12 +353,13 @@ export default function RegisterPage() {
               htmlFor="phoneNumber"
               className="block text-sm font-medium text-gray-700"
             >
-              연락처
+              연락처{mode === "raw" && <span className="text-red-500"> *</span>}
             </label>
             <input
               id="phoneNumber"
               name="phoneNumber"
               type="tel"
+              required={mode === "raw"}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 text-gray-900 bg-white placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               placeholder="010-1234-5678"
               value={formData.phoneNumber}

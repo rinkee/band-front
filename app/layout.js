@@ -228,7 +228,19 @@ function LayoutContent({ children }) {
       }
     };
 
-    const buildProxy = (u) => `/api/image-proxy?url=${encodeURIComponent(u)}`;
+    const envBase = process.env.NEXT_PUBLIC_API_URL || "";
+    const normBase = (() => {
+      const b = envBase.endsWith("/") ? envBase.slice(0, -1) : envBase;
+      return b.endsWith("/api") ? b : `${b}/api`;
+    })();
+    const buildProxy = (u) => {
+      // GH Pages에는 서버 라우트가 없으므로 백엔드의 프록시 엔드포인트를 직접 사용
+      if (isGitHubPagesHost && envBase) {
+        return `${normBase}/image-proxy?url=${encodeURIComponent(u)}`;
+      }
+      // Vercel/기타 환경에서는 로컬 API 라우트 사용 (rewrites로 백엔드 프록시)
+      return `/api/image-proxy?url=${encodeURIComponent(u)}`;
+    };
     const mark = (img) => { img.dataset.naverProxyHandled = '1'; };
     const alreadyHandled = (img) => img.dataset.naverProxyHandled === '1';
     const isGitHubPagesHost = /\.github\.io$/i.test(window.location.hostname);

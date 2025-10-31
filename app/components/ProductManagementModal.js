@@ -95,19 +95,24 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       // 첫 번째 상품을 기준으로 복사
       const baseProduct = products[0];
       
-      // 기존 상품들에서 최대 item_number 찾기
-      const maxItemNumber = Math.max(...products.map(p => parseInt(p.item_number) || 0));
-      const newItemNumber = maxItemNumber + 1;
-      
-      // 기존 product_id에서 마지막 item 부분만 교체
-      let newProductId;
-      if (baseProduct.product_id.includes('_item')) {
-        // 기존 형식이 _item으로 끝나는 경우 (예: ...item1 -> ...item2)
-        newProductId = baseProduct.product_id.replace(/_item\d+$/, `_item${newItemNumber}`);
-      } else {
-        // 기존 형식이 숫자로만 끝나는 경우 (예: ...._2 -> ...._item2)
-        newProductId = baseProduct.product_id.replace(/_\d+$/, `_item${newItemNumber}`);
-      }
+      // 기존 product_id의 접두(prefix)를 추출하고, 이미 존재하는 suffix의 최대값을 계산해 다음 번호를 생성
+      // 접두는 마지막에 붙은 `_item\d+` 또는 `_-?\d+` 직전까지로 정의
+      const prefixMatch = baseProduct.product_id.match(/^(.*?)(?:_item\d+|_\d+)$/);
+      const idPrefix = prefixMatch ? prefixMatch[1] : baseProduct.product_id;
+
+      // 같은 접두를 가진 상품들의 suffix 숫자를 모두 추출해 최댓값 계산
+      const existingIndexes = products
+        .filter(p => typeof p.product_id === 'string' && p.product_id.startsWith(idPrefix))
+        .map(p => {
+          const m = p.product_id.match(/_item(\d+)$/) || p.product_id.match(/_(\d+)$/);
+          return m ? parseInt(m[1], 10) : 0;
+        });
+
+      const maxIndex = existingIndexes.length > 0 ? Math.max(...existingIndexes) : 0;
+      const newItemNumber = maxIndex + 1;
+
+      // 신규 product_id는 일관되게 `_item{n}` 형식을 사용
+      const newProductId = `${idPrefix}_item${newItemNumber}`;
 
       // 기존 상품 데이터 복사하여 새 상품 생성
       const newProductData = {
@@ -161,7 +166,9 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       await globalMutate(key => typeof key === 'string' && key.includes(post.post_key));
 
     } catch (error) {
-      console.error('상품 추가 실패:', error);
+      // 오류를 좀 더 명확히 로깅
+      const message = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      console.error('상품 추가 실패:', message);
       alert('상품 추가에 실패했습니다.');
     }
   };
@@ -235,16 +242,14 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       let year, month, day, hours = '00', minutes = '00';
       
       if (pickupDateStr.includes('T')) {
-        // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
-        // "2025-09-14T07:00:00Z" → 한국 시간 07:00으로 해석
-        const dateObj = new Date(pickupDateStr);
-        
-        // UTC 시간을 한국 시간으로 해석 (변환 없이)
-        year = dateObj.getUTCFullYear();
-        month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-        day = String(dateObj.getUTCDate()).padStart(2, '0');
-        hours = String(dateObj.getUTCHours()).padStart(2, '0');
-        minutes = String(dateObj.getUTCMinutes()).padStart(2, '0');
+        // ISO 형식 - UTC로 저장, 화면 입력/편집은 KST 기준 → +9시간 보정 후 필드 채움
+        const raw = new Date(pickupDateStr);
+        const kst = new Date(raw.getTime() + 9 * 60 * 60 * 1000);
+        year = kst.getUTCFullYear();
+        month = String(kst.getUTCMonth() + 1).padStart(2, '0');
+        day = String(kst.getUTCDate()).padStart(2, '0');
+        hours = String(kst.getUTCHours()).padStart(2, '0');
+        minutes = String(kst.getUTCMinutes()).padStart(2, '0');
       } else if (pickupDateStr.includes(' ')) {
         // "2025-09-14 07:00:00" 형식
         const [datePart, timePart] = pickupDateStr.split(' ');
@@ -291,13 +296,12 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     const [hours, minutes] = editPickupTime.split(':').map(Number);
     
     
-    // 한국 시간으로 Date 객체 생성
+    // 한국 시간으로 Date 객체 생성 (브라우저 로컬 기준)
     const newPickupDateTime = new Date(year, month - 1, day, hours, minutes);
     
-    // UTC로 변환하지 않고 한국 시간을 그대로 UTC 문자열로 만들기
-    // 예: 한국 시간 오전 7시를 UTC 오전 7시로 저장
-    const adjustedDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
-    const kstDateString = adjustedDate.toISOString();
+    // DB에는 KST 의도 시각이 정확히 보이도록 UTC 기준으로 -9시간 보정하여 저장
+    // 예: KST 09:00 → UTC 00:00Z 로 저장
+    const utcForDb = new Date(Date.UTC(year, month - 1, day, hours - 9, minutes, 0)).toISOString();
     
     
     // 수령일이 게시물 작성일보다 이전인지 확인
@@ -352,15 +356,17 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       const shouldResetUndeliveredStatus = newPickupDateTime > currentTime && 
         (!oldPickupDate || oldPickupDate <= currentTime);
 
-      // 한국 시간을 그대로 저장 (시간대 정보 없이)
-      const dateToSave = kstDateString;
+      // 보정된 UTC ISO 문자열 저장 (DB에서 KST로 볼 때 의도한 시간으로 표시)
+      const dateToSave = utcForDb;
 
       // products 테이블 업데이트 - user_id 필터 추가
+      const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+
       const { error: productsError } = await supabase
         .from('products')
         .update({ 
           pickup_date: dateToSave,
-          updated_at: new Date().toISOString()
+          updated_at: nowMinus9Iso
         })
         .eq('post_key', postKey)
         .eq('user_id', userId);  // user_id 필터 추가
@@ -375,7 +381,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           .from('orders')
           .update({ 
             sub_status: null,
-            updated_at: new Date().toISOString()
+            updated_at: nowMinus9Iso
           })
           .eq('post_key', postKey)
           .eq('user_id', userId)
@@ -395,7 +401,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           .from('orders')
           .update({ 
             sub_status: '미수령',
-            updated_at: new Date().toISOString()
+            updated_at: nowMinus9Iso
           })
           .eq('post_key', postKey)
           .eq('user_id', userId)
@@ -422,7 +428,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           
           const { error: postsError } = await supabase
             .from('posts')
-            .update({ title: newTitle, updated_at: new Date().toISOString() })
+            .update({ title: newTitle, updated_at: nowMinus9Iso })
             .eq('post_key', postKey)
             .eq('user_id', userId);  // user_id 필터 추가
 
@@ -595,16 +601,16 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         const pickupDateStr = firstProduct.pickup_date;
                         let month, day, hours, minutes, pickupDate;
                         
-                        if (pickupDateStr.includes('T')) {
-                          // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
-                          pickupDate = new Date(pickupDateStr);
-                          // UTC 값을 한국 시간으로 해석
-                          month = pickupDate.getUTCMonth() + 1;
-                          day = pickupDate.getUTCDate();
-                          hours = pickupDate.getUTCHours();
-                          minutes = pickupDate.getUTCMinutes();
-                          // 요일 계산용 Date 객체 재생성
-                          pickupDate = new Date(pickupDate.getUTCFullYear(), pickupDate.getUTCMonth(), pickupDate.getUTCDate());
+        if (pickupDateStr.includes('T')) {
+          // ISO 형식 - UTC로 저장, 화면은 KST 기준 → +9시간 보정 후 표기
+          const raw = new Date(pickupDateStr);
+          const kst = new Date(raw.getTime() + 9 * 60 * 60 * 1000);
+          month = kst.getUTCMonth() + 1;
+          day = kst.getUTCDate();
+          hours = kst.getUTCHours();
+          minutes = kst.getUTCMinutes();
+          // 요일 계산용 Date 객체 (KST 날짜 기준)
+          pickupDate = new Date(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
                         } else if (pickupDateStr.includes(' ')) {
                           // "2025-09-14 07:00:00" 형식
                           const [datePart, timePart] = pickupDateStr.split(' ');

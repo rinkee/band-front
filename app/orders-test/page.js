@@ -11,13 +11,9 @@ import { ko } from "date-fns/locale"; // 한국어 로케일
 
 import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
+import getAuthedClient from "../lib/authedSupabaseClient";
 import JsBarcode from "jsbarcode";
-import { useUser, useProducts } from "../hooks";
-import {
-  useOrdersClient,
-  useOrderClientMutations,
-  useOrderStatsClient,
-} from "../hooks/useOrdersClient";
+import { useUser, useProducts, useCommentOrdersClient, useCommentOrderClientMutations, useOrderStatsClient } from "../hooks";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
@@ -411,6 +407,10 @@ export default function OrdersPage() {
   // --- 댓글 관련 상태 ---
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
+  // raw 상품 조회용 맵 (post_key 또는 band+post 조합)
+  const [postProductsByPostKey, setPostProductsByPostKey] = useState({});
+  const [postProductsByBandPost, setPostProductsByBandPost] = useState({});
+  const [postsImages, setPostsImages] = useState({}); // key: `${band_key}_${post_key}` => [urls]
 
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
@@ -423,7 +423,65 @@ export default function OrdersPage() {
     setIsClient(true);
   }, []);
 
+  // comment_orders -> legacy orders shape 매핑
+  const mapCommentOrderToLegacy = useCallback((row) => {
+    const qty = Number.isFinite(Number(row?.selected_quantity)) ? Number(row.selected_quantity) : 1;
+    const price = Number.isFinite(Number(row?.selected_price)) ? Number(row.selected_price) : (Number.isFinite(Number(row?.price)) ? Number(row.price) : 0);
+    const total = price * qty;
+    return {
+      // 핵심 식별자 및 기본 정보
+      order_id: String(row.comment_order_id ?? row.id ?? row.order_id ?? crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`),
+      customer_name: row.commenter_name || row.customer_name || "-",
+      comment: row.comment_body || row.comment || "",
+      status: row.order_status || row.status || "미수령",
+      sub_status: row.sub_status || undefined,
+      ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
+      completed_at: row.received_at || row.completed_at || null,
+      canceled_at: row.canceled_at || null,
+      processing_method: "raw",
+
+      // 상품/금액 관련 (없으면 기본값)
+      product_id: row.selected_product_id || row.product_id || null,
+      product_name: row.product_name || null,
+      quantity: qty,
+      price,
+      total_amount: Number.isFinite(total) ? total : 0,
+      selected_barcode_option: row.selected_barcode
+        ? { barcode: row.selected_barcode, price: price || undefined }
+        : undefined,
+      ai_extraction_result: row.ai_extraction_result || null,
+
+      // 게시물 식별
+      post_key: row.post_key || null,
+      post_number: row.post_number != null ? String(row.post_number) : null,
+      band_key: row.band_key || null,
+      band_number: row.band_number != null ? row.band_number : null,
+
+      // 기타 UI가 참조하는 필드들 (없으면 안전한 기본값)
+      product_title: row.product_title || null,
+      product_pickup_date: row.product_pickup_date || null,
+      selected_barcode: row.selected_barcode || null,
+    };
+  }, []);
+
   const displayOrders = useMemo(() => orders || [], [orders]);
+
+  // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
+  // NOTE: ordersData 선언 이후에 위치해야 TDZ 에러가 발생하지 않음
+
+  // 행에서 상품 후보 리스트 얻기
+  const getCandidateProductsForOrder = useCallback((order) => {
+    const pk = order.post_key || order.postKey;
+    const band = order.band_number || order.bandNumber || order.band_key || order.bandKey;
+    const postNum = order.post_number ?? order.postNumber;
+    let list = [];
+    if (pk && postProductsByPostKey[pk]) list = postProductsByPostKey[pk];
+    else if (band != null && postNum != null) {
+      const k = `${band}_${String(postNum)}`;
+      if (postProductsByBandPost[k]) list = postProductsByBandPost[k];
+    }
+    return Array.isArray(list) ? list : [];
+  }, [postProductsByPostKey, postProductsByBandPost]);
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
@@ -487,7 +545,7 @@ export default function OrdersPage() {
     error: ordersError,
     isLoading: isOrdersLoading,
     mutate: mutateOrders,
-  } = useOrdersClient(
+  } = useCommentOrdersClient(
     userData?.userId,
     currentPage,
     {
@@ -540,7 +598,7 @@ export default function OrdersPage() {
       // --- 파라미터 동적 결정 로직 끝 ---
       // --- 👇 검색 관련 파라미터 수정 👇 ---
       search: searchTerm.trim() || undefined, // 일반 검색어
-      exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
+      commenterExact: exactCustomerFilter || undefined, // comment_orders 전용 정확 고객명 필터
       // --- 👆 검색 관련 파라미터 수정 👆 ---
       startDate: (() => {
         const p = calculateDateFilterParams(
@@ -562,6 +620,109 @@ export default function OrdersPage() {
     },
     swrOptions
   );
+
+  // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
+  useEffect(() => {
+    const fetchBatchProducts = async () => {
+      try {
+        if (!userData?.userId || !ordersData?.data || ordersData.data.length === 0) {
+          setPostProductsByPostKey({});
+          setPostProductsByBandPost({});
+          return;
+        }
+        const uid = userData.userId;
+        const sb = getAuthedClient();
+
+        const items = ordersData.data;
+        const postKeys = Array.from(new Set(items.map((r) => r.post_key || r.postKey).filter(Boolean)));
+        const bandMap = new Map();
+        items.forEach((r) => {
+          if (!r.post_key && !r.postKey) {
+            const band = r.band_number || r.bandNumber;
+            const postNum = r.post_number ?? r.postNumber;
+            if (band != null && postNum != null) {
+              const key = String(band);
+              if (!bandMap.has(key)) bandMap.set(key, new Set());
+              bandMap.get(key).add(String(postNum));
+            }
+          }
+        });
+
+        const results = [];
+        if (postKeys.length > 0) {
+          const { data: byPk, error: e1 } = await sb
+            .from("products")
+            .select("*")
+            .eq("user_id", uid)
+            .in("post_key", postKeys)
+            .order("item_number", { ascending: true });
+          if (e1) throw e1;
+          if (Array.isArray(byPk)) results.push(...byPk);
+        }
+        for (const [band, postNumsSet] of bandMap.entries()) {
+          const postNums = Array.from(postNumsSet);
+          if (postNums.length === 0) continue;
+          const { data: byPair, error: e2 } = await sb
+            .from("products")
+            .select("*")
+            .eq("user_id", uid)
+            .eq("band_number", band)
+            .in("post_number", postNums)
+            .order("item_number", { ascending: true });
+          if (e2) throw e2;
+          if (Array.isArray(byPair)) results.push(...byPair);
+        }
+
+        const byPostKeyMap = {};
+        const byBandPostMap = {};
+        results.forEach((p) => {
+          if (p.post_key) {
+            if (!byPostKeyMap[p.post_key]) byPostKeyMap[p.post_key] = [];
+            byPostKeyMap[p.post_key].push(p);
+          } else if (p.band_number != null && p.post_number != null) {
+            const k = `${p.band_number}_${String(p.post_number)}`;
+            if (!byBandPostMap[k]) byBandPostMap[k] = [];
+            byBandPostMap[k].push(p);
+          }
+        });
+        setPostProductsByPostKey(byPostKeyMap);
+        setPostProductsByBandPost(byBandPostMap);
+
+        // --- 관련 포스트 이미지 일괄 조회 ---
+        try {
+          const postKeysToFetch = Array.from(
+            new Set(results.map((p) => p.post_key).filter(Boolean))
+          );
+          if (postKeysToFetch.length > 0) {
+            const { data: posts, error: pe } = await sb
+              .from("posts")
+              .select("band_key, post_key, image_urls")
+              .eq("user_id", uid)
+              .in("post_key", postKeysToFetch);
+            if (!pe && Array.isArray(posts)) {
+              const map = {};
+              for (const row of posts) {
+                const key = `${row.band_key || ''}_${row.post_key || ''}`;
+                let urls = row.image_urls;
+                try {
+                  if (typeof urls === 'string') urls = JSON.parse(urls);
+                } catch {}
+                if (Array.isArray(urls) && urls.length > 0) map[key] = urls;
+              }
+              setPostsImages(map);
+            }
+          }
+        } catch (_) {
+          // ignore image fetch errors
+        }
+      } catch (e) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("상품 배치 조회 실패:", e?.message || e);
+        }
+      }
+    };
+    fetchBatchProducts();
+  }, [userData?.userId, ordersData?.data]);
 
   const {
     data: productsData,
@@ -659,9 +820,8 @@ export default function OrdersPage() {
     swrOptions
   );
 
-  // 클라이언트 사이드 mutation 함수들
-  const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
-    useOrderClientMutations();
+  // 클라이언트 사이드 mutation 함수들 (comment_orders)
+  const { updateCommentOrder } = useCommentOrderClientMutations();
 
   const isDataLoading =
     isUserLoading || isOrdersLoading || isGlobalStatsLoading;
@@ -793,43 +953,36 @@ export default function OrdersPage() {
 
   const handleEditSave = async (order) => {
     setSavingEdit(true);
-    
-    // product_name이 없다면 기존 값을 사용하고, 총 금액도 계산
-    const updateData = {
-      ...editValues,
-      product_name: editValues.product_name || order.product_name || '상품명 없음',
-      total_amount: (editValues.quantity || 1) * (editValues.product_price || 0)
-    };
 
-    console.log('저장할 데이터:', updateData);
-    
+    // 레거시 UI 필드 -> comment_orders 컬럼 매핑
+    const selectedProductId = editValues.product_id ?? order.product_id ?? null;
+    const selectedQty = Math.max(1, parseInt(editValues.quantity ?? order.quantity ?? 1, 10) || 1);
+    const selectedPrice = parseFloat(editValues.product_price ?? order.price ?? 0) || 0;
+    const productName = editValues.product_name || order.product_name || '상품명 없음';
+
     try {
-      const response = await fetch(`${window.location.origin}/api/orders/${order.order_id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
+      await updateCommentOrder(
+        order.order_id,
+        {
+          selected_product_id: selectedProductId,
+          selected_quantity: selectedQty,
+          // 가격 컬럼이 존재하는 경우에만 업데이트하려면 서버에서 스키마를 허용해야 함
+          selected_price: selectedPrice,
+          product_name: productName,
         },
-        body: JSON.stringify(updateData),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || '업데이트 실패');
-      }
+        userData.userId
+      );
 
       // 성공 시 데이터 새로고침 - DB에서 최신 데이터 가져오기
       await mutateOrders(undefined, { revalidate: true });
 
       setEditingOrderId(null);
       setEditValues({});
-      
-      // 성공 알림
+
       alert('주문 정보가 성공적으로 업데이트되었습니다.');
-      
     } catch (error) {
       console.error('주문 업데이트 에러:', error);
-      alert('주문 정보 업데이트에 실패했습니다: ' + error.message);
+      alert('주문 정보 업데이트에 실패했습니다: ' + (error?.message || ''));
     } finally {
       setSavingEdit(false);
     }
@@ -897,74 +1050,69 @@ export default function OrdersPage() {
       return;
     }
 
-    // Attempting to bulk update orders
-
     let successCount = 0;
     let failCount = 0;
 
-    try {
-      await bulkUpdateOrderStatus(
-        orderIdsToProcess,
-        newStatus,
-        userData.userId
-      );
-      successCount = orderIdsToProcess.length;
-      // 일괄 업데이트 성공
-
-      // 즉시 주문 리스트 새로고침
-      // 일괄 상태 변경 후 리스트 새로고침
-      await mutateOrders(undefined, { revalidate: true });
-      
-      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orders" &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      
-      // 통계 캐시 무효화 - 모든 필터 조합에 대해
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orderStats" &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      
-      // 통계 데이터 강제 새로고침
-      await mutateGlobalStats();
-      
-      // 성공 메시지
-      console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
-    } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to bulk update orders (client-side):", err);
+    const nowISO = new Date().toISOString();
+    const buildUpdate = (st) => {
+      const base = { order_status: st };
+      if (st === "수령완료") {
+        base.received_at = nowISO;
+        base.canceled_at = null;
+      } else if (st === "주문취소") {
+        base.canceled_at = nowISO;
+        base.received_at = null;
+      } else if (st === "주문완료") {
+        base.ordered_at = nowISO;
+        base.canceled_at = null;
+        base.received_at = null;
+      } else if (st === "확인필요") {
+        base.canceled_at = null;
+        base.received_at = null;
+      } else if (st === "미수령") {
+        base.received_at = null;
+        base.canceled_at = null;
       }
-      failCount = orderIdsToProcess.length;
+      return base;
+    };
+
+    try {
+      for (const id of orderIdsToProcess) {
+        try {
+          await updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
+          successCount += 1;
+        } catch (e) {
+          failCount += 1;
+        }
+      }
+
+      // 일괄 상태 변경 후 리스트/통계 새로고침
+      await mutateOrders(undefined, { revalidate: true });
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === "orderStats" && key[1] === userData.userId,
+        undefined,
+        { revalidate: true }
+      );
+      await mutateGlobalStats();
+
+      if (successCount > 0) {
+        console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
+      }
+      if (failCount > 0) {
+        console.warn(`⚠️ ${failCount}건 업데이트 실패`);
+      }
+    } catch (err) {
       alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
-
-      let message = "";
-      if (successCount > 0) message += `${successCount}건 성공. `;
-      if (failCount > 0) message += `${failCount}건 실패. `;
-      if (skippedCount > 0) message += `${skippedCount}건 건너뜀.`;
-      
-      // 추가 피드백 제공
-      if (skippedCount > 0 && successCount === 0) {
-        console.log(`⚠️ ${skippedCount}개 주문이 이미 '${newStatus}' 상태입니다.`);
-      } else if (failCount > 0) {
-        console.log(`⚠️ 일부 주문 처리 실패 - 성공: ${successCount}, 실패: ${failCount}`);
-      }
-      
-      // 최종 일괄 처리 결과
     }
-  }, [selectedOrderIds, orders, userData, bulkUpdateOrderStatus, mutateOrders, globalMutate]);
+  }, [selectedOrderIds, orders, userData, updateCommentOrder, mutateOrders, globalMutate, mutateGlobalStats]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -1176,7 +1324,15 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (ordersData?.data) {
-      setOrders(ordersData.data);
+      // comment_orders 데이터를 레거시 UI가 기대하는 형태로 변환하여 표시
+      try {
+        const mapped = Array.isArray(ordersData.data)
+          ? ordersData.data.map(mapCommentOrderToLegacy)
+          : [];
+        setOrders(mapped);
+      } catch (_) {
+        setOrders(ordersData.data);
+      }
       // Debug pickup availability per band (beta)
       debugPickupLogging();
     }
@@ -1539,57 +1695,45 @@ export default function OrdersPage() {
   const handleStatusChange = async (orderId, newStatus) => {
     if (!orderId || !userData?.userId) return;
     try {
-      const allowed = ["주문완료", "주문취소", "수령완료", "확인필요"];
+      const allowed = ["주문완료", "주문취소", "수령완료", "확인필요", "미수령"];
       if (!allowed.includes(newStatus)) return;
 
-      const updateData = { status: newStatus };
       const nowISO = new Date().toISOString();
+      const updateData = { order_status: newStatus };
 
-      // 상태별 추가 필드 설정
+      // 상태별 추가 필드 설정 (comment_orders 컬럼 기준)
       if (newStatus === "수령완료") {
-        updateData.pickupTime = nowISO;
-        updateData.completed_at = nowISO;
+        updateData.received_at = nowISO;
         updateData.canceled_at = null;
       } else if (newStatus === "주문취소") {
         updateData.canceled_at = nowISO;
-        updateData.pickupTime = null;
-        updateData.completed_at = null;
+        updateData.received_at = null;
       } else if (newStatus === "주문완료") {
-        updateData.pickupTime = null;
-        updateData.completed_at = null;
+        updateData.ordered_at = nowISO;
         updateData.canceled_at = null;
+        updateData.received_at = null;
       } else if (newStatus === "확인필요") {
-        updateData.pickupTime = null;
-        updateData.completed_at = null;
+        updateData.canceled_at = null;
+        updateData.received_at = null;
+      } else if (newStatus === "미수령") {
+        updateData.received_at = null;
         updateData.canceled_at = null;
       }
 
-      // Updating order status via client-side
+      await updateCommentOrder(orderId, updateData, userData.userId);
 
-      await updateOrderStatus(orderId, updateData, userData.userId);
-
-      // Order status updated successfully
-
-      // 즉시 주문 리스트 새로고침
-      // 주문 상태 변경 후 리스트 새로고침
+      // 리스트/통계 새로고침
       await mutateOrders(undefined, { revalidate: true });
-      // 통계 데이터도 갱신
       await mutateGlobalStats(undefined, { revalidate: true });
 
-      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      // 글로벌 캐시 무효화
       globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orders" &&
-          key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
       globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orderStats" &&
-          key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === "orderStats" && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -1829,11 +1973,8 @@ export default function OrdersPage() {
     };
 
     try {
-      // Updating order details via client-side
-
-      await updateOrderDetails(order_id, updateData, userData.userId);
-
-      // Order details updated successfully
+      // comment_orders 상세 정보 업데이트
+      await updateCommentOrder(order_id, updateData, userData.userId);
 
       // 즉시 주문 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
@@ -1842,10 +1983,7 @@ export default function OrdersPage() {
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orders" &&
-          key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -1878,26 +2016,13 @@ export default function OrdersPage() {
     }
 
     try {
-      // orders 테이블의 selected_barcode_option과 total_amount 업데이트
+      // comment_orders: 선택 바코드/가격 업데이트
       const updateData = {
-        selected_barcode_option: {
-          barcode: selectedOption.barcode,
-          name: selectedOption.name,
-          price: selectedOption.price,
-          field_reference: selectedOption.field_reference,
-        },
-        total_amount: selectedOption.price,
-        price_option_used: selectedOption.name,
-        price_option_description: `${selectedOption.name} (${
-          selectedOption.barcode
-        }) - ₩${selectedOption.price.toLocaleString()}`,
+        selected_barcode: selectedOption.barcode,
+        selected_price: selectedOption.price,
       };
 
-      // Updating order barcode option
-
-      await updateOrderDetails(orderId, updateData, userData.userId);
-
-      // Barcode option updated successfully
+      await updateCommentOrder(orderId, updateData, userData.userId);
 
       // 주문 목록과 상품 목록 새로고침
       await mutateOrders(undefined, { revalidate: true });
@@ -1905,10 +2030,7 @@ export default function OrdersPage() {
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orders" &&
-          key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -2760,39 +2882,29 @@ export default function OrdersPage() {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
-                      <button
-                        onClick={() => handleSortChange("product_name")} // 상품명 정렬
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isDataLoading}
-                      >
-                        상품명 {getSortIcon("product_name")}
-                      </button>
-                    </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       <button
-                        onClick={() => handleSortChange("customer_name")} // 정렬 함수
+                        onClick={() => handleSortChange("customer_name")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isDataLoading}
                       >
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-60 bg-gray-50">
-                      고객 댓글
+                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                      상태
                     </th>
-
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-16 bg-gray-50">
-                      수량
+                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                      댓글
                     </th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      <button
-                        onClick={() => handleSortChange("total_amount")}
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isDataLoading}
-                      >
-                        금액 {getSortIcon("total_amount")}
-                      </button>
+                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
+                      상품정보
+                    </th>
+                    <th className="py-2 pr-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                      가격
+                    </th>
+                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
+                      바코드
                     </th>
                     <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
                       <button
@@ -2803,23 +2915,12 @@ export default function OrdersPage() {
                         주문일시 {getSortIcon("ordered_at")}
                       </button>
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell w-32 bg-gray-50">
-                      바코드
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      상태
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      서브상태
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-44 bg-gray-50">
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {isOrdersLoading && !ordersData && (
                     <tr>
-                      <td colSpan="14" className="px-6 py-10 text-center">
+                      <td colSpan="8" className="px-6 py-10 text-center">
                         <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                         <span className="text-sm text-gray-500 mt-2 block">
                           주문 목록 로딩 중...
@@ -2830,7 +2931,7 @@ export default function OrdersPage() {
                   {!isOrdersLoading && displayOrders.length === 0 && (
                     <tr>
                       <td
-                        colSpan="13"
+                        colSpan="8"
                         className="px-6 py-10 text-center text-sm text-gray-500"
                       >
                         {searchTerm ||
@@ -2881,282 +2982,111 @@ export default function OrdersPage() {
                               />
                             </div>
                           </td>
-                          <td
-                            className="py-2 pr-4 text-sm text-gray-700 font-medium w-44" 
-                            title={getProductNameById(order.product_id)}
-                          >
-                            {editingOrderId === order.order_id ? (
-                              // 편집 모드
-                              <select
-                                value={editValues.product_id}
-                                onChange={(e) => handleProductSelect(e.target.value, order)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <option value="">상품을 선택하세요</option>
-                                {(availableProducts[order.post_key] || []).map(product => (
-                                  <option key={product.product_id} value={product.product_id}>
-                                    {cleanProductName(product.title)}
-                                    {product.base_price && ` (₩${product.base_price.toLocaleString()})`}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              // 일반 표시 모드
-                              <div 
-                                className={`${
-                                  showPickupAvailableOnly 
-                                    ? "cursor-not-allowed text-gray-400" 
-                                    : "hover:text-orange-600 hover:underline cursor-pointer"
-                                }`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (showPickupAvailableOnly) {
-                                    alert("수령가능만 보기 모드에서는 고객명만 검색 가능합니다.\n상품명으로 검색하려면 수령가능만 보기를 해제해주세요.");
-                                    return;
-                                  }
-                                  handleCellClickToSearch(
-                                    getProductNameById(order.product_id)
-                                  );
-                                  setFilterSelection("all");
-                                }}
-                              >
-                                {(() => {
-                                  const productName = getProductNameById(
-                                    order.product_id
-                                  );
-                                  const { name, date } = parseProductName(productName);
-                                  const primary = order.product_pickup_date || product?.pickup_date;
-                                  const pickupDate = pickEffectivePickupSource(primary, date);
-                                  const isAvailable =
-                                    isClient && pickupDate
-                                      ? isPickupAvailable(pickupDate)
-                                      : false;
-
-                                  return (
-                                    <div className="flex flex-col">
-                                      <div
-                                        className={`font-medium ${
-                                          isAvailable
-                                            ? "text-orange-600 font-bold"
-                                            : ""
-                                        }`}
-                                      >
-                                        {name}
-                                      </div>
-                                      {pickupDate && (
-                                        <div className="text-xs mt-0.5 text-gray-500">
-                                          [{formatPickupKSTLabel(pickupDate)}]
-                                          {isAvailable && (
-                                            <span className="ml-1 text-gray-500">✓ 수령가능</span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            )}
-                          </td>
+                          {/* 고객명 */}
                           <td
                             className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
                             title={order.customer_name}
                             onClick={(e) => {
-                              e.stopPropagation(); // 행 전체 onClick(모달) 방지
-                              handleExactCustomerSearch(order.customer_name); // <<< 정확 필터 함수 호출 확인
+                              e.stopPropagation();
+                              handleExactCustomerSearch(order.customer_name);
                             }}
                           >
                             {order.customer_name || "-"}
                           </td>
-                          <td
-                            className="py-2 pr-2 text-sm text-gray-600 w-60 hidden md:table-cell"
-                            title={processBandTags(order.comment) || ""}
-                          >
+                          {/* 상태 */}
+                          <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
+                            <StatusBadge status={order.status} processingMethod={order.processing_method} />
+                          </td>
+                          {/* 댓글 */}
+                          <td className="py-2 pr-2 text-sm text-gray-600" title={processBandTags(order.comment) || ""}>
                             <div className="line-clamp-3 break-words leading-tight">
                               {processBandTags(order.comment) || "-"}
                             </div>
                           </td>
-
-                          <td className="py-2 pr-2 text-center text-sm font-medium text-gray-700 w-16">
-                            {editingOrderId === order.order_id ? (
-                              <input
-                                type="number"
-                                min="1"
-                                value={editValues.quantity}
-                                onChange={(e) => handleQuantityChange(e.target.value)}
-                                className="w-12 px-1 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            ) : (
-                              order.quantity || 0
-                            )}
-                          </td>
-                          <td className="py-2 pr-4 text-right text-sm font-medium text-gray-700 w-24">
-                            {editingOrderId === order.order_id ? (
-                              <span className="text-orange-600 font-semibold">
-                                ₩{((editValues.quantity || 1) * (editValues.product_price || 0)).toLocaleString()}
-                              </span>
-                            ) : (
-                              formatCurrency(order.total_amount)
-                            )}
-                          </td>
-                          <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
-                            {formatDate(order.ordered_at)}
-                          </td>
-                          <td className="py-2 pr-2 text-center hidden md:table-cell w-32">
+                          {/* 상품정보 */}
+                          <td className="py-2 pr-2 text-sm text-gray-700 w-60">
                             {(() => {
-                              // 선택된 바코드 옵션이 있으면 해당 바코드, 없으면 기본 바코드
-                              const selectedOption =
-                                order.selected_barcode_option;
-                              const displayBarcode =
-                                selectedOption?.barcode ||
-                                getProductBarcode(order.product_id);
+                              const list = getCandidateProductsForOrder(order);
+                              let displayProd = null;
+                              if (order.product_id) {
+                                displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
+                              }
+                              if (!displayProd) displayProd = list[0] || null;
 
-                              return displayBarcode ? (
-                                <Barcode
-                                  value={displayBarcode}
-                                  height={30}
-                                  width={1.2}
-                                  fontSize={12}
-                                />
-                              ) : (
-                                <span className="text-xs text-gray-400">
-                                  없음
-                                </span>
+                              let name = displayProd?.title || (order.product_id ? getProductNameById(order.product_id) : null) || order.product_name || "-";
+                              if (!order.product_id && !displayProd && list.length > 1) {
+                                name = `${name} 외 ${list.length - 1}개`;
+                              }
+                              // 이미지 결정: postsImages에서 조회
+                              let imgUrl = null;
+                              const bk = displayProd?.band_key, pk = displayProd?.post_key;
+                              if (bk && pk) {
+                                const key = `${bk}_${pk}`;
+                                const arr = postsImages[key];
+                                if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
+                              }
+
+                              return (
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-50 flex-shrink-0">
+                                    {imgUrl ? (
+                                      <img
+                                        src={imgUrl}
+                                        alt={name}
+                                        className="w-full h-full object-cover"
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">이미지</div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="font-medium truncate" title={name}>{name}</div>
+                                  </div>
+                                </div>
                               );
                             })()}
                           </td>
-
-                          <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
-                            <StatusBadge
-                              status={order.status}
-                              processingMethod={order.processing_method}
-                            />
-                          </td>
-
-                          {/* 서브상태 셀 */}
-                          <td className="py-2 pr-2 text-center w-24">
+                          {/* 가격 */}
+                          <td className="py-2 pr-2 text-right text-sm text-gray-700 w-24">
                             {(() => {
-                              const actualStatus = order.status;
-                              const actualSubStatus = order.sub_status;
-
-                              if (
-                                actualStatus !== "수령완료" &&
-                                actualSubStatus === "확인필요"
-                              ) {
-                                return (
-                                  <span className="inline-flex items-center rounded-full bg-gray-700 px-2 py-0.5 text-xs font-medium text-white">
-                                    확인필요
-                                  </span>
-                                );
-                              }
-
-                              if (
-                                actualStatus !== "수령완료" &&
-                                actualSubStatus === "미수령"
-                              ) {
-                                return (
-                                  <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
-                                    미수령
-                                  </span>
-                                );
-                              }
-
-                              if (
-                                actualStatus === "수령완료" &&
-                                order.completed_at
-                              ) {
-                                return (
-                                  <span className="text-xs text-gray-600">
-                                    {formatDate(order.completed_at)}
-                                  </span>
-                                );
-                              }
-
-                              return "-";
+                              const list = getCandidateProductsForOrder(order);
+                              let displayProd = null;
+                              if (order.product_id) displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
+                              if (!displayProd) displayProd = list[0] || null;
+                              let price = null;
+                              if (Number.isFinite(order?.selected_price)) price = order.selected_price;
+                              else if (Number.isFinite(displayProd?.base_price)) price = displayProd.base_price;
+                              else if (Number.isFinite(displayProd?.price)) price = displayProd.price;
+                              return price != null ? `₩${Number(price).toLocaleString()}` : '-';
                             })()}
                           </td>
-                          {/* 작업 버튼들 */}
-                          <td className="py-2 pr-2 text-center w-44" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center space-x-1">
-                              {/* 게시물 보기 버튼 */}
-                              {(() => {
-                                // 주문 ID에서 게시물 키 추출 시도
-                                const extractedPostKey =
-                                  extractPostKeyFromOrderId(order.order_id);
-                                const hasPostInfo =
-                                  order.post_key ||
-                                  order.post_number ||
-                                  extractedPostKey;
-
-                                return hasPostInfo;
-                              })() ? (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation(); // 행 클릭 이벤트 방지
-                                    openCommentsModal(order);
-                                  }}
-                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                                  title="게시물 보기"
-                                >
-                                  <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
-                                </button>
-                              ) : (
-                                <button
-                                  disabled
-                                  className="inline-flex items-center justify-center w-10 h-9 text-gray-400 cursor-not-allowed rounded-md"
-                                  title="게시물 정보 없음"
-                                >
-                                  <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
-                                </button>
-                              )}
-                              
-                              {editingOrderId === order.order_id ? (
-                                <div className="flex space-x-1 animate-pulse">
-                                  <button
-                                    onClick={() => handleEditSave(order)}
-                                    disabled={savingEdit}
-                                    className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-r-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200"
-                                    title="저장"
-                                  >
-                                    {savingEdit ? '저장중...' : '저장'}
-                                  </button>
-                                  <button
-                                    onClick={handleEditCancel}
-                                    disabled={savingEdit}
-                                    className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 transition-all duration-200 ml-1"
-                                    title="취소"
-                                  >
-                                    취소
-                                  </button>
+                          {/* 바코드 */}
+                          <td className="py-2 pr-2 text-center text-sm text-gray-700 w-32">
+                            {(() => {
+                              const list = getCandidateProductsForOrder(order);
+                              let displayProd = null;
+                              if (order.product_id) displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
+                              if (!displayProd) displayProd = list[0] || null;
+                              const displayBarcode = (displayProd?.barcode) || order.selected_barcode || (order.product_id ? getProductBarcode(order.product_id) : "");
+                              return displayBarcode ? (
+                                <div className="flex flex-col items-center">
+                                  <Barcode value={displayBarcode} height={28} width={1.2} fontSize={10} />
+                                  <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span>
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => handleEditStart(order)}
-                                  className="inline-flex items-center justify-center px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:text-gray-800 hover:bg-gray-200 rounded-md transition-colors"
-                                  title="주문 수정"
-                                >
-                                  주문 수정
-                                </button>
-                              )}
-                            </div>
+                                <span className="text-xs text-gray-400">없음</span>
+                              );
+                            })()}
+                          </td>
+                          {/* 주문일시 */}
+                          <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
+                            {formatDate(order.ordered_at)}
                           </td>
                         </tr>
 
-                        {/* 바코드 옵션 행 - 옵션이 여러 개인 경우만 표시 */}
-                        {hasMultipleBarcodeOptions && (
-                          <tr className={`${isSelected ? "bg-orange-50" : ""}`}>
-                            <td colSpan="14" className="py-2 pr-2">
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <BarcodeOptionSelector
-                                  order={order}
-                                  product={product}
-                                  onOptionChange={handleBarcodeOptionChange}
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                        )}
+                        {/* 바코드 옵션 행 제거 (raw 스타일 간단 테이블) */}
                       </React.Fragment>
                     );
                   })}

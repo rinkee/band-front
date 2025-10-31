@@ -111,15 +111,51 @@ function clampQty(n: number): number {
 // Matcher 1: number-based → "N번", "N번 M개"
 function matchNumberBased(comment: string, productMap: Map<number, Required<ClientMatcherProduct>>): ClientMatcherSuggestion[] {
   const out: ClientMatcherSuggestion[] = [];
-  const re = /(\d+)\s*번(?:\s*(\d+)\s*(?:개|박스|봉지|팩|통|세트)?)?/g;
+  const text = normalizeText(comment);
+
+  // Support "각/각각 N개(씩)" semantics: when multiple 번호 are listed without per-item quantity,
+  // apply the shared quantity to each. Accept digits or Korean numerals.
+  function parseKoreanQtyToken(t: string): number | null {
+    if (!t) return null;
+    if (/^\d+$/.test(t)) return clampQty(parseInt(t, 10));
+    const n = (KOREAN_NUMBER_MAP as any)[t];
+    return typeof n === 'number' ? clampQty(n) : null;
+  }
+  const eachRe = /(각|각각)\s*(\d+|한|하나|두|둘|세|셋|네|넷)\s*(개|박스|봉지|팩|통|세트|kg|키로)?\s*씩?/;
+  const eachMatch = text.match(eachRe);
+  const eachQty = eachMatch ? parseKoreanQtyToken(eachMatch[2]) : null;
+
+  // Core pattern:
+  //  - Capture N번
+  //  - Optional quantity capture only when it is NOT followed by another "번" (to avoid 1번3번 → qty=3)
+  //    and optionally allow a unit.
+  const re = /(\d+)\s*번(?:\s*(\d+)(?!\s*번)\s*(?:개|박스|봉지|팩|통|세트|kg|키로)?)?/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(comment)) !== null) {
-    const num = parseInt(m[1]);
-    const qty = m[2] ? clampQty(parseInt(m[2])) : 1;
+  while ((m = re.exec(text)) !== null) {
+    const num = parseInt(m[1], 10);
+    let qty: number | null = null;
+    if (m[2]) {
+      const q = parseInt(m[2], 10);
+      if (Number.isFinite(q)) qty = clampQty(q);
+    }
     const prod = productMap.get(num);
     if (prod) {
       const name = prod.title || prod.name || `상품 ${num}`;
-      out.push({ itemNumber: num, productName: name, quantity: qty, confidence: 0.95, reason: '번호 기반', matchMethod: 'number-based' });
+      const quantity = qty ?? (eachQty ?? 1);
+      out.push({ itemNumber: num, productName: name, quantity, confidence: 0.95, reason: qty ? '번호+수량' : (eachQty ? '번호+각' : '번호 기반'), matchMethod: 'number-based' });
+    }
+  }
+
+  // Hyphen/asterisk style: "N-qty", "N×qty", "Nxqty"
+  // Accept when the first number is a valid product number
+  const re2 = /(^|\s)(\d+)\s*[-×xX*]\s*(\d+)(\s|$)/g;
+  while ((m = re2.exec(text)) !== null) {
+    const num = parseInt(m[2], 10);
+    const qty = clampQty(parseInt(m[3], 10));
+    const prod = productMap.get(num);
+    if (prod) {
+      const name = prod.title || prod.name || `상품 ${num}`;
+      out.push({ itemNumber: num, productName: name, quantity: qty, confidence: 0.9, reason: '번호-수량', matchMethod: 'number-hyphen' });
     }
   }
   return out;
@@ -375,17 +411,21 @@ export function analyzeCommentMulti(
   }
   const collected: ClientMatcherSuggestion[] = [];
   const isSingle = opts.isSingleProduct ?? (productMap.size === 1);
-  // For each fragment, run number/unit/name matchers in that order, pick best
+  // For each fragment, prefer explicit number matches (can be multi),
+  // otherwise fall back to one best guess from other matchers.
   for (const frag of fragments) {
     const hasDigits = /\d/.test(frag);
     const hasQtyPattern = /(\d+)\s*(개|봉지|봉|통|팩|박스|세트|kg|키로)|\d+\s*번/.test(frag);
+    const nb = matchNumberBased(frag, productMap);
+    if (nb.length > 0) {
+      // Keep all number-based matches (e.g., "1번3번 각1개씩")
+      collected.push(...nb);
+      continue;
+    }
     const agg: ClientMatcherSuggestion[] = [];
-    agg.push(...matchNumberBased(frag, productMap));
     agg.push(...matchUnitPattern(frag, productMap));
     agg.push(...matchProductName(frag, productMap));
-    if (agg.length === 0) {
-      agg.push(...matchSimpleNumber(frag, productMap, isSingle));
-    }
+    if (agg.length === 0) agg.push(...matchSimpleNumber(frag, productMap, isSingle));
     if (!hasQtyPattern) {
       // For name lists without explicit quantity patterns, extract multiple items (quantity=1 each)
       const multi = matchNameListNoNumbers(frag);
@@ -398,6 +438,20 @@ export function analyzeCommentMulti(
     const best = pickBest(agg, 1);
     collected.push(...best);
   }
+  // If explicit "N번" numbers appear anywhere in the original comment,
+  // constrain final suggestions to those numbers to avoid name-based side hits.
+  const explicitNums = (() => {
+    const t = normalizeText(comment);
+    const arr: number[] = [];
+    const re = /(\d+)\s*번/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t)) !== null) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n)) arr.push(n);
+    }
+    return Array.from(new Set(arr));
+  })();
+
   // Deduplicate by itemNumber by summing quantities for identical items across fragments
   const merged = new Map<number, ClientMatcherSuggestion>();
   for (const s of collected) {
@@ -408,5 +462,10 @@ export function analyzeCommentMulti(
       merged.set(s.itemNumber, { ...cur, quantity: cur.quantity + s.quantity, confidence: Math.max(cur.confidence, s.confidence) });
     }
   }
-  return Array.from(merged.values()).sort((a, b) => b.confidence - a.confidence);
+  let finalArr = Array.from(merged.values());
+  if (explicitNums.length > 0) {
+    const allowed = new Set(explicitNums);
+    finalArr = finalArr.filter((s) => allowed.has(s.itemNumber));
+  }
+  return finalArr.sort((a, b) => b.confidence - a.confidence);
 }
