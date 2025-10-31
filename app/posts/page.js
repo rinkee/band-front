@@ -581,7 +581,7 @@ export default function PostsPage() {
               </p>
             </div>
 
-            {/* 통계 요약 */}
+            {/* 통계 요약 및 업데이트 버튼 */}
             <div className="flex items-center space-x-6">
               <div className="flex items-center space-x-6 text-base">
                 <div className="text-center">
@@ -603,12 +603,8 @@ export default function PostsPage() {
                   <div className="text-gray-500">처리완료</div>
                 </div>
               </div>
+              <UpdateButton pageType="posts" />
             </div>
-          </div>
-
-          {/* 업데이트 버튼 */}
-          <div className="mt-3">
-            <UpdateButton pageType="posts" />
           </div>
 
           {/* 검색 바 */}

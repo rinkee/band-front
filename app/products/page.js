@@ -1811,11 +1811,13 @@ export default function ProductsPage() {
       className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto px-4 py-2 sm:px-6 sm:py-4"
     >
       <div className="max-w-[1440px] mx-auto">
-        <div className="mb-4 md:mb-4">
-          <h1 className="text-xl font-bold text-gray-900 mb-1">상품 관리</h1>
-          <p className="text-sm text-gray-500 mb-1">
-            등록된 상품을 관리하고 바코드를 생성/수정할 수 있습니다.
-          </p>
+        <div className="mb-4 md:mb-4 flex justify-between items-start">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 mb-1">상품 관리</h1>
+            <p className="text-sm text-gray-500 mb-1">
+              등록된 상품을 관리하고 바코드를 생성/수정할 수 있습니다.
+            </p>
+          </div>
           <UpdateButton pageType="products" />
         </div>
 

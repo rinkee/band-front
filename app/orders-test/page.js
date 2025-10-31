@@ -2850,6 +2850,19 @@ export default function OrdersPage() {
                       일괄수령
                     </button>
                   </div>
+
+                  {/* 업데이트 버튼 추가 */}
+                  <div className="ml-2">
+                    <UpdateButton
+                      pageType="orders"
+                      totalItems={globalStatsData?.총주문수 || 0}
+                      onSuccess={() => {
+                        console.log("🔄 주문 업데이트 완료");
+                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                        mutate();
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
