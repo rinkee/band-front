@@ -2850,19 +2850,6 @@ export default function OrdersPage() {
                       일괄수령
                     </button>
                   </div>
-
-                  {/* 업데이트 버튼 추가 */}
-                  <div className="ml-2">
-                    <UpdateButton
-                      pageType="orders"
-                      totalItems={globalStatsData?.총주문수 || 0}
-                      onSuccess={() => {
-                        console.log("🔄 주문 업데이트 완료");
-                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                        mutate();
-                      }}
-                    />
-                  </div>
                 </div>
               </div>
             </div>
@@ -2877,6 +2864,18 @@ export default function OrdersPage() {
         {/* 주문 리스트 영역 - 스크롤 가능 */}
         <div className="flex-1 min-h-0 pb-4 px-4 lg:px-6 pt-0">
           <div className="h-full bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
+            {/* 업데이트 버튼 - 테이블 우측 상단 */}
+            <div className="flex justify-end p-3 border-b border-gray-200">
+              <UpdateButton
+                pageType="orders"
+                totalItems={globalStatsData?.총주문수 || 0}
+                onSuccess={() => {
+                  console.log("🔄 주문 업데이트 완료");
+                  setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                  mutate();
+                }}
+              />
+            </div>
             {/* 테이블 컨테이너 - 한 번에 스크롤 */}
             <div className="flex-1 overflow-auto relative">
               <table className="min-w-full ">
