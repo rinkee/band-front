@@ -416,19 +416,21 @@ function LayoutContent({ children }) {
                     >
                       주문 관리
                     </Link>
-                    <Link
-                      href="/orders-test"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
-                        pathname === "/orders-test"
-                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      주문관리{" "}
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
-                        beta
-                      </span>
-                    </Link>
+                    {userData?.order_processing_mode !== "raw" && (
+                      <Link
+                        href="/orders-test"
+                        className={`px-3 py-2 text-sm font-medium rounded-md ${
+                          pathname === "/orders-test"
+                            ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
+                            : "text-gray-600 hover:bg-gray-100"
+                        }`}
+                      >
+                        주문관리{" "}
+                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
+                          beta
+                        </span>
+                      </Link>
+                    )}
                     {/* <Link
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -622,34 +624,36 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  <Link
-                    href="/orders-test"
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
-                      pathname === "/orders-test"
-                        ? "bg-blue-100 text-gray-900"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <svg
-                      className="w-5 h-5 mr-2 text-gray-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  {userData?.order_processing_mode !== "raw" && (
+                    <Link
+                      href="/orders-test"
+                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                        pathname === "/orders-test"
+                          ? "bg-blue-100 text-gray-900"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span className="flex items-center gap-2">
-                      주문관리
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">
-                        [beta]
+                      <svg
+                        className="w-5 h-5 mr-2 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <span className="flex items-center gap-2">
+                        주문관리
+                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">
+                          [beta]
+                        </span>
                       </span>
-                    </span>
-                  </Link>
+                    </Link>
+                  )}
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
