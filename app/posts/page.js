@@ -59,6 +59,11 @@ export default function PostsPage() {
   const [isPostDetailModalOpen, setIsPostDetailModalOpen] = useState(false);
   const [selectedPostForDetail, setSelectedPostForDetail] = useState(null);
 
+  // 수령일 수정 관련 상태
+  const [isEditingPickupDate, setIsEditingPickupDate] = useState(false);
+  const [editPickupDate, setEditPickupDate] = useState('');
+  const [editPickupTime, setEditPickupTime] = useState('00:00');
+
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
 
@@ -841,11 +846,6 @@ export default function PostsPage() {
 
       {/* 게시물 상세 모달 (raw 모드용) */}
       {isPostDetailModalOpen && selectedPostForDetail && (() => {
-        // 모달 내부 상태
-        const [isEditingPickupDate, setIsEditingPickupDate] = React.useState(false);
-        const [editPickupDate, setEditPickupDate] = React.useState('');
-        const [editPickupTime, setEditPickupTime] = React.useState('00:00');
-
         // 수령일 수정 처리
         const handleSavePickupDate = async () => {
           try {
