@@ -835,6 +835,10 @@ export default function PostsPage() {
       />
 
       {/* 게시물 상세 모달 (raw 모드용) */}
+      {console.log('Rendering PostDetailModal with:', {
+        isOpen: isPostDetailModalOpen,
+        post: selectedPostForDetail
+      })}
       <PostDetailModal
         isOpen={isPostDetailModalOpen}
         onClose={handleClosePostDetailModal}
