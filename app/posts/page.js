@@ -837,14 +837,17 @@ export default function PostsPage() {
       {/* 게시물 상세 모달 (raw 모드용) */}
       {console.log('Rendering PostDetailModal with:', {
         isOpen: isPostDetailModalOpen,
-        post: selectedPostForDetail
+        post: selectedPostForDetail,
+        PostDetailModal: PostDetailModal
       })}
-      <PostDetailModal
-        isOpen={isPostDetailModalOpen}
-        onClose={handleClosePostDetailModal}
-        post={selectedPostForDetail}
-        onDelete={handleDeletePost}
-      />
+      {isPostDetailModalOpen && selectedPostForDetail && (
+        <PostDetailModal
+          isOpen={isPostDetailModalOpen}
+          onClose={handleClosePostDetailModal}
+          post={selectedPostForDetail}
+          onDelete={handleDeletePost}
+        />
+      )}
 
       {/* 토스트 알림 컨테이너 */}
       <ToastContainer toasts={toasts} hideToast={hideToast} />
