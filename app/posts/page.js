@@ -853,22 +853,38 @@ export default function PostsPage() {
               ? `${editPickupDate}T00:00:00+09:00`
               : `${editPickupDate}T${editPickupTime}:00+09:00`;
 
-            const { error } = await supabase
+            // 1. posts 테이블 업데이트
+            const { error: postsError } = await supabase
               .from('posts')
               .update({ pickup_date: datetime })
               .eq('post_id', selectedPostForDetail.post_id);
 
-            if (error) throw error;
+            if (postsError) throw postsError;
+
+            // 2. products 테이블 업데이트 (해당 게시물의 모든 상품)
+            const { error: productsError } = await supabase
+              .from('products')
+              .update({ pickup_date: datetime })
+              .eq('post_key', selectedPostForDetail.post_key)
+              .eq('user_id', userData?.userId);
+
+            if (productsError) {
+              console.error('products 테이블 업데이트 오류:', productsError);
+              // products 업데이트 실패해도 계속 진행
+            }
 
             // 로컬 상태 업데이트
             selectedPostForDetail.pickup_date = datetime;
             setIsEditingPickupDate(false);
 
+            // 성공 메시지
+            showSuccess('수령일이 업데이트되었습니다.');
+
             // 전체 데이터 새로고침
             mutate();
           } catch (error) {
             console.error('수령일 수정 오류:', error);
-            alert('수령일 수정에 실패했습니다.');
+            showError('수령일 수정에 실패했습니다.');
           }
         };
 
