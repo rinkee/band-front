@@ -1078,9 +1078,9 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   const shortContent = formatContent(content);
 
   return (
-    <div 
+    <div
       className="bg-white rounded-lg   border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col"
-      onClick={() => onOpenProductManagement && onOpenProductManagement(post)}
+      onClick={() => onOpenProductManagement && onOpenProductManagement()}
     >
       {/* 헤더 - 작성자 정보와 작성 시간 */}
       <div className="p-4 flex-grow">
@@ -1166,10 +1166,10 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       <div className="p-3">
         {/* 3개 버튼 그리드 */}
         <div className="grid grid-cols-3 gap-1.5">
-          <button 
+          <button
             onClick={(e) => {
               e.stopPropagation();
-              onOpenProductManagement && onOpenProductManagement(post);
+              onOpenProductManagement && onOpenProductManagement();
             }}
             className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
