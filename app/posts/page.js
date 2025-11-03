@@ -984,6 +984,8 @@ export default function PostsPage() {
                 <div className="border-t pt-4">
                   <h4 className="text-lg font-semibold text-gray-900 mb-3">연결된 상품</h4>
                   {(() => {
+                    console.log('products_data:', selectedPostForDetail.products_data);
+
                     const products = Array.isArray(selectedPostForDetail.products_data)
                       ? selectedPostForDetail.products_data
                       : (selectedPostForDetail.products_data?.products || []);
@@ -998,35 +1000,43 @@ export default function PostsPage() {
                           <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
-                                <h5 className="font-medium text-gray-900 mb-1">
-                                  {product.title || product.product_name || `상품 ${index + 1}`}
+                                <h5 className="font-medium text-gray-900 mb-2">
+                                  {product.name || product.title || product.product_name || `상품 ${index + 1}`}
                                 </h5>
-                                <div className="flex items-center gap-4 text-sm text-gray-600">
-                                  {product.base_price && (
-                                    <span>가격: {product.base_price.toLocaleString()}원</span>
+
+                                {/* 가격과 기타 정보 */}
+                                <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
+                                  {(product.price || product.base_price) && (
+                                    <span className="font-medium text-gray-900">
+                                      {(product.price || product.base_price).toLocaleString()}원
+                                    </span>
                                   )}
                                   {product.barcode && (
-                                    <span>바코드: {product.barcode}</span>
+                                    <span className="text-gray-500">바코드: {product.barcode}</span>
                                   )}
-                                  {product.stock_quantity !== undefined && (
-                                    <span>재고: {product.stock_quantity}개</span>
+                                  {product.quantity !== undefined && product.quantity !== null && (
+                                    <span className="text-gray-500">수량: {product.quantity}개</span>
                                   )}
                                 </div>
+
+                                {/* 설명 */}
+                                {product.description && (
+                                  <p className="text-sm text-gray-600 leading-relaxed">{product.description}</p>
+                                )}
                               </div>
-                              {product.image_url && (
+
+                              {/* 이미지 */}
+                              {(product.image_url || product.imageUrl) && (
                                 <img
-                                  src={product.image_url}
-                                  alt={product.title || '상품 이미지'}
-                                  className="w-16 h-16 object-cover rounded-md ml-4"
+                                  src={product.image_url || product.imageUrl}
+                                  alt={product.name || product.title || '상품 이미지'}
+                                  className="w-20 h-20 object-cover rounded-md ml-4 flex-shrink-0"
                                   onError={(e) => {
                                     e.target.style.display = 'none';
                                   }}
                                 />
                               )}
                             </div>
-                            {product.description && (
-                              <p className="text-sm text-gray-500 mt-2">{product.description}</p>
-                            )}
                           </div>
                         ))}
                       </div>
