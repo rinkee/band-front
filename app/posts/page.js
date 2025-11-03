@@ -776,6 +776,11 @@ export default function PostsPage() {
                 onDeletePost={handleDeletePost}
                 onToggleReprocess={handleToggleReprocess}
                 onOpenProductManagement={() => handleOpenProductManagementModal(post)}
+                onOpenProductModal={() => {
+                  // 상품 버튼 전용 - 항상 ProductManagementModal 열기
+                  setSelectedPostForProductManagement(post);
+                  setIsProductManagementModalOpen(true);
+                }}
               />
             ))}
           </div>
@@ -1089,7 +1094,7 @@ export default function PostsPage() {
 }
 
 // 그리드용 게시물 카드 컴포넌트
-function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenProductManagement }) {
+function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, onToggleReprocess, onOpenProductManagement, onOpenProductModal }) {
   // 사용자 친화적인 상태 표시
   const getStatusDisplay = (status) => {
     switch (status) {
@@ -1416,7 +1421,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onOpenProductManagement && onOpenProductManagement();
+              // 상품 버튼은 항상 ProductManagementModal을 열어야 함
+              onOpenProductModal && onOpenProductModal();
             }}
             className="flex flex-col items-center justify-center py-2 px-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
@@ -1471,9 +1477,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
     </div>
   );
 }
-
-// PostCard 컴포넌트 완료 - KREAM 스타일 적용
-// 원래 액션 버튼 기능들은 카드 클릭으로 대체됨
 
 // 페이지네이션 컴포넌트 (10페이지씩 표시)
 function Pagination({ currentPage, totalPages, onPageChange }) {
