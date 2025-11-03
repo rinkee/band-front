@@ -911,7 +911,7 @@ export default function PostsPage() {
               </div>
 
               {/* 내용 */}
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="mb-6 p-4 bg-gray-100 rounded-lg">
                 <div className="text-gray-700 whitespace-pre-wrap break-words">
                   {selectedPostForDetail.content || '내용이 없습니다.'}
                 </div>
