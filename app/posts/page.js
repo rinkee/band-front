@@ -995,50 +995,55 @@ export default function PostsPage() {
                     }
 
                     return (
-                      <div className="space-y-3">
-                        {products.map((product, index) => (
-                          <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <h5 className="font-medium text-gray-900 mb-2">
-                                  {product.name || product.title || product.product_name || `상품 ${index + 1}`}
-                                </h5>
+                      <div className="space-y-2">
+                        {products.map((product, index) => {
+                          console.log('Product data:', product);
 
-                                {/* 가격과 기타 정보 */}
-                                <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
-                                  {(product.price || product.base_price) && (
-                                    <span className="font-medium text-gray-900">
-                                      {(product.price || product.base_price).toLocaleString()}원
+                          return (
+                            <div key={index} className="bg-white border border-gray-200 rounded-lg p-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h5 className="font-medium text-gray-900">
+                                    {product.name || product.title || product.product_name || `상품 ${index + 1}`}
+                                  </h5>
+
+                                  <div className="flex items-center gap-4 mt-1 text-sm">
+                                    <span className="text-gray-600">
+                                      가격: <span className="font-medium text-gray-900">
+                                        {product.price || product.base_price || product.basePrice || '미입력'}
+                                        {(product.price || product.base_price || product.basePrice) && '원'}
+                                      </span>
                                     </span>
-                                  )}
-                                  {product.barcode && (
-                                    <span className="text-gray-500">바코드: {product.barcode}</span>
-                                  )}
-                                  {product.quantity !== undefined && product.quantity !== null && (
-                                    <span className="text-gray-500">수량: {product.quantity}개</span>
-                                  )}
+
+                                    <span className="text-gray-600">
+                                      바코드: <span className="font-medium text-gray-900">
+                                        {product.barcode || product.productBarcode || '미입력'}
+                                      </span>
+                                    </span>
+
+                                    {(product.quantity !== undefined && product.quantity !== null) && (
+                                      <span className="text-gray-600">
+                                        수량: <span className="font-medium text-gray-900">{product.quantity}</span>
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
-                                {/* 설명 */}
-                                {product.description && (
-                                  <p className="text-sm text-gray-600 leading-relaxed">{product.description}</p>
+                                {/* 이미지 */}
+                                {(product.image_url || product.imageUrl || product.imageURL) && (
+                                  <img
+                                    src={product.image_url || product.imageUrl || product.imageURL}
+                                    alt={product.name || product.title || '상품 이미지'}
+                                    className="w-16 h-16 object-cover rounded-md ml-3 flex-shrink-0"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                    }}
+                                  />
                                 )}
                               </div>
-
-                              {/* 이미지 */}
-                              {(product.image_url || product.imageUrl) && (
-                                <img
-                                  src={product.image_url || product.imageUrl}
-                                  alt={product.name || product.title || '상품 이미지'}
-                                  className="w-20 h-20 object-cover rounded-md ml-4 flex-shrink-0"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none';
-                                  }}
-                                />
-                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })()}
