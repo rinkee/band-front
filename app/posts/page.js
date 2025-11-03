@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import ProductManagementModal from "../components/ProductManagementModal";
+import PostDetailModal from "../components/PostDetailModal";
 import CommentsModal from "../components/Comments";
 import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
@@ -53,6 +54,10 @@ export default function PostsPage() {
   // 상품 관리 모달 관련 상태
   const [isProductManagementModalOpen, setIsProductManagementModalOpen] = useState(false);
   const [selectedPostForProductManagement, setSelectedPostForProductManagement] = useState(null);
+
+  // 게시물 상세 모달 관련 상태 (raw 모드용)
+  const [isPostDetailModalOpen, setIsPostDetailModalOpen] = useState(false);
+  const [selectedPostForDetail, setSelectedPostForDetail] = useState(null);
 
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
@@ -243,7 +248,25 @@ export default function PostsPage() {
   // postUpdated 이벤트 리스너 추가 (수령일 실시간 업데이트)
   useEffect(() => {
     const handlePostUpdated = (event) => {
-      console.log('게시물 업데이트 이벤트 수신:', event.detail);
+      const detail = event?.detail || {};
+      console.log('게시물 업데이트 이벤트 수신:', detail);
+      // 낙관적 반영: title / is_product 가 포함되어 있으면 로컬 캐시 반영
+      if (detail.postKey && (detail.title !== undefined || detail.is_product !== undefined)) {
+        mutate((currentData) => {
+          if (!currentData || !Array.isArray(currentData.posts)) return currentData;
+          const updatedPosts = currentData.posts.map(p => {
+            if (p.post_key === detail.postKey) {
+              return {
+                ...p,
+                title: detail.title !== undefined ? detail.title : p.title,
+                is_product: detail.is_product !== undefined ? detail.is_product : p.is_product,
+              };
+            }
+            return p;
+          });
+          return { ...currentData, posts: updatedPosts };
+        }, { revalidate: false });
+      }
       // SWR 캐시 갱신하여 게시물 목록 새로고침
       mutate();
     };
@@ -402,14 +425,34 @@ export default function PostsPage() {
 
   // 상품 관리 모달 열기 함수
   const handleOpenProductManagementModal = (post) => {
-    setSelectedPostForProductManagement(post);
-    setIsProductManagementModalOpen(true);
+    // raw 모드 확인 - URL 파라미터로 체크
+    const isRawMode = (() => {
+      if (typeof window === 'undefined') return false;
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mode') === 'raw';
+    })();
+
+    if (isRawMode) {
+      // raw 모드일 때는 게시물 상세 모달 열기
+      setSelectedPostForDetail(post);
+      setIsPostDetailModalOpen(true);
+    } else {
+      // 기본 모드일 때는 상품 관리 모달 열기
+      setSelectedPostForProductManagement(post);
+      setIsProductManagementModalOpen(true);
+    }
   };
 
   // 상품 관리 모달 닫기 함수
   const handleCloseProductManagementModal = () => {
     setIsProductManagementModalOpen(false);
     setSelectedPostForProductManagement(null);
+  };
+
+  // 게시물 상세 모달 닫기 함수
+  const handleClosePostDetailModal = () => {
+    setIsPostDetailModalOpen(false);
+    setSelectedPostForDetail(null);
   };
 
   // 게시물 삭제 함수
@@ -774,6 +817,14 @@ export default function PostsPage() {
         isOpen={isProductManagementModalOpen}
         onClose={handleCloseProductManagementModal}
         post={selectedPostForProductManagement}
+      />
+
+      {/* 게시물 상세 모달 (raw 모드용) */}
+      <PostDetailModal
+        isOpen={isPostDetailModalOpen}
+        onClose={handleClosePostDetailModal}
+        post={selectedPostForDetail}
+        onDelete={handleDeletePost}
       />
 
       {/* 토스트 알림 컨테이너 */}

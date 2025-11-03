@@ -85,63 +85,176 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         alert('상품명과 가격은 필수 항목입니다.');
         return;
       }
+      // 게시물 기준 첫 상품 여부: posts.is_product가 false/undefined면 첫 상품으로 간주
+      const wasEmpty = !post?.is_product;
 
-      // 기존 상품이 있는지 확인
-      if (products.length === 0) {
-        alert('기존 상품이 없어서 새 상품을 추가할 수 없습니다.');
-        return;
-      }
+      // 공통 유틸: 밴드 포스트 URL, 포스트 번호, 이미지 배열 등 생성
+      const getPostNumber = () => {
+        if (post?.post_number) return String(post.post_number);
+        if (post?.post_key && String(post.post_key).includes(':')) {
+          const parts = String(post.post_key).split(':');
+          return parts[1] || null;
+        }
+        return null;
+      };
 
-      // 첫 번째 상품을 기준으로 복사
-      const baseProduct = products[0];
+      const getBandNumber = () => post?.band_number || post?.bandNumber || (JSON.parse(sessionStorage.getItem("userData") || "{}")?.bandNumber) || '';
+
+      const buildBandPostUrl = () => {
+        const band = getBandNumber();
+        const pn = getPostNumber();
+        if (!band || !pn) return null;
+        return `https://band.us/band/${band}/post/${pn}`;
+      };
+
+      const buildImageUrls = () => {
+        const raw = post?.image_urls || post?.photos_data || null;
+        if (!raw) return null;
+        try {
+          if (Array.isArray(raw)) return raw;
+          if (typeof raw === 'string' && raw !== 'null' && raw !== '[]') {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+            // photos_data 는 객체 배열일 수도 있음 {url}
+            if (Array.isArray(parsed) || typeof parsed === 'object') {
+              const urls = (Array.isArray(parsed) ? parsed : [parsed])
+                .map((p) => (p && typeof p === 'object' && p.url ? p.url : (typeof p === 'string' ? p : null)))
+                .filter(Boolean);
+              return urls.length > 0 ? urls : null;
+            }
+          }
+        } catch (_) {}
+        return null;
+      };
+
+      // 첫 번째 상품을 기준으로 복사 (있을 경우)
+      const baseProduct = products[0] || null;
       
-      // 기존 product_id의 접두(prefix)를 추출하고, 이미 존재하는 suffix의 최대값을 계산해 다음 번호를 생성
-      // 접두는 마지막에 붙은 `_item\d+` 또는 `_-?\d+` 직전까지로 정의
-      const prefixMatch = baseProduct.product_id.match(/^(.*?)(?:_item\d+|_\d+)$/);
-      const idPrefix = prefixMatch ? prefixMatch[1] : baseProduct.product_id;
+      let newProductId;
+      let newItemNumber;
+      let newProductData;
 
-      // 같은 접두를 가진 상품들의 suffix 숫자를 모두 추출해 최댓값 계산
-      const existingIndexes = products
-        .filter(p => typeof p.product_id === 'string' && p.product_id.startsWith(idPrefix))
-        .map(p => {
-          const m = p.product_id.match(/_item(\d+)$/) || p.product_id.match(/_(\d+)$/);
+      if (baseProduct) {
+        // 기존 product_id의 접두(prefix)를 추출하고, 이미 존재하는 suffix의 최대값을 계산해 다음 번호를 생성
+        // 아이템 번호는 해당 게시물의 기존 products에서 최대값 +1로 계산 (product_id 포맷 무관)
+        const existingItemNumbers = (products || []).map(p => {
+          if (p.item_number !== undefined && p.item_number !== null && !Number.isNaN(Number(p.item_number))) {
+            return Number(p.item_number);
+          }
+          const m = typeof p.product_id === 'string' ? p.product_id.match(/_item(\d+)$/) : null;
           return m ? parseInt(m[1], 10) : 0;
         });
+        const maxIndex = existingItemNumbers.length > 0 ? Math.max(...existingItemNumbers) : 0;
+        newItemNumber = maxIndex + 1;
 
-      const maxIndex = existingIndexes.length > 0 ? Math.max(...existingIndexes) : 0;
-      const newItemNumber = maxIndex + 1;
+        // 신규 product_id는 표준 규칙 사용: prod_userId_bandNumber_postNumber_itemN
+        const userIdForId = (JSON.parse(sessionStorage.getItem("userData") || "{}")?.userId) || baseProduct.user_id || '';
+        const bandNumberForId = getBandNumber();
+        const postNumberForId = getPostNumber();
+        const idPrefix = `prod_${userIdForId}_${bandNumberForId}_${postNumberForId}`;
+        newProductId = `${idPrefix}_item${newItemNumber}`;
 
-      // 신규 product_id는 일관되게 `_item{n}` 형식을 사용
-      const newProductId = `${idPrefix}_item${newItemNumber}`;
+        // 기존 상품 데이터 복사하여 새 상품 생성
+        // baseProduct를 복제하되 누락값을 post로 보완, 타입 일치, JSONB는 객체로 유지
+        const baseProductsData = (() => {
+          try {
+            if (typeof baseProduct.products_data === 'string' && baseProduct.products_data !== 'null') {
+              return JSON.parse(baseProduct.products_data);
+            }
+          } catch (_) {}
+          return baseProduct.products_data || {};
+        })();
 
-      // 기존 상품 데이터 복사하여 새 상품 생성
-      const newProductData = {
-        ...baseProduct,
-        product_id: newProductId,
-        title: newProduct.title,
-        base_price: parseFloat(newProduct.base_price) || baseProduct.base_price,
-        barcode: newProduct.barcode || '',
-        stock_quantity: parseInt(newProduct.stock_quantity) || 0,
-        item_number: newItemNumber.toString(),
-        quantity_text: `${parseInt(newProduct.stock_quantity) || 0}개`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        // products_data 업데이트 (기존 데이터를 기반으로 수정)
-        products_data: JSON.stringify({
-          ...(typeof baseProduct.products_data === 'string' 
-            ? JSON.parse(baseProduct.products_data) 
-            : baseProduct.products_data || {}),
+        newProductData = {
+          ...baseProduct,
+          user_id: baseProduct.user_id || (JSON.parse(sessionStorage.getItem("userData") || "{}")?.userId || null),
+          product_id: newProductId,
           title: newProduct.title,
-          price: parseFloat(newProduct.base_price) || baseProduct.base_price,
-          basePrice: parseFloat(newProduct.base_price) || baseProduct.base_price,
-          productId: newProductId,
-          itemNumber: newItemNumber,
-          stockQuantity: parseInt(newProduct.stock_quantity) || 0,
-          quantityText: `${parseInt(newProduct.stock_quantity) || 0}개`,
-          created_by_modal: true, // 모달에서 생성되었다는 표시
-          created_at: new Date().toISOString()
-        })
-      };
+          base_price: parseFloat(newProduct.base_price) || baseProduct.base_price,
+          barcode: newProduct.barcode || baseProduct.barcode || '',
+          quantity: 1,
+          pickup_date: post?.pickup_date || baseProduct.pickup_date || null,
+          stock_quantity: parseInt(newProduct.stock_quantity) || 0,
+          item_number: newItemNumber,
+          quantity_text: `${parseInt(newProduct.stock_quantity) || 0}개`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          band_post_url: baseProduct.band_post_url || buildBandPostUrl(),
+          content: baseProduct.content || post?.content || null,
+          post_number: baseProduct.post_number || getPostNumber(),
+          posted_at: baseProduct.posted_at || post?.posted_at || null,
+          // products_data 업데이트 (객체로 저장)
+          products_data: {
+            ...(typeof baseProductsData === 'object' ? baseProductsData : {}),
+            title: newProduct.title,
+            price: parseFloat(newProduct.base_price) || baseProduct.base_price,
+            basePrice: parseFloat(newProduct.base_price) || baseProduct.base_price,
+            productId: newProductId,
+            itemNumber: newItemNumber,
+            stockQuantity: parseInt(newProduct.stock_quantity) || 0,
+            quantityText: `${parseInt(newProduct.stock_quantity) || 0}개`,
+            created_by_modal: true, // 모달에서 생성되었다는 표시
+            created_at: new Date().toISOString(),
+          },
+        };
+      } else {
+        // 첫 상품 생성 로직 (기존 상품이 없는 게시물)
+        const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+        const userId = userData.userId;
+        if (!userId) {
+          alert('사용자 인증 정보를 찾을 수 없습니다.');
+          return;
+        }
+
+        const bandNumber = getBandNumber();
+        const postKey = post?.post_key;
+        newItemNumber = 1;
+        const userIdForId = userId;
+        const postNumberForId = getPostNumber();
+        newProductId = `prod_${userIdForId}_${bandNumber}_${postNumberForId}_item${newItemNumber}`;
+
+        newProductData = {
+          product_id: newProductId,
+          user_id: userId,
+          post_id: post?.post_id || null,
+          band_number: bandNumber,
+          band_key: post?.band_key || null,
+          post_key: postKey,
+          title: newProduct.title,
+          base_price: parseFloat(newProduct.base_price) || 0,
+          barcode: newProduct.barcode || '',
+          quantity: 1,
+          pickup_date: post?.pickup_date || null,
+          stock_quantity: parseInt(newProduct.stock_quantity) || 0,
+          item_number: newItemNumber,
+          quantity_text: `${parseInt(newProduct.stock_quantity) || 0}개`,
+          status: '판매중',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          // 포스트 기반 필드 매핑 (기존 데이터와의 정합성 유지)
+          band_post_url: buildBandPostUrl(),
+          content: post?.content || null,
+          post_number: getPostNumber(),
+          posted_at: post?.posted_at || null,
+          image_urls: buildImageUrls(),
+          price_options: [],
+          features: [],
+          barcode_options: { options: [] },
+          product_type: 'individual',
+          // JSONB는 객체로 저장
+          products_data: {
+            title: newProduct.title,
+            price: parseFloat(newProduct.base_price) || 0,
+            basePrice: parseFloat(newProduct.base_price) || 0,
+            productId: newProductId,
+            itemNumber: newItemNumber,
+            stockQuantity: parseInt(newProduct.stock_quantity) || 0,
+            quantityText: `${parseInt(newProduct.stock_quantity) || 0}개`,
+            created_by_modal: true,
+            created_at: new Date().toISOString(),
+          }
+        };
+      }
 
       // idx와 기타 불필요한 필드 제거
       delete newProductData.idx;
@@ -164,6 +277,138 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(post.post_key));
+
+      // 첫 상품을 수동으로 추가한 경우, posts.title을 해당 상품명으로 업데이트 (공지/실패 여부 무관)
+      if (wasEmpty) {
+        try {
+          const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+          const userId = userData.userId;
+          const postKey = post?.post_key;
+          const productName = (newProduct.title || '').trim();
+          if (userId && postKey && productName) {
+            const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+            const { error: postUpdateError } = await supabase
+              .from('posts')
+              .update({ title: productName, is_product: true, updated_at: nowMinus9Iso })
+              .eq('post_key', postKey)
+              .eq('user_id', userId);
+
+            if (postUpdateError) {
+              console.error('수동 추가 후 Posts 제목 업데이트 실패(클라이언트):', postUpdateError);
+              // RLS 등으로 실패 시 서버 라우트로 보정
+              try {
+                const resp = await fetch('/api/posts/manual-update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId, postKey, updates: { title: productName, is_product: true } })
+                });
+                const result = await resp.json();
+                if (!resp.ok || !result?.success) {
+                  console.error('서비스 라우트 posts 업데이트 실패:', result);
+                } else {
+                  // 서버 보정 성공 시에도 UI 반영
+                  setCurrentPost(prev => prev ? { ...prev, title: productName } : null);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('postUpdated', { 
+                      detail: { postKey, title: productName, is_product: true }
+                    }));
+                  }
+                }
+              } catch (svcErr) {
+                console.error('서비스 라우트 호출 오류:', svcErr);
+              }
+            } else {
+              // 로컬 상태 및 구독 화면에 즉시 반영
+              setCurrentPost(prev => prev ? { ...prev, title: productName } : null);
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('postUpdated', { 
+                  detail: { postKey, title: productName, is_product: true }
+                }));
+              }
+            }
+          }
+        } catch (e) {
+          console.error('수동 추가 후 Posts 제목 업데이트 처리 중 오류:', e);
+        }
+      }
+
+      // 첫 상품 추가가 아니더라도, 상품이 추가되었다면 해당 게시물 is_product를 true로 보정
+      if (!wasEmpty) {
+        try {
+          const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+          const userId = userData.userId;
+          const postKey = post?.post_key;
+          if (userId && postKey) {
+            const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+            const { error: isProductUpdateError } = await supabase
+              .from('posts')
+              .update({ is_product: true, updated_at: nowMinus9Iso })
+              .eq('post_key', postKey)
+              .eq('user_id', userId);
+            if (isProductUpdateError) {
+              console.error('Posts is_product 보정 실패(클라이언트):', isProductUpdateError);
+              // 실패 시 서버 라우트로 보정
+              try {
+                const resp = await fetch('/api/posts/manual-update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId, postKey, updates: { is_product: true } })
+                });
+                const result = await resp.json();
+                if (!resp.ok || !result?.success) {
+                  console.error('서비스 라우트 is_product 보정 실패:', result);
+                }
+              } catch (svcErr) {
+                console.error('서비스 라우트 호출 오류:', svcErr);
+              }
+            } else if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('postUpdated', { detail: { postKey, is_product: true } }));
+            }
+
+            // 제목이 실패/공지/빈 경우면 상품명으로 교체 (첫 상품이 아니어도 보정)
+            const currentTitle = (post?.title || '').trim();
+            const aiFailed = (post?.ai_extraction_status || '').toLowerCase() === 'failed';
+            const isNotice = (post?.ai_classification_result || '').trim() === '공지사항';
+            const isFailureTitle = currentTitle.replace(/\s+/g, '') === '상품추출실패';
+            const productName = (newProduct.title || '').trim();
+            const needTitleFix = !!productName && (currentTitle === '' || isFailureTitle || aiFailed || isNotice);
+            if (needTitleFix) {
+              try {
+                const { error: postTitleFixErr } = await supabase
+                  .from('posts')
+                  .update({ title: productName, updated_at: nowMinus9Iso })
+                  .eq('post_key', postKey)
+                  .eq('user_id', userId);
+                if (postTitleFixErr) {
+                  console.error('Posts 제목 보정 실패(클라이언트):', postTitleFixErr);
+                  // 서버 보정
+                  try {
+                    const resp2 = await fetch('/api/posts/manual-update', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId, postKey, updates: { title: productName } })
+                    });
+                    const result2 = await resp2.json();
+                    if (!resp2.ok || !result2?.success) {
+                      console.error('서비스 라우트 제목 보정 실패:', result2);
+                    } else if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('postUpdated', { detail: { postKey, title: productName } }));
+                    }
+                  } catch (svcErr2) {
+                    console.error('서비스 라우트 호출 오류:', svcErr2);
+                  }
+                } else if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('postUpdated', { detail: { postKey, title: productName } }));
+                }
+              } catch (e) {
+                console.error('Posts 제목 보정 처리 중 오류:', e);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Posts is_product 보정 처리 중 오류:', e);
+        }
+      }
 
     } catch (error) {
       // 오류를 좀 더 명확히 로깅

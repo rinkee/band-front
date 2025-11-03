@@ -244,8 +244,11 @@ export function extractNumberedProducts(content, products) {
  * @returns {Object} DB 저장용 상품 데이터
  */
 export function formatProductForDB(product, postId, bandNumber, userId) {
-  // product_id 형식: prod_bandNumber_postKey_item숫자
-  const productId = `prod_${bandNumber}_${postId}_item${product.itemNumber || 1}`;
+  // product_id 형식(표준): prod_userId_bandNumber_postNumber_itemN
+  const postNumber = (typeof postId === 'string' && postId.includes(':'))
+    ? postId.split(':')[1]
+    : postId;
+  const productId = `prod_${userId}_${bandNumber}_${postNumber}_item${product.itemNumber || 1}`;
   
   // pickup_date가 객체인 경우 date 필드 추출
   let pickupDateValue = product.pickupDate;

@@ -341,7 +341,11 @@ function createOrderFromExtraction(extraction, comment, postInfo, userId, bandNu
     band_key: bandKey,  // band_key 필드 추가
     band_number: bandNumber,
     customer_id: customerId,
-    product_id: itemNumber ? `prod_${bandNumber}_${postKey}_item${itemNumber}` : null,
+    product_id: (product && product.product_id) ? product.product_id : (itemNumber ? (() => {
+      // 표준 규칙: prod_userId_bandNumber_postNumber_itemN (postKey에서 postNumber 추출)
+      const postNumber = (typeof postKey === 'string' && postKey.includes(':')) ? postKey.split(':')[1] : postKey;
+      return `prod_${userId}_${bandNumber}_${postNumber}_item${itemNumber}`;
+    })() : null),
     product_name: extraction.productTitle || extraction.productName || product?.title || product?.product_name || "상품명 없음",
     quantity: extraction.quantity || 1,
     price: unitPrice,  // price 필드 추가
@@ -392,7 +396,14 @@ function createOrderFromAI(aiOrder, postInfo, userId, bandNumber, postId) {
     band_key: bandKey,  // band_key 필드 추가
     band_number: bandNumber,
     customer_id: customerId,
-    product_id: aiOrder.productItemNumber ? `prod_${bandNumber}_${postKey}_item${aiOrder.productItemNumber}` : null,
+    product_id: (() => {
+      const itemNumber = aiOrder.productItemNumber || aiOrder.itemNumber || null;
+      if (!itemNumber) return null;
+      const product = postInfo.products?.find(p => (p.itemNumber || p.item_number) === itemNumber) || postInfo.products?.[itemNumber - 1];
+      if (product && product.product_id) return product.product_id;
+      const postNumber = (typeof postKey === 'string' && postKey.includes(':')) ? postKey.split(':')[1] : postKey;
+      return `prod_${userId}_${bandNumber}_${postNumber}_item${itemNumber}`;
+    })(),
     product_name: aiOrder.productTitle || "상품명 없음",
     quantity: aiOrder.quantity || 1,
     price: unitPrice,  // price 필드 추가
