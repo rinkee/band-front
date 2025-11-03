@@ -855,20 +855,51 @@ export default function PostsPage() {
 
             {/* 콘텐츠 영역 */}
             <div className="px-6 py-4 overflow-y-auto max-h-[calc(80vh-120px)]">
-              {/* 작성자 정보 */}
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
-                  <div className="w-full h-full bg-blue-500 flex items-center justify-center">
-                    <span className="text-white font-medium text-sm">
+              {/* 작성자 정보 - 간소화 */}
+              <div className="flex items-center space-x-2 mb-3">
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
+                  {(selectedPostForDetail.profile_image || selectedPostForDetail.author_profile) ? (
+                    <img
+                      src={selectedPostForDetail.profile_image || selectedPostForDetail.author_profile}
+                      alt={selectedPostForDetail.author_name || '익명'}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextElementSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div className="w-full h-full bg-blue-500 flex items-center justify-center" style={{ display: (selectedPostForDetail.profile_image || selectedPostForDetail.author_profile) ? 'none' : 'flex' }}>
+                    <span className="text-white font-medium text-xs">
                       {selectedPostForDetail.author_name ? selectedPostForDetail.author_name.charAt(0) : '익'}
                     </span>
                   </div>
                 </div>
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">{selectedPostForDetail.author_name || '익명'}</div>
-                  <div className="text-sm text-gray-500">
-                    작성일: {new Date(selectedPostForDetail.posted_at).toLocaleString('ko-KR')}
-                  </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium text-gray-900">{selectedPostForDetail.author_name || '익명'}</span>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-gray-500">
+                    {(() => {
+                      const date = new Date(selectedPostForDetail.posted_at);
+                      const now = new Date();
+                      const diffMs = now - date;
+                      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+                      if (diffDays === 0) {
+                        const hours = date.getHours();
+                        const minutes = date.getMinutes().toString().padStart(2, '0');
+                        const period = hours < 12 ? '오전' : '오후';
+                        const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                        return `오늘 ${period} ${hour12}:${minutes}`;
+                      } else if (diffDays === 1) {
+                        return '어제';
+                      } else if (diffDays < 7) {
+                        return `${diffDays}일 전`;
+                      } else {
+                        return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+                      }
+                    })()}
+                  </span>
                 </div>
               </div>
 
