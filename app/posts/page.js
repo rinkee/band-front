@@ -840,23 +840,77 @@ export default function PostsPage() {
       />
 
       {/* 게시물 상세 모달 (raw 모드용) */}
-      {isPostDetailModalOpen && selectedPostForDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden">
-            {/* 헤더 */}
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">게시물 상세</h2>
-                <button
-                  onClick={handleClosePostDetailModal}
-                  className="text-gray-400 hover:text-gray-500 transition-colors"
-                >
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+      {isPostDetailModalOpen && selectedPostForDetail && (() => {
+        // 모달 내부 상태
+        const [isEditingPickupDate, setIsEditingPickupDate] = React.useState(false);
+        const [editPickupDate, setEditPickupDate] = React.useState('');
+        const [editPickupTime, setEditPickupTime] = React.useState('00:00');
+
+        // 수령일 수정 처리
+        const handleSavePickupDate = async () => {
+          try {
+            const datetime = editPickupTime === '00:00'
+              ? `${editPickupDate}T00:00:00+09:00`
+              : `${editPickupDate}T${editPickupTime}:00+09:00`;
+
+            const { error } = await supabase
+              .from('posts')
+              .update({ pickup_date: datetime })
+              .eq('post_id', selectedPostForDetail.post_id);
+
+            if (error) throw error;
+
+            // 로컬 상태 업데이트
+            selectedPostForDetail.pickup_date = datetime;
+            setIsEditingPickupDate(false);
+
+            // 전체 데이터 새로고침
+            mutate();
+          } catch (error) {
+            console.error('수령일 수정 오류:', error);
+            alert('수령일 수정에 실패했습니다.');
+          }
+        };
+
+        const handleStartEditPickupDate = () => {
+          if (selectedPostForDetail.pickup_date) {
+            const date = new Date(selectedPostForDetail.pickup_date);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+
+            setEditPickupDate(`${year}-${month}-${day}`);
+            setEditPickupTime(`${hours}:${minutes}`);
+          } else {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            setEditPickupDate(`${year}-${month}-${day}`);
+            setEditPickupTime('00:00');
+          }
+          setIsEditingPickupDate(true);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              {/* 헤더 */}
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-900">게시물 상세</h2>
+                  <button
+                    onClick={handleClosePostDetailModal}
+                    className="text-gray-400 hover:text-gray-500 transition-colors"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </div>
 
             {/* 콘텐츠 영역 */}
             <div className="px-6 py-4 overflow-y-auto max-h-[calc(80vh-120px)]">
@@ -916,29 +970,74 @@ export default function PostsPage() {
 
                 {/* 수령일 및 밴드 링크 */}
                 <div className="flex items-center gap-3 flex-wrap">
-                  {selectedPostForDetail.pickup_date && (
-                    <div className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-sm">
-                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      수령일: {(() => {
-                        const date = new Date(selectedPostForDetail.pickup_date);
-                        const month = date.getMonth() + 1;
-                        const day = date.getDate();
-                        const hours = date.getHours();
-                        const minutes = date.getMinutes();
-                        const days = ['일', '월', '화', '수', '목', '금', '토'];
-                        const dayName = days[date.getDay()];
-
-                        if (hours === 0 && minutes === 0) {
-                          return `${month}월 ${day}일(${dayName})`;
-                        } else {
-                          const period = hours < 12 ? '오전' : '오후';
-                          const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-                          return `${month}월 ${day}일(${dayName}) ${period} ${hour12}:${minutes.toString().padStart(2, '0')}`;
-                        }
-                      })()}
+                  {isEditingPickupDate ? (
+                    <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-md">
+                      <input
+                        type="date"
+                        value={editPickupDate}
+                        onChange={(e) => setEditPickupDate(e.target.value)}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                      <input
+                        type="time"
+                        value={editPickupTime}
+                        onChange={(e) => setEditPickupTime(e.target.value)}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                      <button
+                        onClick={handleSavePickupDate}
+                        className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                      >
+                        저장
+                      </button>
+                      <button
+                        onClick={() => setIsEditingPickupDate(false)}
+                        className="px-3 py-1 bg-gray-400 text-white rounded text-sm hover:bg-gray-500"
+                      >
+                        취소
+                      </button>
                     </div>
+                  ) : (
+                    selectedPostForDetail.pickup_date ? (
+                      <button
+                        onClick={handleStartEditPickupDate}
+                        className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-sm hover:bg-blue-100 transition-colors"
+                      >
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        수령일: {(() => {
+                          const date = new Date(selectedPostForDetail.pickup_date);
+                          const month = date.getMonth() + 1;
+                          const day = date.getDate();
+                          const hours = date.getHours();
+                          const minutes = date.getMinutes();
+                          const days = ['일', '월', '화', '수', '목', '금', '토'];
+                          const dayName = days[date.getDay()];
+
+                          if (hours === 0 && minutes === 0) {
+                            return `${month}월 ${day}일(${dayName})`;
+                          } else {
+                            const period = hours < 12 ? '오전' : '오후';
+                            const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                            return `${month}월 ${day}일(${dayName}) ${period} ${hour12}:${minutes.toString().padStart(2, '0')}`;
+                          }
+                        })()}
+                        <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleStartEditPickupDate}
+                        className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-sm hover:bg-gray-200 transition-colors"
+                      >
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        수령일 추가
+                      </button>
+                    )
                   )}
 
                   {selectedPostForDetail.band_post_url && (
@@ -1085,7 +1184,8 @@ export default function PostsPage() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 토스트 알림 컨테이너 */}
       <ToastContainer toasts={toasts} hideToast={hideToast} />
