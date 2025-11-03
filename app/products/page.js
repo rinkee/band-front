@@ -1068,12 +1068,12 @@ export default function ProductsPage() {
     router.push(`/orders?search=${encodeURIComponent(productTitle)}`);
   };
 
-  // 게시물 주문보기 핸들러 (post_key로 검색)
+  // 게시물 주문보기 핸들러 (post_key로 직접 이동 - posts 페이지와 동일한 방식)
   const handleViewPostOrders = (postKey) => {
     if (!postKey) return;
 
-    // 주문 관리 페이지로 이동하면서 post_key로 검색
-    router.push(`/orders?search=${encodeURIComponent(postKey)}`);
+    // 주문 관리 페이지로 이동: postKey를 직접 전달 (posts 페이지와 동일)
+    router.push(`/orders?postKey=${encodeURIComponent(postKey)}`);
   };
 
   // --- 핸들러 함수들 ---
@@ -2409,31 +2409,60 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
-                          {/* 상품 주문보기 버튼 */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewProductOrders(product.title);
-                            }}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
-                            title="상품명으로 주문 검색"
-                          >
-                            상품주문
-                          </button>
+                          {/* raw 모드 확인 */}
+                          {(() => {
+                            const sessionData = sessionStorage.getItem('userData');
+                            const userData = sessionData ? JSON.parse(sessionData) : {};
+                            const isRawMode = userData.orderProcessingMode === 'raw';
 
-                          {/* 게시물 주문보기 버튼 */}
-                          {product.post_key && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewPostOrders(product.post_key);
-                              }}
-                              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
-                              title="게시물로 주문 검색"
-                            >
-                              게시물주문
-                            </button>
-                          )}
+                            if (isRawMode) {
+                              // raw 모드: 상품 주문 버튼만 표시하고 post_key로 이동
+                              return product.post_key ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewPostOrders(product.post_key);
+                                  }}
+                                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                  title="주문 페이지로 이동"
+                                >
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                  </svg>
+                                  상품주문
+                                </button>
+                              ) : null;
+                            } else {
+                              // legacy 모드: 기존 버튼들 표시
+                              return (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewProductOrders(product.title);
+                                    }}
+                                    className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
+                                    title="상품명으로 주문 검색"
+                                  >
+                                    상품주문
+                                  </button>
+
+                                  {product.post_key && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleViewPostOrders(product.post_key);
+                                      }}
+                                      className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
+                                      title="게시물로 주문 검색"
+                                    >
+                                      게시물주문
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            }
+                          })()}
                         </div>
                       </td>
                     </tr>
