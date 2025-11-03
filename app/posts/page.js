@@ -908,6 +908,48 @@ export default function PostsPage() {
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">
                   {selectedPostForDetail.title?.replace(/\[[^\]]+\]\s*/, '').trim() || '제목 없음'}
                 </h3>
+
+                {/* 수령일 및 밴드 링크 */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {selectedPostForDetail.pickup_date && (
+                    <div className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-sm">
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      수령일: {(() => {
+                        const date = new Date(selectedPostForDetail.pickup_date);
+                        const month = date.getMonth() + 1;
+                        const day = date.getDate();
+                        const hours = date.getHours();
+                        const minutes = date.getMinutes();
+                        const days = ['일', '월', '화', '수', '목', '금', '토'];
+                        const dayName = days[date.getDay()];
+
+                        if (hours === 0 && minutes === 0) {
+                          return `${month}월 ${day}일(${dayName})`;
+                        } else {
+                          const period = hours < 12 ? '오전' : '오후';
+                          const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                          return `${month}월 ${day}일(${dayName}) ${period} ${hour12}:${minutes.toString().padStart(2, '0')}`;
+                        }
+                      })()}
+                    </div>
+                  )}
+
+                  {selectedPostForDetail.band_post_url && (
+                    <a
+                      href={selectedPostForDetail.band_post_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-md text-sm transition-colors"
+                    >
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      밴드에서 보기
+                    </a>
+                  )}
+                </div>
               </div>
 
               {/* 내용 */}
@@ -937,30 +979,61 @@ export default function PostsPage() {
                 </div>
               )}
 
-              {/* 상태 정보 */}
-              <div className="border-t pt-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">상태 정보</h4>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="flex items-center">
-                    <span className="text-gray-500 mr-2">상품 게시물:</span>
-                    <span className={`font-medium ${selectedPostForDetail.is_product ? 'text-green-600' : 'text-gray-600'}`}>
-                      {selectedPostForDetail.is_product ? '예' : '아니오'}
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-gray-500 mr-2">댓글 동기화:</span>
-                    <span className={`font-medium ${
-                      selectedPostForDetail.comment_sync_status === 'success' ? 'text-green-600' :
-                      selectedPostForDetail.comment_sync_status === 'pending' ? 'text-amber-600' :
-                      'text-gray-600'
-                    }`}>
-                      {selectedPostForDetail.comment_sync_status === 'success' ? '완료' :
-                       selectedPostForDetail.comment_sync_status === 'pending' ? '대기중' :
-                       selectedPostForDetail.comment_sync_status || '미처리'}
-                    </span>
-                  </div>
+              {/* 연결된 상품 정보 */}
+              {selectedPostForDetail.products_data && (
+                <div className="border-t pt-4">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">연결된 상품</h4>
+                  {(() => {
+                    const products = Array.isArray(selectedPostForDetail.products_data)
+                      ? selectedPostForDetail.products_data
+                      : (selectedPostForDetail.products_data?.products || []);
+
+                    if (products.length === 0) {
+                      return <p className="text-gray-500 text-sm">연결된 상품이 없습니다.</p>;
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {products.map((product, index) => (
+                          <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h5 className="font-medium text-gray-900 mb-1">
+                                  {product.title || product.product_name || `상품 ${index + 1}`}
+                                </h5>
+                                <div className="flex items-center gap-4 text-sm text-gray-600">
+                                  {product.base_price && (
+                                    <span>가격: {product.base_price.toLocaleString()}원</span>
+                                  )}
+                                  {product.barcode && (
+                                    <span>바코드: {product.barcode}</span>
+                                  )}
+                                  {product.stock_quantity !== undefined && (
+                                    <span>재고: {product.stock_quantity}개</span>
+                                  )}
+                                </div>
+                              </div>
+                              {product.image_url && (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.title || '상품 이미지'}
+                                  className="w-16 h-16 object-cover rounded-md ml-4"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              )}
+                            </div>
+                            {product.description && (
+                              <p className="text-sm text-gray-500 mt-2">{product.description}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
-              </div>
+              )}
             </div>
 
             {/* 하단 액션 버튼 */}
