@@ -1,11 +1,19 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const PostDetailModal = ({ isOpen, onClose, post, onDelete }) => {
+  console.log('PostDetailModal component rendered!');
   console.log('PostDetailModal - isOpen:', isOpen, 'post:', post);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    console.log('PostDetailModal useEffect - isOpen:', isOpen, 'post:', post);
+  }, [isOpen, post]);
+
+  if (!isOpen) {
+    console.log('PostDetailModal - returning null because isOpen is false');
+    return null;
+  }
 
   if (!post) {
     console.log('PostDetailModal - No post data!');
