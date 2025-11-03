@@ -835,18 +835,132 @@ export default function PostsPage() {
       />
 
       {/* 게시물 상세 모달 (raw 모드용) */}
-      {console.log('Rendering PostDetailModal with:', {
-        isOpen: isPostDetailModalOpen,
-        post: selectedPostForDetail,
-        PostDetailModal: PostDetailModal
-      })}
       {isPostDetailModalOpen && selectedPostForDetail && (
-        <PostDetailModal
-          isOpen={isPostDetailModalOpen}
-          onClose={handleClosePostDetailModal}
-          post={selectedPostForDetail}
-          onDelete={handleDeletePost}
-        />
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            {/* 헤더 */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">게시물 상세</h2>
+                <button
+                  onClick={handleClosePostDetailModal}
+                  className="text-gray-400 hover:text-gray-500 transition-colors"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* 콘텐츠 영역 */}
+            <div className="px-6 py-4 overflow-y-auto max-h-[calc(80vh-120px)]">
+              {/* 작성자 정보 */}
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
+                  <div className="w-full h-full bg-blue-500 flex items-center justify-center">
+                    <span className="text-white font-medium text-sm">
+                      {selectedPostForDetail.author_name ? selectedPostForDetail.author_name.charAt(0) : '익'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{selectedPostForDetail.author_name || '익명'}</div>
+                  <div className="text-sm text-gray-500">
+                    작성일: {new Date(selectedPostForDetail.posted_at).toLocaleString('ko-KR')}
+                  </div>
+                </div>
+              </div>
+
+              {/* 제목 */}
+              <div className="mb-4">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  {selectedPostForDetail.title?.replace(/\[[^\]]+\]\s*/, '').trim() || '제목 없음'}
+                </h3>
+              </div>
+
+              {/* 내용 */}
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <div className="text-gray-700 whitespace-pre-wrap break-words">
+                  {selectedPostForDetail.content || '내용이 없습니다.'}
+                </div>
+              </div>
+
+              {/* 이미지 */}
+              {selectedPostForDetail.image_urls && selectedPostForDetail.image_urls.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">첨부 이미지</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(Array.isArray(selectedPostForDetail.image_urls) ? selectedPostForDetail.image_urls : JSON.parse(selectedPostForDetail.image_urls || '[]')).slice(0, 4).map((url, index) => (
+                      <img
+                        key={index}
+                        src={url}
+                        alt={`이미지 ${index + 1}`}
+                        className="w-full h-40 object-cover rounded-lg border border-gray-200"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 상태 정보 */}
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">상태 정보</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center">
+                    <span className="text-gray-500 mr-2">상품 게시물:</span>
+                    <span className={`font-medium ${selectedPostForDetail.is_product ? 'text-green-600' : 'text-gray-600'}`}>
+                      {selectedPostForDetail.is_product ? '예' : '아니오'}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-gray-500 mr-2">댓글 동기화:</span>
+                    <span className={`font-medium ${
+                      selectedPostForDetail.comment_sync_status === 'success' ? 'text-green-600' :
+                      selectedPostForDetail.comment_sync_status === 'pending' ? 'text-amber-600' :
+                      'text-gray-600'
+                    }`}>
+                      {selectedPostForDetail.comment_sync_status === 'success' ? '완료' :
+                       selectedPostForDetail.comment_sync_status === 'pending' ? '대기중' :
+                       selectedPostForDetail.comment_sync_status || '미처리'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 하단 액션 버튼 */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex justify-between">
+                <button
+                  onClick={() => {
+                    if (confirm(`"${selectedPostForDetail.title || '제목 없음'}" 게시물을 삭제하시겠습니까?\n\n⚠️ 연관된 모든 상품과 주문 데이터가 함께 삭제됩니다.\n삭제된 데이터는 복구할 수 없습니다.`)) {
+                      handleDeletePost(selectedPostForDetail);
+                      handleClosePostDetailModal();
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                >
+                  <span className="flex items-center">
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    게시물 삭제
+                  </span>
+                </button>
+                <button
+                  onClick={handleClosePostDetailModal}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 토스트 알림 컨테이너 */}
