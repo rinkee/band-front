@@ -3,7 +3,21 @@
 import React from 'react';
 
 const PostDetailModal = ({ isOpen, onClose, post, onDelete }) => {
-  if (!isOpen || !post) return null;
+  console.log('PostDetailModal - isOpen:', isOpen, 'post:', post);
+
+  if (!isOpen) return null;
+
+  if (!post) {
+    console.log('PostDetailModal - No post data!');
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6">
+          <p>게시물 데이터가 없습니다.</p>
+          <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-200 rounded">닫기</button>
+        </div>
+      </div>
+    );
+  }
 
   // 날짜 포맷 함수
   const formatDate = (dateString) => {

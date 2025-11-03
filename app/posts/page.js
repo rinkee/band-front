@@ -425,6 +425,8 @@ export default function PostsPage() {
 
   // 상품 관리 모달 열기 함수
   const handleOpenProductManagementModal = (post) => {
+    console.log('handleOpenProductManagementModal called with post:', post);
+
     // raw 모드 확인 - 세션 데이터의 orderProcessingMode 확인
     const isRawMode = (() => {
       if (typeof window === 'undefined') return false;
@@ -433,6 +435,7 @@ export default function PostsPage() {
 
       try {
         const userData = JSON.parse(sessionData);
+        console.log('orderProcessingMode:', userData.orderProcessingMode);
         return userData.orderProcessingMode === 'raw';
       } catch (e) {
         console.error('세션 데이터 파싱 오류:', e);
@@ -440,12 +443,16 @@ export default function PostsPage() {
       }
     })();
 
+    console.log('isRawMode:', isRawMode);
+
     if (isRawMode) {
       // raw 모드일 때는 게시물 상세 모달 열기
+      console.log('Setting post for detail modal:', post);
       setSelectedPostForDetail(post);
       setIsPostDetailModalOpen(true);
     } else {
       // legacy 모드일 때는 상품 관리 모달 열기
+      console.log('Setting post for product management modal:', post);
       setSelectedPostForProductManagement(post);
       setIsProductManagementModalOpen(true);
     }
