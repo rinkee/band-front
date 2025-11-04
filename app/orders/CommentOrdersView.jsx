@@ -146,6 +146,9 @@ export default function CommentOrdersView() {
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
+  // 정렬 관련 state
+  const [sortBy, setSortBy] = useState(null); // 'pickup_date' or 'comment_created_at'
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
   const [selected, setSelected] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [manualBarcode, setManualBarcode] = useState("");
@@ -1055,6 +1058,18 @@ export default function CommentOrdersView() {
     return "-";
   };
 
+  // 정렬 토글 함수
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // 같은 컬럼을 다시 클릭하면 정렬 순서 토글
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // 다른 컬럼을 클릭하면 해당 컬럼으로 오름차순 정렬
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+
   // 상품 후보 목록에 특정 product_id가 포함되는지 검사
   const hasProductInCandidates = (row, productId) => {
     if (!productId) return true;
@@ -1075,9 +1090,64 @@ export default function CommentOrdersView() {
   };
 
   const visibleItems = React.useMemo(() => {
-    if (!activeProductId) return items;
-    return items.filter((row) => hasProductInCandidates(row, activeProductId));
-  }, [items, activeProductId, postProductsByPostKey, postProductsByBandPost, lazyProductsByCommentId]);
+    let filteredItems = items;
+
+    // 필터링: activeProductId가 있으면 해당 상품을 포함한 주문만 표시
+    if (activeProductId) {
+      filteredItems = items.filter((row) => hasProductInCandidates(row, activeProductId));
+    }
+
+    // 정렬: sortBy가 설정되어 있으면 정렬 적용
+    if (sortBy) {
+      const sorted = [...filteredItems].sort((a, b) => {
+        let valueA, valueB;
+
+        if (sortBy === 'pickup_date') {
+          // 수령일시로 정렬
+          valueA = getPickupDateForRow(a);
+          valueB = getPickupDateForRow(b);
+
+          // null 값은 뒤로 보내기
+          if (!valueA && !valueB) return 0;
+          if (!valueA) return 1;
+          if (!valueB) return -1;
+
+          // Date 객체로 변환하여 비교
+          const dateA = new Date(valueA);
+          const dateB = new Date(valueB);
+
+          if (sortOrder === 'asc') {
+            return dateA - dateB;
+          } else {
+            return dateB - dateA;
+          }
+        } else if (sortBy === 'comment_created_at') {
+          // 주문일시로 정렬
+          valueA = a.comment_created_at;
+          valueB = b.comment_created_at;
+
+          if (!valueA && !valueB) return 0;
+          if (!valueA) return 1;
+          if (!valueB) return -1;
+
+          const dateA = new Date(valueA);
+          const dateB = new Date(valueB);
+
+          if (sortOrder === 'asc') {
+            return dateA - dateB;
+          } else {
+            return dateB - dateA;
+          }
+        }
+
+        return 0;
+      });
+
+      return sorted;
+    }
+
+    return filteredItems;
+  }, [items, activeProductId, sortBy, sortOrder, postProductsByPostKey, postProductsByBandPost, lazyProductsByCommentId]);
 
   // 전체선택 보조 상태
   const allVisibleIds = React.useMemo(() => visibleItems.map((r) => r.comment_order_id), [visibleItems]);
@@ -1365,8 +1435,32 @@ export default function CommentOrdersView() {
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">상품</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">수령일시</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">주문일시</th>
+                  <th
+                    className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => handleSort('pickup_date')}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>수령일시</span>
+                      {sortBy === 'pickup_date' && (
+                        <span className="text-orange-600">
+                          {sortOrder === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => handleSort('comment_created_at')}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>주문일시</span>
+                      {sortBy === 'comment_created_at' && (
+                        <span className="text-orange-600">
+                          {sortOrder === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
