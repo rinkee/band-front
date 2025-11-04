@@ -1100,12 +1100,12 @@ export default function CommentOrdersView() {
     // 정렬: sortBy가 설정되어 있으면 정렬 적용
     if (sortBy) {
       const sorted = [...filteredItems].sort((a, b) => {
-        let valueA, valueB;
+        let dateA, dateB;
 
         if (sortBy === 'pickup_date') {
           // 수령일시로 정렬
-          valueA = getPickupDateForRow(a);
-          valueB = getPickupDateForRow(b);
+          const valueA = getPickupDateForRow(a);
+          const valueB = getPickupDateForRow(b);
 
           // null 값은 뒤로 보내기
           if (!valueA && !valueB) return 0;
@@ -1113,34 +1113,27 @@ export default function CommentOrdersView() {
           if (!valueB) return -1;
 
           // Date 객체로 변환하여 비교
-          const dateA = new Date(valueA);
-          const dateB = new Date(valueB);
-
-          if (sortOrder === 'asc') {
-            return dateA - dateB;
-          } else {
-            return dateB - dateA;
-          }
+          dateA = new Date(valueA);
+          dateB = new Date(valueB);
         } else if (sortBy === 'comment_created_at') {
-          // 주문일시로 정렬
-          valueA = a.comment_created_at;
-          valueB = b.comment_created_at;
+          // 주문일시로 정렬 - 원본 날짜 값 직접 비교
+          const valueA = a.comment_created_at;
+          const valueB = b.comment_created_at;
 
+          // null 값은 뒤로 보내기
           if (!valueA && !valueB) return 0;
           if (!valueA) return 1;
           if (!valueB) return -1;
 
-          const dateA = new Date(valueA);
-          const dateB = new Date(valueB);
-
-          if (sortOrder === 'asc') {
-            return dateA - dateB;
-          } else {
-            return dateB - dateA;
-          }
+          dateA = new Date(valueA);
+          dateB = new Date(valueB);
+        } else {
+          return 0;
         }
 
-        return 0;
+        // 날짜 비교
+        const comparison = dateA.getTime() - dateB.getTime();
+        return sortOrder === 'asc' ? comparison : -comparison;
       });
 
       return sorted;
