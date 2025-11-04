@@ -146,9 +146,9 @@ export default function CommentOrdersView() {
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
-  // 정렬 관련 state
-  const [sortBy, setSortBy] = useState(null); // 'pickup_date' or 'comment_created_at'
-  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
+  // 정렬 관련 state (기본: 주문일시 내림차순 - 최신 주문이 위로)
+  const [sortBy, setSortBy] = useState('comment_created_at'); // 'pickup_date' or 'comment_created_at'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
   const [selected, setSelected] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [manualBarcode, setManualBarcode] = useState("");
@@ -1441,11 +1441,9 @@ export default function CommentOrdersView() {
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>수령일시</span>
-                      {sortBy === 'pickup_date' && (
-                        <span className="text-orange-600">
-                          {sortOrder === 'asc' ? '↑' : '↓'}
-                        </span>
-                      )}
+                      <span className={sortBy === 'pickup_date' ? "text-orange-600" : "text-gray-400"}>
+                        {sortBy === 'pickup_date' ? (sortOrder === 'asc' ? '↑' : '↓') : '↕'}
+                      </span>
                     </div>
                   </th>
                   <th
