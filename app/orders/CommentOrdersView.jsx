@@ -1282,7 +1282,7 @@ export default function CommentOrdersView() {
                 </div>
                 <button
                   onClick={handleSearch}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-gray-800 text-white hover:bg-gray-900"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-black text-white hover:bg-gray-900"
                 >
                   <MagnifyingGlassIcon className="w-4 h-4" />
                   <span className="hidden sm:inline">검색</span>

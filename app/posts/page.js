@@ -702,7 +702,7 @@ export default function PostsPage() {
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center px-4 py-2.5 border border-transparent text-base font-medium rounded-md   text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="inline-flex items-center px-4 py-2.5 border border-transparent text-base font-medium rounded-md   text-white bg-black hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600"
               >
                 검색
               </button>
