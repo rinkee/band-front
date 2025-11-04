@@ -291,11 +291,16 @@ export default function CommentOrdersView() {
   const paramBandNumber = searchParams?.get('bandNumber') || undefined;
 
   const noPagination = !!activeCustomer || !!activeProductId || !!paramPostKey || !!paramPostNumber;
+
+  // '미수령' 필터 선택 시, 서버에서는 '주문완료'와 '미수령' 모두 가져오기
+  // 클라이언트에서 수령일 기준으로 추가 필터링
+  const serverStatusFilter = statusSelection === '미수령' ? 'all' : statusSelection;
+
   const { data, error, isLoading, mutate } = useCommentOrdersClient(
     userData?.userId,
     page,
     {
-      status: statusSelection,
+      status: serverStatusFilter,
       search: searchTerm || undefined,
       limit: noPagination ? 10000 : 50,
       startDate: dateFilterParams.startDate,
