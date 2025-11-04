@@ -26,6 +26,8 @@ import {
 import JsBarcode from "jsbarcode";
 // 추천 매칭기 (@client-matcher)
 import { analyzeCommentMulti } from "../client-matcher";
+// 날짜 유틸리티
+import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils";
 
 const processBandTags = (text) => {
   if (!text) return text;
@@ -962,6 +964,99 @@ export default function CommentOrdersView() {
     return candidate?.pickup_date || null;
   };
 
+  // 수령일을 상대 시간과 절대 시간 두 줄로 표시
+  const formatPickupRelativeDateTime = (value) => {
+    if (!value) return "-";
+
+    try {
+      // 1. 기존 절대 시간 포맷 (두 번째 줄에 표시)
+      let absoluteTime = null;
+      let dateOnly = null;
+      let timeOnly = null;
+
+      // ISO / Date 객체 처리 (시간 표시)
+      let dt = null;
+      if (value instanceof Date) {
+        dt = value;
+      } else if (typeof value === 'string' && value.includes('T')) {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) dt = d;
+      }
+
+      if (dt) {
+        const kst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+        const month = kst.getUTCMonth() + 1;
+        const day = kst.getUTCDate();
+        let hours = kst.getUTCHours();
+        const minutes = String(kst.getUTCMinutes()).padStart(2, '0');
+        const ampm = hours < 12 ? '오전' : '오후';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        dateOnly = `${month}월${day}일`;
+        timeOnly = `${ampm} ${hours}:${minutes}`;
+      } else if (typeof value === 'string' && /\d{4}-\d{1,2}-\d{1,2}/.test(value)) {
+        // YYYY-MM-DD 형식
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) {
+          const month = d.getMonth() + 1;
+          const day = d.getDate();
+          dateOnly = `${month}월${day}일`;
+          timeOnly = "—";
+        }
+      } else if (typeof value === 'string') {
+        // 'M월D일' 패턴
+        const m = value.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (m) {
+          const month = parseInt(m[1], 10);
+          const day = parseInt(m[2], 10);
+          dateOnly = `${month}월${day}일`;
+          timeOnly = "—";
+        }
+      }
+
+      // 2. 상대 시간 계산
+      const { days, isPast, relativeText } = calculateDaysUntilPickup(value);
+
+      // 3. 색상 결정
+      let textColorClass = "text-gray-700"; // 기본값
+      if (isPast) {
+        textColorClass = "text-red-500"; // 지난 날짜 - 빨간색
+      } else if (days === 0) {
+        textColorClass = "text-green-600 font-semibold"; // 오늘 - 초록색
+      } else if (days === 1) {
+        textColorClass = "text-orange-600 font-semibold"; // 내일
+      } else if (days <= 3) {
+        textColorClass = "text-blue-600"; // 2-3일 이내
+      }
+
+      // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
+      if (relativeText && dateOnly) {
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span className={textColorClass}>{relativeText}</span>
+            <span className="text-xs text-gray-600">
+              {dateOnly} {timeOnly !== "—" && timeOnly}
+            </span>
+          </span>
+        );
+      }
+
+      // 폴백: 기존 형식 사용
+      if (dateOnly) {
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span>{dateOnly}</span>
+            <span>{timeOnly}</span>
+          </span>
+        );
+      }
+    } catch (err) {
+      console.error("[formatPickupRelativeDateTime] Error:", err);
+    }
+
+    return "-";
+  };
+
   // 상품 후보 목록에 특정 product_id가 포함되는지 검사
   const hasProductInCandidates = (row, productId) => {
     if (!productId) return true;
@@ -1089,9 +1184,9 @@ export default function CommentOrdersView() {
                   </>
                 )}
                 <span className="hidden sm:inline">|</span>
-                <span className="font-semibold text-purple-700 inline-flex items-center gap-1">
+                {/* <span className="font-semibold text-purple-700 inline-flex items-center gap-1">
                   <ChatBubbleLeftRightIcon className="w-4 h-4" /> 원시댓글
-                </span>
+                </span> */}
               </div>
             </div>
             <UpdateButton pageType="orders" />
@@ -1488,7 +1583,7 @@ export default function CommentOrdersView() {
                                           {itemNo}번
                                         </span>
                                       )}
-                                      <span className="font-semibold text-base truncate text-gray-600">{p.title}</span>
+                                      <span className=" text-base truncate text-gray-800">{p.title}</span>
                                       {typeof p.base_price !== "undefined" && p.base_price !== null && (
                                         <span className="text-gray-600 text-base"> {Number(p.base_price).toLocaleString()}</span>
                                       )}
@@ -1520,7 +1615,7 @@ export default function CommentOrdersView() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupKoreanDateTime(getPickupDateForRow(row))}</td>
+                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
                     <td className="px-4 py-3 text-center text-[14px] text-gray-700">
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>

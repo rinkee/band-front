@@ -372,3 +372,97 @@ export function extractPickupDate(text, postTime = null) {
     original: originalText,
   };
 }
+
+/**
+ * 함수명: calculateDaysUntilPickup
+ * 목적: 수령일까지 남은 일수 계산 (한국 시간 기준)
+ * 사용처: CommentOrdersView의 상대 시간 표시
+ * 의존성: 없음
+ * 파라미터: pickupDate - 수령 날짜 (Date 객체, ISO 문자열, 또는 타임스탬프)
+ * 리턴값: {days: 일수, isPast: 지난 날짜 여부, relativeText: 상대 시간 텍스트}
+ */
+export function calculateDaysUntilPickup(pickupDate) {
+  if (!pickupDate) {
+    return { days: null, isPast: false, relativeText: "—" };
+  }
+
+  try {
+    // pickupDate를 Date 객체로 변환
+    let targetDate;
+    if (pickupDate instanceof Date) {
+      targetDate = pickupDate;
+    } else if (typeof pickupDate === "string") {
+      targetDate = new Date(pickupDate);
+    } else if (typeof pickupDate === "number") {
+      targetDate = new Date(pickupDate);
+    } else {
+      return { days: null, isPast: false, relativeText: "—" };
+    }
+
+    // 유효한 날짜인지 확인
+    if (isNaN(targetDate.getTime())) {
+      return { days: null, isPast: false, relativeText: "—" };
+    }
+
+    // 현재 시간 (한국 시간 기준)
+    const now = new Date();
+
+    // 날짜만 비교하기 위해 시간 정보 제거
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const targetDateStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+
+    // 일수 차이 계산
+    const diffTime = targetDateStart - todayStart;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    // 과거 여부
+    const isPast = diffDays < 0;
+
+    // 상대 시간 텍스트 생성
+    const relativeText = getRelativeTimeText(diffDays, isPast);
+
+    return {
+      days: Math.abs(diffDays),
+      isPast: isPast,
+      relativeText: relativeText
+    };
+  } catch (error) {
+    console.error("[calculateDaysUntilPickup] Error:", error);
+    return { days: null, isPast: false, relativeText: "—" };
+  }
+}
+
+/**
+ * 함수명: getRelativeTimeText
+ * 목적: 일수 차이를 상대적인 시간 텍스트로 변환
+ * 사용처: calculateDaysUntilPickup
+ * 의존성: 없음
+ * 파라미터:
+ *   - days: 일수 차이 (절대값)
+ *   - isPast: 과거 날짜 여부
+ * 리턴값: 상대 시간 텍스트 문자열
+ */
+export function getRelativeTimeText(days, isPast) {
+  const absDays = Math.abs(days);
+
+  if (absDays === 0) {
+    return "오늘";
+  } else if (absDays === 1) {
+    return isPast ? "어제" : "내일";
+  } else if (absDays === 2) {
+    return isPast ? "그저께" : "모레";
+  } else if (absDays <= 7) {
+    return isPast ? `${absDays}일 전` : `${absDays}일 후`;
+  } else if (absDays <= 14) {
+    const weeks = Math.round(absDays / 7);
+    return isPast ? `${weeks}주 전` : `${weeks}주 후`;
+  } else if (absDays <= 30) {
+    return isPast ? `${absDays}일 전` : `${absDays}일 후`;
+  } else if (absDays <= 365) {
+    const months = Math.round(absDays / 30);
+    return isPast ? `${months}개월 전` : `${months}개월 후`;
+  } else {
+    const years = Math.round(absDays / 365);
+    return isPast ? `${years}년 전` : `${years}년 후`;
+  }
+}
