@@ -1092,9 +1092,25 @@ export default function CommentOrdersView() {
   const visibleItems = React.useMemo(() => {
     let filteredItems = items;
 
+    // '미수령' 필터가 선택된 경우, 수령일이 지난 '주문완료' 주문만 표시
+    if (statusSelection === '미수령') {
+      filteredItems = items.filter((row) => {
+        // 주문완료 상태이고 수령일이 지난 경우만 포함
+        if (row.order_status === '주문완료') {
+          const pickupDate = getPickupDateForRow(row);
+          if (pickupDate) {
+            const { isPast } = calculateDaysUntilPickup(pickupDate);
+            return isPast;
+          }
+        }
+        // DB에 실제로 '미수령' 상태로 저장된 주문도 포함
+        return row.order_status === '미수령';
+      });
+    }
+
     // 필터링: activeProductId가 있으면 해당 상품을 포함한 주문만 표시
     if (activeProductId) {
-      filteredItems = items.filter((row) => hasProductInCandidates(row, activeProductId));
+      filteredItems = filteredItems.filter((row) => hasProductInCandidates(row, activeProductId));
     }
 
     // 정렬: sortBy가 설정되어 있으면 정렬 적용
@@ -1140,7 +1156,7 @@ export default function CommentOrdersView() {
     }
 
     return filteredItems;
-  }, [items, activeProductId, sortBy, sortOrder, postProductsByPostKey, postProductsByBandPost, lazyProductsByCommentId]);
+  }, [items, activeProductId, sortBy, sortOrder, statusSelection, postProductsByPostKey, postProductsByBandPost, lazyProductsByCommentId]);
 
   // 전체선택 보조 상태
   const allVisibleIds = React.useMemo(() => visibleItems.map((r) => r.comment_order_id), [visibleItems]);
