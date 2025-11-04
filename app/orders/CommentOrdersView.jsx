@@ -1408,8 +1408,8 @@ export default function CommentOrdersView() {
                 <col style={{ width: '8%' }} />
                 <col style={{ width: '7%' }} />
                 <col style={{ width: '25%' }} />
-                <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
+                <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
               <thead className="bg-gray-50">
@@ -1427,7 +1427,6 @@ export default function CommentOrdersView() {
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">고객명</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">상품</th>
                   <th
                     className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
                     onClick={() => handleSort('pickup_date')}
@@ -1439,6 +1438,7 @@ export default function CommentOrdersView() {
                       </span>
                     </div>
                   </th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">상품</th>
                   <th
                     className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
                     onClick={() => handleSort('comment_created_at')}
@@ -1524,6 +1524,7 @@ export default function CommentOrdersView() {
                       <div className="whitespace-pre-wrap break-all">{processBandTags(row.comment_body || "")}</div>
                       {(() => { return null; })()}
                     </td>
+                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
                     <td className="px-4 py-3 text-sm text-gray-700 align-top">
                       {(() => {
                         const list = getCandidateProductsForRow(row);
@@ -1713,7 +1714,6 @@ export default function CommentOrdersView() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
                     <td className="px-4 py-3 text-center text-[14px] text-gray-700">
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>
