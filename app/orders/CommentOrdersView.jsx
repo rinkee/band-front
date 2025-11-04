@@ -1025,8 +1025,6 @@ export default function CommentOrdersView() {
         textColorClass = "text-green-600 font-semibold"; // 오늘 - 초록색
       } else if (days === 1) {
         textColorClass = "text-orange-600 font-semibold"; // 내일
-      } else if (days <= 3) {
-        textColorClass = "text-blue-600"; // 2-3일 이내
       }
 
       // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
