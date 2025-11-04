@@ -1503,7 +1503,22 @@ export default function CommentOrdersView() {
                     </td>
                     {/* 상태 열 - 댓글 왼쪽으로 이동 */}
                     <td className="px-4 py-3 text-center">
-                      <StatusBadge status={row.order_status} />
+                      {(() => {
+                        let displayStatus = row.order_status;
+
+                        // 주문완료 상태이고 수령일이 지난 경우 '미수령'으로 표시
+                        if (row.order_status === "주문완료") {
+                          const pickupDate = getPickupDateForRow(row);
+                          if (pickupDate) {
+                            const { isPast } = calculateDaysUntilPickup(pickupDate);
+                            if (isPast) {
+                              displayStatus = "미수령";
+                            }
+                          }
+                        }
+
+                        return <StatusBadge status={displayStatus} />;
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-md text-gray-700">
                       <div className="whitespace-pre-wrap break-all">{processBandTags(row.comment_body || "")}</div>
