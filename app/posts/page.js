@@ -432,7 +432,7 @@ export default function PostsPage() {
   const handleOpenProductManagementModal = (post) => {
     console.log('handleOpenProductManagementModal called with post:', post);
 
-    // raw 모드 확인 - 세션 데이터의 orderProcessingMode 확인
+    // raw 모드 확인 - 세션 데이터의 order_processing_mode / orderProcessingMode 확인
     const isRawMode = (() => {
       if (typeof window === 'undefined') return false;
       const sessionData = sessionStorage.getItem('userData');
@@ -440,8 +440,9 @@ export default function PostsPage() {
 
       try {
         const userData = JSON.parse(sessionData);
-        console.log('orderProcessingMode:', userData.orderProcessingMode);
-        return userData.orderProcessingMode === 'raw';
+        const mode = (userData.orderProcessingMode ?? userData.order_processing_mode ?? 'legacy');
+        console.log('order processing mode:', mode);
+        return mode === 'raw';
       } catch (e) {
         console.error('세션 데이터 파싱 오류:', e);
         return false;
@@ -624,6 +625,17 @@ export default function PostsPage() {
       totalCompletedPosts: 0,
     },
   } = postsData;
+
+  // 바코드 모달에서 "상품 추가"를 눌렀을 때, 해당 게시물에 대한 상품 관리 모달을 열어주는 핸들러
+  const openProductManagementForSelected = () => {
+    try {
+      if (!selectedPostId) return;
+      const target = posts?.find((p) => p.post_id === selectedPostId);
+      if (!target) return;
+      setSelectedPostForProductManagement(target);
+      setIsProductManagementModalOpen(true);
+    } catch (_) {}
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -814,6 +826,7 @@ export default function PostsPage() {
         postId={selectedPostId}
         userId={userData?.userId}
         onProductUpdate={handleProductUpdate}
+        onOpenProductManagement={openProductManagementForSelected}
       />
 
       {/* 댓글 모달 */}

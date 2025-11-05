@@ -753,6 +753,7 @@ export default function ProductBarcodeModal({
   postId,
   userId,
   onProductUpdate,
+  onOpenProductManagement, // optional: open product management when no products
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1096,9 +1097,26 @@ export default function ProductBarcodeModal({
                     })}
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                  <p>이 게시물에는 상품이 없습니다.</p>
+                <div className="text-center py-10 text-gray-600">
+                  <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p className="mb-3">이 게시물에는 상품이 없습니다.</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => {
+                        // Close this modal and open legacy product management to add first product
+                        if (typeof onOpenProductManagement === 'function') {
+                          try {
+                            onClose && onClose();
+                          } finally {
+                            onOpenProductManagement();
+                          }
+                        }
+                      }}
+                      className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      상품 추가하기
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
