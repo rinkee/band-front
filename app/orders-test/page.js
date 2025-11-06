@@ -834,8 +834,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
     swrOptions
   );
 
-  // 클라이언트 사이드 mutation 함수들 (comment_orders)
-  const { updateCommentOrder } = useCommentOrderClientMutations();
+  // 클라이언트 사이드 mutation 함수들 (모드에 따라 다름)
+  const rawMutations = useCommentOrderClientMutations();
+  const legacyMutations = useOrderClientMutations();
+
+  // 모드에 상관없이 사용할 수 있는 통합 update 함수
+  const updateCommentOrder = async (orderId, updateData, userId) => {
+    if (mode === "raw") {
+      return await rawMutations.updateCommentOrder(orderId, updateData, userId);
+    } else {
+      return await legacyMutations.updateOrder(orderId, updateData, userId);
+    }
+  };
 
   const isDataLoading =
     isUserLoading || isOrdersLoading || isGlobalStatsLoading;
@@ -1102,8 +1112,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       // 일괄 상태 변경 후 리스트/통계 새로고침
       await mutateOrders(undefined, { revalidate: true });
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -1741,8 +1752,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시 무효화
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -1996,8 +2008,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -2043,8 +2056,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       await mutateProducts(undefined, { revalidate: true }); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -4358,6 +4372,5 @@ export default function OrdersTestPage() {
   }, []);
 
   if (mode === "unknown") return null; // keep SSR/CSR consistent on first paint
-  if (mode === "raw") return <RawOrdersTestPage />;
-  return <div>Legacy mode for orders-test is not yet implemented. Please use /orders for legacy mode.</div>;
+  return <OrdersTestPageContent mode={mode} />;
 }
