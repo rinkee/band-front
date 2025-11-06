@@ -1518,7 +1518,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 {post.author_name || '익명'}
               </div>
               <div className="text-xs text-gray-500">
-                {formatDate(post.posted_at)}
+                {post.posted_at || '-'}
               </div>
             </div>
           </div>
