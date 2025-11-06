@@ -14,6 +14,7 @@ import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import
 import getAuthedClient from "../lib/authedSupabaseClient";
 import JsBarcode from "jsbarcode";
 import { useUser, useProducts, useCommentOrdersClient, useCommentOrderClientMutations, useOrderStatsClient } from "../hooks";
+import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
@@ -24,6 +25,7 @@ import ToastContainer from "../components/ToastContainer";
 import OrderStatsBar from "../components/OrderStatsBar"; // 새로운 통계 바 컴포넌트
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import OrderStatsSidebar from "../components/OrderStatsSidebar"; // 사이드바 통계 컴포넌트
+import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -340,7 +342,8 @@ const getStatusIcon = (status) => {
 };
 
 // --- 메인 페이지 컴포넌트 ---
-export default function OrdersPage() {
+// 모드에 따라 다른 테이블 사용 (raw: comment_orders, legacy: orders)
+function OrdersTestPageContent({ mode = "raw" }) {
   // Feature flag: 새로운 통계 바 사용 여부
   const useNewStatsBar = true; // false로 변경하면 기존 UI 사용
   const router = useRouter();
@@ -539,87 +542,100 @@ export default function OrdersPage() {
     error: userError,
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
-  // useOrdersClient 훅 호출 부분 수정
+
+  // 모드에 따라 다른 훅 사용 (raw: useCommentOrdersClient, legacy: useOrdersClient)
+  const ordersFilters = {
+    // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+    limit: searchTerm ? 10000 : itemsPerPage,
+    sortBy,
+    sortOrder,
+    // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
+    status: (() => {
+      // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
+      // 주 상태(status) 필터는 적용하지 않음 (undefined)
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return undefined;
+      }
+      // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
+      if (filterSelection === "all") {
+        return undefined;
+      }
+      // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
+      if (filterSelection === "주문완료+수령가능") {
+        return "주문완료";
+      }
+      // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
+      return filterSelection;
+    })(),
+    subStatus: (() => {
+      // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
+      if (showPickupAvailableOnly) {
+        return "수령가능";
+      }
+      // '주문완료+수령가능' 선택 시 "수령가능" 서브상태 적용
+      if (filterSelection === "주문완료+수령가능") {
+        return "수령가능";
+      }
+      // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return filterSelection;
+      }
+      // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
+      return undefined;
+    })(),
+    // --- 파라미터 동적 결정 로직 끝 ---
+    // --- 👇 검색 관련 파라미터 수정 👇 ---
+    search: searchTerm.trim() || undefined, // 일반 검색어
+    commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined, // comment_orders 전용 정확 고객명 필터
+    exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined, // orders 전용 정확 고객명 필터
+    // --- 👆 검색 관련 파라미터 수정 👆 ---
+    startDate: (() => {
+      const p = calculateDateFilterParams(
+        filterDateRange,
+        customStartDate,
+        customEndDate
+      );
+      return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.startDate;
+    })(),
+    endDate: (() => {
+      const p = calculateDateFilterParams(
+        filterDateRange,
+        customStartDate,
+        customEndDate
+      );
+      return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.endDate;
+    })(),
+    dateType: filterDateType, // 날짜 필터 타입 추가
+  };
+
+  const rawOrdersResult = useCommentOrdersClient(
+    mode === "raw" ? userData?.userId : null,
+    currentPage,
+    ordersFilters,
+    swrOptions
+  );
+
+  const legacyOrdersResult = useOrdersClient(
+    mode === "legacy" ? userData?.userId : null,
+    currentPage,
+    ordersFilters,
+    swrOptions
+  );
+
   const {
     data: ordersData,
     error: ordersError,
     isLoading: isOrdersLoading,
     mutate: mutateOrders,
-  } = useCommentOrdersClient(
-    userData?.userId,
-    currentPage,
-    {
-      // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
-      limit: searchTerm ? 10000 : itemsPerPage,
-      sortBy,
-      sortOrder,
-      // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
-      status: (() => {
-        // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
-        // 주 상태(status) 필터는 적용하지 않음 (undefined)
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return undefined;
-        }
-        // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
-        if (filterSelection === "all") {
-          return undefined;
-        }
-        // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
-        if (filterSelection === "주문완료+수령가능") {
-          return "주문완료";
-        }
-        // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
-        return filterSelection;
-      })(),
-      subStatus: (() => {
-        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
-        if (showPickupAvailableOnly) {
-          return "수령가능";
-        }
-        // '주문완료+수령가능' 선택 시 "수령가능" 서브상태 적용
-        if (filterSelection === "주문완료+수령가능") {
-          return "수령가능";
-        }
-        // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection;
-        }
-        // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
-        return undefined;
-      })(),
-      // --- 파라미터 동적 결정 로직 끝 ---
-      // --- 👇 검색 관련 파라미터 수정 👇 ---
-      search: searchTerm.trim() || undefined, // 일반 검색어
-      commenterExact: exactCustomerFilter || undefined, // comment_orders 전용 정확 고객명 필터
-      // --- 👆 검색 관련 파라미터 수정 👆 ---
-      startDate: (() => {
-        const p = calculateDateFilterParams(
-          filterDateRange,
-          customStartDate,
-          customEndDate
-        );
-        return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.startDate;
-      })(),
-      endDate: (() => {
-        const p = calculateDateFilterParams(
-          filterDateRange,
-          customStartDate,
-          customEndDate
-        );
-        return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.endDate;
-      })(),
-      dateType: filterDateType, // 날짜 필터 타입 추가
-    },
-    swrOptions
-  );
+  } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   useEffect(() => {
@@ -820,8 +836,18 @@ export default function OrdersPage() {
     swrOptions
   );
 
-  // 클라이언트 사이드 mutation 함수들 (comment_orders)
-  const { updateCommentOrder } = useCommentOrderClientMutations();
+  // 클라이언트 사이드 mutation 함수들 (모드에 따라 다름)
+  const rawMutations = useCommentOrderClientMutations();
+  const legacyMutations = useOrderClientMutations();
+
+  // 모드에 상관없이 사용할 수 있는 통합 update 함수
+  const updateCommentOrder = async (orderId, updateData, userId) => {
+    if (mode === "raw") {
+      return await rawMutations.updateCommentOrder(orderId, updateData, userId);
+    } else {
+      return await legacyMutations.updateOrder(orderId, updateData, userId);
+    }
+  };
 
   const isDataLoading =
     isUserLoading || isOrdersLoading || isGlobalStatsLoading;
@@ -1088,8 +1114,9 @@ export default function OrdersPage() {
 
       // 일괄 상태 변경 후 리스트/통계 새로고침
       await mutateOrders(undefined, { revalidate: true });
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -1579,6 +1606,97 @@ export default function OrdersPage() {
       return "";
     }
   };
+
+  // 수령일을 상대 시간과 절대 시간 두 줄로 표시 (CommentOrdersView와 동일)
+  const formatPickupRelativeDateTime = (value) => {
+    if (!value) return null;
+
+    try {
+      // 1. 절대 시간 포맷 (두 번째 줄에 표시)
+      let dateOnly = null;
+      let timeOnly = null;
+
+      // ISO / Date 객체 처리 (시간 표시)
+      let dt = null;
+      if (value instanceof Date) {
+        dt = value;
+      } else if (typeof value === 'string' && value.includes('T')) {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) dt = d;
+      }
+
+      if (dt) {
+        const kst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+        const month = kst.getUTCMonth() + 1;
+        const day = kst.getUTCDate();
+        let hours = kst.getUTCHours();
+        const minutes = String(kst.getUTCMinutes()).padStart(2, '0');
+        const ampm = hours < 12 ? '오전' : '오후';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        dateOnly = `${month}월${day}일`;
+        timeOnly = `${ampm} ${hours}:${minutes}`;
+      } else if (typeof value === 'string' && /\d{4}-\d{1,2}-\d{1,2}/.test(value)) {
+        // YYYY-MM-DD 형식
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) {
+          const month = d.getMonth() + 1;
+          const day = d.getDate();
+          dateOnly = `${month}월${day}일`;
+          timeOnly = null;
+        }
+      } else if (typeof value === 'string') {
+        // 'M월D일' 패턴
+        const m = value.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (m) {
+          const month = parseInt(m[1], 10);
+          const day = parseInt(m[2], 10);
+          dateOnly = `${month}월${day}일`;
+          timeOnly = null;
+        }
+      }
+
+      // 2. 상대 시간 계산
+      const { days, isPast, relativeText } = calculateDaysUntilPickup(value);
+
+      // 3. 색상 결정
+      let textColorClass = "text-gray-700"; // 기본값
+      if (isPast) {
+        textColorClass = "text-red-500"; // 지난 날짜 - 빨간색
+      } else if (days === 0) {
+        textColorClass = "text-green-600 font-semibold"; // 오늘 - 초록색
+      } else if (days === 1) {
+        textColorClass = "text-orange-600 font-semibold"; // 내일
+      }
+
+      // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
+      if (relativeText && dateOnly) {
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span className={textColorClass}>{relativeText}</span>
+            <span className="text-xs text-gray-600">
+              {dateOnly} {timeOnly}
+            </span>
+          </span>
+        );
+      }
+
+      // 폴백: 기존 형식 사용
+      if (dateOnly) {
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span>{dateOnly}</span>
+            {timeOnly && <span>{timeOnly}</span>}
+          </span>
+        );
+      }
+    } catch (err) {
+      console.error("[formatPickupRelativeDateTime] Error:", err);
+    }
+
+    return null;
+  };
+
   const getProductBarcode = (id) => {
     // products 배열에서 product_id로 찾기
     const product = products.find((p) => p.product_id === id);
@@ -1727,8 +1845,9 @@ export default function OrdersPage() {
       await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시 무효화
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -1982,8 +2101,9 @@ export default function OrdersPage() {
       await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -2029,8 +2149,9 @@ export default function OrdersPage() {
       await mutateProducts(undefined, { revalidate: true }); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
+      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userData.userId,
+        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -2909,6 +3030,9 @@ export default function OrdersPage() {
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
                     </th>
+                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
+                      수령일시
+                    </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
@@ -3015,6 +3139,19 @@ export default function OrdersPage() {
                               {processBandTags(order.comment) || "-"}
                             </div>
                           </td>
+                          {/* 수령일시 */}
+                          <td className="py-2 pr-2 text-center text-[14px] text-gray-700 w-28">
+                            {(() => {
+                              const list = getCandidateProductsForOrder(order);
+                              let displayProd = null;
+                              if (order.product_id) {
+                                displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
+                              }
+                              if (!displayProd) displayProd = list[0] || null;
+                              const pickupDate = displayProd?.pickup_date || null;
+                              return formatPickupRelativeDateTime(pickupDate) || "-";
+                            })()}
+                          </td>
                           {/* 상품정보 */}
                           <td className="py-2 pr-2 text-sm text-gray-700 w-60">
                             {(() => {
@@ -3085,7 +3222,7 @@ export default function OrdersPage() {
                               return displayBarcode ? (
                                 <div className="flex flex-col items-center">
                                   <Barcode value={displayBarcode} height={28} width={1.2} fontSize={10} />
-                                  <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span>
+                                  {/* <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span> */}
                                 </div>
                               ) : (
                                 <span className="text-xs text-gray-400">없음</span>
@@ -4322,4 +4459,27 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
       </div>
     </div>
   );
+}
+
+// Dispatcher: choose raw comment-orders view or legacy orders view
+export default function OrdersTestPage() {
+  const [mode, setMode] = useState("unknown"); // 'unknown' | 'raw' | 'legacy'
+  useEffect(() => {
+    try {
+      const s = sessionStorage.getItem("userData");
+      const session = s ? JSON.parse(s) : null;
+      const m =
+        session?.orderProcessingMode ||
+        session?.order_processing_mode ||
+        session?.user?.orderProcessingMode ||
+        session?.user?.order_processing_mode ||
+        "legacy";
+      setMode(String(m).toLowerCase() === "raw" ? "raw" : "legacy");
+    } catch (_) {
+      setMode("legacy");
+    }
+  }, []);
+
+  if (mode === "unknown") return null; // keep SSR/CSR consistent on first paint
+  return <OrdersTestPageContent mode={mode} />;
 }
