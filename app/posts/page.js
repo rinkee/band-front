@@ -1270,25 +1270,30 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
     const now = new Date();
     const diffMs = now - date;
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) {
-      // 오늘 작성된 경우 시간 표시
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      const h12 = hours % 12 || 12;
-      const ampm = hours < 12 ? '오전' : '오후';
-      return `${ampm} ${h12}:${String(minutes).padStart(2, '0')}`;
-    } else if (diffDays > 0 && diffDays < 7) {
-      return `${diffDays}일 전`;
-    } else if (diffDays < 0) {
-      // 미래 시간인 경우 (시스템 시간 오류)
-      return `방금 전`;
-    } else {
-      const m = date.getMonth() + 1;
-      const d = date.getDate();
-      return `${m}월 ${d}일`;
+    // 1분 미만인 경우
+    if (diffMinutes < 1) {
+      return '방금 전';
     }
+    // 1시간 미만인 경우
+    if (diffMinutes < 60) {
+      return `${diffMinutes}분 전`;
+    }
+    // 24시간 미만인 경우
+    if (diffHours < 24) {
+      return `${diffHours}시간 전`;
+    }
+    // 7일 미만인 경우
+    if (diffDays < 7) {
+      return `${diffDays}일 전`;
+    }
+    // 7일 이상인 경우
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    return `${m}월 ${d}일`;
   };
 
   // 이미지 URL 파싱 개선
