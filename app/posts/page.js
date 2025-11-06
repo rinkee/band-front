@@ -1265,26 +1265,28 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
-    const raw = new Date(dateString);
-    if (Number.isNaN(raw.getTime())) return "-";
-    // 화면 표시를 KST처럼 보이도록 +9시간 보정
-    const date = new Date(raw.getTime() + 9 * 60 * 60 * 1000);
-    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "-";
+
+    const now = new Date();
     const diffMs = now - date;
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      // KST 기준 시각 출력 (UTC 컴포넌트로 안전하게 구성)
-      const hh = String(date.getUTCHours()).padStart(2, '0');
-      const mm = String(date.getUTCMinutes()).padStart(2, '0');
-      const h12 = ((Number(hh) % 12) || 12).toString();
-      const ampm = Number(hh) < 12 ? '오전' : '오후';
-      return `${ampm} ${h12}:${mm}`;
-    } else if (diffDays < 7) {
+      // 오늘 작성된 경우 시간 표시
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      const h12 = hours % 12 || 12;
+      const ampm = hours < 12 ? '오전' : '오후';
+      return `${ampm} ${h12}:${String(minutes).padStart(2, '0')}`;
+    } else if (diffDays > 0 && diffDays < 7) {
       return `${diffDays}일 전`;
+    } else if (diffDays < 0) {
+      // 미래 시간인 경우 (시스템 시간 오류)
+      return `방금 전`;
     } else {
-      const m = date.getUTCMonth() + 1;
-      const d = date.getUTCDate();
+      const m = date.getMonth() + 1;
+      const d = date.getDate();
       return `${m}월 ${d}일`;
     }
   };
