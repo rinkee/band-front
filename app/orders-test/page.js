@@ -25,6 +25,7 @@ import ToastContainer from "../components/ToastContainer";
 import OrderStatsBar from "../components/OrderStatsBar"; // 새로운 통계 바 컴포넌트
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import OrderStatsSidebar from "../components/OrderStatsSidebar"; // 사이드바 통계 컴포넌트
+import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -1605,6 +1606,97 @@ function OrdersTestPageContent({ mode = "raw" }) {
       return "";
     }
   };
+
+  // 수령일을 상대 시간과 절대 시간 두 줄로 표시 (CommentOrdersView와 동일)
+  const formatPickupRelativeDateTime = (value) => {
+    if (!value) return null;
+
+    try {
+      // 1. 절대 시간 포맷 (두 번째 줄에 표시)
+      let dateOnly = null;
+      let timeOnly = null;
+
+      // ISO / Date 객체 처리 (시간 표시)
+      let dt = null;
+      if (value instanceof Date) {
+        dt = value;
+      } else if (typeof value === 'string' && value.includes('T')) {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) dt = d;
+      }
+
+      if (dt) {
+        const kst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+        const month = kst.getUTCMonth() + 1;
+        const day = kst.getUTCDate();
+        let hours = kst.getUTCHours();
+        const minutes = String(kst.getUTCMinutes()).padStart(2, '0');
+        const ampm = hours < 12 ? '오전' : '오후';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        dateOnly = `${month}월${day}일`;
+        timeOnly = `${ampm} ${hours}:${minutes}`;
+      } else if (typeof value === 'string' && /\d{4}-\d{1,2}-\d{1,2}/.test(value)) {
+        // YYYY-MM-DD 형식
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) {
+          const month = d.getMonth() + 1;
+          const day = d.getDate();
+          dateOnly = `${month}월${day}일`;
+          timeOnly = null;
+        }
+      } else if (typeof value === 'string') {
+        // 'M월D일' 패턴
+        const m = value.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+        if (m) {
+          const month = parseInt(m[1], 10);
+          const day = parseInt(m[2], 10);
+          dateOnly = `${month}월${day}일`;
+          timeOnly = null;
+        }
+      }
+
+      // 2. 상대 시간 계산
+      const { days, isPast, relativeText } = calculateDaysUntilPickup(value);
+
+      // 3. 색상 결정
+      let textColorClass = "text-gray-700"; // 기본값
+      if (isPast) {
+        textColorClass = "text-red-500"; // 지난 날짜 - 빨간색
+      } else if (days === 0) {
+        textColorClass = "text-green-600 font-semibold"; // 오늘 - 초록색
+      } else if (days === 1) {
+        textColorClass = "text-orange-600 font-semibold"; // 내일
+      }
+
+      // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
+      if (relativeText && dateOnly) {
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span className={textColorClass}>{relativeText}</span>
+            <span className="text-xs text-gray-600">
+              {dateOnly} {timeOnly}
+            </span>
+          </span>
+        );
+      }
+
+      // 폴백: 기존 형식 사용
+      if (dateOnly) {
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span>{dateOnly}</span>
+            {timeOnly && <span>{timeOnly}</span>}
+          </span>
+        );
+      }
+    } catch (err) {
+      console.error("[formatPickupRelativeDateTime] Error:", err);
+    }
+
+    return null;
+  };
+
   const getProductBarcode = (id) => {
     // products 배열에서 product_id로 찾기
     const product = products.find((p) => p.product_id === id);
@@ -3067,6 +3159,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
                               }
 
+                              // 수령일 정보 가져오기
+                              const pickupDate = displayProd?.pickup_date || null;
+                              const pickupDisplay = formatPickupRelativeDateTime(pickupDate);
+
                               return (
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-50 flex-shrink-0">
@@ -3082,7 +3178,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                       <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">이미지</div>
                                     )}
                                   </div>
-                                  <div className="min-w-0">
+                                  <div className="min-w-0 flex-1">
+                                    {pickupDisplay && (
+                                      <div className="mb-1 text-[13px]">
+                                        {pickupDisplay}
+                                      </div>
+                                    )}
                                     <div className="font-medium truncate" title={name}>{name}</div>
                                   </div>
                                 </div>
@@ -3114,7 +3215,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               return displayBarcode ? (
                                 <div className="flex flex-col items-center">
                                   <Barcode value={displayBarcode} height={28} width={1.2} fontSize={10} />
-                                  <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span>
+                                  {/* <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span> */}
                                 </div>
                               ) : (
                                 <span className="text-xs text-gray-400">없음</span>
