@@ -341,8 +341,8 @@ const getStatusIcon = (status) => {
 };
 
 // --- 메인 페이지 컴포넌트 ---
-// Raw 모드 전용 컴포넌트 (comment_orders 테이블 사용)
-function RawOrdersTestPage() {
+// 모드에 따라 다른 테이블 사용 (raw: comment_orders, legacy: orders)
+function OrdersTestPageContent({ mode = "raw" }) {
   // Feature flag: 새로운 통계 바 사용 여부
   const useNewStatsBar = true; // false로 변경하면 기존 UI 사용
   const router = useRouter();
@@ -541,87 +541,99 @@ function RawOrdersTestPage() {
     error: userError,
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
-  // useOrdersClient 훅 호출 부분 수정
+
+  // 모드에 따라 다른 훅 사용 (raw: useCommentOrdersClient, legacy: useOrdersClient)
+  const ordersFilters = {
+    // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+    limit: searchTerm ? 10000 : itemsPerPage,
+    sortBy,
+    sortOrder,
+    // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
+    status: (() => {
+      // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
+      // 주 상태(status) 필터는 적용하지 않음 (undefined)
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return undefined;
+      }
+      // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
+      if (filterSelection === "all") {
+        return undefined;
+      }
+      // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
+      if (filterSelection === "주문완료+수령가능") {
+        return "주문완료";
+      }
+      // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
+      return filterSelection;
+    })(),
+    subStatus: (() => {
+      // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
+      if (showPickupAvailableOnly) {
+        return "수령가능";
+      }
+      // '주문완료+수령가능' 선택 시 "수령가능" 서브상태 적용
+      if (filterSelection === "주문완료+수령가능") {
+        return "수령가능";
+      }
+      // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return filterSelection;
+      }
+      // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
+      return undefined;
+    })(),
+    // --- 파라미터 동적 결정 로직 끝 ---
+    // --- 👇 검색 관련 파라미터 수정 👇 ---
+    search: searchTerm.trim() || undefined, // 일반 검색어
+    commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined, // comment_orders 전용 정확 고객명 필터
+    // --- 👆 검색 관련 파라미터 수정 👆 ---
+    startDate: (() => {
+      const p = calculateDateFilterParams(
+        filterDateRange,
+        customStartDate,
+        customEndDate
+      );
+      return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.startDate;
+    })(),
+    endDate: (() => {
+      const p = calculateDateFilterParams(
+        filterDateRange,
+        customStartDate,
+        customEndDate
+      );
+      return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.endDate;
+    })(),
+    dateType: filterDateType, // 날짜 필터 타입 추가
+  };
+
+  const rawOrdersResult = useCommentOrdersClient(
+    mode === "raw" ? userData?.userId : null,
+    currentPage,
+    ordersFilters,
+    swrOptions
+  );
+
+  const legacyOrdersResult = useOrdersClient(
+    mode === "legacy" ? userData?.userId : null,
+    currentPage,
+    ordersFilters,
+    swrOptions
+  );
+
   const {
     data: ordersData,
     error: ordersError,
     isLoading: isOrdersLoading,
     mutate: mutateOrders,
-  } = useCommentOrdersClient(
-    userData?.userId,
-    currentPage,
-    {
-      // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
-      limit: searchTerm ? 10000 : itemsPerPage,
-      sortBy,
-      sortOrder,
-      // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
-      status: (() => {
-        // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
-        // 주 상태(status) 필터는 적용하지 않음 (undefined)
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return undefined;
-        }
-        // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
-        if (filterSelection === "all") {
-          return undefined;
-        }
-        // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
-        if (filterSelection === "주문완료+수령가능") {
-          return "주문완료";
-        }
-        // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
-        return filterSelection;
-      })(),
-      subStatus: (() => {
-        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
-        if (showPickupAvailableOnly) {
-          return "수령가능";
-        }
-        // '주문완료+수령가능' 선택 시 "수령가능" 서브상태 적용
-        if (filterSelection === "주문완료+수령가능") {
-          return "수령가능";
-        }
-        // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection;
-        }
-        // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
-        return undefined;
-      })(),
-      // --- 파라미터 동적 결정 로직 끝 ---
-      // --- 👇 검색 관련 파라미터 수정 👇 ---
-      search: searchTerm.trim() || undefined, // 일반 검색어
-      commenterExact: exactCustomerFilter || undefined, // comment_orders 전용 정확 고객명 필터
-      // --- 👆 검색 관련 파라미터 수정 👆 ---
-      startDate: (() => {
-        const p = calculateDateFilterParams(
-          filterDateRange,
-          customStartDate,
-          customEndDate
-        );
-        return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.startDate;
-      })(),
-      endDate: (() => {
-        const p = calculateDateFilterParams(
-          filterDateRange,
-          customStartDate,
-          customEndDate
-        );
-        return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.endDate;
-      })(),
-      dateType: filterDateType, // 날짜 필터 타입 추가
-    },
-    swrOptions
-  );
+  } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   useEffect(() => {
