@@ -1068,12 +1068,12 @@ export default function ProductsPage() {
     router.push(`/orders?search=${encodeURIComponent(productTitle)}`);
   };
 
-  // 게시물 주문보기 핸들러 (post_key로 검색)
+  // 게시물 주문보기 핸들러 (post_key로 직접 이동 - posts 페이지와 동일한 방식)
   const handleViewPostOrders = (postKey) => {
     if (!postKey) return;
 
-    // 주문 관리 페이지로 이동하면서 post_key로 검색
-    router.push(`/orders?search=${encodeURIComponent(postKey)}`);
+    // 주문 관리 페이지로 이동: postKey를 직접 전달 (posts 페이지와 동일)
+    router.push(`/orders?postKey=${encodeURIComponent(postKey)}`);
   };
 
   // --- 핸들러 함수들 ---
@@ -1811,11 +1811,13 @@ export default function ProductsPage() {
       className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto px-4 py-2 sm:px-6 sm:py-4"
     >
       <div className="max-w-[1440px] mx-auto">
-        <div className="mb-4 md:mb-4">
-          <h1 className="text-xl font-bold text-gray-900 mb-1">상품 관리</h1>
-          <p className="text-sm text-gray-500 mb-1">
-            등록된 상품을 관리하고 바코드를 생성/수정할 수 있습니다.
-          </p>
+        <div className="mb-4 md:mb-4 flex justify-between items-start">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 mb-1">상품 관리</h1>
+            <p className="text-sm text-gray-500 mb-1">
+              등록된 상품을 관리하고 바코드를 생성/수정할 수 있습니다.
+            </p>
+          </div>
           <UpdateButton pageType="products" />
         </div>
 
@@ -1879,7 +1881,7 @@ export default function ProductsPage() {
                   {/* 버튼 그룹 스타일 */}
                   <button
                     onClick={handleSearch}
-                    className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // OrdersPage와 동일한 스타일
+                    className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-black rounded-lg hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" // OrdersPage와 동일한 스타일
                     disabled={isDataLoading}
                   >
                     검색
@@ -2100,20 +2102,39 @@ export default function ProductsPage() {
                               
                               if (product.band_key && product.post_key && imageUrl) {
                                 return (
-                                  <img
-                                    src={imageUrl}
-                                    alt={product.title}
-                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
-                                    style={{ 
-                                      imageRendering: 'auto',
-                                      backfaceVisibility: 'hidden'
-                                    }}
-                                    onError={(e) => {
-                                      console.error(`❌ 이미지 로드 실패: ${imageUrl}`);
-                                      e.target.onerror = null;
-                                      e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239CA3AF'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E";
-                                    }}
-                                  />
+                                  <div className="relative w-full h-full">
+                                    <img
+                                      src={imageUrl}
+                                      alt={product.title}
+                                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                      style={{
+                                        imageRendering: 'auto',
+                                        backfaceVisibility: 'hidden'
+                                      }}
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        const fallback = e.target.nextElementSibling;
+                                        if (fallback) {
+                                          fallback.style.display = 'flex';
+                                        }
+                                      }}
+                                    />
+                                    <div className="w-full h-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100" style={{ display: 'none' }}>
+                                      <svg
+                                        className="w-10 h-10 text-gray-300"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth="1.5"
+                                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                        />
+                                      </svg>
+                                    </div>
+                                  </div>
                                 );
                               } else {
                                 return (
@@ -2388,31 +2409,60 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
-                          {/* 상품 주문보기 버튼 */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewProductOrders(product.title);
-                            }}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
-                            title="상품명으로 주문 검색"
-                          >
-                            상품주문
-                          </button>
+                          {/* raw 모드 확인 */}
+                          {(() => {
+                            const sessionData = sessionStorage.getItem('userData');
+                            const userData = sessionData ? JSON.parse(sessionData) : {};
+                            const isRawMode = userData.orderProcessingMode === 'raw';
 
-                          {/* 게시물 주문보기 버튼 */}
-                          {product.post_key && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewPostOrders(product.post_key);
-                              }}
-                              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
-                              title="게시물로 주문 검색"
-                            >
-                              게시물주문
-                            </button>
-                          )}
+                            if (isRawMode) {
+                              // raw 모드: 상품 주문 버튼만 표시하고 post_key로 이동
+                              return product.post_key ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewPostOrders(product.post_key);
+                                  }}
+                                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                  title="주문 페이지로 이동"
+                                >
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                  </svg>
+                                  상품주문
+                                </button>
+                              ) : null;
+                            } else {
+                              // legacy 모드: 기존 버튼들 표시
+                              return (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewProductOrders(product.title);
+                                    }}
+                                    className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 hover:bg-blue-200 hover:text-blue-700 transition-colors"
+                                    title="상품명으로 주문 검색"
+                                  >
+                                    상품주문
+                                  </button>
+
+                                  {product.post_key && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleViewPostOrders(product.post_key);
+                                      }}
+                                      className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-500 group-hover:text-green-600 group-hover:bg-green-100 hover:bg-green-200 hover:text-green-700 transition-colors"
+                                      title="게시물로 주문 검색"
+                                    >
+                                      게시물주문
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            }
+                          })()}
                         </div>
                       </td>
                     </tr>

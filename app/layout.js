@@ -35,6 +35,21 @@ function LayoutContent({ children }) {
   // ScrollContext에서 scrollableContentRef 가져오기
   const { scrollableContentRef } = useScroll(); // <<< Context에서 ref 가져오기
 
+  // GitHub Pages(SPA) 경로 복원: 404.html이 `?/<path>`로 리다이렉트한 경우 원래 경로로 복원
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const l = window.location;
+    if (l.search && l.search.startsWith("?/")) {
+      const decoded = l.search
+        .slice(2)
+        .split("&")
+        .map((s) => s.replace(/~and~/g, "&"))
+        .join("?");
+      const base = l.pathname.endsWith("/") ? l.pathname.slice(0, -1) : l.pathname;
+      window.history.replaceState(null, "", `${base}/${decoded}${l.hash}`);
+    }
+  }, []);
+
   // --- 주문 관리 메뉴 클릭 핸들러 추가 ---
   const handleOrdersMenuClick = () => {
     // 주문 관리 메뉴 클릭됨, 데이터 갱신 시도
@@ -92,6 +107,38 @@ function LayoutContent({ children }) {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]); // pathname이 변경될 때 이 effect가 실행됩니다.
+
+  // 정적(비상) 모드에서 '/api/*' 호출을 외부 API로 우회 (선택)
+  useEffect(() => {
+    const isFallback = process.env.NEXT_PUBLIC_FALLBACK_MODE === "true";
+    const base = process.env.NEXT_PUBLIC_API_URL;
+    if (!isFallback || !base || typeof window === "undefined" || !window.fetch) {
+      return;
+    }
+    const origFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      try {
+        const toStr = (x) => (typeof x === "string" ? x : x?.url || "");
+        const needsProxy = (u) => typeof u === "string" && u.startsWith("/api/");
+        const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+        const url = toStr(input);
+        if (needsProxy(url)) {
+          const proxied = prefix.endsWith("/api")
+            ? `${prefix}${url.replace(/^\/api/, "")}`
+            : `${prefix}${url}`;
+          if (typeof input === "string") {
+            return origFetch(proxied, init);
+          }
+          const req = new Request(proxied, input);
+          return origFetch(req, init);
+        }
+      } catch (_) {}
+      return origFetch(input, init);
+    };
+    return () => {
+      window.fetch = origFetch;
+    };
+  }, []);
 
   // 현재 경로가 로그인, 회원가입 또는 루트 경로인지 확인합니다. (헤더/레이아웃 표시 여부 결정)
   const isAuthPage =
@@ -165,6 +212,94 @@ function LayoutContent({ children }) {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
+  // Naver 이미지: 혼합콘텐츠/핫링크 문제 시 프록시로 선제/폴백 처리
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.__naver_img_proxy_inited__) return;
+    window.__naver_img_proxy_inited__ = true;
+
+    const isNaverHost = (u) => {
+      try {
+        const url = new URL(u, window.location.href);
+        const h = url.hostname.toLowerCase();
+        return h.includes('.naver.');
+      } catch (e) {
+        return false;
+      }
+    };
+
+    const envBase = process.env.NEXT_PUBLIC_API_URL || "";
+    const normBase = (() => {
+      const b = envBase.endsWith("/") ? envBase.slice(0, -1) : envBase;
+      return b.endsWith("/api") ? b : `${b}/api`;
+    })();
+    const buildProxy = (u) => {
+      // GH Pages에는 서버 라우트가 없으므로 백엔드의 프록시 엔드포인트를 직접 사용
+      if (isGitHubPagesHost && envBase) {
+        return `${normBase}/image-proxy?url=${encodeURIComponent(u)}`;
+      }
+      // Vercel/기타 환경에서는 로컬 API 라우트 사용 (rewrites로 백엔드 프록시)
+      return `/api/image-proxy?url=${encodeURIComponent(u)}`;
+    };
+    const mark = (img) => { img.dataset.naverProxyHandled = '1'; };
+    const alreadyHandled = (img) => img.dataset.naverProxyHandled === '1';
+    const isGitHubPagesHost = /\.github\.io$/i.test(window.location.hostname);
+    const shouldPreRewrite = (src) => {
+      // GitHub Pages는 서버 라우트가 없으므로 선제 프록시를 비활성화
+      if (isGitHubPagesHost) return false;
+      return /^http:\/\//i.test(src) && isNaverHost(src);
+    };
+
+    const attachOnErrorFallback = (img) => {
+      if (img.__naverProxyErrorBound) return;
+      img.__naverProxyErrorBound = true;
+      const original = img.getAttribute('src') || '';
+      img.addEventListener('error', () => {
+        const current = img.getAttribute('src') || '';
+        if (current.startsWith('/api/image-proxy')) return;
+        if (isNaverHost(original)) {
+          img.setAttribute('src', buildProxy(original));
+        }
+      });
+    };
+
+    const processImg = (img) => {
+      if (!img || alreadyHandled(img)) return;
+      const src = img.getAttribute('src') || '';
+      if (!src) return mark(img);
+      if (shouldPreRewrite(src)) {
+        img.setAttribute('src', buildProxy(src));
+      } else if (isNaverHost(src)) {
+        attachOnErrorFallback(img);
+      }
+      mark(img);
+    };
+
+    Array.from(document.querySelectorAll('img')).forEach(processImg);
+
+    const obs = new MutationObserver((muts) => {
+      for (const mut of muts) {
+        if (mut.type === 'childList') {
+          mut.addedNodes.forEach((node) => {
+            if (node && node.nodeType === 1) {
+              if (node.tagName === 'IMG') processImg(node);
+              node.querySelectorAll && node.querySelectorAll('img').forEach(processImg);
+            }
+          });
+        } else if (mut.type === 'attributes' && mut.target && mut.target.tagName === 'IMG' && mut.attributeName === 'src') {
+          processImg(mut.target);
+        }
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    window.__naver_img_proxy_observer__ = obs;
+
+    return () => {
+      try { obs.disconnect(); } catch (_) {}
+      delete window.__naver_img_proxy_inited__;
+    };
+  }, []);
+
   // ---- 조건부 렌더링 로직 ----
 
   // 인증 페이지인 경우, 레이아웃 없이 children만 렌더링
@@ -208,6 +343,12 @@ function LayoutContent({ children }) {
         />
       </head>
       <body suppressHydrationWarning>
+        {/* 비상(정적) 모드 안내 배너 */}
+        {process.env.NEXT_PUBLIC_FALLBACK_MODE === "true" && (
+          <div className="w-full text-center text-sm text-white bg-orange-500 py-1">
+            제한 모드: 현재 정적 백업 페이지가 제공 중입니다. 기능이 제한될 수 있습니다.
+          </div>
+        )}
         <div className={`flex flex-col h-screen overflow-hidden ${isAdminPage ? 'bg-gray-50' : 'bg-gray-100'}`}>
           {/* 로그인 상태이고 admin 페이지가 아닐 때만 헤더 표시 */}
           {isLoggedIn && !isAdminPage && (
@@ -275,19 +416,21 @@ function LayoutContent({ children }) {
                     >
                       주문 관리
                     </Link>
-                    <Link
-                      href="/orders-test"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
-                        pathname === "/orders-test"
-                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      주문관리{" "}
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
-                        beta
-                      </span>
-                    </Link>
+                    {userData?.order_processing_mode !== "raw" && (
+                      <Link
+                        href="/orders-test"
+                        className={`px-3 py-2 text-sm font-medium rounded-md ${
+                          pathname === "/orders-test"
+                            ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
+                            : "text-gray-600 hover:bg-gray-100"
+                        }`}
+                      >
+                        주문관리{" "}
+                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
+                          beta
+                        </span>
+                      </Link>
+                    )}
                     {/* <Link
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -481,34 +624,36 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  <Link
-                    href="/orders-test"
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
-                      pathname === "/orders-test"
-                        ? "bg-blue-100 text-gray-900"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <svg
-                      className="w-5 h-5 mr-2 text-gray-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  {userData?.order_processing_mode !== "raw" && (
+                    <Link
+                      href="/orders-test"
+                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+                        pathname === "/orders-test"
+                          ? "bg-blue-100 text-gray-900"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span className="flex items-center gap-2">
-                      주문관리
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">
-                        [beta]
+                      <svg
+                        className="w-5 h-5 mr-2 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <span className="flex items-center gap-2">
+                        주문관리
+                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">
+                          [beta]
+                        </span>
                       </span>
-                    </span>
-                  </Link>
+                    </Link>
+                  )}
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${

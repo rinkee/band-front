@@ -1,0 +1,78 @@
+name: Deploy to GitHub Pages
+
+on:
+  # 기본은 수동 실행으로 둡니다(레포에 푸시할 때 자동 실패 방지)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Disable Next API routes for static export
+        run: |
+          if [ -d app/api ]; then mv app/api app/_api_disabled; fi
+          # 동적 라우트 폴더([param])도 임시 비활성화 (xargs 미사용)
+          while IFS= read -r f; do
+            d="$(dirname "$f")"
+            mv "$d" "${d}_disabled" || true
+          done < <(find app -type f -name 'page.*' | grep '/\[[^/]*\]/')
+
+      - name: Build (static export for Pages)
+        env:
+          # GitHub Pages 전용 설정 토글
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_FALLBACK_MODE: "true"
+          # 클라이언트에서 사용할 공개 API 주소 설정 (예: https://api.example.com)
+          # 정적 빌드 산출물이 런타임에 호출할 백엔드 주소입니다.
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      # NOTE: 본 레포는 app/api 라우트를 다수 사용하고 있어
+      # GitHub Pages(static)에서는 그대로 빌드가 실패합니다.
+      # 빠르게 테스트만 해보려면 아래처럼 api 폴더를 임시로 숨긴 뒤 빌드하세요.
+      # (런타임에 /api/* 호출은 모두 실패합니다)
+      #
+      # - name: (옵션) API 라우트 임시 비활성화
+      #   run: |
+      #     if [ -d app/api ]; then mv app/api app/_api_disabled; fi
+      #     npm run build
+      #     if [ -d app/_api_disabled ]; then mv app/_api_disabled app/api; fi
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,13 +1,15 @@
-// api/auth/register/route.js
+// app/api/auth/register/route.js
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 // Supabase Edge Function URL 설정
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
- * 회원가입 처리 API
- * @param {Request} request - 요청 객체
+ * 회원가입 처리 API (프록시)
+ * - 프론트에서 전달한 가입 정보를 Supabase Edge Function으로 전달합니다.
+ * - 항상 JSON으로 응답을 반환합니다.
  */
 export async function POST(request) {
   try {
@@ -16,7 +18,7 @@ export async function POST(request) {
       naverId,
       naverPassword,
       loginId,
-      loginPassword = "0000", // 추가: 로그인 비밀번호
+      loginPassword = "0000", // 기본 비밀번호
       bandUrl,
       bandAccessToken,
       bandKey,
@@ -24,6 +26,8 @@ export async function POST(request) {
       storeAddress,
       ownerName,
       phoneNumber,
+      order_processing_mode,
+      orderProcessingMode,
     } = body;
 
     // 필수 필드 검증
@@ -37,7 +41,7 @@ export async function POST(request) {
       );
     }
 
-    // 밴드 URL이 있는 경우에만 유효성 검증
+    // 밴드 URL 유효성 검증 (있으면 검사)
     if (bandUrl) {
       if (!bandUrl.includes("band.us") && !bandUrl.includes("band.com")) {
         return NextResponse.json(
@@ -58,17 +62,36 @@ export async function POST(request) {
       );
     }
 
-    console.log("회원가입 요청:", {
-      loginId,
+    // 환경 변수 체크
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "서버 설정이 완료되지 않았습니다. SUPABASE URL/ANON KEY를 확인해주세요.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const payload = {
       naverId,
+      naverPassword,
+      loginId,
+      loginPassword,
       bandUrl,
-      bandAccessToken: bandAccessToken ? "***제공됨***" : "없음",
-      bandKey: bandKey ? "***제공됨***" : "없음",
+      bandAccessToken,
+      bandKey,
       storeName,
       storeAddress,
-      ownerName,
-      phoneNumber,
-    });
+      ownerName: ownerName || loginId,
+      phoneNumber: phoneNumber || "",
+      // 주문 처리 모드(raw/legacy) - 호환 키 모두 전송
+      order_processing_mode:
+        order_processing_mode || orderProcessingMode || "legacy",
+      orderProcessingMode:
+        orderProcessingMode || order_processing_mode || "legacy",
+    };
 
     // Supabase Edge Function 호출
     const edgeFunctionUrl = `${SUPABASE_URL}/functions/v1/auth-register`;
@@ -78,26 +101,43 @@ export async function POST(request) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({
-        naverId,
-        naverPassword,
-        loginId,
-        loginPassword,
-        bandUrl,
-        bandAccessToken,
-        bandKey,
-        storeName,
-        storeAddress,
-        ownerName: ownerName || loginId,
-        phoneNumber: phoneNumber || "",
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
-    console.log("회원가입 응답:", data);
+    // 응답 JSON 파싱
+    const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(data.message || "회원가입에 실패했습니다.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: data?.message || "회원가입에 실패했습니다.",
+          status: response.status,
+          raw: data,
+        },
+        { status: response.status }
+      );
+    }
+
+    // 백엔드가 값을 저장하지 않는 경우를 대비해 보정 업데이트
+    try {
+      const targetMode =
+        order_processing_mode || orderProcessingMode || "legacy";
+      const supabaseAdmin = createClient(
+        process.env.SUPABASE_URL || SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      if (supabaseAdmin) {
+        await supabaseAdmin
+          .from("users")
+          .update({
+            order_processing_mode: targetMode,
+            orderProcessingMode: targetMode,
+          })
+          .eq("login_id", loginId);
+      }
+    } catch (e) {
+      console.warn("order_processing_mode 보정 업데이트 실패:", e?.message || e);
     }
 
     return NextResponse.json(data, { status: response.status });
@@ -107,7 +147,7 @@ export async function POST(request) {
       {
         success: false,
         message: "회원가입 처리 중 오류가 발생했습니다.",
-        error: error.message,
+        error: String(error?.message || error),
       },
       { status: 500 }
     );

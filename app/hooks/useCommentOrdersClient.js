@@ -1,26 +1,10 @@
 // hooks/useCommentOrdersClient.js - comment_orders 전용 클라이언트 훅
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
-import { createClient } from "@supabase/supabase-js";
+import getAuthedClient from "../lib/authedSupabaseClient";
 
 // 토큰이 있으면 Authorization 헤더를 포함한 클라이언트를 생성
-const getAuthedClient = () => {
-  if (typeof window === "undefined") return supabase;
-  try {
-    const s = sessionStorage.getItem("userData");
-    const token = s ? JSON.parse(s)?.token : null;
-    if (!token) return supabase;
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anon) return supabase;
-    return createClient(url, anon, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false, detectSessionInUrl: false },
-    });
-  } catch (_) {
-    return supabase;
-  }
-};
+// getAuthedClient imported above; kept here for backwards call sites
 
 // 목록 조회 (comment_orders)
 const fetchCommentOrders = async (key) => {

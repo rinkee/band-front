@@ -229,3 +229,14 @@ code {
   height: 14px;
   border-radius: 1px;
 }
+
+/* Orders tables: bump all common text sizes by +2px inside the table */
+.table-text-plus2 .text-xs { font-size: calc(0.75rem + 2px) !important; }
+.table-text-plus2 .text-sm { font-size: calc(0.875rem + 2px) !important; }
+.table-text-plus2 .text-base { font-size: calc(1rem + 2px) !important; }
+.table-text-plus2 .text-md { font-size: calc(1rem + 2px) !important; }
+.table-text-plus2 .text-lg { font-size: calc(1.125rem + 2px) !important; }
+.table-text-plus2 .text-xl { font-size: calc(1.25rem + 2px) !important; }
+.table-text-plus2 .text-\[11px\] { font-size: 13px !important; }
+.table-text-plus2 .text-\[13px\] { font-size: 15px !important; }
+.table-text-plus2 .text-\[14px\] { font-size: 16px !important; }

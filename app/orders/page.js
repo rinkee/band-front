@@ -25,7 +25,32 @@ import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임�
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
-import CommentOrdersView from "./CommentOrdersView";
+import dynamic from "next/dynamic";
+const CommentOrdersViewClient = dynamic(() => import("./CommentOrdersView"), { ssr: false });
+
+// Dispatcher: choose raw comment-orders view or legacy orders page
+export default function OrdersPage() {
+  const [mode, setMode] = useState("unknown"); // 'unknown' | 'raw' | 'legacy'
+  useEffect(() => {
+    try {
+      const s = sessionStorage.getItem("userData");
+      const session = s ? JSON.parse(s) : null;
+      const m =
+        session?.orderProcessingMode ||
+        session?.order_processing_mode ||
+        session?.user?.orderProcessingMode ||
+        session?.user?.order_processing_mode ||
+        "legacy";
+      setMode(String(m).toLowerCase() === "raw" ? "raw" : "legacy");
+    } catch (_) {
+      setMode("legacy");
+    }
+  }, []);
+
+  if (mode === "unknown") return null; // keep SSR/CSR consistent on first paint
+  if (mode === "raw") return <CommentOrdersViewClient />;
+  return <LegacyOrdersPage />;
+}
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -202,16 +227,16 @@ function StatusBadge({ status, processingMethod }) {
       textColor = "text-green-700";
       break;
     case "주문취소":
-      bgColor = "bg-red-100";
-      textColor = "text-red-700";
+      bgColor = "bg-[#f06595]";
+      textColor = "text-white";
       break;
     case "주문완료":
       bgColor = "bg-blue-100";
       textColor = "text-blue-700";
       break;
     case "확인필요":
-      bgColor = "bg-gray-800";
-      textColor = "text-gray-100";
+      bgColor = "bg-[#ffe5e5]"; // 연한 빨강 배경
+      textColor = "text-[#ff0000]"; // 완전한 빨강 텍스트
       break;
     case "결제완료":
       bgColor = "bg-yellow-100";
@@ -338,9 +363,11 @@ const getStatusIcon = (status) => {
 };
 
 // --- 메인 페이지 컴포넌트 ---
-export default function OrdersPage() {
-  // --- 렌더 모드 분기 (raw 모드일 때 comment_orders 화면) ---
-  if (typeof window !== "undefined") {
+function LegacyOrdersPage() {
+  // --- 클라이언트에서만 raw 모드 전환 (SSR과 동일 마크업으로 하이드레이션 보장) ---
+  const [mounted, setMounted] = useState(false);
+  const [rawMode, setRawMode] = useState(false);
+  useEffect(() => {
     try {
       const s = sessionStorage.getItem("userData");
       if (s) {
@@ -351,13 +378,11 @@ export default function OrdersPage() {
           session?.user?.orderProcessingMode ||
           session?.user?.order_processing_mode ||
           "legacy";
-        const isRaw = String(mode).toLowerCase() === "raw";
-        if (isRaw) {
-          return <CommentOrdersView />;
-        }
+        setRawMode(String(mode).toLowerCase() === "raw");
       }
     } catch (_) {}
-  }
+    setMounted(true);
+  }, []);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -417,6 +442,9 @@ export default function OrdersPage() {
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // --- raw 모드면 클라이언트 전용 컴포넌트로 렌더 (SSR과의 초기 마크업 불일치 방지) ---
+  // Note: LegacyOrdersPage is rendered only when dispatcher decides legacy mode
 
   // 같은 고객 주문들을 순서 번호로 정렬하고 첫 번째 _0 주문에만 댓글 표시
   const processOrdersForDisplay = (orders) => {
@@ -620,8 +648,14 @@ export default function OrdersPage() {
     search: searchTerm.trim() || undefined, // 일반 검색어
     exactCustomerName: exactCustomerFilter || undefined, // <<< 정확한 고객명 파라미터 추가
     // --- 👆 검색 관련 파라미터 수정 👆 ---
-    startDate: dateFilterParams.startDate,
-    endDate: dateFilterParams.endDate,
+    startDate:
+      filterSelection === "주문완료+수령가능"
+        ? undefined
+        : dateFilterParams.startDate,
+    endDate:
+      filterSelection === "주문완료+수령가능"
+        ? undefined
+        : dateFilterParams.endDate,
   };
   
   
@@ -1075,7 +1109,8 @@ export default function OrdersPage() {
   useEffect(() => {
     const searchParam = searchParams.get("search");
     const filterParam = searchParams.get("filter");
-    
+    const postKeyParam = searchParams.get("postKey");
+
     if (searchParam) {
       setInputValue(searchParam);
       setSearchTerm(searchParam);
@@ -1083,7 +1118,16 @@ export default function OrdersPage() {
       setExactCustomerFilter(null);
       setSelectedOrderIds([]);
     }
-    
+
+    // postKey 파라미터 처리 - posts 페이지에서 넘어온 경우
+    if (postKeyParam) {
+      setInputValue(postKeyParam);
+      setSearchTerm(postKeyParam);
+      setCurrentPage(1);
+      setExactCustomerFilter(null);
+      setSelectedOrderIds([]);
+    }
+
     // 미수령 필터 파라미터 처리
     if (filterParam === "unpicked") {
       setFilterSelection("미수령");
@@ -1092,10 +1136,11 @@ export default function OrdersPage() {
     }
 
     // URL에서 파라미터 제거 (한 번만 실행되도록)
-    if (searchParam || filterParam) {
+    if (searchParam || filterParam || postKeyParam) {
       const newUrl = new URL(window.location);
       newUrl.searchParams.delete("search");
       newUrl.searchParams.delete("filter");
+      newUrl.searchParams.delete("postKey");
       window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
@@ -1225,10 +1270,7 @@ export default function OrdersPage() {
         const completedDate = new Date(order.completed_at);
         return completedDate >= today && completedDate <= todayEnd;
       }).length;
-      
       setOrders(ordersData.data);
-      // Debug pickup availability per band
-      debugPickupLogging();
     }
     if (ordersError) {
       console.error("Order Error:", ordersError);
@@ -1555,27 +1597,32 @@ export default function OrdersPage() {
   const formatDate = (ds) => {
     if (!ds) return "-";
     try {
-      // DB 값을 그대로 사용하되, 필요한 경우에만 최소한의 포맷팅
-      if (typeof ds === 'string') {
-        // ISO 형식인 경우 (2025-01-15T00:00:00.000Z)
-        if (ds.includes('T')) {
-          const [datePart, timePart] = ds.split('T');
-          const [year, month, day] = datePart.split('-');
-          const [hours, minutes] = timePart.split(':');
-          
-          return `${month.padStart(2, "0")}.${day.padStart(2, "0")} ${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
-        }
-        // 날짜만 있는 경우 (2025-01-15 or 01.15 형식)
-        else if (ds.includes('-')) {
-          const [year, month, day] = ds.split('-');
-          return `${month.padStart(2, "0")}.${day.padStart(2, "0")}`;
-        }
-        // 이미 포맷된 형식인 경우 그대로 반환
-        else {
-          return ds;
-        }
+      // 화면 표시를 KST처럼 보이도록 +9시간 보정해 출력
+      if (typeof ds === 'string' && ds.includes('T')) {
+        const d = new Date(ds);
+        if (Number.isNaN(d.getTime())) return ds;
+        const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        const MM = String(kst.getUTCMonth() + 1).padStart(2, '0');
+        const DD = String(kst.getUTCDate()).padStart(2, '0');
+        const hh = String(kst.getUTCHours()).padStart(2, '0');
+        const mm = String(kst.getUTCMinutes()).padStart(2, '0');
+        return `${MM}.${DD} ${hh}:${mm}`;
+      } else if (typeof ds === 'string' && ds.includes('-')) {
+        // 날짜만 있는 경우 (YYYY-MM-DD)
+        const d = new Date(`${ds}T00:00:00.000Z`);
+        const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        const MM = String(kst.getUTCMonth() + 1).padStart(2, '0');
+        const DD = String(kst.getUTCDate()).padStart(2, '0');
+        return `${MM}.${DD}`;
+      } else if (ds instanceof Date) {
+        const kst = new Date(ds.getTime() + 9 * 60 * 60 * 1000);
+        const MM = String(kst.getUTCMonth() + 1).padStart(2, '0');
+        const DD = String(kst.getUTCDate()).padStart(2, '0');
+        const hh = String(kst.getUTCHours()).padStart(2, '0');
+        const mm = String(kst.getUTCMinutes()).padStart(2, '0');
+        return `${MM}.${DD} ${hh}:${mm}`;
       }
-      return ds.toString();
+      return String(ds);
     } catch (e) {
       console.error("Date Format Err:", e);
       return ds || "Error";
@@ -2381,7 +2428,7 @@ export default function OrdersPage() {
         {/* 주문 테이블 */}
         <LightCard padding="p-0" className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full divide-y divide-gray-200 table-text-plus2">
               <thead className="bg-gray-50">
                 <tr>
                   <th

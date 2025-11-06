@@ -8,6 +8,7 @@ import { useUpdateProgress } from "../contexts/UpdateProgressContext";
 const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts' }) => {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [isRawMode, setIsRawMode] = useState(false);
   
   const { mutate } = useSWRConfig();
   const {
@@ -18,6 +19,33 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     hasActiveUpdate,
     forceResetState
   } = useUpdateProgress();
+
+  // raw 모드 판별 (컴포넌트 내부)
+  const detectRawMode = () => {
+    try {
+      const s = sessionStorage.getItem("userData");
+      if (!s) return false;
+      const u = JSON.parse(s);
+      const mode =
+        u?.orderProcessingMode ||
+        u?.order_processing_mode ||
+        u?.user?.orderProcessingMode ||
+        u?.user?.order_processing_mode ||
+        "legacy";
+      return String(mode).toLowerCase() === "raw";
+    } catch (_) {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    setIsRawMode(detectRawMode());
+    const onStorage = (e) => {
+      if (e.key === "userData") setIsRawMode(detectRawMode());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   // 현재 페이지의 진행 상태 가져오기
   const currentProgress = getProgressState(pageType);
@@ -98,6 +126,13 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
       undefined,
       { revalidate: true }
     );
+
+    // 4. comment_orders (raw 모드 목록) 갱신
+    mutate(
+      (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
+      undefined,
+      { revalidate: true }
+    );
   }, [mutate]);
 
   // execution_locks 테이블에서 실행 중 상태 확인하는 함수
@@ -132,6 +167,17 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
 
     const userId = getUserIdFromSession();
     if (!userId) {
+      return;
+    }
+
+    // raw 모드에서는 업데이트 대신 SWR 데이터 새로고침만 수행
+    if (detectRawMode()) {
+      try {
+        await refreshSWRCache(userId);
+        setSuccessMessage("새로고침 완료!");
+      } catch (e) {
+        setError("새로고침 중 문제가 발생했습니다.");
+      }
       return;
     }
 
@@ -452,14 +498,16 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
           ${
             isBackgroundProcessing
               ? "bg-gray-500 hover:bg-gray-600 focus:ring-gray-400 cursor-pointer"
-              : error && !successMessage
+            : error && !successMessage
               ? "bg-amber-500 hover:bg-amber-600 focus:ring-amber-400"
-              : successMessage
+            : successMessage
               ? "bg-green-600 hover:bg-green-700 focus:ring-green-500"
+              : isRawMode
+              ? "bg-gray-700 hover:bg-gray-800 focus:ring-gray-500"
               : "bg-green-500 hover:bg-blue-700 focus:ring-blue-500"
           }
         `}
-        title={isBackgroundProcessing ? "더블클릭으로 강제 초기화 가능" : "업데이트"}
+        title={isBackgroundProcessing ? "더블클릭으로 강제 초기화 가능" : (isRawMode ? "새로고침" : "업데이트")}
       >
         {isBackgroundProcessing && (
           <svg
@@ -488,8 +536,8 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
           : error && !successMessage
           ? "재시도"
           : successMessage
-          ? "동기화 완료!"
-          : "업데이트"}
+          ? (isRawMode ? "새로고침 완료!" : "동기화 완료!")
+          : (isRawMode ? "새로고침" : "업데이트")}
       </button>
 
       {/* 진행률 표시 - 컴팩트 바 버전 */}
