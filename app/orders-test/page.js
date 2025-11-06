@@ -594,6 +594,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     // --- 👇 검색 관련 파라미터 수정 👇 ---
     search: searchTerm.trim() || undefined, // 일반 검색어
     commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined, // comment_orders 전용 정확 고객명 필터
+    exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined, // orders 전용 정확 고객명 필터
     // --- 👆 검색 관련 파라미터 수정 👆 ---
     startDate: (() => {
       const p = calculateDateFilterParams(
