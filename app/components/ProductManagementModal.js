@@ -76,6 +76,57 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     }
   };
 
+  const normalizePickupDate = (rawValue) => {
+    if (!rawValue && rawValue !== 0) return null;
+
+    if (typeof rawValue === 'string') {
+      const trimmed = rawValue.trim();
+      if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
+        return null;
+      }
+
+      if (/(Z|[+-]\d{2}:?\d{2})$/.test(trimmed)) {
+        let sanitized = trimmed;
+        if (!sanitized.includes('T') && sanitized.includes(' ')) {
+          sanitized = sanitized.replace(' ', 'T');
+        }
+        if (/[+-]\d{2}$/.test(sanitized)) {
+          sanitized = `${sanitized}:00`;
+        }
+
+        const parsed = new Date(sanitized);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed.toISOString();
+        }
+      }
+
+      const naiveMatch = trimmed.match(
+        /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2})(?::(\d{2})(?::(\d{2}))?)?)?$/
+      );
+      if (naiveMatch) {
+        const [, yearStr, monthStr, dayStr, hourStr = '00', minuteStr = '00', secondStr = '00'] = naiveMatch;
+        const year = Number(yearStr);
+        const month = Number(monthStr);
+        const day = Number(dayStr);
+        const hour = Number(hourStr);
+        const minute = Number(minuteStr);
+        const second = Number(secondStr);
+
+        return new Date(
+          Date.UTC(year, month - 1, day, hour - 9, minute, second)
+        ).toISOString();
+      }
+    }
+
+    try {
+      const parsed = new Date(rawValue);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    } catch (_) {}
+
+    return null;
+  };
 
   // 상품 추가
   const addProduct = async () => {
@@ -129,6 +180,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 첫 번째 상품을 기준으로 복사 (있을 경우)
       const baseProduct = products[0] || null;
+      const resolvedPickupDateSource = post?.pickup_date || baseProduct?.pickup_date || null;
+      const normalizedPickupDate = normalizePickupDate(resolvedPickupDateSource);
       
       let newProductId;
       let newItemNumber;
@@ -173,7 +226,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           base_price: parseFloat(newProduct.base_price) || baseProduct.base_price,
           barcode: newProduct.barcode || baseProduct.barcode || '',
           quantity: 1,
-          pickup_date: post?.pickup_date || baseProduct.pickup_date || null,
+          pickup_date: normalizedPickupDate,
           stock_quantity: parseInt(newProduct.stock_quantity) || 0,
           item_number: newItemNumber,
           quantity_text: `${parseInt(newProduct.stock_quantity) || 0}개`,
@@ -224,7 +277,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           base_price: parseFloat(newProduct.base_price) || 0,
           barcode: newProduct.barcode || '',
           quantity: 1,
-          pickup_date: post?.pickup_date || null,
+          pickup_date: normalizedPickupDate,
           stock_quantity: parseInt(newProduct.stock_quantity) || 0,
           item_number: newItemNumber,
           quantity_text: `${parseInt(newProduct.stock_quantity) || 0}개`,
@@ -429,18 +482,72 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         alert('사용자 인증 정보를 찾을 수 없습니다.');
         return;
       }
-      
+
+      const normalizedUpdates = { ...updates };
+      let parsedBasePrice = null;
+
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'base_price')) {
+        const numericPrice = Number(normalizedUpdates.base_price);
+
+        if (Number.isNaN(numericPrice) || numericPrice < 0) {
+          alert('가격은 0 이상의 숫자여야 합니다.');
+          return;
+        }
+
+        parsedBasePrice = numericPrice;
+        normalizedUpdates.base_price = numericPrice;
+      }
+
+      const timestamp = new Date().toISOString();
+
       const { error } = await supabase
         .from('products')
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update({ ...normalizedUpdates, updated_at: timestamp })
         .eq('product_id', productId)
         .eq('user_id', userId);  // user_id 필터 추가
 
       if (error) throw error;
 
       setProducts(prev => prev.map(p => 
-        p.product_id === productId ? { ...p, ...updates } : p
+        p.product_id === productId ? { ...p, ...normalizedUpdates } : p
       ));
+
+      if (parsedBasePrice !== null) {
+        const { data: relatedOrders, error: ordersFetchError } = await supabase
+          .from('orders')
+          .select('order_id, quantity')
+          .eq('product_id', productId)
+          .eq('user_id', userId);
+
+        if (ordersFetchError) {
+          console.error('상품 가격 수정 시 주문 조회 실패:', ordersFetchError);
+        } else if (Array.isArray(relatedOrders) && relatedOrders.length > 0) {
+          const orderUpdates = relatedOrders.map(order => ({
+            order_id: order.order_id,
+            user_id: userId,
+            price: parsedBasePrice,
+            total_amount: parsedBasePrice * (order.quantity || 0),
+            updated_at: timestamp,
+          }));
+
+          const { error: ordersUpdateError } = await supabase
+            .from('orders')
+            .upsert(orderUpdates, { onConflict: 'order_id' });
+
+          if (ordersUpdateError) {
+            console.error('주문 가격 일괄 업데이트 실패:', ordersUpdateError);
+          } else {
+            await globalMutate(
+              (key) =>
+                Array.isArray(key) &&
+                key[0] === "orders" &&
+                key[1] === userId,
+              undefined,
+              { revalidate: true }
+            );
+          }
+        }
+      }
 
     } catch (error) {
       console.error('상품 업데이트 실패:', error);
