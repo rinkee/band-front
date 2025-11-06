@@ -3030,6 +3030,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
                     </th>
+                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
+                      수령일시
+                    </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
@@ -3136,6 +3139,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               {processBandTags(order.comment) || "-"}
                             </div>
                           </td>
+                          {/* 수령일시 */}
+                          <td className="py-2 pr-2 text-center text-[14px] text-gray-700 w-28">
+                            {(() => {
+                              const list = getCandidateProductsForOrder(order);
+                              let displayProd = null;
+                              if (order.product_id) {
+                                displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
+                              }
+                              if (!displayProd) displayProd = list[0] || null;
+                              const pickupDate = displayProd?.pickup_date || null;
+                              return formatPickupRelativeDateTime(pickupDate) || "-";
+                            })()}
+                          </td>
                           {/* 상품정보 */}
                           <td className="py-2 pr-2 text-sm text-gray-700 w-60">
                             {(() => {
@@ -3159,10 +3175,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
                               }
 
-                              // 수령일 정보 가져오기
-                              const pickupDate = displayProd?.pickup_date || null;
-                              const pickupDisplay = formatPickupRelativeDateTime(pickupDate);
-
                               return (
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-50 flex-shrink-0">
@@ -3178,12 +3190,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                       <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">이미지</div>
                                     )}
                                   </div>
-                                  <div className="min-w-0 flex-1">
-                                    {pickupDisplay && (
-                                      <div className="mb-1 text-[13px]">
-                                        {pickupDisplay}
-                                      </div>
-                                    )}
+                                  <div className="min-w-0">
                                     <div className="font-medium truncate" title={name}>{name}</div>
                                   </div>
                                 </div>
