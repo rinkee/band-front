@@ -14,6 +14,7 @@ import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import
 import getAuthedClient from "../lib/authedSupabaseClient";
 import JsBarcode from "jsbarcode";
 import { useUser, useProducts, useCommentOrdersClient, useCommentOrderClientMutations, useOrderStatsClient } from "../hooks";
+import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
@@ -340,7 +341,8 @@ const getStatusIcon = (status) => {
 };
 
 // --- 메인 페이지 컴포넌트 ---
-export default function OrdersPage() {
+// Raw 모드 전용 컴포넌트 (comment_orders 테이블 사용)
+function RawOrdersTestPage() {
   // Feature flag: 새로운 통계 바 사용 여부
   const useNewStatsBar = true; // false로 변경하면 기존 UI 사용
   const router = useRouter();
@@ -4322,4 +4324,28 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
       </div>
     </div>
   );
+}
+
+// Dispatcher: choose raw comment-orders view or legacy orders view
+export default function OrdersTestPage() {
+  const [mode, setMode] = useState("unknown"); // 'unknown' | 'raw' | 'legacy'
+  useEffect(() => {
+    try {
+      const s = sessionStorage.getItem("userData");
+      const session = s ? JSON.parse(s) : null;
+      const m =
+        session?.orderProcessingMode ||
+        session?.order_processing_mode ||
+        session?.user?.orderProcessingMode ||
+        session?.user?.order_processing_mode ||
+        "legacy";
+      setMode(String(m).toLowerCase() === "raw" ? "raw" : "legacy");
+    } catch (_) {
+      setMode("legacy");
+    }
+  }, []);
+
+  if (mode === "unknown") return null; // keep SSR/CSR consistent on first paint
+  if (mode === "raw") return <RawOrdersTestPage />;
+  return <div>Legacy mode for orders-test is not yet implemented. Please use /orders for legacy mode.</div>;
 }

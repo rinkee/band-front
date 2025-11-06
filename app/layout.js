@@ -453,17 +453,13 @@ function LayoutContent({ children }) {
                     </Link>
                     <Link
                       href="/update-logs"
-                      className={`px-3 py-2 text-sm font-medium rounded-md relative ${
+                      className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/update-logs"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
                       업데이트 로그
-                      <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                      </span>
                     </Link>
                   </nav>
                 </div>
@@ -714,7 +710,7 @@ function LayoutContent({ children }) {
                   </Link>
                   <Link
                     href="/update-logs"
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md relative ${
+                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/update-logs"
                         ? "bg-blue-100 text-gray-900"
                         : "text-gray-600 hover:bg-gray-100"
@@ -738,10 +734,6 @@ function LayoutContent({ children }) {
                       />
                     </svg>
                     업데이트 로그
-                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                    </span>
                   </Link>
                   {/* 로그아웃 버튼 */}
                   <button
