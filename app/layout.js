@@ -416,7 +416,7 @@ function LayoutContent({ children }) {
                     >
                       주문 관리
                     </Link>
-                    {userData?.order_processing_mode !== "raw" && (
+                    {/* {userData?.order_processing_mode !== "raw" && (
                       <Link
                         href="/orders-test"
                         className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -430,7 +430,7 @@ function LayoutContent({ children }) {
                           beta
                         </span>
                       </Link>
-                    )}
+                    )} */}
                     {/* <Link
                       href="/customers"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -620,7 +620,7 @@ function LayoutContent({ children }) {
                     </svg>
                     주문 관리
                   </Link>
-                  {userData?.order_processing_mode !== "raw" && (
+                  {/* {userData?.order_processing_mode !== "raw" && (
                     <Link
                       href="/orders-test"
                       className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
@@ -649,7 +649,7 @@ function LayoutContent({ children }) {
                         </span>
                       </span>
                     </Link>
-                  )}
+                  )} */}
                   {/* <Link
                     href="/customers"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
