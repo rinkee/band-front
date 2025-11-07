@@ -1422,6 +1422,7 @@ const CommentsModal = ({
                               .update({
                                 is_product: true,
                                 comment_sync_status: 'pending',
+                                order_needs_ai: true,
                                 last_sync_attempt: null,
                                 sync_retry_count: 0
                               })
