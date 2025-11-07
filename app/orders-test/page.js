@@ -3027,11 +3027,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       상태
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
-                      댓글
-                    </th>
                     <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
                       수령일시
+                    </th>
+                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                      댓글
                     </th>
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
@@ -3133,12 +3133,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
-                          {/* 댓글 */}
-                          <td className="py-2 pr-2 text-sm text-gray-600" title={processBandTags(order.comment) || ""}>
-                            <div className="line-clamp-3 break-words leading-tight">
-                              {processBandTags(order.comment) || "-"}
-                            </div>
-                          </td>
                           {/* 수령일시 */}
                           <td className="py-2 pr-2 text-center text-[14px] text-gray-700 w-28">
                             {(() => {
@@ -3151,6 +3145,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               const pickupDate = displayProd?.pickup_date || null;
                               return formatPickupRelativeDateTime(pickupDate) || "-";
                             })()}
+                          </td>
+                          {/* 댓글 */}
+                          <td className="py-2 pr-2 text-sm text-gray-600" title={processBandTags(order.comment) || ""}>
+                            <div className="line-clamp-3 break-words leading-tight">
+                              {processBandTags(order.comment) || "-"}
+                            </div>
                           </td>
                           {/* 상품정보 */}
                           <td className="py-2 pr-2 text-sm text-gray-700 w-60">
