@@ -3345,7 +3345,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center gap-1 min-w-0">
                                             {list.length > 1 && (
-                                              <span className="text-xs text-gray-500 flex-shrink-0">#{itemNo}</span>
+                                              <span className="text-xs text-gray-500 flex-shrink-0">{itemNo}번</span>
                                             )}
                                             <span className={`truncate text-[15px] leading-snug text-gray-900 font-medium`}>{title}</span>
                                           </div>
