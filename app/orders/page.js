@@ -391,7 +391,7 @@ function LegacyOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [inputValue, setInputValue] = useState(""); // 검색 입력값 상태
+  const searchInputRef = useRef(null); // 검색 입력 ref (uncontrolled)
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -1723,17 +1723,15 @@ function LegacyOrdersPage() {
   };
 
   const clearInputValue = () => {
-    setInputValue("");
-  };
-
-  // 검색 입력 시 inputValue 상태만 업데이트
-  const handleSearchChange = (e) => {
-    setInputValue(e.target.value);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+      searchInputRef.current.focus();
+    }
   };
 
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = () => {
-    const trimmedInput = inputValue.trim();
+    const trimmedInput = searchInputRef.current?.value.trim() || "";
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     if (trimmedInput !== searchTerm) {
       console.log(`[Search] New search triggered: "${trimmedInput}"`);
@@ -2377,28 +2375,25 @@ function LegacyOrdersPage() {
                   {" "}
                   {/* order-1 */}
                   <input
+                    ref={searchInputRef}
                     type="text"
                     placeholder="고객명, 상품명, 바코드, post_key..."
-                    value={inputValue}
-                    onChange={handleSearchChange}
                     onKeyDown={handleKeyDown}
-                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                     disabled={isDataLoading}
                   />
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
-                  {/* --- 👇 X 버튼 추가 👇 --- */}
-                  {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
-                    <button
-                      type="button"
-                      onClick={clearInputValue}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                      aria-label="검색 내용 지우기"
-                    >
-                      <XMarkIcon className="w-5 h-5" />
-                    </button>
-                  )}
+                  {/* X 버튼 - 항상 표시 */}
+                  <button
+                    type="button"
+                    onClick={clearInputValue}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                    aria-label="검색 내용 지우기"
+                  >
+                    <XMarkIcon className="w-5 h-5" />
+                  </button>
                 </div>
                 {/* 검색/초기화 버튼 그룹 */}
                 <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">

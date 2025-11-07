@@ -353,7 +353,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [inputValue, setInputValue] = useState(""); // 검색 입력값 상태
+  const searchInputRef = useRef(null); // 검색 입력 ref (uncontrolled)
 
   // 토글 상태 추가
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
@@ -924,7 +924,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const handleCellClickToSearch = useCallback((searchValue) => {
     if (!searchValue) return; // 빈 값은 무시
     const trimmedValue = searchValue.trim();
-    setInputValue(trimmedValue); // 검색창 UI 업데이트
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedValue; // 검색창 UI 업데이트
+    }
     setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
@@ -1269,7 +1271,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const searchParam = searchParams.get("search");
     if (searchParam) {
       // Auto-searching from URL parameter
-      setInputValue(searchParam);
+      if (searchInputRef.current) {
+        searchInputRef.current.value = searchParam;
+      }
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1895,7 +1899,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   const clearInputValue = () => {
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+      searchInputRef.current.focus();
+    }
   };
 
   // 개별 필터 해제 함수들
@@ -1906,7 +1913,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   const clearSearchFilter = () => {
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setSearchTerm("");
     setCurrentPage(1);
     setSelectedOrderIds([]);
@@ -1926,14 +1935,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
-  // 검색 입력 시 inputValue 상태만 업데이트
-  const handleSearchChange = (e) => {
-    setInputValue(e.target.value);
-  };
-
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = useCallback(() => {
-    const trimmedInput = inputValue.trim();
+    const trimmedInput = searchInputRef.current?.value.trim() || "";
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     if (trimmedInput !== searchTerm) {
       // New search triggered
@@ -1946,7 +1950,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         setTimeout(() => scrollToTop(), 100);
       }
     }
-  }, [inputValue, searchTerm, scrollToTop]);
+  }, [searchTerm, scrollToTop]);
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -1958,7 +1962,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // 검색 초기화 함수
   const handleClearSearch = () => {
     // Clearing search and filters
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
@@ -1980,7 +1986,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (!customerName || customerName === "-") return;
     const trimmedName = customerName.trim();
     // Exact customer search
-    setInputValue(trimmedName);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedName;
+    }
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);
@@ -2805,28 +2813,25 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     {" "}
                     {/* order-1 */}
                     <input
+                      ref={searchInputRef}
                       type="text"
                       placeholder="고객명, 상품명, 바코드, post_key..."
-                      value={inputValue}
-                      onChange={handleSearchChange}
                       onKeyDown={handleKeyDown}
-                      className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                       disabled={isDataLoading}
                     />
                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                       <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                     </div>
-                    {/* --- 👇 X 버튼 추가 👇 --- */}
-                    {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
-                      <button
-                        type="button"
-                        onClick={clearInputValue}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                        aria-label="검색 내용 지우기"
-                      >
-                        <XMarkIcon className="w-5 h-5" />
-                      </button>
-                    )}
+                    {/* X 버튼 - 항상 표시 */}
+                    <button
+                      type="button"
+                      onClick={clearInputValue}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      aria-label="검색 내용 지우기"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
                   </div>
                   {/* 검색/초기화 버튼 그룹 */}
                   <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
@@ -2865,10 +2870,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 <div className="flex gap-2 items-center">
                   <div className="relative w-64">
                     <input
+                      ref={searchInputRef}
                       type="text"
                       placeholder="검색"
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           handleSearch();
@@ -2889,8 +2893,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   {(searchTerm || exactCustomerFilter) && (
                     <button
                       onClick={() => {
+                        if (searchInputRef.current) {
+                          searchInputRef.current.value = "";
+                        }
                         setSearchTerm("");
-                        setInputValue("");
                         setExactCustomerFilter("");
                       }}
                       className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
