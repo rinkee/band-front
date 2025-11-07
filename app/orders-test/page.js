@@ -467,7 +467,72 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, []);
 
-  const displayOrders = useMemo(() => orders || [], [orders]);
+  // 수령가능만 보기: 오늘 포함, 오늘 이전 날짜만 표시 (시간 무시, KST 기준)
+  const displayOrders = useMemo(() => {
+    const toKstYmdLocal = (dateInput) => {
+      if (!dateInput) return null;
+      const KST_OFFSET = 9 * 60 * 60 * 1000;
+      try {
+        let y, m, d;
+        if (typeof dateInput === 'string' && dateInput.includes('T')) {
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+          const [datePart] = dateInput.split(' ');
+          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+          y = yy; m = mm; d = dd;
+        } else if (typeof dateInput === 'string') {
+          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+          if (md) {
+            const now = new Date(new Date().getTime() + KST_OFFSET);
+            y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
+          } else {
+            const dt = new Date(dateInput);
+            const k = new Date(dt.getTime() + KST_OFFSET);
+            y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+          }
+        } else if (dateInput instanceof Date) {
+          const k = new Date(dateInput.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        } else {
+          return null;
+        }
+        return y * 10000 + m * 100 + d;
+      } catch (_) { return null; }
+    };
+    const extractBracketDate = (text) => {
+      if (!text || typeof text !== 'string') return null;
+      const m = text.match(/^\s*\[([^\]]+)\]/);
+      return m ? m[1] : null;
+    };
+    const pickSourceLocal = (primary, bracket) => {
+      const y1 = toKstYmdLocal(primary);
+      const y2 = toKstYmdLocal(bracket);
+      if (y1 && y2) return y1 <= y2 ? primary : bracket;
+      return primary || bracket || null;
+    };
+    const isAvailableLocal = (dateInput) => {
+      if (!dateInput) return false;
+      const now = new Date();
+      const KST_OFFSET = 9 * 60 * 60 * 1000;
+      const k = new Date(now.getTime() + KST_OFFSET);
+      const todayYmd = k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate();
+      const ymd = toKstYmdLocal(dateInput);
+      return ymd ? todayYmd >= ymd : false;
+    };
+
+    let arr = orders || [];
+    if (showPickupAvailableOnly) {
+      arr = arr.filter((o) => {
+        // order.product_pickup_date 우선, 없으면 제목의 대괄호 날짜
+        const bracket = extractBracketDate(o.product_title || o.product_name || '');
+        const eff = pickSourceLocal(o.product_pickup_date, bracket);
+        return isAvailableLocal(eff);
+      });
+    }
+    return arr;
+  }, [orders, showPickupAvailableOnly]);
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   // NOTE: ordersData 선언 이후에 위치해야 TDZ 에러가 발생하지 않음
@@ -3001,8 +3066,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
               
               </div>
-                {/* 업데이트 버튼 - 오른쪽 끝 */}
-                <div className="flex items-center gap-2 flex-shrink-0 ml-auto pl-3 border-l border-gray-200">
+               
+            </div>
+                 {/* 업데이트 버튼 - 오른쪽 끝 */}
+           <div className="flex items-center gap-2 flex-shrink-0 ml-auto pl-3">
                   <UpdateButton
                     pageType="orders"
                     totalItems={globalStatsData?.총주문수 || 0}
@@ -3016,8 +3083,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     }}
                   />
                 </div>
-            </div>
           </div>
+      
         </div>
 
         {/* 주의 안내 문구 */}
@@ -3320,7 +3387,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                     const selected = isSelected(p);
                                     const barcodeVal = selected && order?.selected_barcode ? order.selected_barcode : (p?.barcode || '');
                                     return (
-                                      <div key={p?.product_id || `${idx}`} className={`flex items-center justify-center p-2 min-h-[72px] ${selected ? '' : ''}`}>
+                                      <div key={p?.product_id || `${idx}`} className={`flex items-center justify-center h-[72px] ${selected ? '' : ''}`}>
                                         {barcodeVal ? (
                                           <Barcode value={barcodeVal} height={32} width={1.2} fontSize={12} />
                                         ) : (
