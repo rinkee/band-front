@@ -3315,12 +3315,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               if (!Array.isArray(list) || list.length === 0) return <span className="text-xs text-gray-400">없음</span>;
                               const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
                               return (
-                                <div className="space-y-1">
+                                <div className="space-y-2">
                                   {list.map((p, idx) => {
                                     const selected = isSelected(p);
                                     const barcodeVal = selected && order?.selected_barcode ? order.selected_barcode : (p?.barcode || '');
                                     return (
-                                      <div key={p?.product_id || `${idx}`} className={`flex justify-center ${selected ? '' : ''}`}>
+                                      <div key={p?.product_id || `${idx}`} className={`flex items-center justify-center p-2 min-h-[72px] ${selected ? '' : ''}`}>
                                         {barcodeVal ? (
                                           <Barcode value={barcodeVal} height={32} width={1.2} fontSize={12} />
                                         ) : (
