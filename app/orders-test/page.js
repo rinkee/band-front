@@ -1088,37 +1088,48 @@ function OrdersTestPageContent({ mode = "raw" }) {
     let successCount = 0;
     let failCount = 0;
 
-    const nowISO = new Date().toISOString();
-    const buildUpdate = (st) => {
-      const base = { order_status: st };
-      if (st === "수령완료") {
-        base.received_at = nowISO;
-        base.canceled_at = null;
-      } else if (st === "주문취소") {
-        base.canceled_at = nowISO;
-        base.received_at = null;
-      } else if (st === "주문완료") {
-        base.ordered_at = nowISO;
-        base.canceled_at = null;
-        base.received_at = null;
-      } else if (st === "확인필요") {
-        base.canceled_at = null;
-        base.received_at = null;
-      } else if (st === "미수령") {
-        base.received_at = null;
-        base.canceled_at = null;
-      }
-      return base;
-    };
-
     try {
-      for (const id of orderIdsToProcess) {
-        try {
-          await updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
-          successCount += 1;
-        } catch (e) {
-          failCount += 1;
+      if (mode === "raw") {
+        // Raw 모드: 각 주문을 개별적으로 업데이트
+        const nowISO = new Date().toISOString();
+        const buildUpdate = (st) => {
+          const base = { order_status: st };
+          if (st === "수령완료") {
+            base.received_at = nowISO;
+            base.canceled_at = null;
+          } else if (st === "주문취소") {
+            base.canceled_at = nowISO;
+            base.received_at = null;
+          } else if (st === "주문완료") {
+            base.ordered_at = nowISO;
+            base.canceled_at = null;
+            base.received_at = null;
+          } else if (st === "확인필요") {
+            base.canceled_at = null;
+            base.received_at = null;
+          } else if (st === "미수령") {
+            base.received_at = null;
+            base.canceled_at = null;
+          }
+          return base;
+        };
+
+        for (const id of orderIdsToProcess) {
+          try {
+            await rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
+            successCount += 1;
+          } catch (e) {
+            failCount += 1;
+          }
         }
+      } else {
+        // Legacy 모드: bulkUpdateOrderStatus 사용 (orders 페이지와 동일)
+        await legacyMutations.bulkUpdateOrderStatus(
+          orderIdsToProcess,
+          newStatus,
+          userData.userId
+        );
+        successCount = orderIdsToProcess.length;
       }
 
       // 일괄 상태 변경 후 리스트/통계 새로고침
@@ -1148,7 +1159,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, orders, userData, updateCommentOrder, mutateOrders, globalMutate, mutateGlobalStats]);
+  }, [selectedOrderIds, orders, userData, mode, rawMutations, legacyMutations, mutateOrders, globalMutate, mutateGlobalStats]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -3049,10 +3060,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
-                    <th className="py-2 pr-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      가격
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
+                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
                       바코드
                     </th>
                     <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
@@ -3210,80 +3218,108 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               );
                             })()}
                           </td>
-                          {/* 상품정보 */}
-                          <td className="py-2 pr-2 text-sm text-gray-700 w-60">
+                          {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
+                          <td className="py-2 pr-2 text-sm text-gray-700 w-60 align-top">
                             {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) {
-                                displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
+                              const list = getCandidateProductsForOrder(order) || [];
+                              if (!Array.isArray(list) || list.length === 0) {
+                                return <span className="text-gray-400">-</span>;
                               }
-                              if (!displayProd) displayProd = list[0] || null;
 
-                              let name = displayProd?.title || (order.product_id ? getProductNameById(order.product_id) : null) || order.product_name || "-";
-                              if (!order.product_id && !displayProd && list.length > 1) {
-                                name = `${name} 외 ${list.length - 1}개`;
-                              }
-                              // 이미지 결정: postsImages에서 조회
-                              let imgUrl = null;
-                              const bk = displayProd?.band_key, pk = displayProd?.post_key;
-                              if (bk && pk) {
-                                const key = `${bk}_${pk}`;
-                                const arr = postsImages[key];
-                                if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
-                              }
+                              const getItemNumber = (p, idx) => {
+                                const n1 = Number(p?.item_number);
+                                if (Number.isFinite(n1) && n1 > 0) return n1;
+                                try {
+                                  const m = String(p?.product_id || '').match(/item(\d+)/i);
+                                  if (m && m[1]) {
+                                    const n = parseInt(m[1], 10);
+                                    if (Number.isFinite(n) && n > 0) return n;
+                                  }
+                                } catch {}
+                                return idx + 1;
+                              };
+
+                              const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
 
                               return (
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-50 flex-shrink-0">
-                                    {imgUrl ? (
-                                      <img
-                                        src={imgUrl}
-                                        alt={name}
-                                        className="w-full h-full object-cover"
-                                        referrerPolicy="no-referrer"
-                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">이미지</div>
-                                    )}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-medium truncate" title={name}>{name}</div>
-                                  </div>
+                                <div className="space-y-2">
+                                  {list.map((p, idx) => {
+                                    const itemNo = getItemNumber(p, idx);
+                                    const rawTitle = p?.title || p?.name || '-';
+                                    const title = cleanProductName(rawTitle);
+                                    const selected = isSelected(p);
+                                    const price = (selected && Number.isFinite(order?.selected_price))
+                                      ? Number(order.selected_price)
+                                      : (Number.isFinite(Number(p?.base_price))
+                                          ? Number(p.base_price)
+                                          : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null));
+                                    let imgUrl = p?.image_url || p?.thumbnail_url || p?.thumb_url || null;
+                                    if (!imgUrl) {
+                                      const bk = p?.band_key || order?.band_key;
+                                      const pk = p?.post_key || order?.post_key;
+                                      if (bk && pk) {
+                                        const key = `${bk}_${pk}`;
+                                        const arr = postsImages[key];
+                                        if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
+                                      }
+                                    }
+                                    return (
+                                      <div
+                                        key={p?.product_id || `${idx}`}
+                                        className={`border rounded p-2 flex items-start gap-2 border-gray-200`}
+                                        title={title}
+                                      >
+                                        <div className="w-10 h-10 rounded-md overflow-hidden border bg-white flex-shrink-0">
+                                          {imgUrl ? (
+                                            <img
+                                              src={imgUrl}
+                                              alt={title}
+                                              className="w-full h-full object-cover"
+                                              referrerPolicy="no-referrer"
+                                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">이미지</div>
+                                          )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-1 min-w-0">
+                                            <span className="text-xs text-gray-500 flex-shrink-0">#{itemNo}</span>
+                                            <span className={`truncate text-[15px] leading-snug text-gray-900 font-medium`}>{title}</span>
+                                          </div>
+                                          {price != null && (
+                                            <div className="text-sm text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               );
                             })()}
                           </td>
-                          {/* 가격 */}
-                          <td className="py-2 pr-2 text-right text-sm text-gray-700 w-24">
-                            {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
-                              if (!displayProd) displayProd = list[0] || null;
-                              let price = null;
-                              if (Number.isFinite(order?.selected_price)) price = order.selected_price;
-                              else if (Number.isFinite(displayProd?.base_price)) price = displayProd.base_price;
-                              else if (Number.isFinite(displayProd?.price)) price = displayProd.price;
-                              return price != null ? `₩${Number(price).toLocaleString()}` : '-';
-                            })()}
-                          </td>
                           {/* 바코드 */}
-                          <td className="py-2 pr-2 text-center text-sm text-gray-700 w-32">
+                          <td className="py-2 pr-2 text-center text-sm text-gray-700 w-32 align-top">
                             {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
-                              if (!displayProd) displayProd = list[0] || null;
-                              const displayBarcode = (displayProd?.barcode) || order.selected_barcode || (order.product_id ? getProductBarcode(order.product_id) : "");
-                              return displayBarcode ? (
-                                <div className="flex flex-col items-center">
-                                  <Barcode value={displayBarcode} height={28} width={1.2} fontSize={10} />
-                                  {/* <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span> */}
+                              const list = getCandidateProductsForOrder(order) || [];
+                              if (!Array.isArray(list) || list.length === 0) return <span className="text-xs text-gray-400">없음</span>;
+                              const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
+                              return (
+                                <div className="space-y-1">
+                                  {list.map((p, idx) => {
+                                    const selected = isSelected(p);
+                                    const barcodeVal = selected && order?.selected_barcode ? order.selected_barcode : (p?.barcode || '');
+                                    return (
+                                      <div key={p?.product_id || `${idx}`} className={`flex justify-center ${selected ? '' : ''}`}>
+                                        {barcodeVal ? (
+                                          <Barcode value={barcodeVal} height={32} width={1.2} fontSize={12} />
+                                        ) : (
+                                          <span className="text-xs text-gray-400">없음</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">없음</span>
                               );
                             })()}
                           </td>

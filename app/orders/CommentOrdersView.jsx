@@ -83,6 +83,70 @@ function LightCard({ children, className = "", padding = "p-6" }) {
   );
 }
 
+// Search bar isolated to avoid re-rendering heavy list while typing
+function SearchBar({ defaultValue = "", externalValue, onSearch, onReset }) {
+  const [value, setValue] = useState(defaultValue);
+  // Sync when parent programmatically sets a value
+  React.useEffect(() => {
+    if (typeof externalValue === 'string') {
+      setValue(externalValue);
+    }
+  }, [externalValue]);
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      onSearch && onSearch(value.trim());
+    }
+  };
+  const handleClear = () => setValue("");
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative w-full sm:w-56">
+        <input
+          type="text"
+          placeholder="고객명/댓글 검색"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="w-full pl-9 pr-9 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+        />
+        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
+        </div>
+        {value && (
+          <button
+            onClick={handleClear}
+            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+            aria-label="검색 내용 지우기"
+            type="button"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <button
+        onClick={() => onSearch && onSearch(value.trim())}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-black text-white hover:bg-gray-900"
+        type="button"
+      >
+        <MagnifyingGlassIcon className="w-4 h-4" />
+        <span className="hidden sm:inline">검색</span>
+      </button>
+      <button
+        onClick={() => {
+          setValue("");
+          onReset && onReset();
+        }}
+        className="inline-flex items-center gap-1.5 p-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200"
+        aria-label="검색 초기화"
+        title="검색 및 필터 초기화"
+        type="button"
+      >
+        <ArrowPathIcon className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 // CustomRadioGroup - legacy 모드와 동일한 라디오 스타일
 function CustomRadioGroup({ name, options, selectedValue, onChange, disabled = false }) {
   return (
@@ -140,8 +204,9 @@ export default function CommentOrdersView() {
   const [userData, setUserData] = useState(null);
   const [page, setPage] = useState(1);
   // 검색/필터 (legacy 유사 UI)
-  const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  // 검색창 외부동기화(고객/상품 클릭 시 표시용)
+  const [searchInputSeed, setSearchInputSeed] = useState("");
   const [statusSelection, setStatusSelection] = useState("all");
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [customStartDate, setCustomStartDate] = useState(null);
@@ -167,21 +232,9 @@ export default function CommentOrdersView() {
   // 제품 이미지 로드 실패(대체 아이콘 사용) 여부: { [product_id]: true }
   const [brokenProductImages, setBrokenProductImages] = useState({});
 
-  // Debug utilities
+  // Debug utilities (default OFF; enable with ?debugReco=1 or localStorage 'debug_reco'='1')
   const getDebugFlag = () => {
     try {
-      // Dev default ON (can be turned off with ?debugReco=0 or localStorage 'debug_reco'='0')
-      if (process.env.NODE_ENV !== "production") {
-        try {
-          const sp = new URLSearchParams(window.location.search);
-          const qOff = sp.get('debugReco') === '0' || sp.get('debug_reco') === '0';
-          const lsOff = window.localStorage?.getItem?.('debug_reco') === '0';
-          if (!qOff && !lsOff) return true;
-        } catch (_) {}
-      }
-    } catch (_) {}
-    try {
-      // URL ?debugReco=1 or ?debug_reco=1
       if (typeof window !== "undefined") {
         const sp = new URLSearchParams(window.location.search);
         const q1 = sp.get('debugReco') || sp.get('debug_reco');
@@ -825,15 +878,14 @@ export default function CommentOrdersView() {
     setStatusSelection(value);
     setPage(1);
   };
-  const handleSearchChange = (e) => setInputValue(e.target.value);
-  const handleSearch = () => {
-    const trimmed = inputValue.trim();
+  const handleSearch = (term) => {
+    const trimmed = (term ?? "").trim();
     setSearchTerm(trimmed);
     setPage(1);
   };
   const handleReset = () => {
-    setInputValue("");
     setSearchTerm("");
+    setSearchInputSeed("");
     setStatusSelection("all");
     setFilterDateRange("30days");
     setCustomStartDate(null);
@@ -843,9 +895,7 @@ export default function CommentOrdersView() {
     setActiveProductName(null);
     setPage(1);
   };
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") handleSearch();
-  };
+  // Enter handling is scoped inside SearchBar
   const handleDateRangeChange = (value) => {
     setFilterDateRange(value);
     setCustomStartDate(null);
@@ -1240,7 +1290,7 @@ export default function CommentOrdersView() {
   const handleFilterByCustomer = (name) => {
     if (!name) return;
     setActiveCustomer(name);
-    setInputValue(name);
+    setSearchInputSeed(name);
     setPage(1);
   };
   const handleFilterByProduct = (productId, productName) => {
@@ -1248,7 +1298,7 @@ export default function CommentOrdersView() {
     setActiveProductId(productId);
     if (productName) {
       setActiveProductName(productName);
-      setInputValue(productName);
+      setSearchInputSeed(productName);
     } else {
       setActiveProductName(null);
     }
@@ -1306,45 +1356,12 @@ export default function CommentOrdersView() {
           <LightCard padding="p-3">
             <div className="flex flex-wrap items-stretch justify-start gap-3">
               {/* 검색 */}
-              <div className="flex items-center gap-2">
-                <div className="relative w-full sm:w-56">
-                  <input
-                    type="text"
-                    placeholder="고객명/댓글 검색"
-                    value={inputValue}
-                    onChange={handleSearchChange}
-                    onKeyDown={handleKeyDown}
-                    className="w-full pl-9 pr-9 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-                  />
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                  </div>
-                  {inputValue && (
-                    <button
-                      onClick={() => setInputValue("")}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
-                      aria-label="검색 내용 지우기"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <button
-                  onClick={handleSearch}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-black text-white hover:bg-gray-900"
-                >
-                  <MagnifyingGlassIcon className="w-4 h-4" />
-                  <span className="hidden sm:inline">검색</span>
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="inline-flex items-center gap-1.5 p-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200"
-                  aria-label="검색 초기화"
-                  title="검색 및 필터 초기화"
-                >
-                  <ArrowPathIcon className="w-4 h-4" />
-                </button>
-              </div>
+              <SearchBar
+                defaultValue={searchTerm}
+                externalValue={searchInputSeed}
+                onSearch={handleSearch}
+                onReset={handleReset}
+              />
 
               <div className="flex-grow"></div> {/* Spacer */}
 
@@ -1595,7 +1612,7 @@ export default function CommentOrdersView() {
                     <td className="px-4 py-3 text-sm text-gray-800">
                       {row.commenter_name ? (
                         <button
-                          className="text-gray-900 hover:text-orange-600 "
+                          className="text-gray-900 hover:text-orange-600 whitespace-nowrap"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleFilterByCustomer(row.commenter_name);
