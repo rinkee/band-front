@@ -512,7 +512,7 @@ function LegacyOrdersPage() {
     });
   };
 
-  const displayOrders = processOrdersForDisplay(orders);
+  const displayOrders = useMemo(() => processOrdersForDisplay(orders), [orders]);
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
@@ -707,13 +707,19 @@ function LegacyOrdersPage() {
     useOrderClientMutations();
 
   const isDataLoading = isUserLoading || isOrdersLoading;
-  const displayedOrderIds = displayOrders.map((o) => o.order_id);
-  const isAllDisplayedSelected =
-    displayedOrderIds.length > 0 &&
-    displayedOrderIds.every((id) => selectedOrderIds.includes(id));
-  const isSomeDisplayedSelected =
-    displayedOrderIds.length > 0 &&
-    displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+  const displayedOrderIds = useMemo(() => displayOrders.map((o) => o.order_id), [displayOrders]);
+  const isAllDisplayedSelected = useMemo(
+    () =>
+      displayedOrderIds.length > 0 &&
+      displayedOrderIds.every((id) => selectedOrderIds.includes(id)),
+    [displayedOrderIds, selectedOrderIds]
+  );
+  const isSomeDisplayedSelected = useMemo(
+    () =>
+      displayedOrderIds.length > 0 &&
+      displayedOrderIds.some((id) => selectedOrderIds.includes(id)),
+    [displayedOrderIds, selectedOrderIds]
+  );
 
   // 선택된 주문들의 총 수량과 총 금액 계산
   const selectedOrderTotals = useMemo(() => {
