@@ -2943,8 +2943,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
         <div className="flex-shrink-0 p-4 lg:p-6">
           <div className="max-w-7xl mx-auto">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex flex-wrap gap-3 items-center">
-                {/* 검색 영역 */}
+              <div className="flex flex-wrap gap-3 items-center justify-between">
+                {/* 검색 영역 + 초기화 + 업데이트 버튼 */}
                 <div className="flex gap-2 items-center">
                   <div className="relative w-64">
                     <input
@@ -2968,24 +2968,35 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   >
                     검색
                   </button>
-                  {(searchTerm || exactCustomerFilter) && (
-                    <button
-                      onClick={() => {
-                        if (searchInputRef.current) {
-                          searchInputRef.current.value = "";
-                        }
-                        setSearchTerm("");
-                        setExactCustomerFilter("");
-                      }}
-                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
-                    >
-                      초기화
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (searchInputRef.current) {
+                        searchInputRef.current.value = "";
+                      }
+                      setSearchTerm("");
+                      setExactCustomerFilter("");
+                    }}
+                    disabled={!searchTerm && !exactCustomerFilter}
+                    className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    초기화
+                  </button>
+                  <UpdateButton
+                    pageType="orders"
+                    totalItems={globalStatsData?.총주문수 || 0}
+                    onSuccess={async () => {
+                      try {
+                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                        await mutateOrders(undefined, { revalidate: true });
+                        await mutateProducts(undefined, { revalidate: true });
+                        await mutateGlobalStats(undefined, { revalidate: true });
+                      } catch (_) {}
+                    }}
+                  />
                 </div>
 
                 {/* 선택된 항목 총계 및 일괄 처리 버튼 */}
-                <div className="flex items-center gap-6 flex-shrink-0 ml-auto">
+                <div className="flex items-center gap-6 flex-shrink-0">
                   {/* 총계 표시 - 배경과 보더 제거 */}
                   {displayOrders.length > 0 && (
                     <div className="flex items-center gap-4">
@@ -3063,28 +3074,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     </button>
                   </div>
                 </div>
-
-              
               </div>
-               
             </div>
-                 {/* 업데이트 버튼 - 오른쪽 끝 */}
-           <div className="flex items-center gap-2 flex-shrink-0 ml-auto pl-3">
-                  <UpdateButton
-                    pageType="orders"
-                    totalItems={globalStatsData?.총주문수 || 0}
-                    onSuccess={async () => {
-                      try {
-                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                        await mutateOrders(undefined, { revalidate: true });
-                        await mutateProducts(undefined, { revalidate: true });
-                        await mutateGlobalStats(undefined, { revalidate: true });
-                      } catch (_) {}
-                    }}
-                  />
-                </div>
           </div>
-      
         </div>
 
         {/* 주의 안내 문구 */}
