@@ -1478,7 +1478,7 @@ const CommentsModal = ({
                         : 'text-gray-700'
                     }`}>
                       {!activePost.is_product
-                        ? '상품아님 (클릭하여 변경)'
+                        ? '상품으로 재처리'
                         : activePost.comment_sync_status === 'pending'
                         ? '재처리중'
                         : '누락 주문 재처리'
