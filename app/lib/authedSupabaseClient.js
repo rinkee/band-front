@@ -26,13 +26,8 @@ export function getAuthedClient() {
         const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
         const payload = JSON.parse(atob(b64 + pad));
         const role = payload?.role || payload?.app_metadata?.role;
-        const aud = payload?.aud;
-        const iss = String(payload?.iss || "");
-        // Accept Supabase tokens only (authenticated/service_role) or well-known aud
-        if (role === "authenticated" || role === "service_role") return true;
-        if (aud === "authenticated") return true;
-        if (iss.includes("supabase") && iss.includes("auth")) return true;
-        return false;
+        // Accept ONLY Supabase roles that are known to PostgREST
+        return role === "authenticated" || role === "service_role";
       } catch (_) {
         return false;
       }
