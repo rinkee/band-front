@@ -353,7 +353,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [inputValue, setInputValue] = useState(""); // 검색 입력값 상태
+  const searchInputRef = useRef(null); // 검색 입력 ref (uncontrolled)
 
   // 토글 상태 추가
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
@@ -467,7 +467,72 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, []);
 
-  const displayOrders = useMemo(() => orders || [], [orders]);
+  // 수령가능만 보기: 오늘 포함, 오늘 이전 날짜만 표시 (시간 무시, KST 기준)
+  const displayOrders = useMemo(() => {
+    const toKstYmdLocal = (dateInput) => {
+      if (!dateInput) return null;
+      const KST_OFFSET = 9 * 60 * 60 * 1000;
+      try {
+        let y, m, d;
+        if (typeof dateInput === 'string' && dateInput.includes('T')) {
+          const dt = new Date(dateInput);
+          const k = new Date(dt.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+          const [datePart] = dateInput.split(' ');
+          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
+          y = yy; m = mm; d = dd;
+        } else if (typeof dateInput === 'string') {
+          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+          if (md) {
+            const now = new Date(new Date().getTime() + KST_OFFSET);
+            y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
+          } else {
+            const dt = new Date(dateInput);
+            const k = new Date(dt.getTime() + KST_OFFSET);
+            y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+          }
+        } else if (dateInput instanceof Date) {
+          const k = new Date(dateInput.getTime() + KST_OFFSET);
+          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
+        } else {
+          return null;
+        }
+        return y * 10000 + m * 100 + d;
+      } catch (_) { return null; }
+    };
+    const extractBracketDate = (text) => {
+      if (!text || typeof text !== 'string') return null;
+      const m = text.match(/^\s*\[([^\]]+)\]/);
+      return m ? m[1] : null;
+    };
+    const pickSourceLocal = (primary, bracket) => {
+      const y1 = toKstYmdLocal(primary);
+      const y2 = toKstYmdLocal(bracket);
+      if (y1 && y2) return y1 <= y2 ? primary : bracket;
+      return primary || bracket || null;
+    };
+    const isAvailableLocal = (dateInput) => {
+      if (!dateInput) return false;
+      const now = new Date();
+      const KST_OFFSET = 9 * 60 * 60 * 1000;
+      const k = new Date(now.getTime() + KST_OFFSET);
+      const todayYmd = k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate();
+      const ymd = toKstYmdLocal(dateInput);
+      return ymd ? todayYmd >= ymd : false;
+    };
+
+    let arr = orders || [];
+    if (showPickupAvailableOnly) {
+      arr = arr.filter((o) => {
+        // order.product_pickup_date 우선, 없으면 제목의 대괄호 날짜
+        const bracket = extractBracketDate(o.product_title || o.product_name || '');
+        const eff = pickSourceLocal(o.product_pickup_date, bracket);
+        return isAvailableLocal(eff);
+      });
+    }
+    return arr;
+  }, [orders, showPickupAvailableOnly]);
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   // NOTE: ordersData 선언 이후에 위치해야 TDZ 에러가 발생하지 않음
@@ -489,8 +554,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
   // --- 현재 페이지 주문들의 총 수량 및 총 금액 계산 ---
-  const { currentPageTotalQuantity, currentPageTotalAmount } =
-    displayOrders.reduce(
+  const { currentPageTotalQuantity, currentPageTotalAmount } = useMemo(() => {
+    return displayOrders.reduce(
       (totals, order) => {
         const quantity = parseInt(order.quantity, 10);
         const amount = parseFloat(order.total_amount); // <<< total_amount는 실수일 수 있으므로 parseFloat 사용
@@ -502,6 +567,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       },
       { currentPageTotalQuantity: 0, currentPageTotalAmount: 0 } // <<< 초기값을 객체로 설정
     );
+  }, [displayOrders]);
   // --- 총 수량 및 총 금액 계산 끝 ---
   const checkbox = useRef();
 
@@ -851,13 +917,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   const isDataLoading =
     isUserLoading || isOrdersLoading || isGlobalStatsLoading;
-  const displayedOrderIds = displayOrders.map((o) => o.order_id);
-  const isAllDisplayedSelected =
-    displayedOrderIds.length > 0 &&
-    displayedOrderIds.every((id) => selectedOrderIds.includes(id));
-  const isSomeDisplayedSelected =
-    displayedOrderIds.length > 0 &&
-    displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+  const displayedOrderIds = useMemo(() => displayOrders.map((o) => o.order_id), [displayOrders]);
+  const isAllDisplayedSelected = useMemo(
+    () =>
+      displayedOrderIds.length > 0 &&
+      displayedOrderIds.every((id) => selectedOrderIds.includes(id)),
+    [displayedOrderIds, selectedOrderIds]
+  );
+  const isSomeDisplayedSelected = useMemo(
+    () =>
+      displayedOrderIds.length > 0 &&
+      displayedOrderIds.some((id) => selectedOrderIds.includes(id)),
+    [displayedOrderIds, selectedOrderIds]
+  );
 
   // 선택된 주문들의 총 수량과 총 금액 계산
   const selectedOrderTotals = useMemo(() => {
@@ -917,7 +989,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const handleCellClickToSearch = useCallback((searchValue) => {
     if (!searchValue) return; // 빈 값은 무시
     const trimmedValue = searchValue.trim();
-    setInputValue(trimmedValue); // 검색창 UI 업데이트
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedValue; // 검색창 UI 업데이트
+    }
     setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
@@ -1079,37 +1153,48 @@ function OrdersTestPageContent({ mode = "raw" }) {
     let successCount = 0;
     let failCount = 0;
 
-    const nowISO = new Date().toISOString();
-    const buildUpdate = (st) => {
-      const base = { order_status: st };
-      if (st === "수령완료") {
-        base.received_at = nowISO;
-        base.canceled_at = null;
-      } else if (st === "주문취소") {
-        base.canceled_at = nowISO;
-        base.received_at = null;
-      } else if (st === "주문완료") {
-        base.ordered_at = nowISO;
-        base.canceled_at = null;
-        base.received_at = null;
-      } else if (st === "확인필요") {
-        base.canceled_at = null;
-        base.received_at = null;
-      } else if (st === "미수령") {
-        base.received_at = null;
-        base.canceled_at = null;
-      }
-      return base;
-    };
-
     try {
-      for (const id of orderIdsToProcess) {
-        try {
-          await updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
-          successCount += 1;
-        } catch (e) {
-          failCount += 1;
+      if (mode === "raw") {
+        // Raw 모드: 각 주문을 개별적으로 업데이트
+        const nowISO = new Date().toISOString();
+        const buildUpdate = (st) => {
+          const base = { order_status: st };
+          if (st === "수령완료") {
+            base.received_at = nowISO;
+            base.canceled_at = null;
+          } else if (st === "주문취소") {
+            base.canceled_at = nowISO;
+            base.received_at = null;
+          } else if (st === "주문완료") {
+            base.ordered_at = nowISO;
+            base.canceled_at = null;
+            base.received_at = null;
+          } else if (st === "확인필요") {
+            base.canceled_at = null;
+            base.received_at = null;
+          } else if (st === "미수령") {
+            base.received_at = null;
+            base.canceled_at = null;
+          }
+          return base;
+        };
+
+        for (const id of orderIdsToProcess) {
+          try {
+            await rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
+            successCount += 1;
+          } catch (e) {
+            failCount += 1;
+          }
         }
+      } else {
+        // Legacy 모드: bulkUpdateOrderStatus 사용 (orders 페이지와 동일)
+        await legacyMutations.bulkUpdateOrderStatus(
+          orderIdsToProcess,
+          newStatus,
+          userData.userId
+        );
+        successCount = orderIdsToProcess.length;
       }
 
       // 일괄 상태 변경 후 리스트/통계 새로고침
@@ -1139,7 +1224,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, orders, userData, updateCommentOrder, mutateOrders, globalMutate, mutateGlobalStats]);
+  }, [selectedOrderIds, orders, userData, mode, rawMutations, legacyMutations, mutateOrders, globalMutate, mutateGlobalStats]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -1262,7 +1347,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const searchParam = searchParams.get("search");
     if (searchParam) {
       // Auto-searching from URL parameter
-      setInputValue(searchParam);
+      if (searchInputRef.current) {
+        searchInputRef.current.value = searchParam;
+      }
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1888,7 +1975,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   const clearInputValue = () => {
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+      searchInputRef.current.focus();
+    }
   };
 
   // 개별 필터 해제 함수들
@@ -1899,7 +1989,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   const clearSearchFilter = () => {
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setSearchTerm("");
     setCurrentPage(1);
     setSelectedOrderIds([]);
@@ -1919,14 +2011,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
-  // 검색 입력 시 inputValue 상태만 업데이트
-  const handleSearchChange = (e) => {
-    setInputValue(e.target.value);
-  };
-
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = useCallback(() => {
-    const trimmedInput = inputValue.trim();
+    const trimmedInput = searchInputRef.current?.value.trim() || "";
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     if (trimmedInput !== searchTerm) {
       // New search triggered
@@ -1939,7 +2026,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         setTimeout(() => scrollToTop(), 100);
       }
     }
-  }, [inputValue, searchTerm, scrollToTop]);
+  }, [searchTerm, scrollToTop]);
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -1951,7 +2038,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // 검색 초기화 함수
   const handleClearSearch = () => {
     // Clearing search and filters
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
@@ -1968,12 +2057,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
+  // (상단 별도 검색바 없음) — 기존 입력과 버튼 사용
+
   // 정확한 고객명 검색
   const handleExactCustomerSearch = (customerName) => {
     if (!customerName || customerName === "-") return;
     const trimmedName = customerName.trim();
     // Exact customer search
-    setInputValue(trimmedName);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedName;
+    }
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);
@@ -2490,7 +2583,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           {!isSidebarCollapsed && (
             <div className="p-4 space-y-6">
               {/* 업데이트 섹션 */}
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <UpdateButton
                   pageType="orders"
                   totalItems={globalStatsData?.총주문수 || 0}
@@ -2510,7 +2603,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       )
                     : "알 수 없음"}
                 </div>
-              </div>
+              </div> */}
 
               
 
@@ -2798,28 +2891,25 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     {" "}
                     {/* order-1 */}
                     <input
+                      ref={searchInputRef}
                       type="text"
                       placeholder="고객명, 상품명, 바코드, post_key..."
-                      value={inputValue}
-                      onChange={handleSearchChange}
                       onKeyDown={handleKeyDown}
-                      className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                       disabled={isDataLoading}
                     />
                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                       <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                     </div>
-                    {/* --- 👇 X 버튼 추가 👇 --- */}
-                    {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
-                      <button
-                        type="button"
-                        onClick={clearInputValue}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                        aria-label="검색 내용 지우기"
-                      >
-                        <XMarkIcon className="w-5 h-5" />
-                      </button>
-                    )}
+                    {/* X 버튼 - 항상 표시 */}
+                    <button
+                      type="button"
+                      onClick={clearInputValue}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      aria-label="검색 내용 지우기"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
                   </div>
                   {/* 검색/초기화 버튼 그룹 */}
                   <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
@@ -2853,15 +2943,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
         <div className="flex-shrink-0 p-4 lg:p-6">
           <div className="max-w-7xl mx-auto">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex flex-wrap gap-3 items-center">
-                {/* 검색 영역 */}
+              <div className="flex flex-wrap gap-3 items-center justify-between">
+                {/* 검색 영역 + 초기화 + 업데이트 버튼 */}
                 <div className="flex gap-2 items-center">
                   <div className="relative w-64">
                     <input
+                      ref={searchInputRef}
                       type="text"
                       placeholder="검색"
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           handleSearch();
@@ -2879,22 +2968,35 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   >
                     검색
                   </button>
-                  {(searchTerm || exactCustomerFilter) && (
-                    <button
-                      onClick={() => {
-                        setSearchTerm("");
-                        setInputValue("");
-                        setExactCustomerFilter("");
-                      }}
-                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
-                    >
-                      초기화
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (searchInputRef.current) {
+                        searchInputRef.current.value = "";
+                      }
+                      setSearchTerm("");
+                      setExactCustomerFilter("");
+                    }}
+                    disabled={!searchTerm && !exactCustomerFilter}
+                    className="px-3 py-2 mr-4 text-sm font-medium text-gray-900 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    초기화
+                  </button>
+                  <UpdateButton
+                    pageType="orders"
+                    totalItems={globalStatsData?.총주문수 || 0}
+                    onSuccess={async () => {
+                      try {
+                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                        await mutateOrders(undefined, { revalidate: true });
+                        await mutateProducts(undefined, { revalidate: true });
+                        await mutateGlobalStats(undefined, { revalidate: true });
+                      } catch (_) {}
+                    }}
+                  />
                 </div>
 
                 {/* 선택된 항목 총계 및 일괄 처리 버튼 */}
-                <div className="flex items-center gap-6 flex-shrink-0 ml-auto">
+                <div className="flex items-center gap-6 flex-shrink-0">
                   {/* 총계 표시 - 배경과 보더 제거 */}
                   {displayOrders.length > 0 && (
                     <div className="flex items-center gap-4">
@@ -2985,18 +3087,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         {/* 주문 리스트 영역 - 스크롤 가능 */}
         <div className="flex-1 min-h-0 pb-4 px-4 lg:px-6 pt-0">
           <div className="h-full bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-            {/* 업데이트 버튼 - 테이블 우측 상단 */}
-            <div className="flex justify-end p-3 border-b border-gray-200">
-              <UpdateButton
-                pageType="orders"
-                totalItems={globalStatsData?.총주문수 || 0}
-                onSuccess={() => {
-                  console.log("🔄 주문 업데이트 완료");
-                  setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                  mutate();
-                }}
-              />
-            </div>
+            {/* 업데이트 버튼 제거: 상단 우측 영역으로 이동 */}
             {/* 테이블 컨테이너 - 한 번에 스크롤 */}
             <div className="flex-1 overflow-auto relative">
               <table className="min-w-full ">
@@ -3015,7 +3106,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       <button
                         onClick={() => handleSortChange("customer_name")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -3024,25 +3115,22 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       상태
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
-                      댓글
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
                       수령일시
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
+                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                      댓글
+                    </th>
+                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
-                    <th className="py-2 pr-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
-                      가격
-                    </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
                       바코드
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
                       <button
                         onClick={() => handleSortChange("ordered_at")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -3130,17 +3218,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             {order.customer_name || "-"}
                           </td>
                           {/* 상태 */}
-                          <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
+                          <td className="py-2 px-2 text-center whitespace-nowrap w-24">
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
-                          {/* 댓글 */}
-                          <td className="py-2 pr-2 text-sm text-gray-600" title={processBandTags(order.comment) || ""}>
-                            <div className="line-clamp-3 break-words leading-tight">
-                              {processBandTags(order.comment) || "-"}
-                            </div>
-                          </td>
                           {/* 수령일시 */}
-                          <td className="py-2 pr-2 text-center text-[14px] text-gray-700 w-28">
+                          <td className="py-2 px-2 text-center text-[14px] text-gray-700 w-28">
                             {(() => {
                               const list = getCandidateProductsForOrder(order);
                               let displayProd = null;
@@ -3152,85 +3234,166 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               return formatPickupRelativeDateTime(pickupDate) || "-";
                             })()}
                           </td>
-                          {/* 상품정보 */}
-                          <td className="py-2 pr-2 text-sm text-gray-700 w-60">
+                          {/* 댓글 */}
+                          <td className="py-2 px-2 text-sm text-gray-600">
                             {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) {
-                                displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
-                              }
-                              if (!displayProd) displayProd = list[0] || null;
+                              const currentComment = processBandTags(order.comment || "");
+                              let commentChangeData = null;
 
-                              let name = displayProd?.title || (order.product_id ? getProductNameById(order.product_id) : null) || order.product_name || "-";
-                              if (!order.product_id && !displayProd && list.length > 1) {
-                                name = `${name} 외 ${list.length - 1}개`;
+                              // comment_change 파싱
+                              try {
+                                if (order.comment_change) {
+                                  const parsed = typeof order.comment_change === 'string'
+                                    ? JSON.parse(order.comment_change)
+                                    : order.comment_change;
+                                  if (parsed && parsed.status === 'updated' && Array.isArray(parsed.history) && parsed.history.length > 0) {
+                                    commentChangeData = parsed;
+                                  }
+                                }
+                              } catch (e) {
+                                // JSON 파싱 실패 시 무시
                               }
-                              // 이미지 결정: postsImages에서 조회
-                              let imgUrl = null;
-                              const bk = displayProd?.band_key, pk = displayProd?.post_key;
-                              if (bk && pk) {
-                                const key = `${bk}_${pk}`;
-                                const arr = postsImages[key];
-                                if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
+
+                              // 수정되지 않은 댓글
+                              if (!commentChangeData) {
+                                return (
+                                  <div className="line-clamp-3 break-words leading-tight" title={currentComment}>
+                                    {currentComment || "-"}
+                                  </div>
+                                );
                               }
+
+                              // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
+                              const history = commentChangeData.history;
+                              const previousComment = history.length > 0
+                                ? history[history.length - 1].replace(/^version:\d+\s*/, '')
+                                : '';
 
                               return (
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-md overflow-hidden border bg-gray-50 flex-shrink-0">
-                                    {imgUrl ? (
-                                      <img
-                                        src={imgUrl}
-                                        alt={name}
-                                        className="w-full h-full object-cover"
-                                        referrerPolicy="no-referrer"
-                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">이미지</div>
-                                    )}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-medium truncate" title={name}>{name}</div>
+                                <div className="space-y-1">
+                                  {previousComment && (
+                                    <div className="text-gray-500 line-through text-xs">
+                                      <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                                      <span className="break-words leading-tight">{previousComment}</span>
+                                    </div>
+                                  )}
+                                  <div className="break-words leading-tight">
+                                    <span className="text-xs font-semibold text-orange-600 mr-1">[수정됨]</span>
+                                    <span>{currentComment}</span>
                                   </div>
                                 </div>
                               );
                             })()}
                           </td>
-                          {/* 가격 */}
-                          <td className="py-2 pr-2 text-right text-sm text-gray-700 w-24">
+                          {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
+                          <td className="py-2 px-2 text-sm text-gray-700 align-top">
                             {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
-                              if (!displayProd) displayProd = list[0] || null;
-                              let price = null;
-                              if (Number.isFinite(order?.selected_price)) price = order.selected_price;
-                              else if (Number.isFinite(displayProd?.base_price)) price = displayProd.base_price;
-                              else if (Number.isFinite(displayProd?.price)) price = displayProd.price;
-                              return price != null ? `₩${Number(price).toLocaleString()}` : '-';
+                              const list = getCandidateProductsForOrder(order) || [];
+                              if (!Array.isArray(list) || list.length === 0) {
+                                return <span className="text-gray-400">-</span>;
+                              }
+
+                              const getItemNumber = (p, idx) => {
+                                const n1 = Number(p?.item_number);
+                                if (Number.isFinite(n1) && n1 > 0) return n1;
+                                try {
+                                  const m = String(p?.product_id || '').match(/item(\d+)/i);
+                                  if (m && m[1]) {
+                                    const n = parseInt(m[1], 10);
+                                    if (Number.isFinite(n) && n > 0) return n;
+                                  }
+                                } catch {}
+                                return idx + 1;
+                              };
+
+                              const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
+
+                              return (
+                                <div className="space-y-2">
+                                  {list.map((p, idx) => {
+                                    const itemNo = getItemNumber(p, idx);
+                                    const rawTitle = p?.title || p?.name || '-';
+                                    const title = cleanProductName(rawTitle);
+                                    const selected = isSelected(p);
+                                    const price = (selected && Number.isFinite(order?.selected_price))
+                                      ? Number(order.selected_price)
+                                      : (Number.isFinite(Number(p?.base_price))
+                                          ? Number(p.base_price)
+                                          : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null));
+                                    let imgUrl = p?.image_url || p?.thumbnail_url || p?.thumb_url || null;
+                                    if (!imgUrl) {
+                                      const bk = p?.band_key || order?.band_key;
+                                      const pk = p?.post_key || order?.post_key;
+                                      if (bk && pk) {
+                                        const key = `${bk}_${pk}`;
+                                        const arr = postsImages[key];
+                                        if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
+                                      }
+                                    }
+                                    return (
+                                      <div
+                                        key={p?.product_id || `${idx}`}
+                                        className={`rounded p-2 flex items-start gap-2 border-gray-200`}
+                                        title={title}
+                                      >
+                                        <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0">
+                                          {imgUrl ? (
+                                            <img
+                                              src={imgUrl}
+                                              alt={title}
+                                              className="w-full h-full object-cover"
+                                              referrerPolicy="no-referrer"
+                                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">이미지</div>
+                                          )}
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-1">
+                                            {list.length > 1 && (
+                                              <span className="text-xs text-gray-500 flex-shrink-0">{itemNo}번</span>
+                                            )}
+                                            <span className={`text-[15px] leading-snug text-gray-900 font-medium whitespace-nowrap`}>{title}</span>
+                                          </div>
+                                          {price != null && (
+                                            <div className="text-sm text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
                             })()}
                           </td>
                           {/* 바코드 */}
-                          <td className="py-2 pr-2 text-center text-sm text-gray-700 w-32">
+                          <td className="py-2 px-2 text-center text-sm text-gray-700 w-32 align-top">
                             {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
-                              if (!displayProd) displayProd = list[0] || null;
-                              const displayBarcode = (displayProd?.barcode) || order.selected_barcode || (order.product_id ? getProductBarcode(order.product_id) : "");
-                              return displayBarcode ? (
-                                <div className="flex flex-col items-center">
-                                  <Barcode value={displayBarcode} height={28} width={1.2} fontSize={10} />
-                                  {/* <span className="mt-1 text-[10px] text-gray-500 truncate max-w-[8rem]" title={displayBarcode}>{displayBarcode}</span> */}
+                              const list = getCandidateProductsForOrder(order) || [];
+                              if (!Array.isArray(list) || list.length === 0) return <span className="text-xs text-gray-400">없음</span>;
+                              const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
+                              return (
+                                <div className="space-y-2">
+                                  {list.map((p, idx) => {
+                                    const selected = isSelected(p);
+                                    const barcodeVal = selected && order?.selected_barcode ? order.selected_barcode : (p?.barcode || '');
+                                    return (
+                                      <div key={p?.product_id || `${idx}`} className={`flex items-center justify-center h-[72px] ${selected ? '' : ''}`}>
+                                        {barcodeVal ? (
+                                          <Barcode value={barcodeVal} height={32} width={1.2} fontSize={12} />
+                                        ) : (
+                                          <span className="text-xs text-gray-400">없음</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">없음</span>
                               );
                             })()}
                           </td>
                           {/* 주문일시 */}
-                          <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
+                          <td className="py-2 px-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
                             {formatDate(order.ordered_at)}
                           </td>
                         </tr>

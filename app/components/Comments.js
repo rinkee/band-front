@@ -1409,15 +1409,53 @@ const CommentsModal = ({
                 {activePost && (
                   <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
                     <button
-                      onClick={() => {
-                        if (!activePost.is_product || !onToggleReprocess) return;
+                      onClick={async () => {
+                        // is_product가 false인 경우 true로 변경
+                        if (!activePost.is_product) {
+                          if (!confirm('이 게시물을 상품 게시물로 변경하시겠습니까?\n\n다음 업데이트 시 상품 추출이 진행됩니다.')) {
+                            return;
+                          }
+
+                          try {
+                            const { error } = await supabase
+                              .from('posts')
+                              .update({
+                                is_product: true,
+                                comment_sync_status: 'pending',
+                                order_needs_ai: true,
+                                last_sync_attempt: null,
+                                sync_retry_count: 0
+                              })
+                              .eq('post_key', postKey);
+
+                            if (error) throw error;
+
+                            // SWR 캐시 갱신
+                            await globalMutate(`/api/posts/${postKey}`);
+
+                            // 부모 컴포넌트에 이벤트 전달
+                            if (typeof window !== 'undefined') {
+                              window.dispatchEvent(new CustomEvent('postUpdated', {
+                                detail: { postKey, is_product: true }
+                              }));
+                            }
+
+                            alert('상품 게시물로 변경되었습니다. 다음 업데이트 시 상품이 추출됩니다.');
+                          } catch (error) {
+                            console.error('is_product 업데이트 실패:', error);
+                            alert(`게시물 업데이트에 실패했습니다.\n에러: ${error.message || error}`);
+                          }
+                          return;
+                        }
+
+                        // is_product가 true인 경우 기존 재처리 로직
+                        if (!onToggleReprocess) return;
                         const isCurrentlyPending = activePost.comment_sync_status === 'pending';
                         onToggleReprocess(activePost, !isCurrentlyPending);
                       }}
-                      disabled={!activePost.is_product || !onToggleReprocess}
                       className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 ${
                         !activePost.is_product
-                          ? 'bg-gray-200 cursor-not-allowed'
+                          ? 'bg-gray-300 cursor-pointer hover:bg-gray-400'
                           : activePost.comment_sync_status === 'pending'
                           ? 'bg-amber-500'
                           : 'bg-gray-300'
@@ -1426,7 +1464,7 @@ const CommentsModal = ({
                       <span
                         className={`inline-block h-3 w-3 transform rounded-full transition-transform duration-300 ${
                           !activePost.is_product
-                            ? 'bg-gray-300'
+                            ? 'bg-white translate-x-1'
                             : activePost.comment_sync_status === 'pending'
                             ? 'translate-x-5 bg-white'
                             : 'translate-x-1 bg-white'
@@ -1435,15 +1473,15 @@ const CommentsModal = ({
                     </button>
                     <span className={`text-base font-medium ${
                       !activePost.is_product
-                        ? 'text-gray-400'
+                        ? 'text-gray-700 cursor-pointer'
                         : activePost.comment_sync_status === 'pending'
                         ? 'text-amber-600'
                         : 'text-gray-700'
                     }`}>
-                      {!activePost.is_product 
-                        ? '상품아님' 
-                        : activePost.comment_sync_status === 'pending' 
-                        ? '재처리중' 
+                      {!activePost.is_product
+                        ? '상품으로 재처리'
+                        : activePost.comment_sync_status === 'pending'
+                        ? '재처리중'
                         : '누락 주문 재처리'
                       }
                     </span>

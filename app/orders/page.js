@@ -391,7 +391,8 @@ function LegacyOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [inputValue, setInputValue] = useState(""); // 검색 입력값 상태
+  const searchInputRef = useRef(null); // 검색 입력 ref (uncontrolled)
+  const [pendingSearchUi, setPendingSearchUi] = useState(null); // 쿼리 유입 시 UI 채우기 보조
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -512,13 +513,13 @@ function LegacyOrdersPage() {
     });
   };
 
-  const displayOrders = processOrdersForDisplay(orders);
+  const displayOrders = useMemo(() => processOrdersForDisplay(orders), [orders]);
 
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
   // --- 현재 페이지 주문들의 총 수량 및 총 금액 계산 ---
-  const { currentPageTotalQuantity, currentPageTotalAmount } =
-    displayOrders.reduce(
+  const { currentPageTotalQuantity, currentPageTotalAmount } = useMemo(() => {
+    return displayOrders.reduce(
       (totals, order) => {
         const quantity = parseInt(order.quantity, 10);
         const amount = parseFloat(order.total_amount); // <<< total_amount는 실수일 수 있으므로 parseFloat 사용
@@ -530,6 +531,7 @@ function LegacyOrdersPage() {
       },
       { currentPageTotalQuantity: 0, currentPageTotalAmount: 0 } // <<< 초기값을 객체로 설정
     );
+  }, [displayOrders]);
   // --- 총 수량 및 총 금액 계산 끝 ---
   const checkbox = useRef();
 
@@ -706,13 +708,19 @@ function LegacyOrdersPage() {
     useOrderClientMutations();
 
   const isDataLoading = isUserLoading || isOrdersLoading;
-  const displayedOrderIds = displayOrders.map((o) => o.order_id);
-  const isAllDisplayedSelected =
-    displayedOrderIds.length > 0 &&
-    displayedOrderIds.every((id) => selectedOrderIds.includes(id));
-  const isSomeDisplayedSelected =
-    displayedOrderIds.length > 0 &&
-    displayedOrderIds.some((id) => selectedOrderIds.includes(id));
+  const displayedOrderIds = useMemo(() => displayOrders.map((o) => o.order_id), [displayOrders]);
+  const isAllDisplayedSelected = useMemo(
+    () =>
+      displayedOrderIds.length > 0 &&
+      displayedOrderIds.every((id) => selectedOrderIds.includes(id)),
+    [displayedOrderIds, selectedOrderIds]
+  );
+  const isSomeDisplayedSelected = useMemo(
+    () =>
+      displayedOrderIds.length > 0 &&
+      displayedOrderIds.some((id) => selectedOrderIds.includes(id)),
+    [displayedOrderIds, selectedOrderIds]
+  );
 
   // 선택된 주문들의 총 수량과 총 금액 계산
   const selectedOrderTotals = useMemo(() => {
@@ -771,7 +779,9 @@ function LegacyOrdersPage() {
   const handleCellClickToSearch = (searchValue) => {
     if (!searchValue) return; // 빈 값은 무시
     const trimmedValue = searchValue.trim();
-    setInputValue(trimmedValue); // 검색창 UI 업데이트
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedValue; // 검색창 UI 업데이트
+    }
     setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
@@ -1110,9 +1120,10 @@ function LegacyOrdersPage() {
     const searchParam = searchParams.get("search");
     const filterParam = searchParams.get("filter");
     const postKeyParam = searchParams.get("postKey");
+    const postParam = searchParams.get("post"); // posts-test 등 호환
 
     if (searchParam) {
-      setInputValue(searchParam);
+      setPendingSearchUi(searchParam);
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1120,9 +1131,10 @@ function LegacyOrdersPage() {
     }
 
     // postKey 파라미터 처리 - posts 페이지에서 넘어온 경우
-    if (postKeyParam) {
-      setInputValue(postKeyParam);
-      setSearchTerm(postKeyParam);
+    const incomingPostKey = postKeyParam || postParam;
+    if (incomingPostKey) {
+      setPendingSearchUi(incomingPostKey);
+      setSearchTerm(incomingPostKey);
       setCurrentPage(1);
       setExactCustomerFilter(null);
       setSelectedOrderIds([]);
@@ -1136,14 +1148,23 @@ function LegacyOrdersPage() {
     }
 
     // URL에서 파라미터 제거 (한 번만 실행되도록)
-    if (searchParam || filterParam || postKeyParam) {
+    if (searchParam || filterParam || postKeyParam || postParam) {
       const newUrl = new URL(window.location);
       newUrl.searchParams.delete("search");
       newUrl.searchParams.delete("filter");
       newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("post");
       window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
+
+  // 쿼리 유입 값으로 UI 채우기 (ref가 준비된 뒤 한 번 더 보정)
+  useEffect(() => {
+    if (pendingSearchUi != null && searchInputRef.current) {
+      searchInputRef.current.value = pendingSearchUi;
+      setPendingSearchUi(null);
+    }
+  }, [pendingSearchUi]);
 
   // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
   useEffect(() => {
@@ -1716,17 +1737,15 @@ function LegacyOrdersPage() {
   };
 
   const clearInputValue = () => {
-    setInputValue("");
-  };
-
-  // 검색 입력 시 inputValue 상태만 업데이트
-  const handleSearchChange = (e) => {
-    setInputValue(e.target.value);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+      searchInputRef.current.focus();
+    }
   };
 
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = () => {
-    const trimmedInput = inputValue.trim();
+    const trimmedInput = searchInputRef.current?.value.trim() || "";
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     if (trimmedInput !== searchTerm) {
       console.log(`[Search] New search triggered: "${trimmedInput}"`);
@@ -1747,7 +1766,9 @@ function LegacyOrdersPage() {
   // 검색 초기화 함수
   const handleClearSearch = () => {
     console.log("[Search] Clearing search and filters.");
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
@@ -1763,7 +1784,9 @@ function LegacyOrdersPage() {
     if (!customerName || customerName === "-") return;
     const trimmedName = customerName.trim();
     console.log(`[Search] Exact customer search: "${trimmedName}"`);
-    setInputValue(trimmedName);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedName;
+    }
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);
@@ -2370,28 +2393,25 @@ function LegacyOrdersPage() {
                   {" "}
                   {/* order-1 */}
                   <input
+                    ref={searchInputRef}
                     type="text"
                     placeholder="고객명, 상품명, 바코드, post_key..."
-                    value={inputValue}
-                    onChange={handleSearchChange}
                     onKeyDown={handleKeyDown}
-                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                     disabled={isDataLoading}
                   />
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                     <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                   </div>
-                  {/* --- 👇 X 버튼 추가 👇 --- */}
-                  {inputValue && ( // inputValue가 있을 때만 X 버튼 표시
-                    <button
-                      type="button"
-                      onClick={clearInputValue}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                      aria-label="검색 내용 지우기"
-                    >
-                      <XMarkIcon className="w-5 h-5" />
-                    </button>
-                  )}
+                  {/* X 버튼 - 항상 표시 */}
+                  <button
+                    type="button"
+                    onClick={clearInputValue}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
+                    aria-label="검색 내용 지우기"
+                  >
+                    <XMarkIcon className="w-5 h-5" />
+                  </button>
                 </div>
                 {/* 검색/초기화 버튼 그룹 */}
                 <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
