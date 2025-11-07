@@ -439,6 +439,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       status: row.order_status || row.status || "미수령",
       sub_status: row.sub_status || undefined,
       ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
+      updated_at: row.updated_at || row.modified_at || row.updatedAt || row.updated_at || null,
       completed_at: row.received_at || row.completed_at || null,
       canceled_at: row.canceled_at || null,
       processing_method: "raw",
@@ -533,6 +534,41 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
     return arr;
   }, [orders, showPickupAvailableOnly]);
+
+  // 그룹 키: band + (comment_key 없으면 post_key) + ordered_at + updated_at
+  const getGroupKey = useCallback((o) => {
+    const band = o.band_key ?? (o.band_number != null ? String(o.band_number) : "");
+    const baseKey = o.comment_key || o.commentKey || o.post_key || o.postKey || "";
+    const ord = o.ordered_at || "";
+    const upd = o.updated_at || "";
+    return [String(band), String(baseKey), String(ord), String(upd)].join("|");
+  }, []);
+
+  // 대표행 그룹 목록 계산
+  const groupedOrders = useMemo(() => {
+    const map = new Map();
+    for (const o of displayOrders) {
+      const key = getGroupKey(o);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(o);
+    }
+    const groups = [];
+    for (const [key, rows] of map.entries()) {
+      // 대표행 선택: ordered_at 오름차순, 그 외는 첫 번째
+      const rep = [...rows].sort((a, b) => {
+        const ta = a.ordered_at ? new Date(a.ordered_at).getTime() : 0;
+        const tb = b.ordered_at ? new Date(b.ordered_at).getTime() : 0;
+        return ta - tb;
+      })[0];
+      groups.push({ groupId: key, rows, rep, orderIds: rows.map(r => r.order_id) });
+    }
+    // 정렬은 대표행 기준으로 기존 정렬(주문일시 desc 등)에 가깝게 유지
+    return groups.sort((g1, g2) => {
+      const t1 = g1.rep?.ordered_at ? new Date(g1.rep.ordered_at).getTime() : 0;
+      const t2 = g2.rep?.ordered_at ? new Date(g2.rep.ordered_at).getTime() : 0;
+      return sortOrder === 'asc' ? (t1 - t2) : (t2 - t1);
+    });
+  }, [displayOrders, getGroupKey, sortOrder]);
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   // NOTE: ordersData 선언 이후에 위치해야 TDZ 에러가 발생하지 않음
@@ -917,7 +953,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   const isDataLoading =
     isUserLoading || isOrdersLoading || isGlobalStatsLoading;
-  const displayedOrderIds = useMemo(() => displayOrders.map((o) => o.order_id), [displayOrders]);
+  const displayedOrderIds = useMemo(
+    () => groupedOrders.flatMap((g) => g.orderIds),
+    [groupedOrders]
+  );
   const isAllDisplayedSelected = useMemo(
     () =>
       displayedOrderIds.length > 0 &&
@@ -968,22 +1007,26 @@ function OrdersTestPageContent({ mode = "raw" }) {
       checkbox.current.indeterminate =
         isSomeDisplayedSelected && !isAllDisplayedSelected;
   }, [isSomeDisplayedSelected, isAllDisplayedSelected]);
-  const handleCheckboxChange = (e, orderId) => {
+  const handleCheckboxChange = (e, groupId) => {
     const isChecked = e.target.checked;
-    setSelectedOrderIds((prev) =>
-      isChecked
-        ? [...new Set([...prev, orderId])]
-        : prev.filter((id) => id !== orderId)
-    );
+    const group = groupedOrders.find((g) => g.groupId === groupId);
+    const ids = group ? group.orderIds : [];
+    setSelectedOrderIds((prev) => {
+      if (isChecked) {
+        return [...new Set([...prev, ...ids])];
+      } else {
+        return prev.filter((id) => !ids.includes(id));
+      }
+    });
   };
   const handleSelectAllChange = useCallback((e) => {
     const isChecked = e.target.checked;
-    const currentIds = displayOrders.map((order) => order.order_id);
+    const currentIds = groupedOrders.flatMap((g) => g.orderIds);
     setSelectedOrderIds((prev) => {
       const others = prev.filter((id) => !currentIds.includes(id));
       return isChecked ? [...new Set([...others, ...currentIds])] : others;
     });
-  }, [displayOrders]);
+  }, [groupedOrders]);
 
   // --- 검색창 업데이트 및 검색 실행 함수 ---
   const handleCellClickToSearch = useCallback((searchValue) => {
@@ -3168,16 +3211,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       </td>
                     </tr>
                   )}
-                  {displayOrders.map((order) => {
-                    const isSelected = selectedOrderIds.includes(
-                      order.order_id
-                    );
+                  {groupedOrders.map((group) => {
+                    const order = group.rep;
+                    const isSelected = group.orderIds.every((id) => selectedOrderIds.includes(id));
                     const product = getProductById(order.product_id);
                     const hasMultipleBarcodeOptions =
                       product?.barcode_options?.options?.length > 1;
 
                     return (
-                      <React.Fragment key={order.order_id}>
+                      <React.Fragment key={group.groupId}>
                         <tr
                           className={`${
                             editingOrderId === order.order_id 
@@ -3198,11 +3240,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               <input
                                 type="checkbox"
                                 className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                                value={order.order_id}
+                                value={group.groupId}
                                 checked={isSelected}
-                                onChange={(e) =>
-                                  handleCheckboxChange(e, order.order_id)
-                                }
+                                onChange={(e) => handleCheckboxChange(e, group.groupId)}
                               />
                             </div>
                           </td>
