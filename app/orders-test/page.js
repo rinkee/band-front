@@ -396,7 +396,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // 사이드바 토글 상태
   const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
   const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
-  const [topSearch, setTopSearch] = useState("");
 
   // --- 주문 정보 수정 관련 상태 복구 ---
   const [isEditingDetails, setIsEditingDetails] = useState(false);
@@ -1993,27 +1992,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
-  // 상단 검색 핸들러 (우측 검색칸)
-  const handleTopSearch = useCallback(() => {
-    const trimmed = (topSearch || "").trim();
-    if (trimmed !== searchTerm) {
-      setSearchTerm(trimmed);
-      setCurrentPage(1);
-      setExactCustomerFilter(null);
-      setSelectedOrderIds([]);
-      if (searchInputRef.current) searchInputRef.current.value = trimmed;
-      if (scrollToTop) setTimeout(() => scrollToTop(), 100);
-    }
-  }, [topSearch, searchTerm, scrollToTop]);
-
-  const handleTopSearchClear = useCallback(() => {
-    setTopSearch("");
-    setSearchTerm("");
-    setExactCustomerFilter(null);
-    setCurrentPage(1);
-    setSelectedOrderIds([]);
-    if (searchInputRef.current) searchInputRef.current.value = "";
-  }, [searchInputRef]);
+  // (상단 별도 검색바 없음) — 기존 입력과 버튼 사용
 
   // 정확한 고객명 검색
   const handleExactCustomerSearch = (customerName) => {
@@ -3019,56 +2998,25 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* 상단 우측 검색 + 업데이트 버튼 */}
-        <div className="flex-shrink-0 px-4 lg:px-6 py-3">
-          <div className="flex items-center justify-end gap-2">
-            <div className="relative w-64">
-              <input
-                type="text"
-                placeholder="검색"
-                value={topSearch}
-                onChange={(e) => setTopSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleTopSearch(); }}
-                className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
+              
               </div>
-              {topSearch && (
-                <button
-                  type="button"
-                  onClick={() => handleTopSearchClear()}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  aria-label="검색 내용 지우기"
-                >
-                  <XMarkIcon className="w-4 h-4" />
-                </button>
-              )}
+                {/* 업데이트 버튼 - 오른쪽 끝 */}
+                <div className="flex items-center gap-2 flex-shrink-0 ml-auto pl-3 border-l border-gray-200">
+                  <UpdateButton
+                    pageType="orders"
+                    totalItems={globalStatsData?.총주문수 || 0}
+                    onSuccess={async () => {
+                      try {
+                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                        await mutateOrders(undefined, { revalidate: true });
+                        await mutateProducts(undefined, { revalidate: true });
+                        await mutateGlobalStats(undefined, { revalidate: true });
+                      } catch (_) {}
+                    }}
+                  />
+                </div>
             </div>
-            <button
-              onClick={handleTopSearch}
-              className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap"
-              type="button"
-            >
-              검색
-            </button>
-            <UpdateButton
-              pageType="orders"
-              totalItems={globalStatsData?.총주문수 || 0}
-              onSuccess={async () => {
-                try {
-                  setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                  await mutateOrders(undefined, { revalidate: true });
-                  await mutateProducts(undefined, { revalidate: true });
-                  await mutateGlobalStats(undefined, { revalidate: true });
-                } catch (_) {}
-              }}
-            />
           </div>
         </div>
 
