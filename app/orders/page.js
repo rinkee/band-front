@@ -392,6 +392,7 @@ function LegacyOrdersPage() {
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
   const searchInputRef = useRef(null); // 검색 입력 ref (uncontrolled)
+  const [pendingSearchUi, setPendingSearchUi] = useState(null); // 쿼리 유입 시 UI 채우기 보조
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -778,7 +779,9 @@ function LegacyOrdersPage() {
   const handleCellClickToSearch = (searchValue) => {
     if (!searchValue) return; // 빈 값은 무시
     const trimmedValue = searchValue.trim();
-    setInputValue(trimmedValue); // 검색창 UI 업데이트
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedValue; // 검색창 UI 업데이트
+    }
     setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
@@ -1117,9 +1120,10 @@ function LegacyOrdersPage() {
     const searchParam = searchParams.get("search");
     const filterParam = searchParams.get("filter");
     const postKeyParam = searchParams.get("postKey");
+    const postParam = searchParams.get("post"); // posts-test 등 호환
 
     if (searchParam) {
-      setInputValue(searchParam);
+      setPendingSearchUi(searchParam);
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1127,9 +1131,10 @@ function LegacyOrdersPage() {
     }
 
     // postKey 파라미터 처리 - posts 페이지에서 넘어온 경우
-    if (postKeyParam) {
-      setInputValue(postKeyParam);
-      setSearchTerm(postKeyParam);
+    const incomingPostKey = postKeyParam || postParam;
+    if (incomingPostKey) {
+      setPendingSearchUi(incomingPostKey);
+      setSearchTerm(incomingPostKey);
       setCurrentPage(1);
       setExactCustomerFilter(null);
       setSelectedOrderIds([]);
@@ -1143,14 +1148,23 @@ function LegacyOrdersPage() {
     }
 
     // URL에서 파라미터 제거 (한 번만 실행되도록)
-    if (searchParam || filterParam || postKeyParam) {
+    if (searchParam || filterParam || postKeyParam || postParam) {
       const newUrl = new URL(window.location);
       newUrl.searchParams.delete("search");
       newUrl.searchParams.delete("filter");
       newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("post");
       window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
+
+  // 쿼리 유입 값으로 UI 채우기 (ref가 준비된 뒤 한 번 더 보정)
+  useEffect(() => {
+    if (pendingSearchUi != null && searchInputRef.current) {
+      searchInputRef.current.value = pendingSearchUi;
+      setPendingSearchUi(null);
+    }
+  }, [pendingSearchUi]);
 
   // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
   useEffect(() => {
@@ -1752,7 +1766,9 @@ function LegacyOrdersPage() {
   // 검색 초기화 함수
   const handleClearSearch = () => {
     console.log("[Search] Clearing search and filters.");
-    setInputValue("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
@@ -1768,7 +1784,9 @@ function LegacyOrdersPage() {
     if (!customerName || customerName === "-") return;
     const trimmedName = customerName.trim();
     console.log(`[Search] Exact customer search: "${trimmedName}"`);
-    setInputValue(trimmedName);
+    if (searchInputRef.current) {
+      searchInputRef.current.value = trimmedName;
+    }
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);

@@ -2583,7 +2583,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           {!isSidebarCollapsed && (
             <div className="p-4 space-y-6">
               {/* 업데이트 섹션 */}
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <UpdateButton
                   pageType="orders"
                   totalItems={globalStatsData?.총주문수 || 0}
@@ -2603,7 +2603,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       )
                     : "알 수 없음"}
                 </div>
-              </div>
+              </div> */}
 
               
 
@@ -2977,7 +2977,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       setExactCustomerFilter("");
                     }}
                     disabled={!searchTerm && !exactCustomerFilter}
-                    className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-2 mr-4 text-sm font-medium text-gray-900 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     초기화
                   </button>
@@ -3350,11 +3350,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                           )}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                          <div className="flex items-center gap-1 min-w-0">
+                                          <div className="flex items-start gap-1 min-w-0">
                                             {list.length > 1 && (
                                               <span className="text-xs text-gray-500 flex-shrink-0">{itemNo}번</span>
                                             )}
-                                            <span className={`truncate text-[15px] leading-snug text-gray-900 font-medium`}>{title}</span>
+                                            <span className={`text-[15px] leading-snug text-gray-900 font-medium break-words`}>{title}</span>
                                           </div>
                                           {price != null && (
                                             <div className="text-sm text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
