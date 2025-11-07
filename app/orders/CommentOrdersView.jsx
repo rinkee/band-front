@@ -1403,7 +1403,7 @@ export default function CommentOrdersView() {
             {/* 좌측 영역 */}
             {bulkButtonPosition === 'left' ? (
               // 버튼이 좌측에 있을 때
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 animate-fadeIn">
                 <button
                   onClick={() => handleBulkCommentOrdersUpdate('수령완료')}
                   disabled={selectedIds.length === 0 || bulkUpdating}
@@ -1447,14 +1447,14 @@ export default function CommentOrdersView() {
                   onClick={toggleBulkButtonPosition}
                   className="px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-xs text-gray-500 hover:border-orange-400 hover:text-orange-600 transition-colors"
                 >
-                  버튼 여기로 이동 →
+                  ← 버튼 여기로 이동
                 </button>
               </div>
             )}
 
             {/* 우측 영역 */}
             {bulkButtonPosition === 'right' ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 animate-fadeIn">
                 {selectedIds.length > 0 ? (
                   <div className="flex flex-col">
                     <span className="text-xs text-gray-500">선택 항목</span>
@@ -1499,7 +1499,7 @@ export default function CommentOrdersView() {
                   onClick={toggleBulkButtonPosition}
                   className="px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-xs text-gray-500 hover:border-orange-400 hover:text-orange-600 transition-colors"
                 >
-                  ← 버튼 여기로 이동
+                  버튼 여기로 이동 →
                 </button>
               </div>
             )}
