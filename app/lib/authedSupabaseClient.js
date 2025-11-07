@@ -17,6 +17,32 @@ export function getAuthedClient() {
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !anon) return baseSupabase;
 
+    // Only attach Authorization when the token looks like a Supabase GoTrue token
+    const looksSupabase = (() => {
+      try {
+        const parts = String(token).split(".");
+        if (parts.length !== 3) return false;
+        const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+        const payload = JSON.parse(atob(b64 + pad));
+        const role = payload?.role || payload?.app_metadata?.role;
+        const aud = payload?.aud;
+        const iss = String(payload?.iss || "");
+        // Accept Supabase tokens only (authenticated/service_role) or well-known aud
+        if (role === "authenticated" || role === "service_role") return true;
+        if (aud === "authenticated") return true;
+        if (iss.includes("supabase") && iss.includes("auth")) return true;
+        return false;
+      } catch (_) {
+        return false;
+      }
+    })();
+
+    if (!looksSupabase) {
+      // Fallback to anon client to avoid PostgREST role errors in production
+      return baseSupabase;
+    }
+
     let cli = cacheByToken.get(token);
     if (!cli) {
       const short = (url || '').slice(-6) + '-' + String(token).slice(-6);
@@ -43,4 +69,3 @@ export function getAuthedClient() {
 }
 
 export default getAuthedClient;
-
