@@ -3147,10 +3147,55 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 댓글 */}
-                          <td className="py-2 pr-2 text-sm text-gray-600" title={processBandTags(order.comment) || ""}>
-                            <div className="line-clamp-3 break-words leading-tight">
-                              {processBandTags(order.comment) || "-"}
-                            </div>
+                          <td className="py-2 pr-2 text-sm text-gray-600">
+                            {(() => {
+                              const currentComment = processBandTags(order.comment || "");
+                              let commentChangeData = null;
+
+                              // comment_change 파싱
+                              try {
+                                if (order.comment_change) {
+                                  const parsed = typeof order.comment_change === 'string'
+                                    ? JSON.parse(order.comment_change)
+                                    : order.comment_change;
+                                  if (parsed && parsed.status === 'updated' && Array.isArray(parsed.history) && parsed.history.length > 0) {
+                                    commentChangeData = parsed;
+                                  }
+                                }
+                              } catch (e) {
+                                // JSON 파싱 실패 시 무시
+                              }
+
+                              // 수정되지 않은 댓글
+                              if (!commentChangeData) {
+                                return (
+                                  <div className="line-clamp-3 break-words leading-tight" title={currentComment}>
+                                    {currentComment || "-"}
+                                  </div>
+                                );
+                              }
+
+                              // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
+                              const history = commentChangeData.history;
+                              const previousComment = history.length > 0
+                                ? history[history.length - 1].replace(/^version:\d+\s*/, '')
+                                : '';
+
+                              return (
+                                <div className="space-y-1">
+                                  {previousComment && (
+                                    <div className="text-gray-500 line-through text-xs">
+                                      <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                                      <span className="break-words leading-tight">{previousComment}</span>
+                                    </div>
+                                  )}
+                                  <div className="break-words leading-tight">
+                                    <span className="text-xs font-semibold text-orange-600 mr-1">[수정됨]</span>
+                                    <span>{currentComment}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           {/* 상품정보 */}
                           <td className="py-2 pr-2 text-sm text-gray-700 w-60">

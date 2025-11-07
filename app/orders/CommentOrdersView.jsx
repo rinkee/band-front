@@ -1631,8 +1631,50 @@ export default function CommentOrdersView() {
                     <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
                     {/* 댓글 열 */}
                     <td className="px-4 py-3 text-md text-gray-700">
-                      <div className="whitespace-pre-wrap break-all">{processBandTags(row.comment_body || "")}</div>
-                      {(() => { return null; })()}
+                      {(() => {
+                        const currentComment = processBandTags(row.comment_body || "");
+                        let commentChangeData = null;
+
+                        // comment_change 파싱
+                        try {
+                          if (row.comment_change) {
+                            const parsed = typeof row.comment_change === 'string'
+                              ? JSON.parse(row.comment_change)
+                              : row.comment_change;
+                            if (parsed && parsed.status === 'updated' && Array.isArray(parsed.history) && parsed.history.length > 0) {
+                              commentChangeData = parsed;
+                            }
+                          }
+                        } catch (e) {
+                          // JSON 파싱 실패 시 무시
+                        }
+
+                        // 수정되지 않은 댓글
+                        if (!commentChangeData) {
+                          return <div className="whitespace-pre-wrap break-all">{currentComment}</div>;
+                        }
+
+                        // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
+                        const history = commentChangeData.history;
+                        const previousComment = history.length > 0
+                          ? history[history.length - 1].replace(/^version:\d+\s*/, '')
+                          : '';
+
+                        return (
+                          <div className="space-y-2">
+                            {previousComment && (
+                              <div className="text-gray-500 line-through">
+                                <span className="text-xs font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                                <span className="whitespace-pre-wrap break-all">{previousComment}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-xs font-semibold text-orange-600 mr-1">[수정됨]</span>
+                              <span className="whitespace-pre-wrap break-all">{currentComment}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                     {/* 상품 열 */}
                     <td className="px-4 py-3 text-sm text-gray-700 align-top">
