@@ -455,11 +455,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
         : undefined,
       ai_extraction_result: row.ai_extraction_result || null,
 
-      // 게시물 식별
+      // 게시물/댓글 식별
       post_key: row.post_key || null,
       post_number: row.post_number != null ? String(row.post_number) : null,
       band_key: row.band_key || null,
       band_number: row.band_number != null ? row.band_number : null,
+      comment_key: row.comment_key || row.commentKey || null,
 
       // 기타 UI가 참조하는 필드들 (없으면 안전한 기본값)
       product_title: row.product_title || null,
@@ -540,8 +541,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const band = o.band_key ?? (o.band_number != null ? String(o.band_number) : "");
     const baseKey = o.comment_key || o.commentKey || o.post_key || o.postKey || "";
     const ord = o.ordered_at || "";
-    const upd = o.updated_at || "";
-    return [String(band), String(baseKey), String(ord), String(upd)].join("|");
+    // updated_at은 미세 차이가 있을 수 있어 제외하고 ordered_at만 비교
+    return [String(band), String(baseKey), String(ord)].join("|");
   }, []);
 
   // 대표행 그룹 목록 계산
@@ -3158,19 +3159,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       상태
                     </th>
-                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
+                    <th className="py-2 px-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
                       수령일시
                     </th>
-                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                    <th className="py-2 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
                     </th>
-                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
+                    <th className="py-2 px-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
-                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
+                    <th className="py-2 px-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
                       바코드
                     </th>
                     <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
@@ -3248,7 +3249,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 고객명 */}
                           <td
-                            className="py-2 pr-4 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
+                            className="py-2 pr-2 text-sm text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
                             title={order.customer_name}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -3258,11 +3259,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             {order.customer_name || "-"}
                           </td>
                           {/* 상태 */}
-                          <td className="py-2 px-2 text-center whitespace-nowrap w-24">
+                          <td className="py-2 px-4 text-center whitespace-nowrap w-24">
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
                           {/* 수령일시 */}
-                          <td className="py-2 px-2 text-center text-[14px] text-gray-700 w-28">
+                          <td className="py-2 px-4 text-center text-[14px] text-gray-700 w-28">
                             {(() => {
                               const list = getCandidateProductsForOrder(order);
                               let displayProd = null;
@@ -3275,7 +3276,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 댓글 */}
-                          <td className="py-2 px-2 text-sm text-gray-600">
+                          <td className="py-2 px-4 text-sm text-gray-600">
                             {(() => {
                               const currentComment = processBandTags(order.comment || "");
                               let commentChangeData = null;
@@ -3326,7 +3327,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
-                          <td className="py-2 px-2 text-sm text-gray-700 align-top">
+                          <td className="py-2 px-4 text-sm text-gray-700 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) {
@@ -3408,7 +3409,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 바코드 */}
-                          <td className="py-2 px-2 text-center text-sm text-gray-700 w-32 align-top">
+                          <td className="py-2 px-4 text-center text-sm text-gray-700 w-32 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) return <span className="text-xs text-gray-400">없음</span>;
