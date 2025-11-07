@@ -992,7 +992,6 @@ export default function SettingsPage() {
   const [userId, setUserId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true); // 컴포넌트 초기 설정 로딩
   const [savingProfile, setSavingProfile] = useState(false); // 프로필 저장 상태
-  const [savingCrawling, setSavingCrawling] = useState(false); // 밴드 정보 업데이트 저장 상태
   const [savingExcluded, setSavingExcluded] = useState(false); // 제외 고객 저장 상태
   const [savingBarcodeSetting, setSavingBarcodeSetting] = useState(false); // <<<--- 바코드 설정 저장 상태 추가
   const [error, setError] = useState(null);
@@ -1001,10 +1000,6 @@ export default function SettingsPage() {
   const [bandNumber, setBandNumber] = useState("");
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [newCustomerInput, setNewCustomerInput] = useState("");
-  const [isAutoCrawlingEnabled, setIsAutoCrawlingEnabled] = useState(false);
-  const [crawlInterval, setCrawlInterval] = useState(30); // 기본값 30분으로 변경
-  const [crawlingJobId, setCrawlingJobId] = useState(null);
-  const [initialCrawlSettings, setInitialCrawlSettings] = useState(null);
   const [manualCrawling, setManualCrawling] = useState(false);
   const [manualCrawlPostCount, setManualCrawlPostCount] = useState(10);
   const [expandedSections, setExpandedSections] = useState({
@@ -1079,68 +1074,6 @@ export default function SettingsPage() {
       return "날짜 형식 오류";
     }
   };
-
-  const fetchAutoCrawlSettings = useCallback(async (currentUserId) => {
-    if (!currentUserId) return;
-    try {
-      // Supabase 쿼리로 변경
-      const { data, error } = await supabase
-        .from("scheduler_settings")
-        .select("auto_crawl, crawl_interval, job_id")
-        .eq("user_id", currentUserId)
-        .single();
-
-      // 테이블이 존재하지 않거나 레코드가 없는 경우 기본값 설정
-      if (error && error.code === "PGRST116") {
-        // No rows found - 기본값으로 설정
-        const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
-        setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
-        setCrawlInterval(defaultSettings.interval);
-        setCrawlingJobId(defaultSettings.jobId);
-        setInitialCrawlSettings(defaultSettings);
-        return;
-      }
-
-      if (error) {
-        // 테이블이 존재하지 않는 경우 등 다른 에러도 기본값으로 처리
-        // Auto crawl settings table not accessible, using defaults
-        const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
-        setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
-        setCrawlInterval(defaultSettings.interval);
-        setCrawlingJobId(defaultSettings.jobId);
-        setInitialCrawlSettings(defaultSettings);
-        return;
-      }
-
-      if (data) {
-        const settings = {
-          autoCrawl: data.auto_crawl ?? false,
-          interval: Math.max(30, data.crawl_interval || 30),
-          jobId: data.job_id,
-        };
-        setIsAutoCrawlingEnabled(settings.autoCrawl);
-        setCrawlInterval(settings.interval);
-        setCrawlingJobId(settings.jobId);
-        setInitialCrawlSettings(settings);
-      } else {
-        const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
-        setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
-        setCrawlInterval(defaultSettings.interval);
-        setCrawlingJobId(defaultSettings.jobId);
-        setInitialCrawlSettings(defaultSettings);
-      }
-    } catch (error) {
-      console.warn(
-        "Error fetching auto crawl settings, using defaults:",
-        error.message || error
-      );
-      const defaultSettings = { autoCrawl: false, interval: 30, jobId: null };
-      setIsAutoCrawlingEnabled(defaultSettings.autoCrawl);
-      setCrawlInterval(defaultSettings.interval);
-      setCrawlingJobId(defaultSettings.jobId);
-      setInitialCrawlSettings(defaultSettings);
-    }
-  }, []);
 
   // --- Helper: 세션 스토리지에서 사용자 데이터 로드 및 UI 상태 설정 ---
   const loadUserFromSession = useCallback(() => {
@@ -1340,13 +1273,12 @@ export default function SettingsPage() {
 
     setUserId(sessionUserId);
 
-    // manualCrawlTaskId, fetchAutoCrawlSettings 등 기타 초기화 로직
+    // manualCrawlTaskId 등 기타 초기화 로직
     const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
     if (storedTaskId) setManualCrawlTaskId(storedTaskId);
-    fetchAutoCrawlSettings(sessionUserId); // fetchAutoCrawlSettings는 userId에 의존
 
     setInitialLoading(false); // 초기 세션 처리 및 기본 설정 완료
-  }, [router, loadUserFromSession, fetchAutoCrawlSettings]);
+  }, [router, loadUserFromSession]);
 
   // 2. SWR 데이터 로드 완료 후: UI 상태 및 세션 업데이트
   useEffect(() => {
@@ -1589,39 +1521,6 @@ export default function SettingsPage() {
       alert(`AI 처리 설정 저장 중 오류가 발생했습니다: ${err.message}`);
     } finally {
       setSavingAiProcessingSetting(false);
-    }
-  };
-
-  const updateAutoCrawlSettingsAPI = async (autoCrawl, interval) => {
-    if (!userId) return false;
-    try {
-      // Supabase upsert로 변경
-      const { data, error } = await supabase.from("scheduler_settings").upsert(
-        {
-          user_id: userId,
-          auto_crawl: autoCrawl,
-          crawl_interval: interval,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "user_id",
-          returning: "representation",
-        }
-      );
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const newJobId = data[0].job_id;
-        setCrawlingJobId(newJobId);
-        setInitialCrawlSettings({ autoCrawl, interval, jobId: newJobId });
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("Error updating auto crawl settings:", error);
-      setError(`자동 밴드 정보 업데이트 설정 업데이트 오류: ${error.message}`);
-      return false;
     }
   };
 
@@ -2472,7 +2371,7 @@ export default function SettingsPage() {
               </h2>
               <button
                 onClick={handleLogout}
-                disabled={savingProfile || savingCrawling || savingExcluded}
+                disabled={savingProfile || savingExcluded}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-60"
               >
                 <PowerIcon className="w-4 h-4" /> 로그아웃
