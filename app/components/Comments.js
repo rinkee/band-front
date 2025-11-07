@@ -1454,7 +1454,7 @@ const CommentsModal = ({
                       }}
                       className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 ${
                         !activePost.is_product
-                          ? 'bg-red-400 cursor-pointer hover:bg-red-500'
+                          ? 'bg-gray-300 cursor-pointer hover:bg-gray-400'
                           : activePost.comment_sync_status === 'pending'
                           ? 'bg-amber-500'
                           : 'bg-gray-300'
@@ -1472,7 +1472,7 @@ const CommentsModal = ({
                     </button>
                     <span className={`text-base font-medium ${
                       !activePost.is_product
-                        ? 'text-red-600 cursor-pointer'
+                        ? 'text-gray-700 cursor-pointer'
                         : activePost.comment_sync_status === 'pending'
                         ? 'text-amber-600'
                         : 'text-gray-700'
