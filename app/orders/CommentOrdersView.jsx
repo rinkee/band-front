@@ -220,6 +220,8 @@ export default function CommentOrdersView() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const headerCheckboxRef = React.useRef(null);
+  // 일괄 버튼 위치 설정 (localStorage 기반)
+  const [bulkButtonPosition, setBulkButtonPosition] = useState('right');
 
   useEffect(() => {
     try {
@@ -241,6 +243,15 @@ export default function CommentOrdersView() {
 
   useEffect(() => {
     setIsClient(true);
+    // localStorage에서 일괄 버튼 위치 설정 불러오기
+    try {
+      const savedPosition = localStorage.getItem('bulkButtonPosition');
+      if (savedPosition === 'left' || savedPosition === 'right') {
+        setBulkButtonPosition(savedPosition);
+      }
+    } catch (e) {
+      console.warn('localStorage 접근 실패:', e);
+    }
   }, []);
 
   // 날짜 범위 계산 (legacy와 동일 로직 단순화)
@@ -1246,6 +1257,17 @@ export default function CommentOrdersView() {
   const clearCustomerFilter = () => setActiveCustomer(null);
   const clearProductFilter = () => { setActiveProductId(null); setActiveProductName(null); };
 
+  // 일괄 버튼 위치 토글
+  const toggleBulkButtonPosition = () => {
+    const newPosition = bulkButtonPosition === 'right' ? 'left' : 'right';
+    setBulkButtonPosition(newPosition);
+    try {
+      localStorage.setItem('bulkButtonPosition', newPosition);
+    } catch (e) {
+      console.warn('localStorage 저장 실패:', e);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 overflow-y-auto px-4 py-2 sm:px-6 sm:py-4 pb-[200px]">
       <main className="max-w-[1440px] mx-auto space-y-4">
@@ -1378,49 +1400,109 @@ export default function CommentOrdersView() {
         {/* 일괄 처리 버튼 바 (legacy 스타일) */}
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-transparent">
           <div className="max-w-[1440px] mx-auto px-4 sm:px-6 p-5 flex justify-between items-center bg-white border border-gray-200 rounded-xl shadow-sm">
-            <div className="flex items-center">
-              {selectedIds.length === 0 && (
-                <span className="text-sm text-gray-500 italic">항목을 선택하여 일괄 처리하세요</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {selectedIds.length > 0 ? (
-                <div className="flex flex-col">
-                  <span className="text-xs text-gray-500">선택 항목</span>
-                  <span className="text-sm font-semibold text-gray-900">{selectedIds.length}개 선택됨</span>
-                </div>
-              ) : (
-                <div className="flex flex-col">
-                  <span className="text-xs text-gray-500">현재 페이지</span>
-                  <span className="text-sm font-semibold text-gray-900">{visibleItems.length}개 항목</span>
-                </div>
-              )}
+            {/* 좌측 영역 */}
+            {bulkButtonPosition === 'left' ? (
+              // 버튼이 좌측에 있을 때
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleBulkCommentOrdersUpdate('수령완료')}
+                  disabled={selectedIds.length === 0 || bulkUpdating}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                  aria-hidden={selectedIds.length === 0}
+                >
+                  수령완료 ({selectedIds.length})
+                </button>
+                <button
+                  onClick={() => handleBulkCommentOrdersUpdate('주문완료')}
+                  disabled={selectedIds.length === 0 || bulkUpdating}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                  aria-hidden={selectedIds.length === 0}
+                >
+                  주문완료로 되돌리기 ({selectedIds.length})
+                </button>
+                <button
+                  onClick={() => handleBulkCommentOrdersUpdate('주문취소')}
+                  disabled={selectedIds.length === 0 || bulkUpdating}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                  aria-hidden={selectedIds.length === 0}
+                >
+                  주문취소 ({selectedIds.length})
+                </button>
+                {selectedIds.length > 0 ? (
+                  <div className="flex flex-col ml-2">
+                    <span className="text-xs text-gray-500">선택 항목</span>
+                    <span className="text-sm font-semibold text-gray-900">{selectedIds.length}개 선택됨</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col ml-2">
+                    <span className="text-xs text-gray-500">현재 페이지</span>
+                    <span className="text-sm font-semibold text-gray-900">{visibleItems.length}개 항목</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // 버튼이 우측에 있을 때 - 좌측에 위치 변경 버튼 표시
+              <div className="flex items-center">
+                <button
+                  onClick={toggleBulkButtonPosition}
+                  className="px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-xs text-gray-500 hover:border-orange-400 hover:text-orange-600 transition-colors"
+                >
+                  버튼 여기로 이동 →
+                </button>
+              </div>
+            )}
 
-              <button
-                onClick={() => handleBulkCommentOrdersUpdate('주문취소')}
-                disabled={selectedIds.length === 0 || bulkUpdating}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
-                aria-hidden={selectedIds.length === 0}
-              >
-                주문취소 ({selectedIds.length})
-              </button>
-              <button
-                onClick={() => handleBulkCommentOrdersUpdate('주문완료')}
-                disabled={selectedIds.length === 0 || bulkUpdating}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
-                aria-hidden={selectedIds.length === 0}
-              >
-                주문완료로 되돌리기 ({selectedIds.length})
-              </button>
-              <button
-                onClick={() => handleBulkCommentOrdersUpdate('수령완료')}
-                disabled={selectedIds.length === 0 || bulkUpdating}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
-                aria-hidden={selectedIds.length === 0}
-              >
-                수령완료 ({selectedIds.length})
-              </button>
-            </div>
+            {/* 우측 영역 */}
+            {bulkButtonPosition === 'right' ? (
+              <div className="flex items-center gap-2">
+                {selectedIds.length > 0 ? (
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">선택 항목</span>
+                    <span className="text-sm font-semibold text-gray-900">{selectedIds.length}개 선택됨</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500">현재 페이지</span>
+                    <span className="text-sm font-semibold text-gray-900">{visibleItems.length}개 항목</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => handleBulkCommentOrdersUpdate('주문취소')}
+                  disabled={selectedIds.length === 0 || bulkUpdating}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                  aria-hidden={selectedIds.length === 0}
+                >
+                  주문취소 ({selectedIds.length})
+                </button>
+                <button
+                  onClick={() => handleBulkCommentOrdersUpdate('주문완료')}
+                  disabled={selectedIds.length === 0 || bulkUpdating}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                  aria-hidden={selectedIds.length === 0}
+                >
+                  주문완료로 되돌리기 ({selectedIds.length})
+                </button>
+                <button
+                  onClick={() => handleBulkCommentOrdersUpdate('수령완료')}
+                  disabled={selectedIds.length === 0 || bulkUpdating}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedIds.length === 0 ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+                  aria-hidden={selectedIds.length === 0}
+                >
+                  수령완료 ({selectedIds.length})
+                </button>
+              </div>
+            ) : (
+              // 버튼이 좌측에 있을 때 - 우측에 위치 변경 버튼 표시
+              <div className="flex items-center">
+                <button
+                  onClick={toggleBulkButtonPosition}
+                  className="px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-xs text-gray-500 hover:border-orange-400 hover:text-orange-600 transition-colors"
+                >
+                  ← 버튼 여기로 이동
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
