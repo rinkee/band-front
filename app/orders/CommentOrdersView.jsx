@@ -1428,8 +1428,8 @@ export default function CommentOrdersView() {
                 <col style={{ width: '2%' }} />
                 <col style={{ width: '8%' }} />
                 <col style={{ width: '7%' }} />
-                <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
+                <col style={{ width: '25%' }} />
                 <col style={{ width: '25%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
@@ -1447,7 +1447,6 @@ export default function CommentOrdersView() {
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">고객명</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>
                   <th
                     className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
                     onClick={() => handleSort('pickup_date')}
@@ -1459,6 +1458,7 @@ export default function CommentOrdersView() {
                       </span>
                     </div>
                   </th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">상품</th>
                   <th
                     className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
@@ -1522,7 +1522,7 @@ export default function CommentOrdersView() {
                         "-"
                       )}
                     </td>
-                    {/* 상태 열 - 댓글 왼쪽으로 이동 */}
+                    {/* 상태 열 */}
                     <td className="px-4 py-3 text-center">
                       {(() => {
                         let displayStatus = row.order_status;
@@ -1541,11 +1541,14 @@ export default function CommentOrdersView() {
                         return <StatusBadge status={displayStatus} />;
                       })()}
                     </td>
+                    {/* 수령일시 열 - 상태 우측으로 이동 */}
+                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
+                    {/* 댓글 열 */}
                     <td className="px-4 py-3 text-md text-gray-700">
                       <div className="whitespace-pre-wrap break-all">{processBandTags(row.comment_body || "")}</div>
                       {(() => { return null; })()}
                     </td>
-                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
+                    {/* 상품 열 */}
                     <td className="px-4 py-3 text-sm text-gray-700 align-top">
                       {(() => {
                         const list = getCandidateProductsForRow(row);
@@ -1735,10 +1738,10 @@ export default function CommentOrdersView() {
                         );
                       })()}
                     </td>
+                    {/* 주문일시 열 */}
                     <td className="px-4 py-3 text-center text-[14px] text-gray-700">
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>
-                    
                   </tr>
                 );})}
               </tbody>
