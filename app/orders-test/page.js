@@ -396,6 +396,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // 사이드바 토글 상태
   const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
   const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
+  const [topSearch, setTopSearch] = useState("");
 
   // --- 주문 정보 수정 관련 상태 복구 ---
   const [isEditingDetails, setIsEditingDetails] = useState(false);
@@ -1992,6 +1993,28 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
+  // 상단 검색 핸들러 (우측 검색칸)
+  const handleTopSearch = useCallback(() => {
+    const trimmed = (topSearch || "").trim();
+    if (trimmed !== searchTerm) {
+      setSearchTerm(trimmed);
+      setCurrentPage(1);
+      setExactCustomerFilter(null);
+      setSelectedOrderIds([]);
+      if (searchInputRef.current) searchInputRef.current.value = trimmed;
+      if (scrollToTop) setTimeout(() => scrollToTop(), 100);
+    }
+  }, [topSearch, searchTerm, scrollToTop]);
+
+  const handleTopSearchClear = useCallback(() => {
+    setTopSearch("");
+    setSearchTerm("");
+    setExactCustomerFilter(null);
+    setCurrentPage(1);
+    setSelectedOrderIds([]);
+    if (searchInputRef.current) searchInputRef.current.value = "";
+  }, [searchInputRef]);
+
   // 정확한 고객명 검색
   const handleExactCustomerSearch = (customerName) => {
     if (!customerName || customerName === "-") return;
@@ -3001,6 +3024,54 @@ function OrdersTestPageContent({ mode = "raw" }) {
           </div>
         </div>
 
+        {/* 상단 우측 검색 + 업데이트 버튼 */}
+        <div className="flex-shrink-0 px-4 lg:px-6 py-3">
+          <div className="flex items-center justify-end gap-2">
+            <div className="relative w-64">
+              <input
+                type="text"
+                placeholder="검색"
+                value={topSearch}
+                onChange={(e) => setTopSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleTopSearch(); }}
+                className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
+              </div>
+              {topSearch && (
+                <button
+                  type="button"
+                  onClick={() => handleTopSearchClear()}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label="검색 내용 지우기"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={handleTopSearch}
+              className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap"
+              type="button"
+            >
+              검색
+            </button>
+            <UpdateButton
+              pageType="orders"
+              totalItems={globalStatsData?.총주문수 || 0}
+              onSuccess={async () => {
+                try {
+                  setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                  await mutateOrders(undefined, { revalidate: true });
+                  await mutateProducts(undefined, { revalidate: true });
+                  await mutateGlobalStats(undefined, { revalidate: true });
+                } catch (_) {}
+              }}
+            />
+          </div>
+        </div>
+
         {/* 주의 안내 문구 */}
         <p className="text-sm text-gray-600 px-5 lg:px-7 pb-2">
           * 상품과 수량이 잘못 처리될 수 있습니다. 상품명과 고객댓글 수량을 꼭 확인하세요.
@@ -3009,18 +3080,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         {/* 주문 리스트 영역 - 스크롤 가능 */}
         <div className="flex-1 min-h-0 pb-4 px-4 lg:px-6 pt-0">
           <div className="h-full bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-            {/* 업데이트 버튼 - 테이블 우측 상단 */}
-            <div className="flex justify-end p-3 border-b border-gray-200">
-              <UpdateButton
-                pageType="orders"
-                totalItems={globalStatsData?.총주문수 || 0}
-                onSuccess={() => {
-                  console.log("🔄 주문 업데이트 완료");
-                  setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                  mutate();
-                }}
-              />
-            </div>
+            {/* 업데이트 버튼 제거: 상단 우측 영역으로 이동 */}
             {/* 테이블 컨테이너 - 한 번에 스크롤 */}
             <div className="flex-1 overflow-auto relative">
               <table className="min-w-full ">
@@ -3039,7 +3099,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       <button
                         onClick={() => handleSortChange("customer_name")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -3048,22 +3108,22 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       상태
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
                       수령일시
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
                     </th>
-                    <th className="py-2 pr-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
+                    <th className="py-2 px-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
                       바코드
                     </th>
-                    <th className="py-2 pr-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
+                    <th className="py-2 px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
                       <button
                         onClick={() => handleSortChange("ordered_at")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -3151,11 +3211,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             {order.customer_name || "-"}
                           </td>
                           {/* 상태 */}
-                          <td className="py-2 pr-2 text-center whitespace-nowrap w-24">
+                          <td className="py-2 px-2 text-center whitespace-nowrap w-24">
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
                           {/* 수령일시 */}
-                          <td className="py-2 pr-2 text-center text-[14px] text-gray-700 w-28">
+                          <td className="py-2 px-2 text-center text-[14px] text-gray-700 w-28">
                             {(() => {
                               const list = getCandidateProductsForOrder(order);
                               let displayProd = null;
@@ -3168,7 +3228,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 댓글 */}
-                          <td className="py-2 pr-2 text-sm text-gray-600">
+                          <td className="py-2 px-2 text-sm text-gray-600">
                             {(() => {
                               const currentComment = processBandTags(order.comment || "");
                               let commentChangeData = null;
@@ -3219,7 +3279,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
-                          <td className="py-2 pr-2 text-sm text-gray-700 w-60 align-top">
+                          <td className="py-2 px-2 text-sm text-gray-700 w-60 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) {
@@ -3266,10 +3326,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                     return (
                                       <div
                                         key={p?.product_id || `${idx}`}
-                                        className={`border rounded p-2 flex items-start gap-2 border-gray-200`}
+                                        className={`rounded p-2 flex items-start gap-2 border-gray-200`}
                                         title={title}
                                       >
-                                        <div className="w-10 h-10 rounded-md overflow-hidden border bg-white flex-shrink-0">
+                                        <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0">
                                           {imgUrl ? (
                                             <img
                                               src={imgUrl}
@@ -3284,7 +3344,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         </div>
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center gap-1 min-w-0">
-                                            <span className="text-xs text-gray-500 flex-shrink-0">#{itemNo}</span>
+                                            {list.length > 1 && (
+                                              <span className="text-xs text-gray-500 flex-shrink-0">#{itemNo}</span>
+                                            )}
                                             <span className={`truncate text-[15px] leading-snug text-gray-900 font-medium`}>{title}</span>
                                           </div>
                                           {price != null && (
@@ -3299,7 +3361,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 바코드 */}
-                          <td className="py-2 pr-2 text-center text-sm text-gray-700 w-32 align-top">
+                          <td className="py-2 px-2 text-center text-sm text-gray-700 w-32 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) return <span className="text-xs text-gray-400">없음</span>;
@@ -3324,7 +3386,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 주문일시 */}
-                          <td className="py-2 pr-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
+                          <td className="py-2 px-2 text-center text-sm text-gray-600 whitespace-nowrap w-32">
                             {formatDate(order.ordered_at)}
                           </td>
                         </tr>
