@@ -489,8 +489,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 현재 페이지 주문들의 총 수량 계산 ---
 
   // --- 현재 페이지 주문들의 총 수량 및 총 금액 계산 ---
-  const { currentPageTotalQuantity, currentPageTotalAmount } =
-    displayOrders.reduce(
+  const { currentPageTotalQuantity, currentPageTotalAmount } = useMemo(() => {
+    return displayOrders.reduce(
       (totals, order) => {
         const quantity = parseInt(order.quantity, 10);
         const amount = parseFloat(order.total_amount); // <<< total_amount는 실수일 수 있으므로 parseFloat 사용
@@ -502,6 +502,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       },
       { currentPageTotalQuantity: 0, currentPageTotalAmount: 0 } // <<< 초기값을 객체로 설정
     );
+  }, [displayOrders]);
   // --- 총 수량 및 총 금액 계산 끝 ---
   const checkbox = useRef();
 
