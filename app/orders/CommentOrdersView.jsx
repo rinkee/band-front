@@ -1063,15 +1063,21 @@ export default function CommentOrdersView() {
     return "-";
   };
 
-  // 정렬 토글 함수
+  // 정렬 토글 함수 - desc → asc → 초기화(null) 순환
   const handleSort = (column) => {
     if (sortBy === column) {
-      // 같은 컬럼을 다시 클릭하면 정렬 순서 토글
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      // 같은 컬럼을 다시 클릭
+      if (sortOrder === 'desc') {
+        setSortOrder('asc');
+      } else if (sortOrder === 'asc') {
+        // 초기화: 정렬 해제
+        setSortBy(null);
+        setSortOrder('desc');
+      }
     } else {
-      // 다른 컬럼을 클릭하면 해당 컬럼으로 오름차순 정렬
+      // 다른 컬럼을 클릭하면 해당 컬럼으로 내림차순 정렬
       setSortBy(column);
-      setSortOrder('asc');
+      setSortOrder('desc');
     }
   };
 
@@ -1466,11 +1472,9 @@ export default function CommentOrdersView() {
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>주문일시</span>
-                      {sortBy === 'comment_created_at' && (
-                        <span className="text-orange-600">
-                          {sortOrder === 'asc' ? '↑' : '↓'}
-                        </span>
-                      )}
+                      <span className={sortBy === 'comment_created_at' ? "text-orange-600" : "text-gray-400"}>
+                        {sortBy === 'comment_created_at' ? (sortOrder === 'asc' ? '↑' : '↓') : '↕'}
+                      </span>
                     </div>
                   </th>
                 </tr>
