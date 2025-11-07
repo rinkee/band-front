@@ -3286,7 +3286,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
-                          <td className="py-2 px-2 text-sm text-gray-700 w-60 align-top">
+                          <td className="py-2 px-2 text-sm text-gray-700 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) {
@@ -3349,12 +3349,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                             <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">이미지</div>
                                           )}
                                         </div>
-                                        <div className="min-w-0 flex-1">
-                                          <div className="flex items-start gap-1 min-w-0">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-1">
                                             {list.length > 1 && (
                                               <span className="text-xs text-gray-500 flex-shrink-0">{itemNo}번</span>
                                             )}
-                                            <span className={`text-[15px] leading-snug text-gray-900 font-medium break-words`}>{title}</span>
+                                            <span className={`text-[15px] leading-snug text-gray-900 font-medium whitespace-nowrap`}>{title}</span>
                                           </div>
                                           {price != null && (
                                             <div className="text-sm text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
