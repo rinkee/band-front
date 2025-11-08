@@ -530,12 +530,24 @@ export default function PostsPage() {
       // 현재 사용자 ID 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
       const userId = userData.userId;
-      
+
       if (!userId) {
         throw new Error('사용자 인증 정보를 찾을 수 없습니다.');
       }
-      
-      // Edge Function을 통한 삭제 요청 - user_id 포함
+
+      // 1. comment_orders 삭제 (raw 모드용)
+      const { error: commentOrdersError } = await supabase
+        .from('comment_orders')
+        .delete()
+        .eq('user_id', userId)
+        .eq('post_key', post.post_key);
+
+      if (commentOrdersError) {
+        console.warn('comment_orders 삭제 중 오류:', commentOrdersError);
+        // 에러가 있어도 계속 진행 (테이블이 없을 수도 있음)
+      }
+
+      // 2. Edge Function을 통한 나머지 삭제 (posts, products, orders)
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/posts-delete?postId=${post.post_id}&userId=${userId}`,
         {
@@ -556,7 +568,7 @@ export default function PostsPage() {
 
       // 성공 메시지 표시
       showSuccess(`삭제 완료: ${result.message}`);
-      
+
       // 데이터 새로고침
       mutate();
       
