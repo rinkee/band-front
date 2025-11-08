@@ -1799,6 +1799,7 @@ function LegacyOrdersPage() {
     }
     setSearchTerm("");
     setExactCustomerFilter(null);
+    setPendingSearchUi(null); // 펜딩 검색 UI도 초기화
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
     setFilterDateRange("30days"); // 기본 날짜로 복귀
