@@ -1805,6 +1805,14 @@ function LegacyOrdersPage() {
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
+
+    // URL 파라미터 제거 (postKey 등)
+    const newUrl = new URL(window.location);
+    newUrl.searchParams.delete("search");
+    newUrl.searchParams.delete("filter");
+    newUrl.searchParams.delete("postKey");
+    newUrl.searchParams.delete("post");
+    window.history.replaceState({}, "", newUrl.toString());
   };
 
   // 정확한 고객명 검색
