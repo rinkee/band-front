@@ -2,6 +2,34 @@
 
 import React, { useEffect } from 'react';
 
+// 네이버 이미지 프록시 헬퍼 함수
+const getProxiedImageUrl = (url) => {
+  if (!url) return url;
+
+  // 네이버 도메인인지 확인
+  const isNaverHost = (urlString) => {
+    try {
+      const u = new URL(urlString);
+      const host = u.hostname.toLowerCase();
+      return host.endsWith('.naver.net') ||
+             host.endsWith('.naver.com') ||
+             host.endsWith('.pstatic.net') ||
+             host === 'naver.net' ||
+             host === 'naver.com' ||
+             host === 'pstatic.net';
+    } catch {
+      return false;
+    }
+  };
+
+  // 네이버 도메인이면 프록시 사용
+  if (isNaverHost(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+};
+
 const PostDetailModal = ({ isOpen, onClose, post, onDelete }) => {
   console.log('PostDetailModal component rendered!');
   console.log('PostDetailModal - isOpen:', isOpen, 'post:', post);
@@ -103,7 +131,7 @@ const PostDetailModal = ({ isOpen, onClose, post, onDelete }) => {
             <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
               {(post.profile_image || post.author_profile) ? (
                 <img
-                  src={post.profile_image || post.author_profile}
+                  src={getProxiedImageUrl(post.profile_image || post.author_profile)}
                   alt={`${post.author_name || '익명'} 프로필`}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -155,7 +183,7 @@ const PostDetailModal = ({ isOpen, onClose, post, onDelete }) => {
                 {(Array.isArray(post.image_urls) ? post.image_urls : JSON.parse(post.image_urls || '[]')).map((url, index) => (
                   <img
                     key={index}
-                    src={url}
+                    src={getProxiedImageUrl(url)}
                     alt={`이미지 ${index + 1}`}
                     className="w-full h-40 object-cover rounded-lg border border-gray-200"
                     onError={(e) => {

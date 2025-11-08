@@ -92,6 +92,34 @@ const processBandTags = (text) => {
   return processedText;
 };
 
+// 네이버 이미지 프록시 헬퍼 함수
+const getProxiedImageUrl = (url) => {
+  if (!url) return url;
+
+  // 네이버 도메인인지 확인
+  const isNaverHost = (urlString) => {
+    try {
+      const u = new URL(urlString);
+      const host = u.hostname.toLowerCase();
+      return host.endsWith('.naver.net') ||
+             host.endsWith('.naver.com') ||
+             host.endsWith('.pstatic.net') ||
+             host === 'naver.net' ||
+             host === 'naver.com' ||
+             host === 'pstatic.net';
+    } catch {
+      return false;
+    }
+  };
+
+  // 네이버 도메인이면 프록시 사용
+  if (isNaverHost(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+};
+
 function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
   if (!Array.isArray(priceOptions) || priceOptions.length === 0) {
     return fallbackPrice * qty;
@@ -3382,7 +3410,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0 border border-gray-200">
                                           {imgUrl ? (
                                             <img
-                                              src={imgUrl}
+                                              src={getProxiedImageUrl(imgUrl)}
                                               alt={title}
                                               className="w-full h-full object-cover"
                                               referrerPolicy="no-referrer"
