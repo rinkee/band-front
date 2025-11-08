@@ -3327,7 +3327,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
-                          <td className="py-2 px-4 text-sm text-gray-700 align-top">
+                          <td className="py-2 pl-4 text-sm text-gray-700 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) {
@@ -3371,13 +3371,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
                                       }
                                     }
+                                    const isLastProduct = idx === list.length - 1;
                                     return (
                                       <div
                                         key={p?.product_id || `${idx}`}
-                                        className={`rounded p-2 flex items-start gap-2 border-gray-200`}
+                                        className={`p-2 flex items-start gap-2 ${!isLastProduct ? "border-b border-gray-200 " : ""}`}
+                                        style={{ minHeight: "86px" }}
                                         title={title}
                                       >
-                                        <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0">
+                                        <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0 border border-gray-200">
                                           {imgUrl ? (
                                             <img
                                               src={imgUrl}
@@ -3391,9 +3393,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                           )}
                                         </div>
                                         <div className="flex-1">
-                                          <div className="flex items-center gap-1">
+                                          <div className="flex items-center gap-2">
                                             {list.length > 1 && (
-                                              <span className="text-xs text-gray-500 flex-shrink-0">{itemNo}번</span>
+                                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-[12px] font-semibold text-gray-900">
+                                                {itemNo}번
+                                              </span>
                                             )}
                                             <span className={`text-[15px] leading-snug text-gray-900 font-medium whitespace-nowrap`}>{title}</span>
                                           </div>
@@ -3409,7 +3413,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 바코드 */}
-                          <td className="py-2 px-4 text-center text-sm text-gray-700 w-32 align-top">
+                          <td className="py-2 pr-4 text-center text-sm text-gray-700 w-32 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) return <span className="text-xs text-gray-400">없음</span>;
@@ -3419,8 +3423,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                   {list.map((p, idx) => {
                                     const selected = isSelected(p);
                                     const barcodeVal = selected && order?.selected_barcode ? order.selected_barcode : (p?.barcode || '');
+                                    const isLastBarcode = idx === list.length - 1;
                                     return (
-                                      <div key={p?.product_id || `${idx}`} className={`flex items-center justify-center h-[72px] ${selected ? '' : ''}`}>
+                                      <div
+                                        key={p?.product_id || `${idx}`}
+                                        className={`flex items-center justify-center px-2 ${isLastBarcode ? "py-2" : "pt-2  border-b border-gray-200"}`}
+                                        style={{ minHeight: "86px" }}
+                                      >
                                         {barcodeVal ? (
                                           <Barcode value={barcodeVal} height={32} width={1.2} fontSize={12} />
                                         ) : (

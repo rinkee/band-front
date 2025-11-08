@@ -13,6 +13,34 @@ import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 
+// 네이버 이미지 프록시 헬퍼 함수
+const getProxiedImageUrl = (url) => {
+  if (!url) return url;
+
+  // 네이버 도메인인지 확인
+  const isNaverHost = (urlString) => {
+    try {
+      const u = new URL(urlString);
+      const host = u.hostname.toLowerCase();
+      return host.endsWith('.naver.net') ||
+             host.endsWith('.naver.com') ||
+             host.endsWith('.pstatic.net') ||
+             host === 'naver.net' ||
+             host === 'naver.com' ||
+             host === 'pstatic.net';
+    } catch {
+      return false;
+    }
+  };
+
+  // 네이버 도메인이면 프록시 사용
+  if (isNaverHost(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+};
+
 export default function PostsPage() {
   const router = useRouter();
   const [userData, setUserData] = useState(null);
@@ -1497,8 +1525,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <div className="flex items-center space-x-2">
             <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
               {(post.profile_image || post.author_profile) ? (
-                <img 
-                  src={post.profile_image || post.author_profile} 
+                <img
+                  src={getProxiedImageUrl(post.profile_image || post.author_profile)}
                   alt={`${post.author_name || '익명'} 프로필`}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -1545,7 +1573,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       <div className="relative h-64 bg-gray-100">
         {hasImages ? (
           <img
-            src={mainImage}
+            src={getProxiedImageUrl(mainImage)}
             alt={cleanTitle || "게시물 이미지"}
             className="w-full h-full object-cover"
             onError={(e) => {
