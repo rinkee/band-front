@@ -1151,7 +1151,9 @@ function LegacyOrdersPage() {
     const postParam = searchParams.get("post"); // posts-test 등 호환
 
     if (searchParam) {
-      setPendingSearchUi(searchParam);
+      if (searchInputRef.current) {
+        searchInputRef.current.value = searchParam;
+      }
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1161,7 +1163,9 @@ function LegacyOrdersPage() {
     // postKey 파라미터 처리 - posts 페이지에서 넘어온 경우
     const incomingPostKey = postKeyParam || postParam;
     if (incomingPostKey) {
-      setPendingSearchUi(incomingPostKey);
+      if (searchInputRef.current) {
+        searchInputRef.current.value = incomingPostKey;
+      }
       setSearchTerm(incomingPostKey);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1173,16 +1177,6 @@ function LegacyOrdersPage() {
       setFilterSelection("미수령");
       setCurrentPage(1);
       setSelectedOrderIds([]);
-    }
-
-    // URL에서 파라미터 제거 (한 번만 실행되도록)
-    if (searchParam || filterParam || postKeyParam || postParam) {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.delete("search");
-      newUrl.searchParams.delete("filter");
-      newUrl.searchParams.delete("postKey");
-      newUrl.searchParams.delete("post");
-      window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
 
