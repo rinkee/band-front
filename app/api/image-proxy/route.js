@@ -14,6 +14,10 @@ export async function GET(request) {
     let remoteUrl;
     try {
       remoteUrl = new URL(target);
+      // HTTPS를 HTTP로 다운그레이드 (네이버 CDN은 둘 다 지원)
+      if (remoteUrl.protocol === 'https:') {
+        remoteUrl.protocol = 'http:';
+      }
       console.log("[image-proxy] Parsed URL:", remoteUrl.toString());
     } catch (e) {
       console.error("[image-proxy] Invalid URL:", e);
