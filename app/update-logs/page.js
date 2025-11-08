@@ -4,6 +4,14 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 3,
+      date: '2025년 11월 9일',
+      updates: [
+        '주문 수정이 안되던 문제를 해결',
+        'raw모드에서 주문 검색시 초기화가 안되던 문제를 해결',        
+      ]
+    },
+    {
       id: 2,
       date: '2025년 11월 8일',
       updates: [

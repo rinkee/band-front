@@ -1726,7 +1726,7 @@ export default function CommentOrdersView() {
                         // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
                         const history = commentChangeData.history;
                         const previousComment = history.length > 0
-                          ? history[history.length - 1].replace(/^version:\d+\s*/, '')
+                          ? history[0].replace(/^version:\d+\s*/, '')
                           : '';
 
                         return (
