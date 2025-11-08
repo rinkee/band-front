@@ -2,10 +2,17 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase 클라이언트 생성
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const getSupabaseClient = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    console.error('Supabase credentials missing:', { url: !!url, key: !!key });
+    throw new Error('Supabase credentials not configured');
+  }
+
+  return createClient(url, key);
+};
 
 export async function GET(request, { params }) {
   try {
@@ -20,6 +27,8 @@ export async function GET(request, { params }) {
         { status: 400 }
       );
     }
+
+    const supabase = getSupabaseClient();
 
     // products 테이블에서 해당 게시물의 상품 조회
     let query = supabase
