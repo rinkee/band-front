@@ -335,6 +335,19 @@ export default function CommentOrdersView() {
     }
   }, []);
 
+  // URL 파라미터 처리 (postKey 등)
+  useEffect(() => {
+    const postKeyParam = searchParams?.get('postKey');
+    const postParam = searchParams?.get('post');
+    const incomingPostKey = postKeyParam || postParam;
+
+    if (incomingPostKey) {
+      setSearchTerm(incomingPostKey);
+      setSearchInputSeed(incomingPostKey);
+      setPage(1);
+    }
+  }, [searchParams]);
+
   // 날짜 범위 계산 (legacy와 동일 로직 단순화)
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
@@ -921,6 +934,18 @@ export default function CommentOrdersView() {
     setActiveProductId(null);
     setActiveProductName(null);
     setPage(1);
+
+    // URL 파라미터 제거
+    if (typeof window !== 'undefined') {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("search");
+      newUrl.searchParams.delete("filter");
+      newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("post");
+      newUrl.searchParams.delete("postNumber");
+      newUrl.searchParams.delete("bandNumber");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
   };
   // Enter handling is scoped inside SearchBar
   const handleDateRangeChange = (value) => {
