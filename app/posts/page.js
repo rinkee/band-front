@@ -1128,7 +1128,7 @@ export default function PostsPage() {
                     {(Array.isArray(selectedPostForDetail.image_urls) ? selectedPostForDetail.image_urls : JSON.parse(selectedPostForDetail.image_urls || '[]')).slice(0, 4).map((url, index) => (
                       <div key={index} className="relative w-full h-40 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
                         <img
-                          src={url}
+                          src={getProxiedImageUrl(url)}
                           alt={`이미지 ${index + 1}`}
                           className="w-full h-full object-cover"
                           onError={(e) => {
