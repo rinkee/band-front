@@ -114,6 +114,34 @@ const processBandTags = (text) => {
   return processedText;
 };
 
+// 네이버 이미지 프록시 헬퍼 함수
+const getProxiedImageUrl = (url) => {
+  if (!url) return url;
+
+  // 네이버 도메인인지 확인
+  const isNaverHost = (urlString) => {
+    try {
+      const u = new URL(urlString);
+      const host = u.hostname.toLowerCase();
+      return host.endsWith('.naver.net') ||
+             host.endsWith('.naver.com') ||
+             host.endsWith('.pstatic.net') ||
+             host === 'naver.net' ||
+             host === 'naver.com' ||
+             host === 'pstatic.net';
+    } catch {
+      return false;
+    }
+  };
+
+  // 네이버 도메인이면 프록시 사용
+  if (isNaverHost(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+};
+
 function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
   if (!Array.isArray(priceOptions) || priceOptions.length === 0) {
     return fallbackPrice * qty;
@@ -1123,7 +1151,9 @@ function LegacyOrdersPage() {
     const postParam = searchParams.get("post"); // posts-test 등 호환
 
     if (searchParam) {
-      setPendingSearchUi(searchParam);
+      if (searchInputRef.current) {
+        searchInputRef.current.value = searchParam;
+      }
       setSearchTerm(searchParam);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1133,7 +1163,9 @@ function LegacyOrdersPage() {
     // postKey 파라미터 처리 - posts 페이지에서 넘어온 경우
     const incomingPostKey = postKeyParam || postParam;
     if (incomingPostKey) {
-      setPendingSearchUi(incomingPostKey);
+      if (searchInputRef.current) {
+        searchInputRef.current.value = incomingPostKey;
+      }
       setSearchTerm(incomingPostKey);
       setCurrentPage(1);
       setExactCustomerFilter(null);
@@ -1145,16 +1177,6 @@ function LegacyOrdersPage() {
       setFilterSelection("미수령");
       setCurrentPage(1);
       setSelectedOrderIds([]);
-    }
-
-    // URL에서 파라미터 제거 (한 번만 실행되도록)
-    if (searchParam || filterParam || postKeyParam || postParam) {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.delete("search");
-      newUrl.searchParams.delete("filter");
-      newUrl.searchParams.delete("postKey");
-      newUrl.searchParams.delete("post");
-      window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams]);
 
@@ -1771,12 +1793,21 @@ function LegacyOrdersPage() {
     }
     setSearchTerm("");
     setExactCustomerFilter(null);
+    setPendingSearchUi(null); // 펜딩 검색 UI도 초기화
     setCurrentPage(1);
     setFilterSelection("주문완료"); // 기본 필터로 복귀
     setFilterDateRange("30days"); // 기본 날짜로 복귀
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
+
+    // URL 파라미터 제거 (postKey 등)
+    const newUrl = new URL(window.location);
+    newUrl.searchParams.delete("search");
+    newUrl.searchParams.delete("filter");
+    newUrl.searchParams.delete("postKey");
+    newUrl.searchParams.delete("post");
+    window.history.replaceState({}, "", newUrl.toString());
   };
 
   // 정확한 고객명 검색

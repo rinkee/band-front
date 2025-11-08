@@ -29,6 +29,34 @@ import { analyzeCommentMulti } from "../client-matcher";
 // 날짜 유틸리티
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils";
 
+// 네이버 이미지 프록시 헬퍼 함수
+const getProxiedImageUrl = (url) => {
+  if (!url) return url;
+
+  // 네이버 도메인인지 확인
+  const isNaverHost = (urlString) => {
+    try {
+      const u = new URL(urlString);
+      const host = u.hostname.toLowerCase();
+      return host.endsWith('.naver.net') ||
+             host.endsWith('.naver.com') ||
+             host.endsWith('.pstatic.net') ||
+             host === 'naver.net' ||
+             host === 'naver.com' ||
+             host === 'pstatic.net';
+    } catch {
+      return false;
+    }
+  };
+
+  // 네이버 도메인이면 프록시 사용
+  if (isNaverHost(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+};
+
 const processBandTags = (text) => {
   if (!text) return text;
   let processedText = text;
@@ -306,6 +334,19 @@ export default function CommentOrdersView() {
       console.warn('localStorage 접근 실패:', e);
     }
   }, []);
+
+  // URL 파라미터 처리 (postKey 등)
+  useEffect(() => {
+    const postKeyParam = searchParams?.get('postKey');
+    const postParam = searchParams?.get('post');
+    const incomingPostKey = postKeyParam || postParam;
+
+    if (incomingPostKey) {
+      setSearchTerm(incomingPostKey);
+      setSearchInputSeed(incomingPostKey);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   // 날짜 범위 계산 (legacy와 동일 로직 단순화)
   function calculateDateFilterParams(range, customStart, customEnd) {
@@ -826,9 +867,8 @@ export default function CommentOrdersView() {
 
   const normalizeImageUrl = (u) => {
     if (!u) return u;
-    // Prefer https to avoid mixed content and CSP upgrade failures
-    if (u.startsWith("http://")) return u.replace(/^http:\/\//, "https://");
-    return u;
+    // 네이버 이미지는 프록시를 통해 로드
+    return getProxiedImageUrl(u);
   };
 
   const attachThumbs = (row) => {
@@ -894,6 +934,18 @@ export default function CommentOrdersView() {
     setActiveProductId(null);
     setActiveProductName(null);
     setPage(1);
+
+    // URL 파라미터 제거
+    if (typeof window !== 'undefined') {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("search");
+      newUrl.searchParams.delete("filter");
+      newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("post");
+      newUrl.searchParams.delete("postNumber");
+      newUrl.searchParams.delete("bandNumber");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
   };
   // Enter handling is scoped inside SearchBar
   const handleDateRangeChange = (value) => {
@@ -1824,10 +1876,10 @@ export default function CommentOrdersView() {
                                   }}
                                   title="이 상품의 댓글만 보기"
                                 >
-                                  <div className={`w-16 h-16 rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex-shrink-0`}> 
+                                  <div className={`w-16 h-16 rounded-md overflow-hidden bg-gray-50 border border-gray-200 flex-shrink-0`}>
                                     {img && !isBroken ? (
                                       <img
-                                        src={img}
+                                        src={getProxiedImageUrl(img)}
                                         alt={p.title || "상품 이미지"}
                                         className="w-full h-full object-cover"
                                         onError={() => {

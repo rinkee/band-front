@@ -13,6 +13,34 @@ import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 
+// 네이버 이미지 프록시 헬퍼 함수
+const getProxiedImageUrl = (url) => {
+  if (!url) return url;
+
+  // 네이버 도메인인지 확인
+  const isNaverHost = (urlString) => {
+    try {
+      const u = new URL(urlString);
+      const host = u.hostname.toLowerCase();
+      return host.endsWith('.naver.net') ||
+             host.endsWith('.naver.com') ||
+             host.endsWith('.pstatic.net') ||
+             host === 'naver.net' ||
+             host === 'naver.com' ||
+             host === 'pstatic.net';
+    } catch {
+      return false;
+    }
+  };
+
+  // 네이버 도메인이면 프록시 사용
+  if (isNaverHost(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  return url;
+};
+
 export default function PostsPage() {
   const router = useRouter();
   const [userData, setUserData] = useState(null);
@@ -502,12 +530,24 @@ export default function PostsPage() {
       // 현재 사용자 ID 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
       const userId = userData.userId;
-      
+
       if (!userId) {
         throw new Error('사용자 인증 정보를 찾을 수 없습니다.');
       }
-      
-      // Edge Function을 통한 삭제 요청 - user_id 포함
+
+      // 1. comment_orders 삭제 (raw 모드용)
+      const { error: commentOrdersError } = await supabase
+        .from('comment_orders')
+        .delete()
+        .eq('user_id', userId)
+        .eq('post_key', post.post_key);
+
+      if (commentOrdersError) {
+        console.warn('comment_orders 삭제 중 오류:', commentOrdersError);
+        // 에러가 있어도 계속 진행 (테이블이 없을 수도 있음)
+      }
+
+      // 2. Edge Function을 통한 나머지 삭제 (posts, products, orders)
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/posts-delete?postId=${post.post_id}&userId=${userId}`,
         {
@@ -528,7 +568,7 @@ export default function PostsPage() {
 
       // 성공 메시지 표시
       showSuccess(`삭제 완료: ${result.message}`);
-      
+
       // 데이터 새로고침
       mutate();
       
@@ -1100,7 +1140,7 @@ export default function PostsPage() {
                     {(Array.isArray(selectedPostForDetail.image_urls) ? selectedPostForDetail.image_urls : JSON.parse(selectedPostForDetail.image_urls || '[]')).slice(0, 4).map((url, index) => (
                       <div key={index} className="relative w-full h-40 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
                         <img
-                          src={url}
+                          src={getProxiedImageUrl(url)}
                           alt={`이미지 ${index + 1}`}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -1497,8 +1537,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <div className="flex items-center space-x-2">
             <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
               {(post.profile_image || post.author_profile) ? (
-                <img 
-                  src={post.profile_image || post.author_profile} 
+                <img
+                  src={getProxiedImageUrl(post.profile_image || post.author_profile)}
                   alt={`${post.author_name || '익명'} 프로필`}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -1545,7 +1585,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
       <div className="relative h-64 bg-gray-100">
         {hasImages ? (
           <img
-            src={mainImage}
+            src={getProxiedImageUrl(mainImage)}
             alt={cleanTitle || "게시물 이미지"}
             className="w-full h-full object-cover"
             onError={(e) => {
