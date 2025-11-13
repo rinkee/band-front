@@ -1861,7 +1861,7 @@ export default function CommentOrdersView() {
                             {productsToShow.map((p) => {
                               const img = getProductImageUrl(p);
                               const isBroken = !!brokenProductImages[p.product_id];
-                              const matched = getMatched(p);
+                              const matched = null; // 매칭 시스템 비활성화
                               const rawNo = Number.isFinite(Number(p?.item_number)) && Number(p.item_number) > 0 ? Number(p.item_number) : undefined;
                               const parsedNo = parseItemNumberFromProductId(p?.product_id);
                               const idxNo = altIndexByProductId.get(p?.product_id);
