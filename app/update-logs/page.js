@@ -8,7 +8,8 @@ export default function UpdateLogsPage() {
       date: '2025년 11월 9일',
       updates: [
         '주문 수정이 안되던 문제를 해결',
-        'raw모드에서 주문 검색시 초기화가 안되던 문제를 해결',        
+        'raw모드에서 주문 검색시 초기화가 안되던 문제를 해결',      
+        '상품 이미지 proxy 해결'  
       ]
     },
     {
