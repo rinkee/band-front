@@ -64,7 +64,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         .select('*')
         .eq('user_id', userId)  // user_id 필터 추가
         .eq('post_key', post.post_key)
-        .order('created_at', { ascending: true });
+        .order('posted_at', { ascending: false });
 
       if (error) throw error;
       
