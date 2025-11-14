@@ -115,42 +115,76 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     }
   };
 
-  // SWR 캐시 갱신 함수
-  const refreshSWRCache = useCallback((userId) => {
+  // SWR 캐시 갱신 함수 - raw 모드에서 즉시 데이터 갱신을 위해 개선
+  const refreshSWRCache = useCallback(async (userId, isRaw = false) => {
     if (!userId) return;
 
     const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 
-    // 1. useOrders 훅의 데이터 갱신
-    const ordersKeyPattern = `${functionsBaseUrl}/orders-get-all?userId=${userId}`;
-    mutate(
-      (key) => typeof key === "string" && key.startsWith(ordersKeyPattern),
-      undefined,
-      { revalidate: true }
-    );
+    // raw 모드일 때는 즉시 데이터를 가져와서 업데이트 (동기적)
+    if (isRaw) {
+      const mutateOptions = {
+        revalidate: true,
+        populateCache: true, // 캐시를 즉시 업데이트
+        rollbackOnError: false // 에러 시에도 유지
+      };
 
-    // 2. useProducts 훅의 데이터 갱신
-    const productsKeyPattern = `${functionsBaseUrl}/products-get-all?userId=${userId}`;
-    mutate(
-      (key) => typeof key === "string" && key.startsWith(productsKeyPattern),
-      undefined,
-      { revalidate: true }
-    );
+      // 모든 데이터를 동시에 갱신 (await로 대기)
+      await Promise.all([
+        // 1. useOrders 훅의 데이터 갱신
+        mutate(
+          (key) => typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`),
+          undefined,
+          mutateOptions
+        ),
+        // 2. useProducts 훅의 데이터 갱신
+        mutate(
+          (key) => typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`),
+          undefined,
+          mutateOptions
+        ),
+        // 3. useOrderStats 훅의 데이터 갱신
+        mutate(
+          (key) => typeof key === "string" && key.startsWith(`/orders/stats?userId=${userId}`),
+          undefined,
+          mutateOptions
+        ),
+        // 4. comment_orders 클라이언트 훅의 데이터 갱신 (raw 모드 핵심)
+        mutate(
+          (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
+          undefined,
+          mutateOptions
+        )
+      ]);
+    } else {
+      // 일반 모드: 기존처럼 백그라운드 revalidation
+      const ordersKeyPattern = `${functionsBaseUrl}/orders-get-all?userId=${userId}`;
+      mutate(
+        (key) => typeof key === "string" && key.startsWith(ordersKeyPattern),
+        undefined,
+        { revalidate: true }
+      );
 
-    // 3. useOrderStats 훅의 데이터 갱신
-    const statsKeyPattern = `/orders/stats?userId=${userId}`;
-    mutate(
-      (key) => typeof key === "string" && key.startsWith(statsKeyPattern),
-      undefined,
-      { revalidate: true }
-    );
+      const productsKeyPattern = `${functionsBaseUrl}/products-get-all?userId=${userId}`;
+      mutate(
+        (key) => typeof key === "string" && key.startsWith(productsKeyPattern),
+        undefined,
+        { revalidate: true }
+      );
 
-    // 4. comment_orders 클라이언트 훅의 데이터 갱신 (raw 모드용)
-    mutate(
-      (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
-      undefined,
-      { revalidate: true }
-    );
+      const statsKeyPattern = `/orders/stats?userId=${userId}`;
+      mutate(
+        (key) => typeof key === "string" && key.startsWith(statsKeyPattern),
+        undefined,
+        { revalidate: true }
+      );
+
+      mutate(
+        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
+        undefined,
+        { revalidate: true }
+      );
+    }
   }, [mutate]);
 
   // 초기 로드 시 function_number 확인
@@ -261,13 +295,20 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       return;
     }
 
-    // raw 모드에서는 업데이트 대신 데이터 새로고침만 수행
+    // raw 모드에서는 업데이트 대신 데이터 새로고침만 수행 - 즉시 갱신
     if (detectRawMode()) {
       try {
         setIsLoading(true);
-        await refreshSWRCache(userId);
-        setSuccessMessage("새로고침 완료!");
-      } catch (_) {
+        // raw 모드임을 알려서 즉시 데이터 갱신하도록 함
+        await refreshSWRCache(userId, true);
+        setSuccessMessage("✨ 새로고침 완료!");
+
+        // 성공 메시지를 3초 후 자동으로 제거
+        setTimeout(() => {
+          setSuccessMessage("");
+        }, 3000);
+      } catch (error) {
+        console.error("새로고침 오류:", error);
         setError("새로고침 중 문제가 발생했습니다.");
       } finally {
         setIsLoading(false);
@@ -412,8 +453,8 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
             setSuccessMessage(`✨ ${processedCount}개 처리 완료!`);
           }
 
-          // SWR 캐시 갱신
-          refreshSWRCache(userId);
+          // SWR 캐시 갱신 - 일반 모드
+          refreshSWRCache(userId, false);
           
           // 5초 후 상태 초기화
           setTimeout(() => {
@@ -482,7 +523,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         setSuccessMessage(`✨ ${processedCount}개 동기화 완료!`);
       }
 
-      refreshSWRCache(userId);
+      refreshSWRCache(userId, false);
       
       // 3초 후 진행률 초기화
       setTimeout(() => {
