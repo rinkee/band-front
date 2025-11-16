@@ -1595,9 +1595,9 @@ export default function CommentOrdersView() {
         {/* 설정 사이드 패널 */}
         {showSettingsModal && (
           <>
-            {/* 배경 오버레이 */}
+            {/* 배경 오버레이 (투명, 클릭 영역만) */}
             <div
-              className="fixed inset-0 z-40 bg-black bg-opacity-30 transition-opacity"
+              className="fixed inset-0 z-40"
               onClick={() => setShowSettingsModal(false)}
             />
 
