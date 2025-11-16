@@ -260,6 +260,10 @@ export default function CommentOrdersView() {
   // 제품 이미지 로드 실패(대체 아이콘 사용) 여부: { [product_id]: true }
   const [brokenProductImages, setBrokenProductImages] = useState({});
 
+  // 테이블 설정
+  const [simplePickupView, setSimplePickupView] = useState(false); // 수령일시 간략히 보기
+  const [tableFontSize, setTableFontSize] = useState('normal'); // 'small', 'normal', 'large'
+
   // Debug utilities (default OFF; enable with ?debugReco=1 or localStorage 'debug_reco'='1')
   const getDebugFlag = () => {
     try {
@@ -1148,7 +1152,12 @@ export default function CommentOrdersView() {
         textColorClass = "text-orange-600 font-semibold"; // 내일
       }
 
-      // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
+      // 4. 간략히 보기 모드일 때는 상대시간만 표시
+      if (simplePickupView && relativeText) {
+        return <span className={textColorClass}>{relativeText}</span>;
+      }
+
+      // 5. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
       if (relativeText && dateOnly) {
         return (
           <span className="inline-flex flex-col leading-tight gap-1">
@@ -1575,11 +1584,73 @@ export default function CommentOrdersView() {
           </div>
         </div>
 
+        {/* 테이블 설정 패널 */}
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="text-sm font-semibold text-gray-700">테이블 설정</div>
+
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* 수령일시 간략히 보기 */}
+              <button
+                onClick={() => setSimplePickupView(!simplePickupView)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  simplePickupView
+                    ? 'bg-orange-600 text-white hover:bg-orange-700'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {simplePickupView ? '✓ ' : ''}수령일시 간략히
+              </button>
+
+              {/* 텍스트 크기 조절 */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">텍스트 크기:</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setTableFontSize('small')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      tableFontSize === 'small'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    작게
+                  </button>
+                  <button
+                    onClick={() => setTableFontSize('normal')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      tableFontSize === 'normal'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    보통
+                  </button>
+                  <button
+                    onClick={() => setTableFontSize('large')}
+                    className={`px-3 py-1.5 rounded-md text-base font-medium transition-colors ${
+                      tableFontSize === 'large'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    크게
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 목록 영역 - legacy 카드 스타일 */}
         <LightCard padding="p-0" className="overflow-hidden mb-[100px]">
-         
+
           <div className="overflow-x-auto">
-            <table className="min-w-full table-fixed divide-y divide-gray-200 table-text-plus2">
+            <table className={`min-w-full table-fixed divide-y divide-gray-200 ${
+              tableFontSize === 'small' ? 'text-xs' :
+              tableFontSize === 'large' ? 'table-text-plus2 text-base' :
+              'table-text-plus2'
+            }`}>
               <colgroup>
                 {/* 퍼센트 기반 고정 폭: 합계 100% 유지 */}
                 <col style={{ width: '2%' }} />
