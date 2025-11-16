@@ -267,10 +267,35 @@ export default function CommentOrdersView() {
   // 제품 이미지 로드 실패(대체 아이콘 사용) 여부: { [product_id]: true }
   const [brokenProductImages, setBrokenProductImages] = useState({});
 
-  // 테이블 설정
-  const [simplePickupView, setSimplePickupView] = useState(false); // 수령일시 간략히 보기
-  const [tableFontSize, setTableFontSize] = useState('normal'); // 'small', 'normal', 'large'
+  // 테이블 설정 (localStorage에서 로드)
+  const [simplePickupView, setSimplePickupView] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tableSettings_simplePickupView');
+      return saved === 'true';
+    }
+    return false;
+  });
+  const [tableFontSize, setTableFontSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tableSettings_fontSize');
+      return saved || 'normal';
+    }
+    return 'normal';
+  });
   const [showSettingsModal, setShowSettingsModal] = useState(false); // 설정 모달 표시 여부
+
+  // 설정 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tableSettings_simplePickupView', simplePickupView);
+    }
+  }, [simplePickupView]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tableSettings_fontSize', tableFontSize);
+    }
+  }, [tableFontSize]);
 
   // Debug utilities (default OFF; enable with ?debugReco=1 or localStorage 'debug_reco'='1')
   const getDebugFlag = () => {
