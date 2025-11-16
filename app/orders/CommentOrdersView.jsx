@@ -96,7 +96,7 @@ const StatusBadge = ({ status }) => {
   else if (status === "주문취소") bg = "bg-[#f06595] text-white";
   else if (status === "확인필요") bg = "bg-[#ffe5e5] text-[#ff0000]"; // 완전한 빨강 텍스트 + 연한 배경
   return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold ${bg}`}>
+    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold whitespace-nowrap ${bg}`}>
       {status}
     </span>
   );
