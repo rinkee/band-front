@@ -1408,22 +1408,17 @@ export default function CommentOrdersView() {
                   </>
                 )}
                 <span className="hidden sm:inline">|</span>
-                {/* <span className="font-semibold text-purple-700 inline-flex items-center gap-1">
-                  <ChatBubbleLeftRightIcon className="w-4 h-4" /> 원시댓글
-                </span> */}
+                <button
+                  onClick={() => setShowSettingsModal(true)}
+                  className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors"
+                  title="테이블 설정"
+                >
+                  <Cog6ToothIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline text-xs">설정</span>
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-x-2">
-              <UpdateButton pageType="orders" />
-              <button
-                onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                title="테이블 설정"
-              >
-                <Cog6ToothIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">설정</span>
-              </button>
-            </div>
+            <UpdateButton pageType="orders" />
           </div>
 
           {/* 하단: 필터 및 검색 */}
