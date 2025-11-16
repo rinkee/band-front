@@ -1151,7 +1151,7 @@ export default function CommentOrdersView() {
       // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
       if (relativeText && dateOnly) {
         return (
-          <span className="inline-flex flex-col leading-tight">
+          <span className="inline-flex flex-col leading-tight gap-1">
             <span className={textColorClass}>{relativeText}</span>
             <span className="text-xs text-gray-600">
               {dateOnly} {timeOnly !== "—" && timeOnly}
@@ -1163,7 +1163,7 @@ export default function CommentOrdersView() {
       // 폴백: 기존 형식 사용
       if (dateOnly) {
         return (
-          <span className="inline-flex flex-col leading-tight">
+          <span className="inline-flex flex-col leading-tight gap-1">
             <span>{dateOnly}</span>
             <span>{timeOnly}</span>
           </span>
