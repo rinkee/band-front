@@ -1703,10 +1703,10 @@ export default function CommentOrdersView() {
                       aria-label="전체 선택"
                     />
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">고객명</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">고객명</th>
+                  <th className="px-4 py-2 text-center font-semibold text-gray-600">상태</th>
                   <th
-                    className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                    className="px-4 py-2 text-center font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
                     onClick={() => handleSort('pickup_date')}
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -1716,10 +1716,10 @@ export default function CommentOrdersView() {
                       </span>
                     </div>
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">상품</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">댓글</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">상품</th>
                   <th
-                    className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                    className="px-4 py-2 text-center font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
                     onClick={() => handleSort('comment_created_at')}
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -1762,7 +1762,7 @@ export default function CommentOrdersView() {
                         aria-label="선택"
                       />
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-800">
+                    <td className="px-4 py-3 text-gray-800">
                       {row.commenter_name ? (
                         <button
                           className="text-gray-900 hover:text-orange-600 whitespace-nowrap"
@@ -1798,9 +1798,9 @@ export default function CommentOrdersView() {
                       })()}
                     </td>
                     {/* 수령일시 열 - 상태 우측으로 이동 */}
-                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
+                    <td className="px-4 py-3 text-center text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
                     {/* 댓글 열 */}
-                    <td className="px-4 py-3 text-md text-gray-700">
+                    <td className="px-4 py-3 text-gray-700">
                       {(() => {
                         const currentComment = processBandTags(row.comment_body || "");
                         let commentChangeData = null;
@@ -1847,7 +1847,7 @@ export default function CommentOrdersView() {
                       })()}
                     </td>
                     {/* 상품 열 */}
-                    <td className="px-4 py-3 text-sm text-gray-700 align-top">
+                    <td className="px-4 py-3 text-gray-700 align-top">
                       {(() => {
                         const list = getCandidateProductsForRow(row);
                         if (!list || list.length === 0) {
