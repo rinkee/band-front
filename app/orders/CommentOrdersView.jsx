@@ -90,15 +90,20 @@ function parseItemNumberFromProductId(productId) {
   return undefined;
 }
 
-const StatusBadge = ({ status }) => {
+const StatusBadge = ({ status, fontSize = 'normal' }) => {
   let bg = "bg-gray-100 text-gray-700";
   if (status === "미수령") bg = "bg-red-100 text-red-700";
   else if (status === "주문완료") bg = "bg-blue-100 text-blue-700";
   else if (status === "수령완료") bg = "bg-green-100 text-green-700";
   else if (status === "주문취소") bg = "bg-[#f06595] text-white";
   else if (status === "확인필요") bg = "bg-[#ffe5e5] text-[#ff0000]"; // 완전한 빨강 텍스트 + 연한 배경
+
+  const sizeClass = fontSize === 'small' ? 'text-xs' :
+                    fontSize === 'large' ? 'text-sm' :
+                    'text-xs';
+
   return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold whitespace-nowrap ${bg}`}>
+    <span className={`inline-flex items-center px-2 py-1 rounded-md font-semibold whitespace-nowrap ${bg} ${sizeClass}`}>
       {status}
     </span>
   );
@@ -1794,7 +1799,7 @@ export default function CommentOrdersView() {
                           }
                         }
 
-                        return <StatusBadge status={displayStatus} />;
+                        return <StatusBadge status={displayStatus} fontSize={tableFontSize} />;
                       })()}
                     </td>
                     {/* 수령일시 열 - 상태 우측으로 이동 */}
