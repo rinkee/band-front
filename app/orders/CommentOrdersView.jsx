@@ -1592,11 +1592,18 @@ export default function CommentOrdersView() {
           </div>
         </div>
 
-        {/* 설정 모달 */}
+        {/* 설정 사이드 패널 */}
         {showSettingsModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setShowSettingsModal(false)}>
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-              {/* 모달 헤더 */}
+          <>
+            {/* 배경 오버레이 */}
+            <div
+              className="fixed inset-0 z-40 bg-black bg-opacity-30 transition-opacity"
+              onClick={() => setShowSettingsModal(false)}
+            />
+
+            {/* 우측 슬라이드 패널 */}
+            <div className="fixed inset-y-0 right-0 z-50 w-80 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col">
+              {/* 패널 헤더 */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">테이블 설정</h2>
                 <button
@@ -1607,8 +1614,8 @@ export default function CommentOrdersView() {
                 </button>
               </div>
 
-              {/* 모달 내용 */}
-              <div className="p-6 space-y-6">
+              {/* 패널 내용 */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {/* 수령일시 간략히 보기 */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">수령일시 표시</label>
@@ -1661,18 +1668,8 @@ export default function CommentOrdersView() {
                   </div>
                 </div>
               </div>
-
-              {/* 모달 푸터 */}
-              <div className="flex justify-end p-6 border-t border-gray-200">
-                <button
-                  onClick={() => setShowSettingsModal(false)}
-                  className="px-6 py-2.5 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors text-sm font-medium"
-                >
-                  닫기
-                </button>
-              </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* 목록 영역 - legacy 카드 스타일 */}
