@@ -22,6 +22,8 @@ import {
   ArrowPathIcon,
   CheckIcon,
   PhotoIcon,
+  Cog6ToothIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import JsBarcode from "jsbarcode";
 // 추천 매칭기 (@client-matcher)
@@ -263,6 +265,7 @@ export default function CommentOrdersView() {
   // 테이블 설정
   const [simplePickupView, setSimplePickupView] = useState(false); // 수령일시 간략히 보기
   const [tableFontSize, setTableFontSize] = useState('normal'); // 'small', 'normal', 'large'
+  const [showSettingsModal, setShowSettingsModal] = useState(false); // 설정 모달 표시 여부
 
   // Debug utilities (default OFF; enable with ?debugReco=1 or localStorage 'debug_reco'='1')
   const getDebugFlag = () => {
@@ -1584,63 +1587,99 @@ export default function CommentOrdersView() {
           </div>
         </div>
 
-        {/* 테이블 설정 패널 */}
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="text-sm font-semibold text-gray-700">테이블 설정</div>
+        {/* 테이블 설정 버튼 */}
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
+          >
+            <Cog6ToothIcon className="w-5 h-5" />
+            테이블 설정
+          </button>
+        </div>
 
-            <div className="flex items-center gap-4 flex-wrap">
-              {/* 수령일시 간략히 보기 */}
-              <button
-                onClick={() => setSimplePickupView(!simplePickupView)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  simplePickupView
-                    ? 'bg-orange-600 text-white hover:bg-orange-700'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {simplePickupView ? '✓ ' : ''}수령일시 간략히
-              </button>
+        {/* 설정 모달 */}
+        {showSettingsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setShowSettingsModal(false)}>
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              {/* 모달 헤더 */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">테이블 설정</h2>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
 
-              {/* 텍스트 크기 조절 */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">텍스트 크기:</span>
-                <div className="flex gap-1">
+              {/* 모달 내용 */}
+              <div className="p-6 space-y-6">
+                {/* 수령일시 간략히 보기 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">수령일시 표시</label>
                   <button
-                    onClick={() => setTableFontSize('small')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      tableFontSize === 'small'
-                        ? 'bg-orange-600 text-white'
+                    onClick={() => setSimplePickupView(!simplePickupView)}
+                    className={`w-full px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                      simplePickupView
+                        ? 'bg-orange-600 text-white hover:bg-orange-700'
                         : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                     }`}
                   >
-                    작게
-                  </button>
-                  <button
-                    onClick={() => setTableFontSize('normal')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                      tableFontSize === 'normal'
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    보통
-                  </button>
-                  <button
-                    onClick={() => setTableFontSize('large')}
-                    className={`px-3 py-1.5 rounded-md text-base font-medium transition-colors ${
-                      tableFontSize === 'large'
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    크게
+                    {simplePickupView ? '✓ ' : ''}간략히 보기
                   </button>
                 </div>
+
+                {/* 텍스트 크기 조절 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">텍스트 크기</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setTableFontSize('small')}
+                      className={`px-4 py-2.5 rounded-md text-xs font-medium transition-colors ${
+                        tableFontSize === 'small'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      작게
+                    </button>
+                    <button
+                      onClick={() => setTableFontSize('normal')}
+                      className={`px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                        tableFontSize === 'normal'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      보통
+                    </button>
+                    <button
+                      onClick={() => setTableFontSize('large')}
+                      className={`px-4 py-2.5 rounded-md text-base font-medium transition-colors ${
+                        tableFontSize === 'large'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      크게
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 모달 푸터 */}
+              <div className="flex justify-end p-6 border-t border-gray-200">
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="px-6 py-2.5 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors text-sm font-medium"
+                >
+                  닫기
+                </button>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 목록 영역 - legacy 카드 스타일 */}
         <LightCard padding="p-0" className="overflow-hidden mb-[100px]">
