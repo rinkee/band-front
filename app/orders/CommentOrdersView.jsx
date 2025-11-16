@@ -1677,9 +1677,9 @@ export default function CommentOrdersView() {
 
           <div className="overflow-x-auto">
             <table className={`min-w-full table-fixed divide-y divide-gray-200 ${
-              tableFontSize === 'small' ? 'text-xs' :
-              tableFontSize === 'large' ? 'text-lg' :
-              'text-sm'
+              tableFontSize === 'small' ? 'text-lg' :
+              tableFontSize === 'large' ? 'text-2xl' :
+              'text-xl'
             }`}>
               <colgroup>
                 {/* 퍼센트 기반 고정 폭: 합계 100% 유지 */}
