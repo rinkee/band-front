@@ -1098,8 +1098,13 @@ export default function CommentOrdersView() {
   };
 
   // 수령일을 상대 시간과 절대 시간 두 줄로 표시
-  const formatPickupRelativeDateTime = (value) => {
+  const formatPickupRelativeDateTime = (value, fontSize = 'normal') => {
     if (!value) return "-";
+
+    // 날짜/시간 텍스트 크기 결정 (상대 시간보다 작게)
+    const dateSizeClass = fontSize === 'small' ? 'text-xs' :
+                         fontSize === 'large' ? 'text-sm' :
+                         'text-xs';
 
     try {
       // 1. 기존 절대 시간 포맷 (두 번째 줄에 표시)
@@ -1170,7 +1175,7 @@ export default function CommentOrdersView() {
         return (
           <span className="inline-flex flex-col leading-tight gap-1">
             <span className={textColorClass}>{relativeText}</span>
-            <span className="text-xs text-gray-600">
+            <span className={`${dateSizeClass} text-gray-600`}>
               {dateOnly} {timeOnly !== "—" && timeOnly}
             </span>
           </span>
@@ -1807,7 +1812,7 @@ export default function CommentOrdersView() {
                       tableFontSize === 'small' ? 'text-sm' :
                       tableFontSize === 'large' ? 'text-lg' :
                       'text-base'
-                    }`}>{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
+                    }`}>{formatPickupRelativeDateTime(getPickupDateForRow(row), tableFontSize)}</td>
                     {/* 댓글 열 */}
                     <td className={`px-4 py-3 text-gray-700 ${
                       tableFontSize === 'small' ? 'text-base' :
