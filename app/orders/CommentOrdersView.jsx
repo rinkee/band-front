@@ -1759,9 +1759,9 @@ export default function CommentOrdersView() {
                       />
                     </td>
                     <td className={`px-4 py-3 text-gray-800 ${
-                      tableFontSize === 'small' ? 'text-xs' :
-                      tableFontSize === 'large' ? 'text-base' :
-                      'text-sm'
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
                     }`}>
                       {row.commenter_name ? (
                         <button
@@ -1799,15 +1799,15 @@ export default function CommentOrdersView() {
                     </td>
                     {/* 수령일시 열 - 상태 우측으로 이동 */}
                     <td className={`px-4 py-3 text-center text-gray-700 ${
-                      tableFontSize === 'small' ? 'text-xs' :
-                      tableFontSize === 'large' ? 'text-base' :
-                      'text-sm'
-                    }`}>{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
-                    {/* 댓글 열 */}
-                    <td className={`px-4 py-3 text-gray-700 ${
                       tableFontSize === 'small' ? 'text-sm' :
                       tableFontSize === 'large' ? 'text-lg' :
                       'text-base'
+                    }`}>{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
+                    {/* 댓글 열 */}
+                    <td className={`px-4 py-3 text-gray-700 ${
+                      tableFontSize === 'small' ? 'text-base' :
+                      tableFontSize === 'large' ? 'text-xl' :
+                      'text-lg'
                     }`}>
                       {(() => {
                         const currentComment = processBandTags(row.comment_body || "");
@@ -1856,9 +1856,9 @@ export default function CommentOrdersView() {
                     </td>
                     {/* 상품 열 */}
                     <td className={`px-4 py-3 text-gray-700 align-top ${
-                      tableFontSize === 'small' ? 'text-xs' :
-                      tableFontSize === 'large' ? 'text-base' :
-                      'text-sm'
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
                     }`}>
                       {(() => {
                         const list = getCandidateProductsForRow(row);
@@ -2016,9 +2016,17 @@ export default function CommentOrdersView() {
                                           {itemNo}번
                                         </span>
                                       )}
-                                      <span className=" text-base truncate text-gray-800">{p.title}</span>
+                                      <span className={`truncate text-gray-800 ${
+                                        tableFontSize === 'small' ? 'text-sm' :
+                                        tableFontSize === 'large' ? 'text-lg' :
+                                        'text-base'
+                                      }`}>{p.title}</span>
                                       {typeof p.base_price !== "undefined" && p.base_price !== null && (
-                                        <span className="text-gray-600 text-base"> {Number(p.base_price).toLocaleString()}</span>
+                                        <span className={`text-gray-600 ${
+                                          tableFontSize === 'small' ? 'text-sm' :
+                                          tableFontSize === 'large' ? 'text-lg' :
+                                          'text-base'
+                                        }`}> {Number(p.base_price).toLocaleString()}</span>
                                       )}
                                     </div>
                                     {/* 추천 뱃지 제거: 추천 시 번호 뱃지 색상만 강조 */}
@@ -2027,10 +2035,18 @@ export default function CommentOrdersView() {
                                         <div className="w-28">
                                           <BarcodeInline value={p.barcode} />
                                         </div>
-                                        <div className="mt-[2px] text-[14px] leading-3 text-gray-500 ">{p.barcode}</div>
+                                        <div className={`mt-[2px] leading-3 text-gray-500 ${
+                                          tableFontSize === 'small' ? 'text-xs' :
+                                          tableFontSize === 'large' ? 'text-base' :
+                                          'text-sm'
+                                        }`}>{p.barcode}</div>
                                       </div>
                                     ) : (
-                                      <div className="mt-2 text-base text-gray-400">바코드를 추가해주세요</div>
+                                      <div className={`mt-2 text-gray-400 ${
+                                        tableFontSize === 'small' ? 'text-sm' :
+                                        tableFontSize === 'large' ? 'text-lg' :
+                                        'text-base'
+                                      }`}>바코드를 추가해주세요</div>
                                     )}
                                   </div>
                                 </div>
@@ -2050,9 +2066,9 @@ export default function CommentOrdersView() {
                     </td>
                     {/* 주문일시 열 */}
                     <td className={`px-4 py-3 text-center text-gray-700 ${
-                      tableFontSize === 'small' ? 'text-xs' :
-                      tableFontSize === 'large' ? 'text-base' :
-                      'text-sm'
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
                     }`}>
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>
