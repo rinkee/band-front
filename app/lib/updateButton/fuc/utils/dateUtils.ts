@@ -244,7 +244,7 @@ export function extractPickupDate(text: any, postTime: any = null, weekTiming: a
     result.setDate(baseDate.getDate() + daysToAdd);
     return result;
   }
-  let extractedDate = null;
+  let extractedDate: Date | null = null;
   const { hour, minute } = extractTime(text);
   // 1. 요일이 명시된 경우 처리
   const weekdayInfo = extractWeekday(text);
