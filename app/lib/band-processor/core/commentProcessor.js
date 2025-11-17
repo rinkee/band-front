@@ -5,15 +5,22 @@ import { BandApiFailover } from './bandApiClient.js';
  */
 
 /**
- * Band 댓글을 가져옵니다 (백업 토큰 지원)
+ * Band 댓글을 완전히 가져옵니다 (페이지네이션 + 백업 토큰 지원)
+ *
+ * 주요 기능:
+ * - 모든 댓글 페이지 자동 가져오기 (최대 10페이지)
+ * - Failover 지원 (메인 키 → 백업 키 자동 전환)
+ * - UTC → KST 시간 변환
+ * - 상세 통계 정보 반환
+ *
  * @param {Object} params - 파라미터
  * @param {Object} params.supabase - Supabase 클라이언트
  * @param {string} params.userId - 사용자 ID
  * @param {string} params.postKey - 게시물 키
- * @param {string} params.bandKey - 밴드 키
- * @param {Object} params.post - 게시물 정보
+ * @param {string} params.bandKey - 밴드 키 (사용 안 함, 하위 호환성용)
+ * @param {Object} params.post - 게시물 정보 (사용 안 함, 하위 호환성용)
  * @param {string} params.sessionId - 세션 ID
- * @returns {Promise<Array>} 댓글 배열
+ * @returns {Promise<Object>} { comments: Array, stats: Object }
  */
 export async function fetchBandCommentsWithBackupFallback({
   supabase,
@@ -24,29 +31,73 @@ export async function fetchBandCommentsWithBackupFallback({
   sessionId
 }) {
   console.log(`[댓글 가져오기] 게시물 ${postKey}의 댓글 처리 시작`);
-  
+
+  const startTime = Date.now();
+
   try {
     // latest_comments는 comment_key가 없는 축약된 정보이므로 사용하지 않음
     // 항상 전체 댓글 API를 호출하여 comment_key를 포함한 완전한 댓글 정보를 가져옴
-    
-    // BandApiFailover를 사용하여 댓글 가져오기
+
+    // BandApiFailover를 사용하여 댓글 가져오기 (페이지네이션 자동 처리)
     const failover = new BandApiFailover(supabase, userId, sessionId);
     await failover.loadApiKeys();
-    
+
     const result = await failover.fetchBandComments(postKey);
-    const comments = result.comments || [];
-    
+    const rawComments = result.comments || [];
+
+    // UTC → KST 변환 및 정규화
+    const normalizedComments = rawComments.map(comment => {
+      const normalized = normalizeComment(comment);
+
+      // UTC 시간을 KST로 변환 (+9시간)
+      if (normalized.createdAt) {
+        const utcDate = new Date(normalized.createdAt);
+        const kstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
+        normalized.createdAtKST = kstDate.toISOString();
+      }
+
+      return normalized;
+    });
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    // 통계 정보
+    const stats = {
+      total: normalizedComments.length,
+      fetchTime: duration,
+      errors: [],
+      timestamp: new Date().toISOString()
+    };
+
     console.log(
-      `[댓글 가져오기] API로 ${comments.length}개 댓글 가져옴 (comment_key 포함)`
+      `[댓글 가져오기] ✅ ${stats.total}개 댓글 가져옴 (${duration}ms 소요)`
     );
-    
-    return comments;
-    
+
+    return {
+      comments: normalizedComments,
+      stats
+    };
+
   } catch (error) {
-    console.error(`[댓글 가져오기] 오류:`, error);
-    
-    // 에러 발생 시 빈 배열 반환
-    return [];
+    console.error(`[댓글 가져오기] ❌ 오류:`, error);
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    // 에러 발생 시 빈 배열과 에러 정보 반환
+    return {
+      comments: [],
+      stats: {
+        total: 0,
+        fetchTime: duration,
+        errors: [{
+          message: error.message,
+          timestamp: new Date().toISOString()
+        }],
+        timestamp: new Date().toISOString()
+      }
+    };
   }
 }
 
