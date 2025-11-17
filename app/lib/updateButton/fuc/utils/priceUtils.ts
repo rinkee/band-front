@@ -7,8 +7,9 @@
  * 파라미터:
  *   - content: 게시물 콘텐츠
  * 리턴값: 추출된 가격 정보 배열
- */ export function extractPriceInfoFromContent(content) {
-  const priceInfoList = [];
+ */
+export function extractPriceInfoFromContent(content: any) {
+  const priceInfoList: any[] = [];
   console.log(`[extractPriceInfoFromContent] 컨텐츠 분석 시작:\n${content}`);
   // 🔥 천도복숭아 케이스 개선: 라인별 멀티라인 가격 패턴 처리
   // "🍑 천도복숭아 1키로\n👉👉👉 3,900원!!" 형식 처리
@@ -77,7 +78,8 @@
  * 파라미터:
  *   - commentText: 댓글 텍스트
  * 리턴값: 추출된 단위 또는 null
- */ export function extractUnitFromComment(commentText) {
+ */
+export function extractUnitFromComment(commentText: any) {
   const comment = commentText.toLowerCase();
   // 주요 단위들을 추출 (우선순위 순서대로)
   const units = [
@@ -96,6 +98,7 @@
   }
   return null;
 }
+
 /**
  * 함수명: extractUnitFromDescription
  * 목적: 옵션 description에서 단위 추출
@@ -104,7 +107,8 @@
  * 파라미터:
  *   - description: 옵션 설명
  * 리턴값: 추출된 단위 또는 null
- */ export function extractUnitFromDescription(description) {
+ */
+export function extractUnitFromDescription(description: any) {
   const desc = description.toLowerCase();
   // 주요 단위들을 추출 (우선순위 순서대로)
   const units = [
@@ -123,6 +127,7 @@
   }
   return null;
 }
+
 /**
  * 함수명: calculateOptionSimilarity
  * 목적: 댓글과 옵션 description의 텍스트 유사도 계산
@@ -132,18 +137,19 @@
  *   - commentText: 댓글 텍스트
  *   - optionDescription: 옵션 설명
  * 리턴값: 유사도 정보 객체
- */ export function calculateOptionSimilarity(commentText, optionDescription) {
+ */
+export function calculateOptionSimilarity(commentText: any, optionDescription: any) {
   // 개선된 토큰화: 단위와 숫자를 분리하여 처리
-  function smartTokenize(text) {
+  function smartTokenize(text: any) {
     return text.toLowerCase().replace(/[^\w가-힣]/g, " ") // 숫자+단위 분리 (예: "2팩요" → "2", "팩", "요")
     .replace(/(\d+)([가-힣]+)/g, "$1 $2") // 한글+숫자 분리 (예: "흑수박1팩" → "흑수박", "1", "팩")
-    .replace(/([가-힣]+)(\d+)/g, "$1 $2").split(/\s+/).filter((token)=>token.length > 0);
+    .replace(/([가-힣]+)(\d+)/g, "$1 $2").split(/\s+/).filter((token: any)=>token.length > 0);
   }
   const commentTokens = smartTokenize(commentText);
   const optionTokens = smartTokenize(optionDescription);
   // 겹치는 토큰 개수 계산
   let matchCount = 0;
-  const matchedTokens = [];
+  const matchedTokens: any[] = [];
   for (const commentToken of commentTokens){
     for (const optionToken of optionTokens){
       if (commentToken === optionToken || commentToken.includes(optionToken) || optionToken.includes(commentToken)) {
@@ -161,6 +167,7 @@
     similarity: matchCount / Math.max(commentTokens.length, 1)
   };
 }
+
 /**
  * 함수명: findMatchingPriceOption
  * 목적: 댓글 내용과 가격 옵션 description을 매칭 (텍스트 유사도 기반)
@@ -171,7 +178,8 @@
  *   - priceOptions: 가격 옵션 배열
  *   - orderQuantity: 주문 수량
  * 리턴값: 매칭된 옵션 또는 null
- */ export function findMatchingPriceOption(commentText, priceOptions, orderQuantity) {
+ */
+export function findMatchingPriceOption(commentText: any, priceOptions: any, orderQuantity: any) {
   if (!Array.isArray(priceOptions) || priceOptions.length === 0) {
     return null;
   }
@@ -207,7 +215,7 @@
   }
   return bestMatch.option;
 }
-export function calculateOptimalPrice(orderQuantity, priceOptions, fallbackUnitPrice = 0, commentText = null, productMap = null) {
+export function calculateOptimalPrice(orderQuantity: any, priceOptions: any, fallbackUnitPrice: any = 0, commentText: any = null, productMap: any = null) {
   // calculateOptimalPrice 호출 - 개별 로그 제거 (성능 최적화)
   if (typeof orderQuantity !== "number" || orderQuantity <= 0) return 0;
   // priceOptions 로깅 제거

@@ -87,7 +87,8 @@
  *   - postTime: 게시물 작성 시간 (기준 날짜)
  *   - weekTiming: AI가 판단한 요일 시점 (current|this_week|next_week)
  * 리턴값: {date: ISO 문자열, type: 픽업/배송/수령, original: 원본 텍스트}
- */ export function extractPickupDate(text, postTime = null, weekTiming = null) {
+ */
+export function extractPickupDate(text: any, postTime: any = null, weekTiming: any = null) {
   if (!text) return {
     date: null,
     type: null,
@@ -356,7 +357,7 @@
  * 파라미터: dateInput - Date 객체 또는 날짜 문자열
  * 리턴값: 한국어 형식의 날짜 문자열 (예: "2024년 5월 10일 목요일 오후 2:30:00") 또는 null
  */
-export function formatKstDateTime(dateInput) {
+export function formatKstDateTime(dateInput: any) {
   if (!dateInput) return null;
   let baseDate;
   if (dateInput instanceof Date) {
@@ -386,7 +387,7 @@ export function formatKstDateTime(dateInput) {
  * 파라미터: date - KST 기준 Date 객체
  * 리턴값: UTC ISO 문자열 (KST에서 9시간 감소) 또는 null
  */
-export function kstDateToUtcISOString(date) {
+export function kstDateToUtcISOString(date: any) {
   if (!(date instanceof Date)) return null;
   return new Date(date.getTime() - 9 * 60 * 60 * 1000).toISOString();
 }
@@ -401,7 +402,7 @@ export function kstDateToUtcISOString(date) {
  *   - pickupDate: 픽업 날짜 (Date 객체 또는 ISO 문자열)
  * 리턴값: 날짜가 추가된 제목 (예: "[5월10일] 상품명")
  */
-export function updateTitleWithDate(title, pickupDate) {
+export function updateTitleWithDate(title: any, pickupDate: any) {
   if (!title || !pickupDate) return title;
   const date = new Date(pickupDate);
   const month = date.getMonth() + 1;

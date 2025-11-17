@@ -1,10 +1,12 @@
 /**
  * 상품 패턴 분류 시스템
  * 상품의 특성을 분석하여 적절한 매칭 전략 결정
- */ export class ProductPatternClassifier {
+ */
+export class ProductPatternClassifier {
   /**
    * 상품 맵을 분석하여 패턴 분류
-   */ static classify(productMap) {
+   */
+  static classify(productMap: any) {
     if (!productMap || productMap.size === 0) {
       return {
         type: 'SINGLE_PRODUCT',
@@ -32,7 +34,8 @@
   /**
    * 다중 상품 패턴 분석 (개선된 버전)
    * 상품명이 같고 숫자+단위만 다른 경우를 정확히 구분
-   */ static analyzeMultiProductPattern(products) {
+   */
+  static analyzeMultiProductPattern(products: any) {
     // 1단계: 기본 상품명 추출 (숫자와 크기 관련 단어 제거)
     const baseProductNames = products.map((p)=>{
       const name = p.title || p.name || '';
@@ -106,7 +109,8 @@
   /**
    * 단위 정보 추출 및 분석
    * 동적으로 모든 한글 단위를 감지
-   */ static extractUnitInfo(products) {
+   */
+  static extractUnitInfo(products: any) {
     const unitMap = new Map();
     for (const product of products){
       const name = product.title || product.name || '';
@@ -170,7 +174,8 @@
   }
   /**
    * 박스 키워드 체크 (BoxPattern 전용)
-   */ static hasBoxKeywords(products) {
+   */
+  static hasBoxKeywords(products: any) {
     const boxKeywords = [
       '박스',
       '상자',
@@ -188,7 +193,8 @@
   }
   /**
    * 크기 관련 키워드 체크 (박스 키워드 제외)
-   */ static isSizeKeyword(products) {
+   */
+  static isSizeKeyword(products: any) {
     const sizeKeywords = [
       '반박스',
       '하프',
@@ -216,7 +222,8 @@
   }
   /**
    * 단위 타입 추출
-   */ static extractUnitType(productMap) {
+   */
+  static extractUnitType(productMap: any) {
     const product = productMap.values().next().value;
     if (!product) return 'piece';
     const name = (product.title || product.name || '').toLowerCase();
@@ -235,7 +242,8 @@
   }
   /**
    * 댓글과 상품 패턴을 기반으로 매칭 전략 결정
-   */ static determineMatchingStrategy(comment, productPattern, productMap) {
+   */
+  static determineMatchingStrategy(comment: any, productPattern: any, productMap: any) {
     const normalizedComment = comment.toLowerCase().trim();
     // 단순 숫자 댓글인 경우
     if (/^\d+$/.test(normalizedComment)) {

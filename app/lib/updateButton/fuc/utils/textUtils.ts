@@ -5,12 +5,13 @@
  * 의존성: 없음
  * 파라미터: text - 토큰화할 텍스트
  * 리턴값: 정규화된 단어 배열
- */ export function normalizeAndTokenize(text) {
+ */
+export function normalizeAndTokenize(text: any) {
   if (!text || typeof text !== "string") return [];
   // 한글, 영문, 숫자만 남기고 나머지는 공백으로 변환
   const normalized = text.toLowerCase().replace(/[^\w가-힣]/g, " ").replace(/\s+/g, " ").trim();
   // 🔥 개선: 복합 단어를 분리하여 토큰화
-  const tokens = [];
+  const tokens: string[] = [];
   normalized.split(" ").forEach((word)=>{
     if (word.length === 0) return;
     // 패턴 1: 숫자+단위 (예: "1상자", "2박스", "3키로")
@@ -80,8 +81,9 @@
  * 의존성: 없음
  * 파라미터: word - 세그먼트를 추출할 단어
  * 리턴값: 추출된 세그먼트 배열
- */ export function extractMeaningfulSegments(word) {
-  const segments = [];
+ */
+export function extractMeaningfulSegments(word: string) {
+  const segments: string[] = [];
   // 일반적인 한국어 식품 관련 키워드 패턴
   const foodKeywords = [
     "비건",
@@ -183,7 +185,8 @@
  * 의존성: 없음
  * 파라미터: content - 확인할 콘텐츠
  * 리턴값: 가격 지표 포함 여부
- */ export function contentHasPriceIndicator(content) {
+ */
+export function contentHasPriceIndicator(content: any) {
   if (!content) return false;
   // 🔥 [수정] 전화번호와 URL 패턴 제거 후 검증
   const phonePattern = /0\d{1,2}-\d{3,4}-\d{4}/g;
