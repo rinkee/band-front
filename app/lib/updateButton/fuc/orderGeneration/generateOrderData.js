@@ -16,16 +16,16 @@
  */
 
 import { filterCancellationComments } from '../cancellation/cancellationFilter.js';
-import { MatcherOrchestrator } from '../matching/matcherOrchestrator.js';
-import { extractOrdersFromCommentsAI } from '../productExtraction.js';
+import { MatcherOrchestrator } from '../matching/matcherOrchestrator.ts';
+import { extractOrdersFromCommentsAI } from './extractOrdersFromCommentsAI.js';
 import { processNumberBasedOrder, processProductNameOrder } from '../matching/commentAnalyzer.js';
-import { findBestProductMatch } from '../matching/similarityMatching.js';
+import { findBestProductMatch } from '../similarityMatching/similarityMatching.js';
 import { extractOrderByUnitPattern } from '../unitPatternMatching/unitPatternMatching.js';
 import { CommentClassifier } from '../matching/commentAnalyzer.js';
 import { shouldUsePatternProcessing } from '../orderPatternExtraction/orderPatternExtraction.js';
-import { generateOrderUniqueId, generateCustomerUniqueId } from '../utils/idUtils.js';
-import { calculateOptimalPrice } from '../utils/priceUtils.js';
-import { safeParseDate } from '../utils/dateUtils.js';
+import { generateOrderUniqueId, generateCustomerUniqueId } from '../../../band-processor/shared/utils/idUtils.js';
+import { calculateOptimalPrice } from '../../../band-processor/shared/utils/priceUtils.js';
+import { safeParseDate } from '../../../band-processor/shared/utils/dateUtils.js';
 
 /**
  * 댓글에서 주문 데이터를 생성하는 메인 함수
@@ -74,21 +74,52 @@ export async function generateOrderData(
     return { orders, customers, cancellationUsers, success: true };
   }
 
-  if (!productMap || productMap.size === 0) {
-    console.warn('상품 정보 없음, 주문 생성 불가', { postKey });
-    return { orders, customers, cancellationUsers, success: true };
-  }
-
-  console.info('댓글 처리 시작', { postKey, commentCount: comments.length });
+  console.info('댓글 처리 시작', { postKey, commentCount: comments.length, productMapSize: productMap?.size || 0 });
 
   try {
     // 1. 게시물 관련 상품 정보 및 키워드 매핑 정보 조회
-    const { data: productsData, error: productsError } = await supabase
-      .from('products')
-      .select('*')
-      .eq('post_key', postKey)
-      .eq('user_id', userId);
+    // ✅ 전달받은 productMap이 있고 비어있지 않으면 DB 조회 스킵
+    if (!productMap || productMap.size === 0) {
+      console.info('productMap이 비어있음, DB에서 상품 정보 조회 시작', { postKey });
 
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('post_key', postKey)
+        .eq('user_id', userId);
+
+      if (productsError) {
+        console.error('DB 상품 조회 실패', { postKey, error: productsError.message });
+        processingSummary.errors.push({ type: 'db_product_fetch', message: productsError.message });
+        return { orders, customers };
+      }
+
+      if (!productsData || productsData.length === 0) {
+        console.warn('상품 정보 없음 (DB 조회 결과 빈 배열), 주문 생성 불가', { postKey });
+        return { orders, customers };
+      }
+
+      // productMap 초기화 및 채우기
+      if (!productMap) {
+        productMap = new Map();
+      }
+
+      productsData.forEach((p) => {
+        if (p.item_number !== null && typeof p.item_number === 'number') {
+          productMap.set(p.item_number, p);
+        }
+      });
+
+      console.info('DB에서 상품 정보 로드 완료', { postKey, productCount: productMap.size });
+    } else {
+      console.info('✅ 전달받은 productMap 사용 (DB 조회 스킵)', {
+        postKey,
+        productCount: productMap.size,
+        productItems: Array.from(productMap.keys())
+      });
+    }
+
+    // 키워드 매핑 조회
     let keywordMappings = {};
     try {
       const { data: postData, error: postError } = await supabase
@@ -106,21 +137,6 @@ export async function generateOrderData(
     } catch (e) {
       console.warn('키워드 매핑 조회 중 오류', { message: e.message });
     }
-
-    if (productsError) {
-      processingSummary.errors.push({ type: 'db_product_fetch', message: productsError.message });
-      return { orders, customers };
-    }
-
-    if (!productsData || productsData.length === 0) {
-      return { orders, customers };
-    }
-
-    productsData.forEach((p) => {
-      if (p.item_number !== null && typeof p.item_number === 'number') {
-        productMap.set(p.item_number, p);
-      }
-    });
 
     const isMultipleProductsPost = productMap.size > 1;
 
@@ -1129,7 +1145,7 @@ export async function generateOrderData(
         // 주문으로 처리 결정 시
         if (isProcessedAsOrder && orderItems.length > 0) {
           // 고객 정보 생성 또는 업데이트
-          const customerId = generateCustomerUniqueId(bandKey, userId, authorUserNo);
+          const customerId = generateCustomerUniqueId(userId, authorUserNo);
           if (!customers.has(customerId)) {
             customers.set(customerId, {
               customer_id: customerId,
@@ -1627,7 +1643,7 @@ export async function generateOrderData(
             }
 
             // 주문 데이터 객체 생성
-            const orderId = generateOrderUniqueId(userId, bandKey, postKey, commentKey, `${itemNumber}_${orderIndex}`);
+            const orderId = generateOrderUniqueId(postKey, commentKey, `${itemNumber}_${orderIndex}`);
 
             let extractionResultForDb = null;
             if (orderItem) {

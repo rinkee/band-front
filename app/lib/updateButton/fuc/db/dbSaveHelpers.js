@@ -141,7 +141,9 @@ export async function savePostAndProducts(
       emotion_count: post.emotion_count || 0,
       status: "활성",
       posted_at: dateObject.toISOString(),
-      is_product: isProductPost || aiExtractionStatus === "failed",
+      // 🔥 [수정] AI가 "일반게시물"로 분류하면 is_product를 false로 설정
+      // aiExtractionStatus === "failed"이어도 AI 분류를 신뢰
+      is_product: isProductPost && classificationResult !== "일반게시물",
       updated_at: new Date().toISOString(),
       post_key: post.postKey,
       image_urls: imageUrls.length > 0 ? imageUrls : null,

@@ -185,10 +185,12 @@
  * 리턴값: 가격 지표 포함 여부
  */ export function contentHasPriceIndicator(content) {
   if (!content) return false;
-  // 🔥 [수정] 전화번호 패턴 제거 후 검증
+  // 🔥 [수정] 전화번호와 URL 패턴 제거 후 검증
   const phonePattern = /0\d{1,2}-\d{3,4}-\d{4}/g;
-  const contentWithoutPhone = content.replace(phonePattern, '');
-  const lowerContent = contentWithoutPhone.toLowerCase();
+  const urlPattern = /https?:\/\/[^\s]+/g;  // ✅ URL 제거
+  let cleanedContent = content.replace(phonePattern, '');
+  cleanedContent = cleanedContent.replace(urlPattern, '');  // ✅ URL 제거
+  const lowerContent = cleanedContent.toLowerCase();
   // 0. 가격 패턴 미리 확인 (공구 키워드 처리용)
   // 🔥 [개선] 다양한 가격 패턴 인식
 
@@ -207,19 +209,19 @@
     /\d{3,}\s*(판매|할인|특가|가격|가)/,      // "15900판매", "5000가"
   ];
 
-  // 패턴 5: 큰 숫자만 있는 경우 (1000 이상, 날짜/개수와 구분)
-  const largeNumberRegex = /\b[1-9]\d{3,7}\b/;
+  // 패턴 5: 큰 숫자만 있는 경우 (1000~99999, 날짜/개수와 구분)
+  const largeNumberRegex = /\b[1-9]\d{3,4}\b/;  // ✅ 3-4자리 → 4-5자리 (최대 99999)
 
   // 가격 패턴 종합 체크
   let hasClearPrice = false;
 
   // 단위가 있는 가격 (최우선)
-  if (priceWithUnitRegex.test(contentWithoutPhone)) {
+  if (priceWithUnitRegex.test(cleanedContent)) {
     hasClearPrice = true;
   }
   // 쉼표 구분자 (100 이상)
-  else if (commaNumberRegex.test(contentWithoutPhone)) {
-    const matches = contentWithoutPhone.match(commaNumberRegex);
+  else if (commaNumberRegex.test(cleanedContent)) {
+    const matches = cleanedContent.match(commaNumberRegex);
     if (matches) {
       // 쉼표 제거 후 숫자 변환
       const num = parseInt(matches[0].replace(/,/g, ''));
@@ -229,8 +231,8 @@
     }
   }
   // 마침표 오타 (100 이상)
-  else if (dotNumberRegex.test(contentWithoutPhone)) {
-    const matches = contentWithoutPhone.match(dotNumberRegex);
+  else if (dotNumberRegex.test(cleanedContent)) {
+    const matches = cleanedContent.match(dotNumberRegex);
     if (matches) {
       // 마침표 제거 후 숫자 변환
       const num = parseInt(matches[0].replace(/\./g, ''));
@@ -240,16 +242,16 @@
     }
   }
   // 가격 키워드 근처 숫자
-  else if (priceKeywordPatterns.some(pattern => pattern.test(contentWithoutPhone))) {
+  else if (priceKeywordPatterns.some(pattern => pattern.test(cleanedContent))) {
     hasClearPrice = true;
   }
-  // 큰 숫자 (1000 이상)
-  else if (largeNumberRegex.test(contentWithoutPhone)) {
-    const matches = contentWithoutPhone.match(largeNumberRegex);
+  // 큰 숫자 (1000~99999)
+  else if (largeNumberRegex.test(cleanedContent)) {
+    const matches = cleanedContent.match(largeNumberRegex);
     if (matches) {
       const num = parseInt(matches[0]);
-      // 1000 이상이고, 날짜 패턴이 아닌 경우
-      if (num >= 1000 && num < 100000000) {
+      // 1000~99999 범위 (일반적인 상품 가격 범위)
+      if (num >= 1000 && num <= 99999) {
         // 날짜 패턴 제외 (예: 1117, 1214 등 4자리 숫자는 날짜일 가능성)
         const isLikelyDate = num >= 101 && num <= 1231 && num.toString().length === 4;
         if (!isLikelyDate) {
@@ -356,10 +358,10 @@
 
   // 🔥 [개선] 확장된 가격 패턴으로 구체적인 상품 판별
   const hasConcreteProduct =
-    priceWithUnitRegex.test(contentWithoutPhone) || // 단위 있는 가격
-    commaNumberRegex.test(contentWithoutPhone) || // 쉼표 구분자
-    dotNumberRegex.test(contentWithoutPhone) || // 마침표 오타
-    priceKeywordPatterns.some(pattern => pattern.test(contentWithoutPhone)) || // 가격 키워드 근처 숫자
+    priceWithUnitRegex.test(cleanedContent) || // 단위 있는 가격
+    commaNumberRegex.test(cleanedContent) || // 쉼표 구분자
+    dotNumberRegex.test(cleanedContent) || // 마침표 오타
+    priceKeywordPatterns.some(pattern => pattern.test(cleanedContent)) || // 가격 키워드 근처 숫자
     hasOrderInstruction ||
     /\[.*\]\s*✔.*\d/.test(content); // "[1팩 300g] ✔6,500" 형태 (단위 선택적)
   // 구체적인 상품 정보가 있으면 공지사항 패턴을 무시하고 상품으로 분류

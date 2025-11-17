@@ -12,6 +12,7 @@ import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
+import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 
 // 네이버 이미지 프록시 헬퍼 함수
 const getProxiedImageUrl = (url) => {
@@ -718,7 +719,10 @@ export default function PostsPage() {
                   <div className="text-gray-500">처리완료</div>
                 </div>
               </div>
-              <UpdateButton pageType="posts" />
+              <div className="flex items-center gap-3">
+                <UpdateButton pageType="posts" />
+                <TestUpdateButton />
+              </div>
             </div>
           </div>
 

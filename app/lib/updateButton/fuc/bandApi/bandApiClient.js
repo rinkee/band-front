@@ -68,31 +68,61 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
     const apiPageLimit = 50;
 
     while (hasMore) {
-      const apiUrl = new URL(COMMENTS_API_URL);
-      apiUrl.searchParams.set("access_token", accessToken);
-      apiUrl.searchParams.set("band_key", bandKey);
-      apiUrl.searchParams.set("post_key", postKey);
-      apiUrl.searchParams.set("limit", apiPageLimit.toString());
+      const params = {
+        access_token: accessToken,
+        band_key: bandKey,
+        post_key: postKey,
+        limit: apiPageLimit.toString(),
+        ...nextParams
+      };
 
-      Object.entries(nextParams).forEach(([key, value]) =>
-        apiUrl.searchParams.set(key, value)
-      );
+      let result;
 
-      const response = await fetch(apiUrl.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
+      // 브라우저 환경에서는 프록시 사용
+      if (typeof window !== 'undefined') {
+        const response = await fetch('/api/band-api', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            endpoint: '/band/post/comments',
+            params,
+            method: 'GET'
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `Band API comments error: ${response.status} ${response.statusText} - ${errorText}`
+          );
         }
-      });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Band API comments error: ${response.status} ${response.statusText} - ${errorText}`
+        result = await response.json();
+      } else {
+        // 서버 환경에서는 직접 호출
+        const apiUrl = new URL(COMMENTS_API_URL);
+        Object.entries(params).forEach(([key, value]) =>
+          apiUrl.searchParams.set(key, value)
         );
-      }
 
-      const result = await response.json();
+        const response = await fetch(apiUrl.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `Band API comments error: ${response.status} ${response.statusText} - ${errorText}`
+          );
+        }
+
+        result = await response.json();
+      }
 
       if (result.result_code !== 1 || !result.result_data) {
         throw new Error(`Band API comments logical error: ${result.result_code}`);
@@ -208,29 +238,61 @@ export async function fetchBandPostsWithFailover(bandApiFailover, userId, limit,
 
     // Failover를 사용한 API 호출
     const apiCall = async (accessToken, bandKey) => {
-      const apiUrl = new URL(BAND_POSTS_API_URL);
-      apiUrl.searchParams.set("access_token", accessToken);
-      if (bandKey) apiUrl.searchParams.set("band_key", bandKey);
-      apiUrl.searchParams.set("limit", currentLimit.toString());
+      const params = {
+        access_token: accessToken,
+        limit: currentLimit.toString(),
+        ...nextParams
+      };
 
-      Object.entries(nextParams).forEach(([key, value]) =>
-        apiUrl.searchParams.set(key, value)
-      );
-
-      const response = await fetch(apiUrl.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Band API error: ${response.statusText} - ${await response.text()}`
-        );
+      if (bandKey) {
+        params.band_key = bandKey;
       }
 
-      const result = await response.json();
+      let result;
+
+      // 브라우저 환경에서는 프록시 사용
+      if (typeof window !== 'undefined') {
+        const response = await fetch('/api/band-api', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            endpoint: '/band/posts',
+            params,
+            method: 'GET'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API error: ${response.statusText} - ${await response.text()}`
+          );
+        }
+
+        result = await response.json();
+      } else {
+        // 서버 환경에서는 직접 호출
+        const apiUrl = new URL(BAND_POSTS_API_URL);
+        Object.entries(params).forEach(([key, value]) =>
+          apiUrl.searchParams.set(key, value)
+        );
+
+        const response = await fetch(apiUrl.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API error: ${response.statusText} - ${await response.text()}`
+          );
+        }
+
+        result = await response.json();
+      }
 
       if (result.result_code !== 1 || !result.result_data) {
         throw new Error(
@@ -322,30 +384,59 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
   while (hasMore) {
     // Failover를 사용한 API 호출
     const apiCall = async (accessToken, bandKey) => {
-      const apiUrl = new URL(COMMENTS_API_URL);
-      apiUrl.searchParams.set("access_token", accessToken);
-      apiUrl.searchParams.set("band_key", bandKey);
-      apiUrl.searchParams.set("post_key", postKey);
-      apiUrl.searchParams.set("limit", apiPageLimit.toString());
+      const params = {
+        access_token: accessToken,
+        band_key: bandKey,
+        post_key: postKey,
+        limit: apiPageLimit.toString(),
+        ...nextParams
+      };
 
-      Object.entries(nextParams).forEach(([key, value]) =>
-        apiUrl.searchParams.set(key, value)
-      );
+      let result;
 
-      const response = await fetch(apiUrl.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
+      // 브라우저 환경에서는 프록시 사용
+      if (typeof window !== 'undefined') {
+        const response = await fetch('/api/band-api', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            endpoint: '/band/post/comments',
+            params,
+            method: 'GET'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API comments error: ${response.statusText} - ${await response.text()}`
+          );
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(
-          `Band API comments error: ${response.statusText} - ${await response.text()}`
+        result = await response.json();
+      } else {
+        // 서버 환경에서는 직접 호출
+        const apiUrl = new URL(COMMENTS_API_URL);
+        Object.entries(params).forEach(([key, value]) =>
+          apiUrl.searchParams.set(key, value)
         );
-      }
 
-      const result = await response.json();
+        const response = await fetch(apiUrl.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API comments error: ${response.statusText} - ${await response.text()}`
+          );
+        }
+
+        result = await response.json();
+      }
 
       if (result.result_code !== 1 || !result.result_data) {
         throw new Error(`Band API comments logical error: ${result.result_code}`);
@@ -444,30 +535,62 @@ export async function fetchBandPosts(userId, limit, supabase) {
   while (hasMore && allPosts.length < limit) {
     const currentLimit = Math.min(apiPageLimit, limit - allPosts.length);
 
-    const apiUrl = new URL(BAND_POSTS_API_URL);
-    apiUrl.searchParams.set("access_token", bandAccessToken);
-    if (bandKey) apiUrl.searchParams.set("band_key", bandKey);
-    apiUrl.searchParams.set("limit", currentLimit.toString());
+    const params = {
+      access_token: bandAccessToken,
+      limit: currentLimit.toString(),
+      ...nextParams
+    };
 
-    Object.entries(nextParams).forEach(([key, value]) =>
-      apiUrl.searchParams.set(key, value)
-    );
+    if (bandKey) {
+      params.band_key = bandKey;
+    }
 
     try {
-      const response = await fetch(apiUrl.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
+      let result;
+
+      // 브라우저 환경에서는 프록시 사용
+      if (typeof window !== 'undefined') {
+        const response = await fetch('/api/band-api', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            endpoint: '/band/posts',
+            params,
+            method: 'GET'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API error: ${response.statusText} - ${await response.text()}`
+          );
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(
-          `Band API error: ${response.statusText} - ${await response.text()}`
+        result = await response.json();
+      } else {
+        // 서버 환경에서는 직접 호출
+        const apiUrl = new URL(BAND_POSTS_API_URL);
+        Object.entries(params).forEach(([key, value]) =>
+          apiUrl.searchParams.set(key, value)
         );
-      }
 
-      const result = await response.json();
+        const response = await fetch(apiUrl.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API error: ${response.statusText} - ${await response.text()}`
+          );
+        }
+
+        result = await response.json();
+      }
 
       if (result.result_code !== 1 || !result.result_data) {
         throw new Error(
@@ -572,31 +695,60 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
   const apiPageLimit = 50;
 
   while (hasMore) {
-    const apiUrl = new URL(COMMENTS_API_URL);
-    apiUrl.searchParams.set("access_token", bandAccessToken);
-    apiUrl.searchParams.set("band_key", bandKey);
-    apiUrl.searchParams.set("post_key", postKey);
-    apiUrl.searchParams.set("limit", apiPageLimit.toString());
-
-    Object.entries(nextParams).forEach(([key, value]) =>
-      apiUrl.searchParams.set(key, value)
-    );
+    const params = {
+      access_token: bandAccessToken,
+      band_key: bandKey,
+      post_key: postKey,
+      limit: apiPageLimit.toString(),
+      ...nextParams
+    };
 
     try {
-      const response = await fetch(apiUrl.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
+      let result;
+
+      // 브라우저 환경에서는 프록시 사용
+      if (typeof window !== 'undefined') {
+        const response = await fetch('/api/band-api', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            endpoint: '/band/post/comments',
+            params,
+            method: 'GET'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API comments error: ${response.statusText} - ${await response.text()}`
+          );
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(
-          `Band API comments error: ${response.statusText} - ${await response.text()}`
+        result = await response.json();
+      } else {
+        // 서버 환경에서는 직접 호출
+        const apiUrl = new URL(COMMENTS_API_URL);
+        Object.entries(params).forEach(([key, value]) =>
+          apiUrl.searchParams.set(key, value)
         );
-      }
 
-      const result = await response.json();
+        const response = await fetch(apiUrl.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Band API comments error: ${response.statusText} - ${await response.text()}`
+          );
+        }
+
+        result = await response.json();
+      }
 
       if (result.result_code !== 1 || !result.result_data) {
         throw new Error(`Band API comments logical error: ${result.result_code}`);

@@ -345,8 +345,257 @@ AI 4 - 완료 ✅
 
 ## 작업 우선순위
 
-1. **AI 3** (generateOrderData) - 최우선 ⚠️
-2. **AI 1** (상품 처리 함수) - 중요
-3. **AI 2** (BandApiFailover) - 중요
+1. **AI 3** (generateOrderData) - 최우선 ⚠️ ✅ 완료
+2. **AI 1** (상품 처리 함수) - 중요 ✅ 완료
+3. **AI 2** (BandApiFailover) - 중요 ✅ 완료
 
-**이유**: generateOrderData가 없으면 전체 주문 처리 플로우가 동작하지 않음
+**결과**: 모든 핵심 함수 이식 완료!
+
+---
+
+## 🎉 Phase 3: 메인 오케스트레이터 구현
+
+### 메인 프로세서 함수 생성 ✅ 완료
+
+**파일명**: front/app/lib/updateButton/fuc/processBandPosts.js
+**함수명**: processBandPosts(supabase, userId, options)
+
+**구현 완료 내용**:
+1. ✅ 파라미터 처리 (userId, testMode, processingLimit, processWithAI, simulateQuotaError)
+2. ✅ Execution lock (중복 실행 방지)
+3. ✅ 사용자 설정 조회
+4. ✅ BandApiFailover 초기화
+5. ✅ Smart Priority System (pending/failed/old posts 조회 및 병합)
+6. ✅ Band API 게시물 가져오기
+7. ✅ DB 기존 게시물 조회 (dbPostsMap 생성)
+8. ✅ **배치 처리 로직 완료** - 약 900줄 구현
+9. ✅ 댓글 정보 일괄 업데이트
+10. ✅ 사용자 last_crawl_at 업데이트
+11. ✅ 결과 반환
+12. ✅ Execution lock 해제
+13. ✅ 에러 핸들링
+
+**모든 import 완료**:
+- ✅ BandApiFailover
+- ✅ fetchBandPostsWithFailover, fetchBandCommentsWithFailover
+- ✅ getDefaultProduct, processProduct
+- ✅ extractProductInfoAI
+- ✅ generateOrderData
+- ✅ savePostAndProducts, fetchProductMapForPost
+- ✅ saveOrdersAndCustomersSafely
+- ✅ processCancellationRequests
+- ✅ contentHasPriceIndicator
+- ✅ enhancePickupDateFromContent
+
+**배치 처리 로직 구현 완료** (약 900줄):
+- ✅ 게시물 10개씩 배치로 나누기
+- ✅ AI 요청 세마포어 (최대 8개 동시 실행)
+- ✅ 신규 게시물 처리 (AI 추출 → 저장 → 댓글 → 주문)
+- ✅ 기존 게시물 처리 (AI 재시도, 강제 추출, 댓글 업데이트 → 주문)
+- ✅ 개별 에러 핸들링
+- ✅ 댓글 체크 우선순위 정렬 제외 (사용자 요청)
+
+---
+
+## 📊 전체 이식 진행률: **100%** ✅
+
+**완료된 작업**:
+- ✅ Phase 1: 기본 모듈 이식 (AI 1-4) - 100%
+- ✅ Phase 2: 핵심 기능 이식 (AI 1-3) - 100%
+- ✅ Phase 3: 메인 오케스트레이터 골격 - 100%
+- ✅ Phase 4: 배치 처리 로직 구현 - 100%
+
+**이식 완료!** 🎉
+
+---
+
+## ✅ Phase 4: 배치 처리 로직 구현 (완료)
+
+### AI 4 - 배치 처리 로직 구현 ✅ 완료
+
+**담당 파일**: front/app/lib/updateButton/fuc/processBandPosts.js
+**작업 라인**: TODO 주석 위치 (현재 Line ~370)
+**참고 원본**: backend/supabase/functions/band-get-posts-a/index.ts (Line 4046-4924, 약 880줄)
+
+**작업 내용**:
+
+#### 1. 배치 처리 설정 구현
+```javascript
+// 🎯 배치 처리를 위한 설정
+const POST_BATCH_SIZE = 10; // 게시물 10개씩 배치 처리
+const MAX_CONCURRENT_AI_REQUESTS = 8; // 동시 AI 요청 최대 8개
+const MAX_POSTS_FOR_COMMENT_CHECK = 200; // 댓글 체크 대상 최대 200개
+```
+
+#### 2. AI 세마포어 패턴 구현
+```javascript
+// AI 동시 요청 제한을 위한 세마포어
+let currentAIRequests = 0;
+const aiRequestQueue = [];
+
+const acquireAISlot = async () => {
+  while(currentAIRequests >= MAX_CONCURRENT_AI_REQUESTS) {
+    await new Promise((resolve) => {
+      aiRequestQueue.push(resolve);
+    });
+  }
+  currentAIRequests++;
+};
+
+const releaseAISlot = () => {
+  currentAIRequests--;
+  const nextRequest = aiRequestQueue.shift();
+  if (nextRequest) {
+    nextRequest();
+  }
+};
+
+const limitedAIRequest = async (aiFunction, ...args) => {
+  await acquireAISlot();
+  try {
+    return await aiFunction(...args);
+  } finally {
+    releaseAISlot();
+  }
+};
+```
+
+#### 3. 댓글 체크 우선순위 정렬
+- pending posts 우선
+- 7일 이상 미체크 posts
+- DB에서 가져온 posts
+- 댓글 증가량이 많은 순
+- 오래 체크 안 한 순
+
+#### 4. 게시물 배치로 나누기
+```javascript
+const postBatches = [];
+for(let i = 0; i < posts.length; i += POST_BATCH_SIZE) {
+  postBatches.push(posts.slice(i, i + POST_BATCH_SIZE));
+}
+```
+
+#### 5. 각 배치 순차 처리 + 내부 병렬 처리
+```javascript
+for(let batchIndex = 0; batchIndex < postBatches.length; batchIndex++) {
+  const batch = postBatches[batchIndex];
+
+  const batchPromises = batch.map(async (apiPost) => {
+    // 각 게시물 병렬 처리 (AI는 세마포어로 제한)
+  });
+
+  const batchResults = await Promise.all(batchPromises);
+  allProcessedResults.push(...batchResults);
+}
+```
+
+#### 6. 신규 게시물 처리 로직 (Line 4184-4501)
+**Phase A: 비상품 게시물 처리**
+- `contentHasPriceIndicator()` 체크
+- 가격 정보 없으면 "공지사항"으로 저장
+- `ai_extraction_status: 'not_product'`
+- `comment_sync_status: 'completed'`
+
+**Phase B: 상품 게시물 AI 추출**
+- `limitedAIRequest(extractProductInfoAI, ...)`로 AI 호출 (세마포어 적용)
+- `convertUTCtoKST()`, `formatKstDateTime()` 사용
+- AI 응답 검증 (products 배열 확인)
+- keywordMappings 처리 (단일/다중 상품)
+- `processProduct()` 각 상품 처리
+- `aiExtractionStatus` 설정 ('success', 'failed', 'error')
+
+**Phase C: 게시물 및 상품 저장**
+- `savePostAndProducts()` 호출
+- testMode일 경우 저장 건너뛰기
+
+**Phase D: 댓글 및 주문 처리**
+- `fetchBandCommentsWithFailover()` 댓글 가져오기
+- `generateOrderData()` 주문 생성
+- `saveOrdersAndCustomersSafely()` 주문 저장
+- `processCancellationRequests()` 취소 처리
+- `comment_sync_status` 업데이트
+
+#### 7. 기존 게시물 처리 로직 (Line 4502-4880)
+**Phase A: AI 재시도 로직**
+- `ai_extraction_status === 'failed'` or `'error'`인 경우
+- `limitedAIRequest(extractProductInfoAI, ...)` 재시도
+- 성공 시 `savePostAndProducts()` 업데이트
+
+**Phase B: 강제 추출 로직**
+- `is_product === true` but products 없는 경우
+- 1회 AI 추출 시도
+- 성공 시 `forceProcessAllComments = true`
+
+**Phase C: 댓글 업데이트 체크**
+```javascript
+const needsCommentUpdate = postsNeedingCommentCheck.includes(postKey);
+const commentDiffFromApi = (apiPost.commentCount || 0) - (dbPostData?.comment_count || 0);
+const isPendingOrFailedPost = /* pending/failed 상태 체크 */;
+```
+
+**Phase D: 새 댓글 필터링**
+- `last_checked_comment_at` 기준으로 필터링
+- 새 댓글만 처리 또는 전체 재처리 (`forceProcessAllComments`)
+
+**Phase E: 주문 생성**
+- `fetchProductMapForPost()` 상품 맵 조회
+- `generateOrderData()` 주문 생성
+- `saveOrdersAndCustomersSafely()` 저장
+- `processCancellationRequests()` 취소 처리
+
+#### 8. 결과 수집 및 반환
+```javascript
+const processedPost = {
+  postKey,
+  isNewPost,
+  hasNewComments,
+  processedComments,
+  comment_sync_status,
+  processingError,
+  // ... 기타 정보
+};
+return processedPost;
+```
+
+#### 9. postsToUpdateCommentInfo 배열 구성
+```javascript
+postsToUpdateCommentInfo.push({
+  post_id: dbPostData.post_id,
+  comment_count: finalCommentCountForUpdate,
+  last_checked_comment_at: latestCommentTimestampForUpdate,
+  comment_sync_status: 'completed' // or 'failed'
+});
+```
+
+**의존성 (모두 이미 이식 완료)**:
+- ✅ extractProductInfoAI (with limitedAIRequest wrapper)
+- ✅ contentHasPriceIndicator
+- ✅ convertUTCtoKST, formatKstDateTime
+- ✅ processProduct
+- ✅ savePostAndProducts
+- ✅ fetchBandCommentsWithFailover
+- ✅ generateOrderData
+- ✅ saveOrdersAndCustomersSafely
+- ✅ processCancellationRequests
+- ✅ fetchProductMapForPost
+
+**주의사항**:
+1. **에러 핸들링**: 각 게시물 처리는 try-catch로 감싸고, 에러 발생 시에도 다음 게시물 계속 처리
+2. **testMode**: testMode === true일 때 DB 저장 건너뛰기
+3. **메모리 관리**: 대량 데이터 처리 시 메모리 누수 주의
+4. **로깅**: console.log로 진행 상황 추적 (배치 번호, 처리 시간 등)
+5. **타임아웃**: 브라우저 환경에서 장시간 실행 시 타임아웃 고려
+
+**예상 소요 시간**: 2-3시간
+
+**참고 파일**:
+- 원본 로직: `backend/supabase/functions/band-get-posts-a/index.ts` (Line 4046-4924)
+- 작업 파일: `front/app/lib/updateButton/fuc/processBandPosts.js`
+- 모든 필요한 함수는 이미 import 완료
+
+**검증 방법**:
+1. 신규 게시물 생성 후 처리 테스트
+2. 기존 게시물 댓글 추가 후 업데이트 테스트
+3. AI 추출 실패 케이스 테스트
+4. 배치 처리 성능 확인 (10개씩 처리)
+5. 에러 발생 시 다른 게시물 계속 처리 확인
