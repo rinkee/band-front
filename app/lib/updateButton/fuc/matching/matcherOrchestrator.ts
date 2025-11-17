@@ -1,12 +1,13 @@
 /**
  * 매처 오케스트레이터
  * 댓글 분석 결과를 바탕으로 적절한 매처를 선택하고 실행
- */ import { CommentAnalyzer } from './commentAnalyzer.ts';
-import { SimpleNumberMatcher } from './matchers/simpleNumberMatcher.ts';
-import { RecursivePatternMatcher } from './matchers/recursivePatternMatcher.ts';
-import { BoxPatternMatcher } from './matchers/boxPatternMatcher.ts';
-import { NumberBasedMatcher } from './matchers/numberBasedMatcher.ts';
-import { ProductPatternClassifier } from '../utils/productPatternClassifier.ts';
+ */
+import { CommentAnalyzer } from './commentAnalyzer';
+import { SimpleNumberMatcher } from './matchers/simpleNumberMatcher';
+import { RecursivePatternMatcher } from './matchers/recursivePatternMatcher';
+import { BoxPatternMatcher } from './matchers/boxPatternMatcher';
+import { NumberBasedMatcher } from './matchers/numberBasedMatcher';
+import { ProductPatternClassifier } from '../utils/productPatternClassifier';
 export class MatcherOrchestrator {
   // 신뢰도 임계값 (동적 조정)
   static CONFIDENCE_THRESHOLD = 0.7;

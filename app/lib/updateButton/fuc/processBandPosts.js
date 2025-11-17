@@ -25,7 +25,7 @@ import { saveOrdersAndCustomersSafely } from '../../band-processor/shared/db/sav
 import { processCancellationRequests } from './cancellation/cancellationProcessor.js';
 
 // Utils
-import { contentHasPriceIndicator } from './utils/textUtils.ts';
+import { contentHasPriceIndicator } from './utils/textUtils';
 import { enhancePickupDateFromContent } from './utils/pickupDateEnhancer.js';
 
 /**

@@ -2,11 +2,12 @@
  * 재귀적 패턴 매처
  * ProductNameMatcher를 재귀적으로 호출하여 다중 상품 처리
  * "크림스프레이 1 치즈 1" → ProductNameMatcher로 "크림스프레이" 매칭 → 제거 → "치즈 1" 재처리
- */ import { ProductNameMatcher } from './productNameMatcher.ts';
-import { OptimalPriceCalculator } from '../../utils/optimalPriceCalculator.ts';
-import { ProductPatternClassifier } from '../../utils/productPatternClassifier.ts';
-import { normalizeAndTokenize } from '../../utils/textUtils.ts';
-import { createLogger } from '../../utils/logger.ts';
+ */
+import { ProductNameMatcher } from './productNameMatcher';
+import { OptimalPriceCalculator } from '../../utils/optimalPriceCalculator';
+import { ProductPatternClassifier } from '../../utils/productPatternClassifier';
+import { normalizeAndTokenize } from '../../utils/textUtils';
+import { createLogger } from '../../utils/logger';
 const logger = createLogger('RecursivePatternMatcher');
 export class RecursivePatternMatcher {
   static MAX_DEPTH = 10;

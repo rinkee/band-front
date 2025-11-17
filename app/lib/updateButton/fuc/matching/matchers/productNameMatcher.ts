@@ -1,8 +1,9 @@
 /**
  * 상품명 매처
  * 기존 similarityMatching을 래핑하여 상품명 기반 매칭 수행
- */ import { findBestProductMatch } from '../../matching/similarityMatching.ts';
-import { createLogger } from '../../utils/logger.ts';
+ */
+import { findBestProductMatch } from '../../matching/similarityMatching';
+import { createLogger } from '../../utils/logger';
 const logger = createLogger('ProductNameMatcher');
 export class ProductNameMatcher {
   // 수량 관련 패턴

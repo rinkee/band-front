@@ -1,4 +1,4 @@
-import { normalizeAndTokenize, extractMeaningfulSegments } from "../utils/textUtils.ts";
+import { normalizeAndTokenize, extractMeaningfulSegments } from "../utils/textUtils";
 /**
  * 함수명: calculateMatchAccuracy
  * 목적: 매칭 정확도를 계산하는 함수

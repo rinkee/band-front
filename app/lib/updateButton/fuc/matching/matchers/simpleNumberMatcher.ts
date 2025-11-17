@@ -1,10 +1,11 @@
 /**
- * 단순 숫자 매처 
+ * 단순 숫자 매처
  * 단일상품: 숫자를 찾아 수량으로 변환
  * QUANTITY_VARIANT: OptimalPriceCalculator로 최적 가격 계산
  * "2", "2개", "2세트", "한세트", "4봉" 등 모든 수량 표현 처리
- */ import { OptimalPriceCalculator } from '../../utils/optimalPriceCalculator.ts';
-import { ProductPatternClassifier } from '../../utils/productPatternClassifier.ts';
+ */
+import { OptimalPriceCalculator } from '../../utils/optimalPriceCalculator';
+import { ProductPatternClassifier } from '../../utils/productPatternClassifier';
 export class SimpleNumberMatcher {
   /**
    * 숫자 패턴 매칭 (단일상품 + QUANTITY_VARIANT)
