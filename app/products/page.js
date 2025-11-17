@@ -633,6 +633,7 @@ export default function ProductsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [products, setProducts] = useState([]);
+  const statsRequestIdRef = useRef(0);
   const [postsImages, setPostsImages] = useState({}); // band_key_post_key를 키로 하는 이미지 맵
   const [editingBarcodes, setEditingBarcodes] = useState({}); // 편집 중인 바코드 상태
   const [savingBarcodes, setSavingBarcodes] = useState({}); // 저장 중인 바코드 상태
@@ -805,64 +806,62 @@ export default function ProductsPage() {
 
   // 상품 목록 상태 업데이트 useEffect
   useEffect(() => {
+    const requestId = ++statsRequestIdRef.current;
+
     if (productsData?.data) {
-      // 주문 수량 데이터 확인
-      
-      // 상품 ID 추출
-      const productIds = productsData.data.map(p => p.product_id).filter(Boolean);
-      
-      // 주문 통계 가져오기
+      const baseProducts = productsData.data.map((p) => ({
+        ...p,
+        barcode: p.barcode || "",
+      }));
+      const productIds = productsData.data
+        .map((p) => p.product_id)
+        .filter(Boolean);
+
+      // 최신 쿼리 결과를 즉시 반영 (검색 결과 0건일 때도 빈 목록 노출)
+      setProducts(baseProducts);
+
       if (productIds.length > 0) {
         fetchProductOrderStats(productIds)
-          .then(statsMap => {
-            
-            // 주문 통계를 상품 데이터에 추가
-            const productsWithStats = productsData.data.map(p => ({
+          .then((statsMap) => {
+            if (statsRequestIdRef.current !== requestId) return;
+            const productsWithStats = baseProducts.map((p) => ({
               ...p,
-              barcode: p.barcode || "",
-              total_order_quantity: statsMap[p.product_id]?.total_order_quantity || 0,
-              total_order_amount: statsMap[p.product_id]?.total_order_amount || 0,
+              total_order_quantity:
+                statsMap[p.product_id]?.total_order_quantity || 0,
+              total_order_amount:
+                statsMap[p.product_id]?.total_order_amount || 0,
               order_count: statsMap[p.product_id]?.order_count || 0,
-              unpicked_quantity: statsMap[p.product_id]?.unpicked_quantity || 0
+              unpicked_quantity:
+                statsMap[p.product_id]?.unpicked_quantity || 0,
             }));
-            
             setProducts(productsWithStats);
           })
-          .catch(error => {
-            console.error('fetchProductOrderStats 오류:', error);
-            // 오류 발생 시에도 products는 설정
-            setProducts(productsData.data.map(p => ({ ...p, barcode: p.barcode || "" })));
+          .catch((error) => {
+            console.error("fetchProductOrderStats 오류:", error);
+            if (statsRequestIdRef.current !== requestId) return;
+            setProducts(baseProducts);
           });
-      } else {
-        setProducts(
-          productsData.data
-            .slice()
-            .map((p) => ({ ...p, barcode: p.barcode || "" }))
-        );
       }
-      
-      // 고유한 band_key와 post_key 조합 추출
+
       const postKeyPairs = productsData.data
-        .filter(p => p.band_key && p.post_key)
-        .map(p => ({ band_key: p.band_key, post_key: p.post_key }));
-      
-      // 중복 제거를 위한 고유 키 생성
+        .filter((p) => p.band_key && p.post_key)
+        .map((p) => ({ band_key: p.band_key, post_key: p.post_key }));
+
       const uniquePairs = Array.from(
-        new Map(postKeyPairs.map(item => [`${item.band_key}_${item.post_key}`, item])).values()
+        new Map(
+          postKeyPairs.map((item) => [`${item.band_key}_${item.post_key}`, item])
+        ).values()
       );
-      
-      // posts 테이블에서 이미지 데이터 가져오기
+
       if (uniquePairs.length > 0) {
-        fetchPostsImages(uniquePairs).then(() => {
-          // 이미지 데이터 로드 완료
-        }).catch(error => {
-          console.error('❌ 이미지 로드 실패:', error);
+        fetchPostsImages(uniquePairs).catch((error) => {
+          console.error("❌ 이미지 로드 실패:", error);
         });
       }
     } else if (productsError) {
       setProducts([]);
     }
-    // 페이지네이션 오류 방지: 데이터 로드 후 현재 페이지가 총 페이지 수보다 크면 1페이지로
+
     if (
       productsData?.pagination &&
       currentPage > productsData.pagination.totalPages &&
@@ -1803,6 +1802,10 @@ export default function ProductsPage() {
     productsData?.pagination?.totalPages ||
     Math.ceil(totalItems / itemsPerPage) ||
     1; // totalItems 기반 계산 추가
+  const isSearching = Boolean(searchTerm.trim());
+  const emptyStateMessage = isSearching
+    ? "검색 결과가 없습니다. 다른 키워드로 다시 검색해 주세요."
+    : "조건에 맞는 상품이 없습니다.";
 
   // --- 메인 UI ---
   return (
@@ -2061,7 +2064,19 @@ export default function ProductsPage() {
                       colSpan="11"
                       className="px-4 py-16 text-center text-gray-500"
                     >
-                      조건에 맞는 상품이 없습니다.
+                      <div className="flex flex-col items-center gap-3">
+                        <p className="text-base font-medium text-gray-600">
+                          {emptyStateMessage}
+                        </p>
+                        {isSearching && (
+                          <button
+                            onClick={handleClearSearchAndFilters}
+                            className="px-4 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                          >
+                            검색 초기화
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )}

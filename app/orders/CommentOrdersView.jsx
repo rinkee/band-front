@@ -22,6 +22,8 @@ import {
   ArrowPathIcon,
   CheckIcon,
   PhotoIcon,
+  Cog6ToothIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import JsBarcode from "jsbarcode";
 // 추천 매칭기 (@client-matcher)
@@ -88,15 +90,20 @@ function parseItemNumberFromProductId(productId) {
   return undefined;
 }
 
-const StatusBadge = ({ status }) => {
+const StatusBadge = ({ status, fontSize = 'normal' }) => {
   let bg = "bg-gray-100 text-gray-700";
   if (status === "미수령") bg = "bg-red-100 text-red-700";
   else if (status === "주문완료") bg = "bg-blue-100 text-blue-700";
   else if (status === "수령완료") bg = "bg-green-100 text-green-700";
   else if (status === "주문취소") bg = "bg-[#f06595] text-white";
   else if (status === "확인필요") bg = "bg-[#ffe5e5] text-[#ff0000]"; // 완전한 빨강 텍스트 + 연한 배경
+
+  const sizeClass = fontSize === 'small' ? 'text-xs' :
+                    fontSize === 'large' ? 'text-sm' :
+                    'text-xs';
+
   return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold ${bg}`}>
+    <span className={`inline-flex items-center px-2 py-1 rounded-md font-semibold whitespace-nowrap ${bg} ${sizeClass}`}>
       {status}
     </span>
   );
@@ -259,6 +266,36 @@ export default function CommentOrdersView() {
   const [suggestionsByCommentId, setSuggestionsByCommentId] = useState({});
   // 제품 이미지 로드 실패(대체 아이콘 사용) 여부: { [product_id]: true }
   const [brokenProductImages, setBrokenProductImages] = useState({});
+
+  // 테이블 설정 (localStorage에서 로드)
+  const [simplePickupView, setSimplePickupView] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tableSettings_simplePickupView');
+      return saved === 'true';
+    }
+    return false;
+  });
+  const [tableFontSize, setTableFontSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tableSettings_fontSize');
+      return saved || 'normal';
+    }
+    return 'normal';
+  });
+  const [showSettingsModal, setShowSettingsModal] = useState(false); // 설정 모달 표시 여부
+
+  // 설정 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tableSettings_simplePickupView', simplePickupView);
+    }
+  }, [simplePickupView]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tableSettings_fontSize', tableFontSize);
+    }
+  }, [tableFontSize]);
 
   // Debug utilities (default OFF; enable with ?debugReco=1 or localStorage 'debug_reco'='1')
   const getDebugFlag = () => {
@@ -1086,8 +1123,13 @@ export default function CommentOrdersView() {
   };
 
   // 수령일을 상대 시간과 절대 시간 두 줄로 표시
-  const formatPickupRelativeDateTime = (value) => {
+  const formatPickupRelativeDateTime = (value, fontSize = 'normal') => {
     if (!value) return "-";
+
+    // 날짜/시간 텍스트 크기 결정 (상대 시간보다 작게)
+    const dateSizeClass = fontSize === 'small' ? 'text-xs' :
+                         fontSize === 'large' ? 'text-sm' :
+                         'text-xs';
 
     try {
       // 1. 기존 절대 시간 포맷 (두 번째 줄에 표시)
@@ -1148,12 +1190,17 @@ export default function CommentOrdersView() {
         textColorClass = "text-orange-600 font-semibold"; // 내일
       }
 
-      // 4. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
+      // 4. 간략히 보기 모드일 때는 상대시간만 표시
+      if (simplePickupView && relativeText) {
+        return <span className={textColorClass}>{relativeText}</span>;
+      }
+
+      // 5. 두 줄로 표시 (첫 줄: 상대 시간, 둘째 줄: 절대 시간)
       if (relativeText && dateOnly) {
         return (
-          <span className="inline-flex flex-col leading-tight">
+          <span className="inline-flex flex-col leading-tight gap-1">
             <span className={textColorClass}>{relativeText}</span>
-            <span className="text-xs text-gray-600">
+            <span className={`${dateSizeClass} text-gray-600`}>
               {dateOnly} {timeOnly !== "—" && timeOnly}
             </span>
           </span>
@@ -1163,7 +1210,7 @@ export default function CommentOrdersView() {
       // 폴백: 기존 형식 사용
       if (dateOnly) {
         return (
-          <span className="inline-flex flex-col leading-tight">
+          <span className="inline-flex flex-col leading-tight gap-1">
             <span>{dateOnly}</span>
             <span>{timeOnly}</span>
           </span>
@@ -1396,9 +1443,14 @@ export default function CommentOrdersView() {
                   </>
                 )}
                 <span className="hidden sm:inline">|</span>
-                {/* <span className="font-semibold text-purple-700 inline-flex items-center gap-1">
-                  <ChatBubbleLeftRightIcon className="w-4 h-4" /> 원시댓글
-                </span> */}
+                <button
+                  onClick={() => setShowSettingsModal(true)}
+                  className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors"
+                  title="테이블 설정"
+                >
+                  <Cog6ToothIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline text-xs">설정</span>
+                </button>
               </div>
             </div>
             <UpdateButton pageType="orders" />
@@ -1575,11 +1627,91 @@ export default function CommentOrdersView() {
           </div>
         </div>
 
+        {/* 설정 사이드 패널 */}
+        {showSettingsModal && (
+          <>
+            {/* 배경 오버레이 (투명, 클릭 영역만) */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setShowSettingsModal(false)}
+            />
+
+            {/* 우측 슬라이드 패널 */}
+            <div className="fixed inset-y-0 right-0 z-50 w-80 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col">
+              {/* 패널 헤더 */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">테이블 설정</h2>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* 패널 내용 */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* 수령일시 간략히 보기 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">수령일시 표시</label>
+                  <button
+                    onClick={() => setSimplePickupView(!simplePickupView)}
+                    className={`w-full px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                      simplePickupView
+                        ? 'bg-orange-600 text-white hover:bg-orange-700'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {simplePickupView ? '✓ ' : ''}간략히 보기
+                  </button>
+                </div>
+
+                {/* 텍스트 크기 조절 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">텍스트 크기</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setTableFontSize('small')}
+                      className={`px-4 py-2.5 rounded-md text-xs font-medium transition-colors ${
+                        tableFontSize === 'small'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      작게
+                    </button>
+                    <button
+                      onClick={() => setTableFontSize('normal')}
+                      className={`px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                        tableFontSize === 'normal'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      보통
+                    </button>
+                    <button
+                      onClick={() => setTableFontSize('large')}
+                      className={`px-4 py-2.5 rounded-md text-base font-medium transition-colors ${
+                        tableFontSize === 'large'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      크게
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* 목록 영역 - legacy 카드 스타일 */}
         <LightCard padding="p-0" className="overflow-hidden mb-[100px]">
-         
+
           <div className="overflow-x-auto">
-            <table className="min-w-full table-fixed divide-y divide-gray-200 table-text-plus2">
+            <table className="min-w-full table-fixed divide-y divide-gray-200">
               <colgroup>
                 {/* 퍼센트 기반 고정 폭: 합계 100% 유지 */}
                 <col style={{ width: '2%' }} />
@@ -1661,7 +1793,11 @@ export default function CommentOrdersView() {
                         aria-label="선택"
                       />
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-800">
+                    <td className={`px-4 py-3 text-gray-800 ${
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
+                    }`}>
                       {row.commenter_name ? (
                         <button
                           className="text-gray-900 hover:text-orange-600 whitespace-nowrap"
@@ -1693,13 +1829,21 @@ export default function CommentOrdersView() {
                           }
                         }
 
-                        return <StatusBadge status={displayStatus} />;
+                        return <StatusBadge status={displayStatus} fontSize={tableFontSize} />;
                       })()}
                     </td>
                     {/* 수령일시 열 - 상태 우측으로 이동 */}
-                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">{formatPickupRelativeDateTime(getPickupDateForRow(row))}</td>
+                    <td className={`px-4 py-3 text-center text-gray-700 ${
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
+                    }`}>{formatPickupRelativeDateTime(getPickupDateForRow(row), tableFontSize)}</td>
                     {/* 댓글 열 */}
-                    <td className="px-4 py-3 text-md text-gray-700">
+                    <td className={`px-4 py-3 text-gray-700 ${
+                      tableFontSize === 'small' ? 'text-base' :
+                      tableFontSize === 'large' ? 'text-xl' :
+                      'text-lg'
+                    }`}>
                       {(() => {
                         const currentComment = processBandTags(row.comment_body || "");
                         let commentChangeData = null;
@@ -1746,7 +1890,11 @@ export default function CommentOrdersView() {
                       })()}
                     </td>
                     {/* 상품 열 */}
-                    <td className="px-4 py-3 text-sm text-gray-700 align-top">
+                    <td className={`px-4 py-3 text-gray-700 align-top ${
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
+                    }`}>
                       {(() => {
                         const list = getCandidateProductsForRow(row);
                         if (!list || list.length === 0) {
@@ -1861,7 +2009,7 @@ export default function CommentOrdersView() {
                             {productsToShow.map((p) => {
                               const img = getProductImageUrl(p);
                               const isBroken = !!brokenProductImages[p.product_id];
-                              const matched = getMatched(p);
+                              const matched = null; // 매칭 시스템 비활성화
                               const rawNo = Number.isFinite(Number(p?.item_number)) && Number(p.item_number) > 0 ? Number(p.item_number) : undefined;
                               const parsedNo = parseItemNumberFromProductId(p?.product_id);
                               const idxNo = altIndexByProductId.get(p?.product_id);
@@ -1903,9 +2051,17 @@ export default function CommentOrdersView() {
                                           {itemNo}번
                                         </span>
                                       )}
-                                      <span className=" text-base truncate text-gray-800">{p.title}</span>
+                                      <span className={`truncate text-gray-800 ${
+                                        tableFontSize === 'small' ? 'text-sm' :
+                                        tableFontSize === 'large' ? 'text-lg' :
+                                        'text-base'
+                                      }`}>{p.title}</span>
                                       {typeof p.base_price !== "undefined" && p.base_price !== null && (
-                                        <span className="text-gray-600 text-base"> {Number(p.base_price).toLocaleString()}</span>
+                                        <span className={`text-gray-600 ${
+                                          tableFontSize === 'small' ? 'text-sm' :
+                                          tableFontSize === 'large' ? 'text-lg' :
+                                          'text-base'
+                                        }`}> {Number(p.base_price).toLocaleString()}</span>
                                       )}
                                     </div>
                                     {/* 추천 뱃지 제거: 추천 시 번호 뱃지 색상만 강조 */}
@@ -1914,10 +2070,18 @@ export default function CommentOrdersView() {
                                         <div className="w-28">
                                           <BarcodeInline value={p.barcode} />
                                         </div>
-                                        <div className="mt-[2px] text-[14px] leading-3 text-gray-500 ">{p.barcode}</div>
+                                        <div className={`mt-[2px] leading-3 text-gray-500 ${
+                                          tableFontSize === 'small' ? 'text-xs' :
+                                          tableFontSize === 'large' ? 'text-base' :
+                                          'text-sm'
+                                        }`}>{p.barcode}</div>
                                       </div>
                                     ) : (
-                                      <div className="mt-2 text-base text-gray-400">바코드를 추가해주세요</div>
+                                      <div className={`mt-2 text-gray-400 ${
+                                        tableFontSize === 'small' ? 'text-sm' :
+                                        tableFontSize === 'large' ? 'text-lg' :
+                                        'text-base'
+                                      }`}>바코드를 추가해주세요</div>
                                     )}
                                   </div>
                                 </div>
@@ -1936,7 +2100,11 @@ export default function CommentOrdersView() {
                       })()}
                     </td>
                     {/* 주문일시 열 */}
-                    <td className="px-4 py-3 text-center text-[14px] text-gray-700">
+                    <td className={`px-4 py-3 text-center text-gray-700 ${
+                      tableFontSize === 'small' ? 'text-sm' :
+                      tableFontSize === 'large' ? 'text-lg' :
+                      'text-base'
+                    }`}>
                       {formatKoreanDateTime(row.comment_created_at)}
                     </td>
                   </tr>
