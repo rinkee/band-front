@@ -296,7 +296,7 @@ export function calculateOptimalPrice(orderQuantity: any, priceOptions: any, fal
   // 고객에게 가장 유리한 가격 조합 찾기
   // 예: 4팩 주문 시 1팩×4(11,600원)보다 2팩×2(10,000원)이 더 유리
   let bestPrice = Infinity;
-  let bestCombination = null;
+  let bestCombination: string | null = null;
   // 방법 1: 단일 옵션으로만 구성 (같은 옵션을 여러 개)
   for (const option of validOpts){
     if (orderQuantity % option.quantity === 0) {
