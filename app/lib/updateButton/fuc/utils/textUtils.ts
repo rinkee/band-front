@@ -326,7 +326,7 @@ export function contentHasPriceIndicator(content: any) {
     /\[.*월.*일.*\].*도착.*공구상품/,
     /월요일.*예약.*마감.*요일.*수령/,
     // 🔥 URL 링크가 3개 이상 있는 공지
-    /https?:\/\/[^\s]+.*https?:\/\/[^\s]+.*https?:\/\/[^\s]+/s,
+    /https?:\/\/[^\s]+[\s\S]*https?:\/\/[^\s]+[\s\S]*https?:\/\/[^\s]+/,
     // 🔥 추가: 상품 리스트만 나열된 패턴
     /🔸️.*\n🔸️.*\n🔸️/,
     /✡️.*도착했습니다.*\n🔸️/,

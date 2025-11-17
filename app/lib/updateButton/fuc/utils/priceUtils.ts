@@ -353,7 +353,7 @@ export function calculateOptimalPrice(orderQuantity: any, priceOptions: any, fal
     bestPrice = dp[orderQuantity];
     // 경로 역추적하여 조합 확인
     let currentQuantity = orderQuantity;
-    const usedOptions = [];
+    const usedOptions: string[] = [];
     while(currentQuantity > 0 && dpPath[currentQuantity]){
       const path = dpPath[currentQuantity];
       if (path.fallback) {
