@@ -28,7 +28,7 @@
   };
   /**
    * 댓글 분석 메인 함수
-   */ static analyze(comment, productMap) {
+   */ static analyze(comment: any, productMap: any) {
     const normalized = this.normalizeComment(comment);
     const tokens = this.tokenize(normalized);
     const patterns = this.detectPatterns(normalized);
@@ -58,19 +58,24 @@
   }
   /**
    * 댓글 정규화
-   */ static normalizeComment(comment) {
+   */ static normalizeComment(comment: string) {
     return comment.trim().toLowerCase().replace(/\s+/g, ' ') // 연속 공백 제거
     .replace(/[.!?]/g, ''); // 구두점 제거 (쉼표는 유지!)
   }
   /**
    * 토큰화
-   */ static tokenize(normalized) {
+   */ static tokenize(normalized: string) {
     return normalized.split(/\s+/).filter((token)=>token.length > 0);
   }
   /**
    * 패턴 감지
-   */ static detectPatterns(normalized) {
-    const patterns = [];
+   */ static detectPatterns(normalized: string) {
+    const patterns: Array<{
+      pattern: string;
+      value: string;
+      type: string;
+      confidence: number;
+    }> = [];
     // 단순 숫자 체크 (전체 문자열이 숫자인 경우)
     if (this.PATTERNS.SIMPLE_NUMBER.test(normalized)) {
       patterns.push({
@@ -176,13 +181,13 @@
   }
   /**
    * 단일상품 여부 판단
-   */ static isSingleProduct(productMap) {
+   */ static isSingleProduct(productMap: any) {
     if (!productMap) return false;
     return productMap.size === 1;
   }
   /**
    * 패턴 타입 결정
-   */ static determineType(patterns, _normalized) {
+   */ static determineType(patterns: any[], _normalized: string) {
     if (patterns.length === 0) {
       return 'unknown';
     }
@@ -226,7 +231,7 @@
   }
   /**
    * 매처 추천
-   */ static recommendMatcher(type, isSingleProduct, patterns, normalized) {
+   */ static recommendMatcher(type: string, isSingleProduct: boolean, patterns: any[], normalized: string) {
     // 다중 상품 패턴 감지 (여러 개의 숫자와 상품명이 있는 경우)
     const hasMultipleNumbers = this.hasMultipleNumbers(normalized);
     const hasMultipleProducts = this.hasMultipleProductNames(normalized);
@@ -300,7 +305,7 @@
   /**
    * 여러 개의 숫자가 있는지 확인
    * 🔥 전화번호 4자리 숫자 제외 로직 추가
-   */ static hasMultipleNumbers(text) {
+   */ static hasMultipleNumbers(text: string) {
     // 전화번호 패턴 제거 후 숫자 추출
     const cleanText = this.removePhoneNumberPatterns(text);
     const numbers = cleanText.match(/\d+/g);
@@ -308,7 +313,7 @@
   }
   /**
    * 댓글에 포함된 숫자 개수 계산 (전화번호 제외)
-   */ static countNumbers(text) {
+   */ static countNumbers(text: string) {
     // 전화번호 패턴 제거 후 숫자 추출
     const cleanText = this.removePhoneNumberPatterns(text);
     const numbers = cleanText.match(/\d+/g);
@@ -317,7 +322,7 @@
   /**
    * 전화번호 패턴 제거 함수
    * 다양한 전화번호 형식을 제거
-   */ static removePhoneNumberPatterns(text) {
+   */ static removePhoneNumberPatterns(text: string) {
     let result = text;
     // 전화번호 패턴들 제거
     // 010-1234-5678, 02-123-4567 등
@@ -331,9 +336,9 @@
     return result;
   }
   /**
-   * 여러 개의 상품명이 있는지 확인  
+   * 여러 개의 상품명이 있는지 확인
    * 🔥 전화번호 패턴 제거 후 검사하여 이름이 상품으로 오인식되는 것 방지
-   */ static hasMultipleProductNames(text) {
+   */ static hasMultipleProductNames(text: string) {
     // 전화번호 패턴 제거 후 검사 
     const cleanText = this.removePhoneNumberPatterns(text);
     // 🔥 다양한 다중 상품 패턴 감지
@@ -360,7 +365,7 @@
   }
   /**
    * 신뢰도 계산
-   */ static calculateConfidence(patterns, type) {
+   */ static calculateConfidence(patterns: any[], type: string) {
     if (patterns.length === 0) {
       return 0.1;
     }
@@ -390,7 +395,7 @@
   }
   /**
    * 대표상품 선택 (단일상품 게시물용)
-   */ static selectRepresentativeProduct(productMap) {
+   */ static selectRepresentativeProduct(productMap: any) {
     if (!productMap || productMap.size === 0) {
       return null;
     }

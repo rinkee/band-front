@@ -67,34 +67,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
       console.log(`🧪 테스트 모드 실행: userId=${userId} - 데이터베이스에 저장하지 않음`);
     }
 
-    // 🔒 실행 중 체크 - 중복 실행 방지
-    executionKey = `band_update_${userId}`;
-    const { data: existingExecution } = await supabase
-      .from("execution_locks")
-      .select("*")
-      .eq("key", executionKey)
-      .single();
-
-    if (existingExecution && existingExecution.is_running) {
-      const lastUpdate = new Date(existingExecution.updated_at);
-      const now = new Date();
-      const diffMinutes = (now - lastUpdate) / (1000 * 60);
-
-      // 5분 이내의 실행은 중복으로 간주
-      if (diffMinutes < 5) {
-        console.log(
-          `[중복 실행 방지] userId=${userId}는 이미 업데이트 중입니다 (${diffMinutes.toFixed(1)}분 전 시작)`
-        );
-        return {
-          success: false,
-          message: "이미 업데이트가 진행 중이거나 너무 빠른 요청입니다. 잠시 후에 다시 시도해주세요.",
-          isRunning: true,
-          lastUpdate: existingExecution.updated_at
-        };
-      }
-    }
-
     // 실행 시작 기록
+    executionKey = `band_update_${userId}`;
     const { error: lockError } = await supabase
       .from("execution_locks")
       .upsert(
