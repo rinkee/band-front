@@ -629,14 +629,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
                 if (newComments.length > 0) {
                   try {
-                    const productMapForNewPost = new Map();
-                    if (aiAnalysisResult && aiAnalysisResult.products) {
-                      aiAnalysisResult.products.forEach((p) => {
-                        if (p.itemNumber != null && p.productId) {
-                          productMapForNewPost.set(p.itemNumber, p);
-                        }
-                      });
-                    }
+                    // 댓글 전용 모드: productMap 사용 안 함
 
                     const result = await generateOrderData(
                       supabase,
@@ -645,7 +638,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       postKey,
                       bandKey,
                       bandNumber,
-                      productMapForNewPost,
+                      null, // productMap (댓글 전용 모드에서는 사용 안 함)
                       {
                         ...apiPost,
                         order_needs_ai: aiAnalysisResult?.order_needs_ai || false,
@@ -1031,10 +1024,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                         band_key: bandKey
                       }));
 
-                    // 상품 정보 Map 조회
-                    const productMap = await fetchProductMapForPost(supabase, userId, postKey);
-
-                    // 새 댓글이 있으면 주문/고객 생성
+                    // 새 댓글이 있으면 주문/고객 생성 (댓글 전용 모드)
                     if (newComments.length > 0 || isPendingOrFailedPost) {
                       if (newComments.length === 0 && !isPendingOrFailedPost) {
                         console.log(`게시물 ${postKey}: 새 댓글 없음 및 pending/failed 아님`);
@@ -1076,7 +1066,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             postKey,
                             bandKey,
                             bandNumber,
-                            productMap,
+                            null, // productMap (댓글 전용 모드에서는 사용 안 함)
                             {
                               ...apiPost,
                               order_needs_ai: orderNeedsAi,

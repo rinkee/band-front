@@ -721,7 +721,7 @@ export default function PostsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <UpdateButton pageType="posts" />
-                <TestUpdateButton />
+                {userData?.role === 'admin' && <TestUpdateButton />}
               </div>
             </div>
           </div>
