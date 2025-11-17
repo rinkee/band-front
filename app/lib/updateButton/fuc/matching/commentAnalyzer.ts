@@ -399,9 +399,9 @@
     if (!productMap || productMap.size === 0) {
       return null;
     }
-    const products = Array.from(productMap.values());
+    const products = Array.from(productMap.values()) as any[];
     // 우선순위 점수 계산
-    const scoredProducts = products.map((product)=>{
+    const scoredProducts = products.map((product: any)=>{
       let score = 0;
       const title = product.title || product.name || '';
       // 패키지/묶음 단위 우선 (+100점)
@@ -409,7 +409,7 @@
         score += 100;
       }
       // 가격 점수 (최대 50점)
-      const maxPrice = Math.max(...products.map((p)=>p.price || 0));
+      const maxPrice = Math.max(...products.map((p: any)=>p.price || 0));
       if (maxPrice > 0) {
         score += product.price / maxPrice * 50;
       }
