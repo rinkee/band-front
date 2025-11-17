@@ -261,7 +261,14 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
         const bandNumber = getBandNumber();
         const postKey = post?.post_key;
-        newItemNumber = 1;
+
+        // 해당 게시물의 최대 item_number 찾기
+        const maxItemNumber = products.reduce((max, p) => {
+          const itemNum = parseInt(p.item_number) || 0;
+          return itemNum > max ? itemNum : max;
+        }, 0);
+
+        newItemNumber = maxItemNumber + 1;
         const userIdForId = userId;
         const postNumberForId = getPostNumber();
         newProductId = `prod_${userIdForId}_${bandNumber}_${postNumberForId}_item${newItemNumber}`;
