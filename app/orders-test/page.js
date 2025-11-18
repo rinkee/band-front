@@ -1515,32 +1515,32 @@ function OrdersTestPageContent({ mode = "raw" }) {
           productIds: productIdsWithPastPickup.slice(0, 5)
         });
 
-        // 먼저 해당 조건의 주문이 있는지 확인
-        const { data: existingOrders, error: selectError } = await supabase
-          .from(tableName)
-          .select('order_id, product_id, ' + statusField + ', sub_status')
-          .eq('user_id', userData.userId)
-          .in('product_id', productIdsWithPastPickup);
+        // 먼저 해당 조건의 주문이 있는지 확인 (URL 길이 제한으로 주석 처리)
+        // const { data: existingOrders, error: selectError } = await supabase
+        //   .from(tableName)
+        //   .select('order_id, product_id, ' + statusField + ', sub_status')
+        //   .eq('user_id', userData.userId)
+        //   .in('product_id', productIdsWithPastPickup);
 
-        if (selectError) {
-          console.error('[자동 미수령] 조회 오류:', selectError);
-        } else {
-          console.log('[자동 미수령] 해당 product_id 가진 주문 총:', existingOrders?.length || 0, '건');
-          if (existingOrders && existingOrders.length > 0) {
-            console.log('[자동 미수령] 샘플 주문 3개:', existingOrders.slice(0, 3));
+        // if (selectError) {
+        //   console.error('[자동 미수령] 조회 오류:', selectError);
+        // } else {
+        //   console.log('[자동 미수령] 해당 product_id 가진 주문 총:', existingOrders?.length || 0, '건');
+        //   if (existingOrders && existingOrders.length > 0) {
+        //     console.log('[자동 미수령] 샘플 주문 3개:', existingOrders.slice(0, 3));
 
-            // 주문완료인 것만 필터링
-            const completedOrders = existingOrders.filter(o => o[statusField] === '주문완료');
-            console.log('[자동 미수령] 주문완료 상태:', completedOrders.length, '건');
+        //     // 주문완료인 것만 필터링
+        //     const completedOrders = existingOrders.filter(o => o[statusField] === '주문완료');
+        //     console.log('[자동 미수령] 주문완료 상태:', completedOrders.length, '건');
 
-            // 주문완료 + (sub_status null 또는 수령가능)
-            const targetOrders = completedOrders.filter(o => !o.sub_status || o.sub_status === '수령가능');
-            console.log('[자동 미수령] 업데이트 대상 (주문완료 + null/수령가능):', targetOrders.length, '건');
-            if (targetOrders.length > 0) {
-              console.log('[자동 미수령] 샘플 대상:', targetOrders.slice(0, 3));
-            }
-          }
-        }
+        //     // 주문완료 + (sub_status null 또는 수령가능)
+        //     const targetOrders = completedOrders.filter(o => !o.sub_status || o.sub_status === '수령가능');
+        //     console.log('[자동 미수령] 업데이트 대상 (주문완료 + null/수령가능):', targetOrders.length, '건');
+        //     if (targetOrders.length > 0) {
+        //       console.log('[자동 미수령] 샘플 대상:', targetOrders.slice(0, 3));
+        //     }
+        //   }
+        // }
 
         // const { data, error } = await supabase
         //   .from(tableName)
@@ -3774,12 +3774,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             <span className="text-xs text-gray-500">총수량</span>
                             <span className="text-sm font-semibold text-gray-900">
                               {currentPageTotalQuantity.toLocaleString()}개
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-xs text-gray-500">총금액</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              ₩{currentPageTotalAmount.toLocaleString()}
                             </span>
                           </div>
                         </>
