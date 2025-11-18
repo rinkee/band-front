@@ -1542,27 +1542,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
           }
         }
 
-        const { data, error } = await supabase
-          .from(tableName)
-          .update({
-            sub_status: '미수령',
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userData.userId)
-          .eq(statusField, '주문완료')
-          .or(`sub_status.is.null,sub_status.eq.수령가능`)
-          .in('product_id', productIdsWithPastPickup)
-          .select();
+        // const { data, error } = await supabase
+        //   .from(tableName)
+        //   .update({
+        //     sub_status: '미수령',
+        //     updated_at: new Date().toISOString()
+        //   })
+        //   .eq('user_id', userData.userId)
+        //   .eq(statusField, '주문완료')
+        //   .or(`sub_status.is.null,sub_status.eq.수령가능`)
+        //   .in('product_id', productIdsWithPastPickup)
+        //   .select();
 
-        if (error) {
-          console.error('[자동 미수령] 업데이트 오류:', error);
-          throw error;
-        }
+        // if (error) {
+        //   console.error('[자동 미수령] 업데이트 오류:', error);
+        //   throw error;
+        // }
 
-        console.log('[자동 미수령] 업데이트 완료:', data?.length || 0, '건');
-        if (data && data.length > 0) {
-          console.log('[자동 미수령] 업데이트된 주문 샘플:', data.slice(0, 3));
-        }
+        // console.log('[자동 미수령] 업데이트 완료:', data?.length || 0, '건');
+        // if (data && data.length > 0) {
+        //   console.log('[자동 미수령] 업데이트된 주문 샘플:', data.slice(0, 3));
+        // }
 
         // 데이터 갱신
         console.log('[자동 미수령] 데이터 갱신 중');
