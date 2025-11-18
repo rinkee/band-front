@@ -1414,7 +1414,170 @@ function OrdersTestPageContent({ mode = "raw" }) {
         isSomeDisplayedSelected && !isAllDisplayedSelected;
   }, [isSomeDisplayedSelected, isAllDisplayedSelected]);
 
-  // 자동 미수령 로직 제거: 화면에서 이미 데이터 기반으로 계산하여 표시하므로 불필요
+  // 수령일시 지난 주문 자동 미수령 처리 (전체 주문 대상)
+  const autoUpdateProcessedRef = useRef(false);
+  useEffect(() => {
+    console.log('[자동 미수령] useEffect 실행됨');
+
+    // 한 번만 실행
+    if (autoUpdateProcessedRef.current) {
+      console.log('[자동 미수령] 이미 처리됨, 스킵');
+      return;
+    }
+
+    console.log('[자동 미수령] 조건 체크:', {
+      userId: userData?.userId,
+      products: products?.length,
+      mode
+    });
+
+    if (!userData?.userId) {
+      console.log('[자동 미수령] userId 없음');
+      return;
+    }
+    if (!products || products.length === 0) {
+      console.log('[자동 미수령] products 없음');
+      return;
+    }
+
+    const processAutoUpdate = async () => {
+      try {
+        console.log('[자동 미수령] 전체 주문 처리 시작 (Supabase 직접 업데이트)');
+
+        // KST 기준 오늘 날짜 (YYYYMMDD)
+        const now = new Date();
+        const KST_OFFSET = 9 * 60 * 60 * 1000;
+        const kstNow = new Date(now.getTime() + KST_OFFSET);
+        const todayYmd = kstNow.getUTCFullYear() * 10000 + (kstNow.getUTCMonth() + 1) * 100 + kstNow.getUTCDate();
+
+        console.log('[자동 미수령] 오늘 날짜 (KST YYYYMMDD):', todayYmd);
+
+        // 날짜를 YYYYMMDD로 변환하는 헬퍼 함수
+        const toKstYmd = (dateInput) => {
+          if (!dateInput) return null;
+          try {
+            let dt;
+            if (typeof dateInput === 'string' && dateInput.includes('T')) {
+              dt = new Date(dateInput);
+            } else if (dateInput instanceof Date) {
+              dt = dateInput;
+            } else {
+              return null;
+            }
+            if (isNaN(dt.getTime())) return null;
+            const kst = new Date(dt.getTime() + KST_OFFSET);
+            return kst.getUTCFullYear() * 10000 + (kst.getUTCMonth() + 1) * 100 + kst.getUTCDate();
+          } catch {
+            return null;
+          }
+        };
+
+        // 상품 ID와 pickup_date 매핑 생성 (어제 이전인 것만)
+        const productIdsWithPastPickup = products
+          .filter(p => {
+            if (!p.pickup_date) return false;
+            const pickupYmd = toKstYmd(p.pickup_date);
+            if (!pickupYmd) return false;
+            // pickup_date가 오늘보다 이전 (오늘 제외)
+            return pickupYmd < todayYmd;
+          })
+          .map(p => p.product_id);
+
+        console.log('[자동 미수령] 어제 이전 수령일시 상품:', productIdsWithPastPickup.length, '개');
+
+        if (productIdsWithPastPickup.length > 0) {
+          console.log('[자동 미수령] 샘플 상품 3개:', products
+            .filter(p => productIdsWithPastPickup.includes(p.product_id))
+            .slice(0, 3)
+            .map(p => ({
+              product_id: p.product_id,
+              title: p.title,
+              pickup_date: p.pickup_date,
+              pickup_ymd: toKstYmd(p.pickup_date)
+            }))
+          );
+        }
+
+        if (productIdsWithPastPickup.length === 0) {
+          console.log('[자동 미수령] 업데이트할 상품 없음');
+          autoUpdateProcessedRef.current = true;
+          return;
+        }
+
+        // Supabase에서 직접 업데이트
+        const tableName = mode === 'raw' ? 'comment_orders' : 'orders';
+        const statusField = mode === 'raw' ? 'order_status' : 'status';
+
+        console.log('[자동 미수령] 쿼리 조건:', {
+          tableName,
+          statusField,
+          userId: userData.userId,
+          productIds: productIdsWithPastPickup.slice(0, 5)
+        });
+
+        // 먼저 해당 조건의 주문이 있는지 확인
+        const { data: existingOrders, error: selectError } = await supabase
+          .from(tableName)
+          .select('order_id, product_id, ' + statusField + ', sub_status')
+          .eq('user_id', userData.userId)
+          .in('product_id', productIdsWithPastPickup);
+
+        if (selectError) {
+          console.error('[자동 미수령] 조회 오류:', selectError);
+        } else {
+          console.log('[자동 미수령] 해당 product_id 가진 주문 총:', existingOrders?.length || 0, '건');
+          if (existingOrders && existingOrders.length > 0) {
+            console.log('[자동 미수령] 샘플 주문 3개:', existingOrders.slice(0, 3));
+
+            // 주문완료인 것만 필터링
+            const completedOrders = existingOrders.filter(o => o[statusField] === '주문완료');
+            console.log('[자동 미수령] 주문완료 상태:', completedOrders.length, '건');
+
+            // 주문완료 + (sub_status null 또는 수령가능)
+            const targetOrders = completedOrders.filter(o => !o.sub_status || o.sub_status === '수령가능');
+            console.log('[자동 미수령] 업데이트 대상 (주문완료 + null/수령가능):', targetOrders.length, '건');
+            if (targetOrders.length > 0) {
+              console.log('[자동 미수령] 샘플 대상:', targetOrders.slice(0, 3));
+            }
+          }
+        }
+
+        const { data, error } = await supabase
+          .from(tableName)
+          .update({
+            sub_status: '미수령',
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userData.userId)
+          .eq(statusField, '주문완료')
+          .or(`sub_status.is.null,sub_status.eq.수령가능`)
+          .in('product_id', productIdsWithPastPickup)
+          .select();
+
+        if (error) {
+          console.error('[자동 미수령] 업데이트 오류:', error);
+          throw error;
+        }
+
+        console.log('[자동 미수령] 업데이트 완료:', data?.length || 0, '건');
+        if (data && data.length > 0) {
+          console.log('[자동 미수령] 업데이트된 주문 샘플:', data.slice(0, 3));
+        }
+
+        // 데이터 갱신
+        console.log('[자동 미수령] 데이터 갱신 중');
+        await mutateOrders(undefined, { revalidate: true });
+        console.log('[자동 미수령] 데이터 갱신 완료');
+
+        autoUpdateProcessedRef.current = true;
+        console.log('[자동 미수령] 처리 완료, 플래그 설정');
+      } catch (error) {
+        console.error('[자동 미수령 처리] 오류:', error);
+      }
+    };
+
+    processAutoUpdate();
+  }, [userData, products, mode, mutateOrders]);
 
   // 필터 변경 시 페이지를 1로 리셋
   useEffect(() => {
