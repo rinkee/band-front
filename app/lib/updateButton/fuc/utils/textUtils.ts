@@ -255,8 +255,15 @@ export function contentHasPriceIndicator(content: any) {
       const num = parseInt(matches[0]);
       // 1000~99999 범위 (일반적인 상품 가격 범위)
       if (num >= 1000 && num <= 99999) {
-        // 날짜 패턴 제외 (예: 1117, 1214 등 4자리 숫자는 날짜일 가능성)
-        const isLikelyDate = num >= 101 && num <= 1231 && num.toString().length === 4;
+        // 연도 패턴 체크: 숫자 뒤에 "년"이 있으면 연도로 판단
+        const yearPattern = new RegExp(`\\b${num}\\s*년`, 'i');
+        const isYear = yearPattern.test(cleanedContent);
+
+        // 날짜 패턴 제외 (예: 1117, 1214 등 4자리 숫자는 날짜일 가능성, 또는 연도)
+        const isLikelyDate =
+          (num >= 101 && num <= 1231 && num.toString().length === 4) ||
+          isYear;
+
         if (!isLikelyDate) {
           hasClearPrice = true;
         }

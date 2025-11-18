@@ -1028,7 +1028,7 @@ export default function SettingsPage() {
     useState(false); // <<<--- AI 설정 저장 상태 추가
   const [showLegacySettings, setShowLegacySettings] = useState(false); // <<<--- 기존 설정 표시 여부
   const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
-  const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가 (기본값: 200, 최대값: 200)
+  const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가 (기본값: 200, 최대값: 400)
   const [isEditingPostLimit, setIsEditingPostLimit] = useState(false); // 사용자가 postLimit을 편집 중인지 추적
 
   const { mutate: globalMutate } = useSWRConfig();
@@ -1562,9 +1562,9 @@ export default function SettingsPage() {
 
     // postLimit 유효성 검사 추가
     const newLimit = parseInt(postLimit, 10);
-    if (isNaN(newLimit) || newLimit < 1 || newLimit > 200) {
+    if (isNaN(newLimit) || newLimit < 1 || newLimit > 400) {
       setError(
-        "게시물 가져오기 개수는 1에서 200 사이의 유효한 숫자여야 합니다."
+        "게시물 가져오기 개수는 1에서 400 사이의 유효한 숫자여야 합니다."
       );
       return;
     }
@@ -1792,10 +1792,10 @@ export default function SettingsPage() {
                     setter: setPostLimit,
                     type: "number",
                     min: 1,
-                    max: 200,
+                    max: 400,
                     placeholder: "게시물 가져오기 개수",
                     description:
-                      "한 번에 가져올 게시물 수를 설정합니다. (1 ~ 200, 기본값: 200)",
+                      "한 번에 가져올 게시물 수를 설정합니다. (1 ~ 400, 기본값: 200)",
                   },
                 ].map((field) => (
                   <div key={field.id}>
