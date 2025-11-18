@@ -94,7 +94,14 @@ export async function savePostAndProducts(
     let productsDataJson = null;
     try {
       // 🔧 [수정] AI 결과 유무와 관계없이 항상 pickup_date 후처리 수행
-      const enhancedResult = enhancePickupDateFromContent(aiAnalysisResult, post.content, post);
+      // 🔧 Band API의 숫자 timestamp를 KST 타임존 문자열로 변환하여 이중 변환 방지
+      const postForEnhancement = {
+        ...post,
+        createdAt: typeof post.createdAt === 'number'
+          ? new Date(post.createdAt).toISOString().replace('Z', '+09:00')
+          : post.createdAt
+      };
+      const enhancedResult = enhancePickupDateFromContent(aiAnalysisResult, post.content, postForEnhancement);
 
       // 후처리 결과를 저장 (JSONB 컬럼이므로 객체 그대로 저장 가능)
       productsDataJson = enhancedResult;

@@ -18,7 +18,6 @@ import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClie
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
-import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
@@ -408,7 +407,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
-  const tableContainerRef = useRef(null); // 테이블 컨테이너 스크롤 제어용
   
   // 편집 관련 상태들
   const [editingOrderId, setEditingOrderId] = useState(null);
@@ -440,56 +438,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 댓글 관련 상태 ---
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
-
-  // raw 상품 조회용 맵 (post_key 또는 band+post 조합) - sessionStorage에서 복원
-  const [postProductsByPostKey, setPostProductsByPostKey] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('ordersProductsByPostKey');
-        return cached ? JSON.parse(cached) : {};
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  });
-  const [postProductsByBandPost, setPostProductsByBandPost] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('ordersProductsByBandPost');
-        return cached ? JSON.parse(cached) : {};
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  });
+  // raw 상품 조회용 맵 (post_key 또는 band+post 조합)
+  const [postProductsByPostKey, setPostProductsByPostKey] = useState({});
+  const [postProductsByBandPost, setPostProductsByBandPost] = useState({});
   const [postsImages, setPostsImages] = useState({}); // key: `${band_key}_${post_key}` => [urls]
 
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
 
-  // 테스트 업데이트 로딩 상태
-  const [isTestUpdating, setIsTestUpdating] = useState(false);
-  const [testUpdateResult, setTestUpdateResult] = useState(null);
-
   // 클라이언트 사이드 렌더링 확인 상태
   const [isClient, setIsClient] = useState(false);
-
-  // 안내 모달 상태
-  const [showNoticeModal, setShowNoticeModal] = useState(false);
-  const [noticeChecked, setNoticeChecked] = useState(false); // 내용 확인 체크
-  const [dontShowAgain, setDontShowAgain] = useState(false); // 다시 보지 않기 체크
 
   // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
     setIsClient(true);
-
-    // localStorage에서 "다시 보지 않기" 확인
-    const dontShowAgain = localStorage.getItem('orderNoticeConfirmed');
-    if (!dontShowAgain) {
-      setShowNoticeModal(true); // 저장된 값이 없으면 모달 표시
-    }
   }, []);
 
   // URL에서 postKey를 받아서 자동으로 검색
@@ -602,268 +564,39 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
 
     let arr = orders || [];
-
-    // 헬퍼 함수: 주문의 pickup_date 가져오기
-    const getOrderPickupDate = (o) => {
-      const pk = o.post_key || o.postKey;
-      const band = o.band_number || o.bandNumber || o.band_key || o.bandKey;
-      const postNum = o.post_number ?? o.postNumber;
-
-      let list = [];
-      if (pk && postProductsByPostKey[pk]) {
-        list = postProductsByPostKey[pk];
-      } else if (band != null && postNum != null) {
-        const k = `${band}_${String(postNum)}`;
-        if (postProductsByBandPost[k]) {
-          list = postProductsByBandPost[k];
-        }
-      }
-
-      let displayProd = null;
-      if (o.product_id && Array.isArray(list)) {
-        displayProd = list.find(p => p.product_id === o.product_id);
-      }
-      if (!displayProd && Array.isArray(list)) {
-        displayProd = list[0];
-      }
-
-      return displayProd?.pickup_date || null;
-    };
-
-    // 1. Status 필터링 (주문완료, 수령완료, 주문취소, 결제완료)
-    if (filterSelection !== "all" &&
-        filterSelection !== "확인필요" &&
-        filterSelection !== "미수령" &&
-        filterSelection !== "none") {
-      // '주문완료+수령가능'인 경우 주문완료만 필터링 (pickup_date는 나중에)
-      const targetStatus = filterSelection === "주문완료+수령가능" ? "주문완료" : filterSelection;
-      arr = arr.filter(o => {
-        const status = o.status || o.order_status;
-        return status === targetStatus;
-      });
-    }
-
-    // 2. SubStatus 필터링 (확인필요, none)
-    if (filterSelection === "확인필요") {
-      arr = arr.filter(o => o.sub_status === "확인필요");
-    } else if (filterSelection === "none") {
-      arr = arr.filter(o => !o.sub_status || o.sub_status === "none");
-    }
-
-    // 3. Pickup date 필터링
-    // 수령가능만 보기: pickup_date >= today
-    if (showPickupAvailableOnly || filterSelection === "주문완료+수령가능") {
+    if (showPickupAvailableOnly) {
       arr = arr.filter((o) => {
-        const pickupDate = getOrderPickupDate(o);
-        return isAvailableLocal(pickupDate);
-      });
-    }
-
-    // 미수령 필터: pickup_date < today AND status가 수령완료/주문취소가 아님
-    if (filterSelection === "미수령") {
-      arr = arr.filter((o) => {
-        // 수령완료, 주문취소 제외
-        const status = o.status || o.order_status;
-        if (status === "수령완료" || status === "주문취소") {
-          return false;
-        }
-
-        const pickupDate = getOrderPickupDate(o);
-        if (!pickupDate) return false;
-
-        const now = new Date();
-        const KST_OFFSET = 9 * 60 * 60 * 1000;
-        const k = new Date(now.getTime() + KST_OFFSET);
-        const todayYmd = k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate();
-        const ymd = toKstYmdLocal(pickupDate);
-        return ymd ? ymd < todayYmd : false;
-      });
-    }
-
-    // 4. 검색어 필터링 (고객명, 댓글, 상품명, postKey)
-    if (searchTerm && searchTerm.trim()) {
-      const term = searchTerm.trim().toLowerCase();
-
-      arr = arr.filter((o) => {
-        // 고객명 검색
-        const customerName = (o.customer_name || o.commenter_name || '').toLowerCase();
-        if (customerName.includes(term)) return true;
-
-        // 댓글 검색
-        const comment = (o.comment || o.comment_body || '').toLowerCase();
-        if (comment.includes(term)) return true;
-
-        // postKey 검색 (정확 매칭)
-        const postKey = o.post_key || o.postKey || '';
-        if (postKey === searchTerm.trim()) return true;
-
-        // 상품명 검색
+        // getCandidateProductsForOrder와 동일한 로직으로 상품 리스트 가져오기
         const pk = o.post_key || o.postKey;
         const band = o.band_number || o.bandNumber || o.band_key || o.bandKey;
         const postNum = o.post_number ?? o.postNumber;
 
-        let productList = [];
+        let list = [];
         if (pk && postProductsByPostKey[pk]) {
-          productList = postProductsByPostKey[pk];
+          list = postProductsByPostKey[pk];
         } else if (band != null && postNum != null) {
           const k = `${band}_${String(postNum)}`;
           if (postProductsByBandPost[k]) {
-            productList = postProductsByBandPost[k];
+            list = postProductsByBandPost[k];
           }
         }
 
-        // 상품명 매칭
-        if (Array.isArray(productList) && productList.length > 0) {
-          for (const product of productList) {
-            const productTitle = (product.title || product.name || '').toLowerCase();
-            if (productTitle.includes(term)) return true;
-          }
+        // 주문에 product_id가 지정되어 있으면 해당 상품 사용
+        let displayProd = null;
+        if (o.product_id && Array.isArray(list)) {
+          displayProd = list.find(p => p.product_id === o.product_id);
+        }
+        // 없으면 첫 번째 상품 사용
+        if (!displayProd && Array.isArray(list)) {
+          displayProd = list[0];
         }
 
-        return false;
+        const pickupDate = displayProd?.pickup_date || null;
+        return isAvailableLocal(pickupDate);
       });
     }
-
     return arr;
-  }, [orders, showPickupAvailableOnly, filterSelection, postProductsByPostKey, postProductsByBandPost, searchTerm]);
-
-  // 전체 통계 계산 (필터 무관, 원본 orders 데이터 기반)
-  const allStats = useMemo(() => {
-    if (!orders || orders.length === 0) {
-      return {
-        totalOrders: 0,
-        statusCounts: {},
-        subStatusCounts: {},
-      };
-    }
-
-    const statusCounts = {};
-    const subStatusCounts = {};
-
-    orders.forEach(order => {
-      const status = order.status || order.order_status || '';
-      const subStatus = order.sub_status || '';
-
-      // 상태별 카운트
-      if (status) {
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-      }
-
-      // 서브상태별 카운트
-      if (subStatus) {
-        subStatusCounts[subStatus] = (subStatusCounts[subStatus] || 0) + 1;
-      }
-    });
-
-    return {
-      totalOrders: orders.length,
-      statusCounts,
-      subStatusCounts,
-    };
-  }, [orders]);
-
-  // 필터링된 통계 계산 (현재 필터 적용된 displayOrders 기반)
-  const clientStats = useMemo(() => {
-    if (!displayOrders || displayOrders.length === 0) {
-      return {
-        totalOrders: 0,
-        statusCounts: {},
-        subStatusCounts: {},
-      };
-    }
-
-    const statusCounts = {};
-    const subStatusCounts = {};
-
-    displayOrders.forEach(order => {
-      const status = order.status || order.order_status || '';
-      const subStatus = order.sub_status || '';
-
-      // 상태별 카운트
-      if (status) {
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-      }
-
-      // 서브상태별 카운트
-      if (subStatus) {
-        subStatusCounts[subStatus] = (subStatusCounts[subStatus] || 0) + 1;
-      }
-    });
-
-    return {
-      totalOrders: displayOrders.length,
-      statusCounts,
-      subStatusCounts,
-    };
-  }, [displayOrders]);
-
-  // 미수령 수량 계산 (필터 표시용)
-  const unreceivedCount = useMemo(() => {
-    if (!orders || orders.length === 0) return 0;
-
-    const now = new Date();
-    const KST_OFFSET = 9 * 60 * 60 * 1000;
-    const k = new Date(now.getTime() + KST_OFFSET);
-    const todayYmd = k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate();
-
-    const toKstYmdLocal = (dateInput) => {
-      if (!dateInput) return null;
-      try {
-        let y, m, d;
-        if (typeof dateInput === 'string' && dateInput.includes('T')) {
-          const dt = new Date(dateInput);
-          if (isNaN(dt.getTime())) return null;
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else if (dateInput instanceof Date) {
-          const k = new Date(dateInput.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else {
-          return null;
-        }
-        return y * 10000 + m * 100 + d;
-      } catch (_) { return null; }
-    };
-
-    const getOrderPickupDate = (o) => {
-      const pk = o.post_key || o.postKey;
-      const band = o.band_number || o.bandNumber || o.band_key || o.bandKey;
-      const postNum = o.post_number ?? o.postNumber;
-
-      let list = [];
-      if (pk && postProductsByPostKey[pk]) {
-        list = postProductsByPostKey[pk];
-      } else if (band != null && postNum != null) {
-        const k = `${band}_${String(postNum)}`;
-        if (postProductsByBandPost[k]) {
-          list = postProductsByBandPost[k];
-        }
-      }
-
-      let displayProd = null;
-      if (o.product_id && Array.isArray(list)) {
-        displayProd = list.find(p => p.product_id === o.product_id);
-      }
-      if (!displayProd && Array.isArray(list)) {
-        displayProd = list[0];
-      }
-
-      return displayProd?.pickup_date || null;
-    };
-
-    return orders.filter(o => {
-      // 수령완료, 주문취소 제외
-      const status = o.status || o.order_status;
-      if (status === "수령완료" || status === "주문취소") {
-        return false;
-      }
-
-      const pickupDate = getOrderPickupDate(o);
-      if (!pickupDate) return false;
-      const ymd = toKstYmdLocal(pickupDate);
-      return ymd ? ymd < todayYmd : false;
-    }).length;
-  }, [orders, postProductsByPostKey, postProductsByBandPost]);
+  }, [orders, showPickupAvailableOnly, postProductsByPostKey, postProductsByBandPost]);
 
   // 그룹 키: band + (comment_key 없으면 post_key) + ordered_at + updated_at
   const getGroupKey = useCallback((o) => {
@@ -875,7 +608,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, []);
 
   // 대표행 그룹 목록 계산
-  const allGroupedOrders = useMemo(() => {
+  const groupedOrders = useMemo(() => {
     const map = new Map();
     for (const o of displayOrders) {
       const key = getGroupKey(o);
@@ -899,18 +632,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       return sortOrder === 'asc' ? (t1 - t2) : (t2 - t1);
     });
   }, [displayOrders, getGroupKey, sortOrder]);
-
-  // 클라이언트 측 페이지네이션 적용
-  const groupedOrders = useMemo(() => {
-    // 검색어가 있으면 전체 결과 표시 (페이지네이션 없음)
-    if (searchTerm) {
-      return allGroupedOrders;
-    }
-    // 모든 필터에서 클라이언트 측 페이지네이션 사용
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return allGroupedOrders.slice(startIndex, endIndex);
-  }, [allGroupedOrders, searchTerm, currentPage, itemsPerPage]);
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   // NOTE: ordersData 선언 이후에 위치해야 TDZ 에러가 발생하지 않음
@@ -968,55 +689,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
     { value: "확인필요", label: "확인필요" },
   ];
 
-  // SWR 캐시 비교 함수: 데이터가 실제로 변경되었을 때만 리렌더링
-  const compareOrdersData = useCallback((a, b) => {
-    // 둘 다 없으면 같음
-    if (!a && !b) return true;
-    // 하나만 있으면 다름
-    if (!a || !b) return false;
-
-    // 데이터 배열 비교
-    const aData = a?.data || [];
-    const bData = b?.data || [];
-
-    // 길이가 다르면 다름
-    if (aData.length !== bData.length) return false;
-    // 총 개수가 다르면 다름
-    if (a?.total !== b?.total) return false;
-
-    // 각 주문의 핵심 필드만 비교 (성능 최적화)
-    for (let i = 0; i < Math.min(aData.length, 10); i++) { // 처음 10개만 샘플링
-      const aOrder = aData[i];
-      const bOrder = bData[i];
-
-      if (aOrder?.order_id !== bOrder?.order_id) return false;
-      if (aOrder?.status !== bOrder?.status) return false;
-      if (aOrder?.order_status !== bOrder?.order_status) return false;
-      if (aOrder?.sub_status !== bOrder?.sub_status) return false;
-      if (aOrder?.updated_at !== bOrder?.updated_at) return false;
-      if (aOrder?.product_id !== bOrder?.product_id) return false;
-    }
-
-    // 모든 체크 통과하면 같음 (로그 제거)
-    return true;
-  }, []);
-
-  // SWR 옵션 설정 - 완전한 캐시 우선 전략
+  // SWR 옵션 설정
   const swrOptions = {
-    revalidateOnMount: false, // 마운트 시 재검증 안함 - 캐시 우선
-    revalidateOnFocus: false, // 창 포커스 시 재검증 안함
-    revalidateOnReconnect: false, // 네트워크 재연결 시 재검증 안함
-    revalidateIfStale: false, // stale 데이터 재검증 안함
-    refreshInterval: 0, // 자동 재검증 완전히 끔
-    dedupingInterval: 60000, // 1분 이내 중복 요청 방지
-    compare: compareOrdersData, // 실제 데이터 변경 시에만 리렌더링
+    revalidateOnFocus: true, // 창 포커스 시 재검증 (유지 권장)
+    revalidateOnReconnect: true, // 네트워크 재연결 시 재검증 (유지 권장)
+    refreshInterval: 600000, // <<<--- 10분(600,000ms)마다 자동 재검증 추가
+    dedupingInterval: 30000, // 중복 요청 방지 간격 (기존 유지 또는 조정)
     onError: (err) => {
       if (process.env.NODE_ENV === "development") {
         console.error("SWR Error:", err);
       }
     },
-    keepPreviousData: true, // 깜빡임 방지
-    fallbackData: undefined, // fallback 없음 (캐시 우선)
+    keepPreviousData: true, // 이전 데이터 유지 (기존 유지)
   };
   const {
     data: userDataFromHook,
@@ -1024,27 +708,64 @@ function OrdersTestPageContent({ mode = "raw" }) {
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
 
-  // 모든 필터링을 클라이언트에서 처리하기 위해 전체 데이터를 가져옴
+  // 모드에 따라 다른 훅 사용 (raw: useCommentOrdersClient, legacy: useOrdersClient)
   const ordersFilters = {
-    // 항상 전체 데이터 가져오기 (클라이언트에서 필터링)
-    limit: 10000,
+    // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
+    limit: searchTerm ? 10000 : itemsPerPage,
     sortBy,
     sortOrder,
-    // 서버 필터는 사용하지 않음 (모든 필터링은 클라이언트에서)
-    status: undefined,
-    subStatus: undefined,
-    // --- 검색은 클라이언트에서만 처리 (서버에는 전달하지 않음) ---
-    search: undefined, // 클라이언트에서 searchTerm으로 필터링
+    // --- status 와 subStatus 파라미터를 filterSelection 값에 따라 동적 결정 ---
+    status: (() => {
+      // 사용자가 '확인필요', '미수령' 또는 'none'(부가 상태 없음)을 선택한 경우,
+      // 주 상태(status) 필터는 적용하지 않음 (undefined)
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return undefined;
+      }
+      // 사용자가 'all'을 선택한 경우에도 주 상태 필터는 적용하지 않음
+      if (filterSelection === "all") {
+        return undefined;
+      }
+      // '주문완료+수령가능' 선택 시 주문완료 상태로 필터링
+      if (filterSelection === "주문완료+수령가능") {
+        return "주문완료";
+      }
+      // 그 외의 경우 (주문완료, 수령완료, 주문취소, 결제완료)는 해당 값을 status 필터로 사용
+      return filterSelection;
+    })(),
+    subStatus: (() => {
+      // 수령가능만 보기는 클라이언트에서만 필터링 (서버 필터 적용 안 함)
+      // '주문완료+수령가능' 선택 시 "수령가능" 서브상태 적용
+      if (filterSelection === "주문완료+수령가능") {
+        return "수령가능";
+      }
+      // 사용자가 '확인필요', '미수령', 또는 'none'을 선택한 경우, 해당 값을 subStatus 필터로 사용
+      if (
+        filterSelection === "확인필요" ||
+        filterSelection === "미수령" ||
+        filterSelection === "none"
+      ) {
+        return filterSelection;
+      }
+      // 그 외의 경우 (전체 또는 주 상태 필터링 시)는 subStatus 필터를 적용하지 않음 (undefined)
+      return undefined;
+    })(),
+    // --- 파라미터 동적 결정 로직 끝 ---
+    // --- 👇 검색 관련 파라미터 수정 👇 ---
+    search: searchTerm.trim() || undefined, // 일반 검색어
     commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined, // comment_orders 전용 정확 고객명 필터
     exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined, // orders 전용 정확 고객명 필터
-    // --- 날짜 필터는 유지 (성능 최적화) ---
+    // --- 👆 검색 관련 파라미터 수정 👆 ---
     startDate: (() => {
       const p = calculateDateFilterParams(
         filterDateRange,
         customStartDate,
         customEndDate
       );
-      return p.startDate;
+      return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.startDate;
     })(),
     endDate: (() => {
       const p = calculateDateFilterParams(
@@ -1052,24 +773,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
         customStartDate,
         customEndDate
       );
-      return p.endDate;
+      return (showPickupAvailableOnly || filterSelection === '주문완료+수령가능') ? undefined : p.endDate;
     })(),
     dateType: filterDateType, // 날짜 필터 타입 추가
   };
 
-  // 항상 page=1로 고정 (전체 데이터를 한 번에 가져옴)
-  const effectivePage = 1;
-
   const rawOrdersResult = useCommentOrdersClient(
     mode === "raw" ? userData?.userId : null,
-    effectivePage,
+    currentPage,
     ordersFilters,
     swrOptions
   );
 
   const legacyOrdersResult = useOrdersClient(
     mode === "legacy" ? userData?.userId : null,
-    effectivePage,
+    currentPage,
     ordersFilters,
     swrOptions
   );
@@ -1081,67 +799,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
     mutate: mutateOrders,
   } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
 
-  // 주문 데이터의 시그니처 (주문 ID 조합) - 실제 내용 기반
-  const ordersSignature = useMemo(() => {
-    if (!ordersData?.data || ordersData.data.length === 0) {
-      return 'empty';
-    }
-    // 주문 ID와 post_key 조합으로 시그니처 생성
-    const ids = ordersData.data
-      .map(o => `${o.order_id || ''}_${o.post_key || o.postKey || ''}`)
-      .sort()
-      .join(',');
-    return ids;
-  }, [ordersData?.data]);
-
-  // 상품 키 시그니처를 useMemo로 계산 (ordersSignature가 변경될 때만 재계산)
-  const productKeysSignature = useMemo(() => {
-    if (!ordersData?.data || ordersData.data.length === 0) {
-      return null;
-    }
-
-    const items = ordersData.data;
-    const postKeys = Array.from(new Set(items.map((r) => r.post_key || r.postKey).filter(Boolean)));
-    const bandMap = new Map();
-    items.forEach((r) => {
-      if (!r.post_key && !r.postKey) {
-        const band = r.band_number || r.bandNumber;
-        const postNum = r.post_number ?? r.postNumber;
-        if (band != null && postNum != null) {
-          const key = String(band);
-          if (!bandMap.has(key)) bandMap.set(key, new Set());
-          bandMap.get(key).add(String(postNum));
-        }
-      }
-    });
-
-    return JSON.stringify({
-      postKeys: postKeys.sort(),
-      bandMap: Array.from(bandMap.entries()).map(([k, v]) => [k, Array.from(v).sort()]).sort()
-    });
-  }, [ordersSignature]); // ordersData?.data 대신 ordersSignature 사용
-
-  // 마지막으로 로드한 상품 signature 저장 (중복 fetch 방지)
-  const lastProductSignatureRef = useRef(null);
-
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   useEffect(() => {
     const fetchBatchProducts = async () => {
       try {
-        if (!userData?.userId || !productKeysSignature) {
-          // 상태를 비우지 않고 유지 (깜빡임 방지)
+        if (!userData?.userId || !ordersData?.data || ordersData.data.length === 0) {
+          setPostProductsByPostKey({});
+          setPostProductsByBandPost({});
           return;
         }
-
-        // 이미 로드한 signature면 건너뛰기
-        if (lastProductSignatureRef.current === productKeysSignature) {
-          console.log('✅ [상품] 캐시 사용 - fetch 스킵');
-          return;
-        }
-
-        console.log('🔄 [상품] fetch 시작...');
-        lastProductSignatureRef.current = productKeysSignature;
-
         const uid = userData.userId;
         const sb = getAuthedClient();
 
@@ -1197,17 +863,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
             byBandPostMap[k].push(p);
           }
         });
-        console.log('✅ [상품] 로드 완료:', Object.keys(byPostKeyMap).length + Object.keys(byBandPostMap).length, '게시물');
         setPostProductsByPostKey(byPostKeyMap);
         setPostProductsByBandPost(byBandPostMap);
-
-        // sessionStorage에 저장 (페이지 재진입 시 즉시 복원)
-        try {
-          sessionStorage.setItem('ordersProductsByPostKey', JSON.stringify(byPostKeyMap));
-          sessionStorage.setItem('ordersProductsByBandPost', JSON.stringify(byBandPostMap));
-        } catch (e) {
-          console.warn('sessionStorage 저장 실패:', e);
-        }
 
         // --- 관련 포스트 이미지 일괄 조회 ---
         try {
@@ -1243,7 +900,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
     };
     fetchBatchProducts();
-  }, [userData?.userId, productKeysSignature]); // productKeysSignature가 변경될 때만 실행
+  }, [userData?.userId, ordersData?.data]);
 
   const {
     data: productsData,
@@ -1315,12 +972,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (filterSelection === "주문완료+수령가능") {
           return "수령가능";
         }
-        // 미수령은 클라이언트에서만 필터링 (서버 필터 적용 안 함)
-        if (filterSelection === "미수령") {
-          return undefined;
-        }
         if (
           filterSelection === "확인필요" ||
+          filterSelection === "미수령" ||
           filterSelection === "none"
         ) {
           return filterSelection;
@@ -1578,12 +1232,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     processAutoUpdate();
   }, [userData, products, mode, mutateOrders]);
-
-  // 필터 변경 시 페이지를 1로 리셋
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterSelection]);
-
   const handleCheckboxChange = (e, groupId) => {
     const isChecked = e.target.checked;
     const group = groupedOrders.find((g) => g.groupId === groupId);
@@ -1606,14 +1254,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [groupedOrders]);
 
   // --- 검색창 업데이트 및 검색 실행 함수 ---
-  const handleCellClickToSearch = useCallback((searchValue, postKey = null) => {
-    if (!searchValue && !postKey) return; // 빈 값은 무시
-
-    // post_key가 제공되면 post_key로 검색 (해당 게시물의 모든 주문)
-    // 그렇지 않으면 searchValue로 검색 (모든 게시물에서 상품명 검색)
-    const searchTerm = postKey || searchValue;
-    const trimmedValue = searchTerm.trim();
-
+  const handleCellClickToSearch = useCallback((searchValue) => {
+    if (!searchValue) return; // 빈 값은 무시
+    const trimmedValue = searchValue.trim();
     if (searchInputRef.current) {
       searchInputRef.current.value = trimmedValue; // 검색창 UI 업데이트
     }
@@ -2081,9 +1724,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
       setError("Order Fetch Error");
     }
-    // 클라이언트 측 페이지네이션에서는 필터 변경 시 이미 setCurrentPage(1) 처리됨
-    // 서버 데이터 체크는 불필요 (항상 page=1로 요청하므로)
-  }, [ordersData, ordersError]);
+    if (
+      ordersData?.pagination &&
+      currentPage > ordersData.pagination.totalPages
+    ) {
+      setCurrentPage(1);
+    }
+  }, [ordersData, ordersError, currentPage]);
   // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -2759,19 +2406,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   }, [currentPage, scrollToTop]); // scrollToTop도 의존성 배열에 추가
 
-  const paginate = useCallback((pageNumber) => {
-    // 모든 필터에서 클라이언트 측 totalPages 사용
-    const total = Math.ceil(allGroupedOrders.length / itemsPerPage);
+  const paginate = (pageNumber) => {
+    const total = ordersData?.pagination?.totalPages || 1;
     if (pageNumber >= 1 && pageNumber <= total) {
       setCurrentPage(pageNumber);
-      // 테이블 스크롤 위치 초기화
-      if (tableContainerRef.current) {
-        tableContainerRef.current.scrollTop = 0;
-      }
+      // scrollToTop();
     }
-  }, [allGroupedOrders, itemsPerPage]);
-  const goToPreviousPage = useCallback(() => paginate(currentPage - 1), [paginate, currentPage]);
-  const goToNextPage = useCallback(() => paginate(currentPage + 1), [paginate, currentPage]);
+  };
+  const goToPreviousPage = () => paginate(currentPage - 1);
+  const goToNextPage = () => paginate(currentPage + 1);
   const getSortIcon = (field) =>
     sortBy !== field ? (
       <ChevronUpDownIcon className="w-4 h-4 ml-1 text-gray-400" />
@@ -3083,145 +2726,73 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 데이터 준비 ---
   const filteredTotalItems = ordersData?.pagination?.totalItems ?? 0;
-
-  // 모든 필터에서 클라이언트 측 페이지네이션 사용
-  // 검색 시 전체 결과 표시 (페이지네이션 없음)
-  const totalItems = allGroupedOrders.length;
-  const totalPages = Math.ceil(allGroupedOrders.length / itemsPerPage);
+  const totalItems = ordersData?.pagination?.totalItems || 0;
+  const totalPages = ordersData?.pagination?.totalPages || 1;
 
   // 현재 검색된 주문 데이터에서 직접 통계 계산
   const currentOrders = ordersData?.data || [];
 
+  // 클라이언트 사이드에서 통계 계산 함수
+  const calculateClientStats = (orders) => {
+    const statusCounts = {};
+    const subStatusCounts = {};
+    let completedCount = 0;
+    let pendingCount = 0;
+
+    orders.forEach((order) => {
+      // Status 카운트
+      statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+
+      // Sub_status 카운트
+      if (order.sub_status) {
+        subStatusCounts[order.sub_status] =
+          (subStatusCounts[order.sub_status] || 0) + 1;
+      }
+
+      // 완료/미완료 카운트
+      if (order.status === "수령완료") {
+        completedCount++;
+      } else if (order.sub_status === "미수령") {
+        pendingCount++;
+      }
+    });
+
+    return {
+      totalOrders: orders.length,
+      completedOrders: completedCount,
+      pendingOrders: pendingCount,
+      statusCounts,
+      subStatusCounts,
+    };
+  };
+
+  // 현재 페이지의 통계 (UI 표시용)
+  const clientStats = calculateClientStats(currentOrders);
+
+  // 전체 통계 데이터 사용 - globalStatsData 사용 (날짜 필터만 적용된 통계)
+  // 직접 globalStatsData를 OrderStatsSidebar에 전달하므로 여기서는 제거
+
+  // 클라이언트 측 통계 계산 완료
+
+  const completionRate =
+    globalStatsData?.data?.totalOrders > 0
+      ? Math.round((globalStatsData?.data?.statusCounts?.["수령완료"] / globalStatsData?.data?.totalOrders) * 100)
+      : 0;
+
+  // 디버깅용 전역 변수 설정
+  if (typeof window !== 'undefined' && globalStatsData) {
+    window.globalStatsDataDebug = globalStatsData;
+  }
 
   // --- 메인 UI ---
   return (
     <div className="h-full bg-gray-100 text-gray-900 flex overflow-hidden">
-      {/* 주문 방식 변경 안내 모달 */}
-      {showNoticeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <ExclamationCircleIcon className="h-6 w-6 text-orange-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  ⚠️ 주문 방식 변경 안내
-                </h3>
-                <p className="text-gray-700 leading-relaxed">
-                  <strong className="text-red-600">더 이상 상품 매칭 방식이 아닙니다.</strong><br />
-                  해당 게시물의 모든 상품이 댓글에 표시되니,<br />
-                  <strong className="text-orange-600">댓글 내용을 잘 확인하고 바코드를 찍어주세요.</strong>
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3 mb-4">
-              <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={noticeChecked}
-                  onChange={(e) => setNoticeChecked(e.target.checked)}
-                  className="mt-1 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700 select-none">
-                  내용을 확인했습니다
-                </span>
-              </label>
-
-              <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={dontShowAgain}
-                  onChange={(e) => setDontShowAgain(e.target.checked)}
-                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="text-sm text-gray-700 select-none">
-                  다시 보지 않기
-                </span>
-              </label>
-            </div>
-
-            <button
-              onClick={() => {
-                if (noticeChecked) {
-                  // "다시 보지 않기" 체크 시 localStorage에 저장
-                  if (dontShowAgain) {
-                    localStorage.setItem('orderNoticeConfirmed', 'true');
-                  }
-                  setShowNoticeModal(false);
-                }
-              }}
-              disabled={!noticeChecked}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-all ${
-                noticeChecked
-                  ? 'bg-orange-600 hover:bg-orange-700 text-white cursor-pointer'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              확인
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 일괄 처리 중 로딩 오버레이 */}
       {bulkUpdateLoading && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
           <div className="bg-white p-6 rounded-xl shadow-xl flex flex-col items-center">
             <LoadingSpinner className="h-12 w-12 text-orange-500 mb-3" />
             <p className="text-gray-700 font-medium">상태 변경 중...</p>
-          </div>
-        </div>
-      )}
-
-      {/* 테스트 업데이트 로딩 오버레이 */}
-      {(isTestUpdating || testUpdateResult) && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-50"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
-        >
-          <div className="bg-white rounded-lg p-8 shadow-xl flex flex-col items-center gap-4 border-2 border-gray-200">
-            {isTestUpdating ? (
-              <>
-                <svg className="animate-spin h-12 w-12 text-green-600" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                    fill="none"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                <div className="text-lg font-semibold text-gray-900">업데이트 진행 중...</div>
-                <div className="text-sm text-gray-600">페이지를 떠나지 말고 기다려주세요</div>
-              </>
-            ) : testUpdateResult ? (
-              <>
-                <div className="text-5xl mb-2">✅</div>
-                <div className="text-xl font-bold text-gray-900 mb-4">업데이트 완료</div>
-                <div className="space-y-2 text-center">
-                  <div className="text-lg">
-                    <span className="text-gray-600">신규 게시물:</span>{' '}
-                    <span className="font-bold text-green-600">{testUpdateResult.stats?.newPosts || 0}개</span>
-                  </div>
-                  <div className="text-lg">
-                    <span className="text-gray-600">추출 상품:</span>{' '}
-                    <span className="font-bold text-blue-600">{testUpdateResult.stats?.productsExtracted || 0}개</span>
-                  </div>
-                  <div className="text-lg">
-                    <span className="text-gray-600">처리 댓글:</span>{' '}
-                    <span className="font-bold text-purple-600">{testUpdateResult.stats?.commentsProcessed || 0}개</span>
-                  </div>
-                </div>
-                <div className="text-sm text-gray-500 mt-2">3초 후 자동으로 닫힙니다</div>
-              </>
-            ) : null}
           </div>
         </div>
       )}
@@ -3238,7 +2809,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       <aside
         className={`
         ${isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        ${isSidebarCollapsed ? "lg:-translate-x-full lg:w-0" : "lg:translate-x-0 lg:w-64"}
+        ${isSidebarCollapsed ? "lg:-translate-x-full" : "lg:translate-x-0"}
         fixed lg:relative
         w-64 bg-white
         flex flex-col h-full overflow-hidden z-50 lg:z-auto
@@ -3305,13 +2876,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
               {/* 주문 통계 섹션 */}
               <OrderStatsSidebar
-                stats={{ data: allStats }}
-                isLoading={isOrdersLoading}
+                stats={globalStatsData}
+                isLoading={isGlobalStatsLoading}
                 newOrdersCount={newOrdersCount}
                 onFilterChange={handleFilterChange}
                 filterDateRange={filterDateRange}
                 currentFilter={filterSelection}
-                unreceivedCount={unreceivedCount}
               />
 
                 {/* 수령가능만 보기 스위치 */}
@@ -3468,7 +3038,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <div className="border-t border-gray-200 bg-gray-50">
                       {orderStatusOptions.map((option) => {
                         const isSelected = filterSelection === option.value;
-                        const showCount = option.value === "미수령" && unreceivedCount > 0;
                         return (
                           <button
                             key={option.value}
@@ -3486,14 +3055,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           `}
                             disabled={isDataLoading}
                           >
-                            <span className="flex items-center justify-between">
-                              <span>{option.label}</span>
-                              {showCount && (
-                                <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
-                                  {unreceivedCount}
-                                </span>
-                              )}
-                            </span>
+                            {option.label}
                           </button>
                         );
                       })}
@@ -3514,18 +3076,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       >
         <FunnelIcon className="w-6 h-6 text-gray-600" />
       </button>
-
-      {/* 데스크탑 사이드바 열기 버튼 - 사이드바가 닫혔을 때만 표시 */}
-      {isSidebarCollapsed && (
-        <button
-          onClick={() => setIsSidebarCollapsed(false)}
-          className="hidden lg:flex fixed top-18 left-4 z-30 items-center gap-2 px-3 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300"
-          title="패널 열기"
-        >
-          <ChevronRightIcon className="w-5 h-5 text-gray-600" />
-          <span className="text-sm font-medium text-gray-700">패널 열기</span>
-        </button>
-      )}
 
       {/* 우측 메인 컨텐츠 영역 - 스크롤 최적화 */}
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -3698,42 +3248,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   >
                     초기화
                   </button>
-                  {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
-                  {userData?.function_number === 9 ? (
-                    <TestUpdateButton
-                      onProcessingChange={(isProcessing, result) => {
-                        setIsTestUpdating(isProcessing);
-                        if (!isProcessing && result) {
-                          setTestUpdateResult(result);
-                          // 3초 후 결과 닫기
-                          setTimeout(() => {
-                            setTestUpdateResult(null);
-                          }, 3000);
-                        }
-                      }}
-                      onComplete={async (result) => {
-                        try {
-                          setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                          await mutateOrders(undefined, { revalidate: true });
-                          await mutateProducts(undefined, { revalidate: true });
-                          await mutateGlobalStats(undefined, { revalidate: true });
-                        } catch (_) {}
-                      }}
-                    />
-                  ) : (
-                    <UpdateButton
-                      pageType="orders"
-                      totalItems={globalStatsData?.총주문수 || 0}
-                      onSuccess={async () => {
-                        try {
-                          setPreviousOrderCount(globalStatsData?.총주문수 || 0);
-                          await mutateOrders(undefined, { revalidate: true });
-                          await mutateProducts(undefined, { revalidate: true });
-                          await mutateGlobalStats(undefined, { revalidate: true });
-                        } catch (_) {}
-                      }}
-                    />
-                  )}
+                  <UpdateButton
+                    pageType="orders"
+                    totalItems={globalStatsData?.총주문수 || 0}
+                    onSuccess={async () => {
+                      try {
+                        setPreviousOrderCount(globalStatsData?.총주문수 || 0);
+                        await mutateOrders(undefined, { revalidate: true });
+                        await mutateProducts(undefined, { revalidate: true });
+                        await mutateGlobalStats(undefined, { revalidate: true });
+                      } catch (_) {}
+                    }}
+                  />
                 </div>
 
                 {/* 선택된 항목 총계 및 일괄 처리 버튼 */}
@@ -3802,7 +3328,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       disabled={selectedOrderIds.length === 0 || isDataLoading}
                       className="px-3 py-2 text-sm font-medium text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
-                      <CurrencyDollarIcon className="w-4 h-4 inline-block mr-1" />
+                      <CheckCircleIcon className="w-4 h-4 inline-block mr-1" />
                       일괄결제
                     </button>
                     <button
@@ -3838,7 +3364,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           <div className="h-full bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
             {/* 업데이트 버튼 제거: 상단 우측 영역으로 이동 */}
             {/* 테이블 컨테이너 - 한 번에 스크롤 */}
-            <div ref={tableContainerRef} className="flex-1 overflow-auto relative">
+            <div className="flex-1 overflow-auto relative">
               <table className="min-w-full ">
                 <thead className="bg-black sticky top-0 z-10">
                   <tr>
@@ -4032,10 +3558,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
-                          <td
-                            className="py-2 pl-4 text-base text-gray-700 align-top"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                          <td className="py-2 pl-4 text-base text-gray-700 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) {
@@ -4109,8 +3632,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                             )}
                                             <span
                                               className={`text-base leading-snug text-gray-900 font-medium whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
-                                              onClick={() => handleCellClickToSearch(title, order.post_key)}
-                                              title="클릭하여 이 게시물의 주문 검색"
+                                              onClick={() => handleCellClickToSearch(title)}
+                                              title="클릭하여 이 상품으로 검색"
                                             >
                                               {title}
                                             </span>
@@ -4170,7 +3693,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
               </table>
             </div>
 
-            {/* 페이지네이션 - 검색어가 없을 때 표시 (미수령 필터는 클라이언트 페이지네이션), 하단 고정 */}
+            {/* 페이지네이션 - 검색어가 없을 때만 표시, 하단 고정 */}
             {!searchTerm && totalItems > itemsPerPage && (
               <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white">
                 <div>

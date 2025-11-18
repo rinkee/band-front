@@ -5,16 +5,24 @@
  * 의존성: 없음
  * 파라미터: utcTimestamp - UTC 타임스탬프 (숫자 또는 Date 객체)
  * 리턴값: KST로 변환된 Date 객체
+ *
+ * 🔧 버그 수정: 이미 타임존 정보가 포함된 문자열은 추가 변환하지 않음
  */ export function convertUTCtoKST(utcTimestamp) {
   let utcDate;
+  let hasTimezone = false;
+
   if (utcTimestamp instanceof Date) {
     utcDate = utcTimestamp;
   } else if (typeof utcTimestamp === "number") {
     utcDate = new Date(utcTimestamp);
   } else if (typeof utcTimestamp === "string") {
+    // 타임존 정보가 포함되어 있는지 확인
+    // 패턴: +09, +09:00, +0900, -05:00, Z 등 (문자열 끝에 있어야 함)
+    hasTimezone = /(?:[+-]\d{2}(?::\d{2})?|Z)$/i.test(utcTimestamp);
+
     // 문자열인 경우 숫자로 변환 시도
     const numericTimestamp = parseInt(utcTimestamp);
-    if (!isNaN(numericTimestamp)) {
+    if (!isNaN(numericTimestamp) && utcTimestamp === numericTimestamp.toString()) {
       utcDate = new Date(numericTimestamp);
     } else {
       // ISO 문자열 등 다른 형식 시도
@@ -25,6 +33,12 @@
     console.warn(`[convertUTCtoKST] Invalid timestamp type: ${typeof utcTimestamp}`);
     utcDate = new Date();
   }
+
+  // 타임존 정보가 이미 포함되어 있으면 변환하지 않음
+  if (hasTimezone) {
+    return utcDate;
+  }
+
   // UTC에서 KST로 변환 (9시간 추가)
   const kstDate = new Date(utcDate.getTime() + 9 * 60 * 60 * 1000);
   return kstDate;

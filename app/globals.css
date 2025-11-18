@@ -256,3 +256,27 @@ code {
 .table-text-plus2 .text-\[11px\] { font-size: 13px !important; }
 .table-text-plus2 .text-\[13px\] { font-size: 15px !important; }
 .table-text-plus2 .text-\[14px\] { font-size: 16px !important; }
+
+/* 체크 이모지 페이드 인/아웃 애니메이션 */
+@keyframes fade-in-out {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+}
+
+.animate-fade-in-out {
+  animation: fade-in-out 2s ease-in-out;
+}

@@ -1333,7 +1333,7 @@ const CommentsModal = ({
             
 
             {/* 댓글 목록 카드 */}
-            <div className="w-2/5 flex flex-col">
+            <div className="w-2/3 flex flex-col">
               <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
                 <div className="px-4 py-3 bg-gray-100">
@@ -1491,7 +1491,7 @@ const CommentsModal = ({
             </div>
 
             {/* 추출된 상품 카드 */}
-            <div className="w-1/4 flex flex-col">
+            {/* <div className="w-1/4 flex flex-col">
               <div className="bg-white rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
                 <div className="px-4 py-3 bg-gray-100">
                   <div>
@@ -1499,7 +1499,7 @@ const CommentsModal = ({
                     <p className="text-base text-gray-500">{products?.length || 0}개의 상품</p>
                   </div>
                 </div>
-                
+
                 <div className="flex-1 overflow-y-auto">
                   <div className="p-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
                   {productsError && (
@@ -1508,7 +1508,7 @@ const CommentsModal = ({
                       <p className="text-red-500 text-sm mt-1">{productsError.message}</p>
                     </div>
                   )}
-                  
+
                   <div className="space-y-3">
                     {products && products.length > 0 ? (
                       products.map((product, index) => (
@@ -1517,15 +1517,23 @@ const CommentsModal = ({
                             <div className="flex-1 min-w-0">
                               <h4 className="font-medium text-gray-900 mb-2 leading-tight text-base">
                                 {(() => {
-                                  const productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
+                                  let productName = product.products_data?.title || product.title || product.product_name || '상품명 없음';
                                   // 날짜 패턴 제거: [9월3일], [1월15일], [월일] 등 모든 형태
-                                  return productName.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim();
+                                  // 정규식 대신 문자열 처리 방식 사용
+                                  const bracketStart = productName.indexOf('[');
+                                  if (bracketStart !== -1 && productName.includes('월') && productName.includes('일]')) {
+                                    const bracketEnd = productName.indexOf(']', bracketStart);
+                                    if (bracketEnd !== -1) {
+                                      productName = (productName.slice(0, bracketStart) + productName.slice(bracketEnd + 1)).trim();
+                                    }
+                                  }
+                                  return productName;
                                 })()}
                               </h4>
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-gray-700 text-base">
-                                  {product.products_data?.price || product.base_price || product.price ? 
-                                    `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` : 
+                                  {product.products_data?.price || product.base_price || product.price ?
+                                    `${Number(product.products_data?.price || product.base_price || product.price).toLocaleString()}원` :
                                     '가격 미정'}
                                 </span>
                               </div>
@@ -1534,10 +1542,20 @@ const CommentsModal = ({
                               <div className="text-center">
                                 <div className="text-lg font-bold text-gray-900">
                                   {(() => {
-                                    // 상품명 정제 함수
-                                    const cleanProductName = (name) => name.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim();
+                                    // 상품명 정제 함수 - 날짜 패턴 제거
+                                    const cleanProductName = (name) => {
+                                      let cleaned = name;
+                                      const bracketStart = cleaned.indexOf('[');
+                                      if (bracketStart !== -1 && cleaned.includes('월') && cleaned.includes('일]')) {
+                                        const bracketEnd = cleaned.indexOf(']', bracketStart);
+                                        if (bracketEnd !== -1) {
+                                          cleaned = (cleaned.slice(0, bracketStart) + cleaned.slice(bracketEnd + 1)).trim();
+                                        }
+                                      }
+                                      return cleaned;
+                                    };
                                     const targetProductName = cleanProductName(product.products_data?.title || product.title || product.product_name || '');
-                                    
+
                                     // 해당 상품에 대한 총 주문 수량 계산 (제외 고객 제외)
                                     let totalQuantity = 0;
                                     Object.entries(savedComments).forEach(([commentKey, commentData]) => {
@@ -1545,7 +1563,7 @@ const CommentsModal = ({
                                         // 해당 댓글의 작성자가 제외 고객인지 확인
                                         const relatedComment = comments.find(c => c.comment_key === commentKey);
                                         const authorName = relatedComment?.author?.name;
-                                        
+
                                         // 제외 고객인지 확인
                                         const isExcludedCustomer = excludedCustomers.some(excluded => {
                                           if (typeof excluded === 'string') {
@@ -1553,7 +1571,7 @@ const CommentsModal = ({
                                           }
                                           return excluded.name === authorName;
                                         });
-                                        
+
                                         // 제외 고객이 아닌 경우만 수량 계산
                                         if (!isExcludedCustomer && authorName) {
                                           commentData.orders.forEach(order => {
@@ -1565,7 +1583,7 @@ const CommentsModal = ({
                                         }
                                       }
                                     });
-                                    
+
                                     return totalQuantity;
                                   })()}
                                 </div>
@@ -1591,7 +1609,7 @@ const CommentsModal = ({
                   </div>
                 </div>
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

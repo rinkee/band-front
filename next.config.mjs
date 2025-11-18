@@ -19,6 +19,20 @@ const nextConfig = {
         trailingSlash: true,
       }
     : {}),
+  async redirects() {
+    return [
+      {
+        source: '/orders',
+        destination: '/orders-test',
+        permanent: false, // 임시 리다이렉트 (307)
+      },
+      {
+        source: '/orders/:path*',
+        destination: '/orders-test/:path*',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     // Vercel 시스템 환경 변수를 사용하는 것이 더 안정적일 수 있습니다.
     const isVercel = !!process.env.VERCEL_ENV; // Vercel 환경인지 확인 (production, preview, development 중 하나)

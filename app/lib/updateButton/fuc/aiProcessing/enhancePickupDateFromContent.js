@@ -232,43 +232,59 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
     '일요일': 0
   };
 
-  // 1차: 정확한 패턴으로 시도
-  const strictDayPatterns = [
-    /(내일|모레|오늘)/,
-    /(월요일|화요일|수요일|목요일|금요일|토요일|일요일)/ // 일반 요일
-  ];
+  // 🔧 복합 패턴 우선 확인: "내일(요일)", "모레(요일)" 형식
+  // 이 패턴에서는 괄호 안의 요일을 우선 사용
+  const compositeDayPattern = /(내일|모레|오늘)\s*[\(\[]\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일)\s*[\)\]]/;
+  const compositeMatch = compositeDayPattern.exec(postContent);
 
-  let dayMatch = null;
-  for (const pattern of strictDayPatterns) {
-    const match = pattern.exec(postContent);
-    if (match) {
-      const dayText = match[1];
-      if (dayText === '오늘') {
-        extractedDay = baseDate.getDay();
-        logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
-          matched: '오늘',
-          extractedDay
-        });
-      } else if (dayText === '내일') {
-        extractedDay = (baseDate.getDay() + 1) % 7;
-        logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
-          matched: '내일',
-          extractedDay
-        });
-      } else if (dayText === '모레') {
-        extractedDay = (baseDate.getDay() + 2) % 7;
-        logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
-          matched: '모레',
-          extractedDay
-        });
-      } else if (dayMap[dayText] !== undefined) {
-        extractedDay = dayMap[dayText];
-        logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
-          matched: dayText,
-          extractedDay
-        });
+  if (compositeMatch) {
+    const relativeDay = compositeMatch[1]; // "내일", "모레", "오늘"
+    const absoluteDay = compositeMatch[2]; // "수요일" 등
+    extractedDay = dayMap[absoluteDay];
+    logger.info('[PICKUP_DATE 후처리] 복합 패턴 감지', {
+      relative: relativeDay,
+      absolute: absoluteDay,
+      extractedDay
+    });
+  } else {
+    // 1차: 정확한 패턴으로 시도
+    const strictDayPatterns = [
+      /(내일|모레|오늘)/,
+      /(월요일|화요일|수요일|목요일|금요일|토요일|일요일)/ // 일반 요일
+    ];
+
+    let dayMatch = null;
+    for (const pattern of strictDayPatterns) {
+      const match = pattern.exec(postContent);
+      if (match) {
+        const dayText = match[1];
+        if (dayText === '오늘') {
+          extractedDay = baseDate.getDay();
+          logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
+            matched: '오늘',
+            extractedDay
+          });
+        } else if (dayText === '내일') {
+          extractedDay = (baseDate.getDay() + 1) % 7;
+          logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
+            matched: '내일',
+            extractedDay
+          });
+        } else if (dayText === '모레') {
+          extractedDay = (baseDate.getDay() + 2) % 7;
+          logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
+            matched: '모레',
+            extractedDay
+          });
+        } else if (dayMap[dayText] !== undefined) {
+          extractedDay = dayMap[dayText];
+          logger.info('[PICKUP_DATE 후처리] 1차 요일 패턴 감지', {
+            matched: dayText,
+            extractedDay
+          });
+        }
+        if (extractedDay !== null) break;
       }
-      if (extractedDay !== null) break;
     }
   }
 
@@ -386,13 +402,22 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
         newPickupDate.setHours(9, 0, 0, 0);
         pickupReason.push('수령시간 9시 고정');
       } else if (extractedHour !== null) {
-        // 영업시간 범위 체크 (8시~20시)
-        // 8시 미만이면 오후로 간주 (예: 2시 → 14시)
+        // 🔧 시간 조정 로직 개선: 오전/오후 명시 여부 확인
         let finalHour = extractedHour;
-        if (extractedHour < 8) {
-          // 1~7시는 오후로 간주 (13~19시)
+
+        // 오전/오후가 명시되어 있는지 확인 (게시물 전체 컨텍스트)
+        const hasAmPm = /오전|오후/.test(postContent);
+
+        // extractedHour가 이미 12 이상이면 오전/오후 처리가 완료된 것
+        if (extractedHour >= 12) {
+          pickupReason.push(`${extractedHour}시 감지 (24시간 형식)`);
+        } else if (hasAmPm) {
+          // 오전/오후가 명시되어 있으면 이미 처리되었으므로 그대로 사용
+          pickupReason.push(`${extractedHour}시 감지 (오전/오후 명시)`);
+        } else if (extractedHour < 8) {
+          // 오전/오후 명시가 없고 8시 미만이면 영업시간 기준으로 오후로 추론
           finalHour = extractedHour + 12;
-          pickupReason.push(`${extractedHour}시 → 오후 ${extractedHour}시(${finalHour}시)로 변환`);
+          pickupReason.push(`${extractedHour}시 → 오후 ${extractedHour}시(${finalHour}시)로 추론 (영업시간 기준)`);
         } else {
           pickupReason.push(`${extractedHour}시 감지`);
         }
