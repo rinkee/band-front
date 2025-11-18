@@ -373,7 +373,7 @@ function LayoutContent({ children }) {
                     >
                       Home
                     </Link>
-                    <Link
+                    {/* <Link
                       href="/products"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/products"
@@ -382,7 +382,7 @@ function LayoutContent({ children }) {
                       }`}
                     >
                       상품 관리
-                    </Link>
+                    </Link> */}
                     {/* <Link
                       href="/products-test"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
@@ -404,17 +404,7 @@ function LayoutContent({ children }) {
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
-                      게시물 관리
-                    </Link>
-                    <Link
-                      href="/orders"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
-                        pathname === "/orders"
-                          ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      주문 관리
+                      상품 게시물 관리
                     </Link>
                     <Link
                       href="/orders-test"
@@ -424,10 +414,7 @@ function LayoutContent({ children }) {
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
-                      주문관리{" "}
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-sm font-medium">
-                        beta
-                      </span>
+                      주문 관리
                     </Link>
                     {/* <Link
                       href="/customers"
@@ -464,7 +451,7 @@ function LayoutContent({ children }) {
                 {/* 헤더 우측 영역 */}
                 <div className="flex items-center space-x-4">
                   {/* 사용자 정보 표시 */}
-                  <div className="flex items-center space-x-2">
+                  <div className="hidden md:flex items-center space-x-2">
                     <span className="text-sm text-gray-600">
                       로그인ID: {userData?.loginId}
                     </span>
@@ -495,6 +482,27 @@ function LayoutContent({ children }) {
                       </span>
                     )}
                   </div>
+
+                  {/* 로그아웃 버튼 */}
+                  <button
+                    onClick={handleLogout}
+                    className="hidden md:flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-md transition-colors"
+                  >
+                    <svg
+                      className="w-4 h-4 mr-1.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    로그아웃
+                  </button>
 
                   {/* 모바일 메뉴 토글 버튼 */}
                   <button
@@ -548,7 +556,7 @@ function LayoutContent({ children }) {
                     </svg>
                     Home
                   </Link>
-                  <Link
+                  {/* <Link
                     href="/products"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/products"
@@ -570,7 +578,7 @@ function LayoutContent({ children }) {
                       />
                     </svg>
                     상품 관리
-                  </Link>
+                  </Link> */}
                   <Link
                     href="/posts"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
@@ -592,31 +600,7 @@ function LayoutContent({ children }) {
                         d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2.5 2.5 0 00-2.5-2.5H15"
                       />
                     </svg>
-                    게시물 관리
-                  </Link>
-                  <Link
-                    href="/orders"
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
-                      pathname === "/orders"
-                        ? "bg-blue-100 text-gray-900"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {/* 주문 관리 아이콘 SVG 원본 사용 */}
-                    <svg
-                      className="w-5 h-5 mr-2 text-gray-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
-                    </svg>
-                    주문 관리
+                    상품 게시물 관리
                   </Link>
                   <Link
                     href="/orders-test"
@@ -639,12 +623,7 @@ function LayoutContent({ children }) {
                         d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                     </svg>
-                    <span className="flex items-center gap-2">
-                      주문관리
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">
-                        [beta]
-                      </span>
-                    </span>
+                    주문 관리
                   </Link>
                   {/* <Link
                     href="/customers"
@@ -734,7 +713,7 @@ function LayoutContent({ children }) {
                   {/* 로그아웃 버튼 */}
                   <button
                     onClick={handleLogout}
-                    className="ml-2 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-md flex items-center"
+                    className="ml-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-md flex items-center transition-colors"
                   >
                     <svg
                       className="w-4 h-4 mr-1.5"

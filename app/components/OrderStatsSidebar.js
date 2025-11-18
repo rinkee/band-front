@@ -10,7 +10,7 @@ import {
   SparklesIcon
 } from "@heroicons/react/24/outline";
 
-const OrderStatsSidebar = ({ stats, isLoading, newOrdersCount = 0, onFilterChange, filterDateRange = null, currentFilter = "주문완료" }) => {
+const OrderStatsSidebar = ({ stats, isLoading, newOrdersCount = 0, onFilterChange, filterDateRange = null, currentFilter = "주문완료", unreceivedCount = 0 }) => {
   const [showNewOrdersAnimation, setShowNewOrdersAnimation] = useState(false);
 
 
@@ -28,14 +28,14 @@ const OrderStatsSidebar = ({ stats, isLoading, newOrdersCount = 0, onFilterChang
   // 통계 계산 - 실제 데이터 구조에 맞게 수정
   const statsData = stats?.data || {};
   const totalOrders = statsData.totalOrders || 0;
-  
+
   // 상태별 카운트
   const statusCounts = statsData.statusCounts || {};
   const subStatusCounts = statsData.subStatusCounts || {};
-  
+
   // 각 상태별 주문 수
-  // 미수령: sub_status가 '미수령'인 모든 주문
-  const pendingOrders = subStatusCounts['미수령'] || 0;
+  // 미수령: 클라이언트에서 계산한 pickup_date 기반 수량 사용
+  const pendingOrders = unreceivedCount;
   // 확인필요: sub_status가 '확인필요'인 모든 주문
   const needCheckOrders = subStatusCounts['확인필요'] || 0;
   // 수령완료: status가 '수령완료'인 모든 주문

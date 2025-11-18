@@ -602,6 +602,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                 }
 
                 if (newComments.length > 0) {
+                  // 통계를 위해 실제 처리할 댓글만 저장
+                  comments = newComments;
                   try {
                     // 댓글 전용 모드: productMap 사용 안 함
 
@@ -665,6 +667,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     );
                     successfullyProcessedNewComments = false;
                   }
+                } else {
+                  // 댓글이 없는 경우
+                  comments = [];
                 }
               }
 
@@ -1078,10 +1083,13 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           }
 
                           console.log(`${commentsToProcess.length}개의 댓글 처리 완료`);
+                          // 통계를 위해 실제 처리한 댓글만 저장
+                          comments = commentsToProcess;
                         }
                       }
                     } else {
                       console.log(`게시물 ${postKey}: 마지막 체크 이후 신규 댓글 없음`);
+                      comments = []; // 처리한 댓글 없음
                     }
 
                     shouldUpdateCommentInfo = true;
@@ -1125,7 +1133,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
               comment_sync_status: commentSyncStatus,
               isNewPost,
               hasNewComments: successfullyProcessedNewComments || false,
-              processedComments: processCommentsAndOrders ? comments : []
+              processedComments: comments || []
             };
           } catch (error) {
             console.error(`Error processing post ${postKey}: ${error.message}`, error.stack);
@@ -1233,13 +1241,25 @@ export async function processBandPosts(supabase, userId, options = {}) {
     );
 
     // 🚀 초경량 응답 - 핵심 정보만 전송
+    // 상세 통계 계산
+    const newPostsCount = postsWithAnalysis.filter(p => p.isNewPost).length;
+    const existingPostsCount = postsWithAnalysis.length - newPostsCount;
+    const productsExtractedCount = postsWithAnalysis.reduce((sum, p) =>
+      sum + (p.aiAnalysisResult?.products?.length || 0), 0);
+    const commentsProcessedCount = postsWithAnalysis.reduce((sum, p) =>
+      sum + (p.processedComments?.length || 0), 0);
+
     const responseData = {
       success: !hasErrors,
       message: hasErrors ? `${failedPosts.length}개 오류` : testMode ? `테스트 완료` : `처리 완료`,
       stats: {
         total: postsWithAnalysis.length,
         success: postsWithAnalysis.filter((p) => !p.processingError).length,
-        errors: failedPosts.length
+        errors: failedPosts.length,
+        newPosts: newPostsCount,
+        existingPosts: existingPostsCount,
+        productsExtracted: productsExtractedCount,
+        commentsProcessed: commentsProcessedCount
       }
     };
 

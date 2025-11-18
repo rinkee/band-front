@@ -15,6 +15,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false);
   const [editPickupDate, setEditPickupDate] = useState('');
   const [editPickupTime, setEditPickupTime] = useState('00:00');
@@ -130,7 +131,11 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
   // 상품 추가
   const addProduct = async () => {
+    if (isAdding) return; // 이미 추가 중이면 중복 실행 방지
+
     try {
+      setIsAdding(true);
+
       // 필수 항목 검증
       if (!newProduct.title || !newProduct.base_price) {
         alert('상품명과 가격은 필수 항목입니다.');
@@ -475,6 +480,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       const message = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
       console.error('상품 추가 실패:', message);
       alert('상품 추가에 실패했습니다.');
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -1123,10 +1130,10 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                         </button>
                         <button
                           onClick={addProduct}
-                          disabled={!newProduct.title || !newProduct.base_price}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-md text-sm font-medium transition-colors"
+                          disabled={!newProduct.title || !newProduct.base_price || isAdding}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium transition-colors"
                         >
-                          추가
+                          {isAdding ? '추가 중...' : '추가'}
                         </button>
                       </div>
                     </div>

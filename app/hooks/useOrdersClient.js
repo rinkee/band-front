@@ -3,17 +3,33 @@ import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 
 /**
- * 클라이언트 사이드 주문 목록 fetcher
+ * 제외고객 목록 조회
  */
-const fetchOrders = async (key) => {
-  const [, userId, page, filters] = key;
+const fetchExcludedCustomers = async (userId) => {
+  try {
+    const { data: userData } = await supabase
+      .from("users")
+      .select("excluded_customers")
+      .eq("user_id", userId)
+      .single();
 
-  if (!userId) {
-    throw new Error("User ID is required");
+    if (
+      userData?.excluded_customers &&
+      Array.isArray(userData.excluded_customers)
+    ) {
+      return userData.excluded_customers;
+    }
+  } catch (e) {
+    // 에러 무시
   }
+  return [];
+};
 
-  const limit = filters.limit || 30;
-  const startIndex = (page - 1) * limit;
+/**
+ * 쿼리 빌드 함수 (재사용 가능하도록 분리)
+ * 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
+ */
+const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
   const sortBy = filters.sortBy || "ordered_at";
   const ascending = filters.sortOrder === "asc";
 
@@ -163,40 +179,118 @@ const fetchOrders = async (key) => {
     }
   }
 
-  // 제외고객 필터링 (사용자 설정에서 가져오기)
-  try {
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("excluded_customers")
-      .eq("user_id", userId)
-      .single();
-
-    if (
-      !userError &&
-      userData?.excluded_customers &&
-      Array.isArray(userData.excluded_customers)
-    ) {
-      const excludedCustomers = userData.excluded_customers;
-      if (excludedCustomers.length > 0) {
-        query = query.not(
-          "customer_name",
-          "in",
-          `(${excludedCustomers
-            .map((name) => `"${name.replace(/"/g, '""')}"`)
-            .join(",")})`
-        );
-      }
-    }
-  } catch (e) {
-    // console.error("Error fetching excluded customers:", e);
+  // 제외고객 필터링 (파라미터로 전달받음)
+  if (excludedCustomers && excludedCustomers.length > 0) {
+    query = query.not(
+      "customer_name",
+      "in",
+      `(${excludedCustomers
+        .map((name) => `"${name.replace(/"/g, '""')}"`)
+        .join(",")})`
+    );
   }
 
-  // 정렬 및 페이지네이션
-  query = query
-    .order(actualSortBy, { ascending })
-    .range(startIndex, startIndex + limit - 1);
+  // 정렬만 적용 (range는 나중에)
+  query = query.order(actualSortBy, { ascending });
 
-  const { data, error, count } = await query;
+  return query;
+};
+
+/**
+ * 클라이언트 사이드 주문 목록 fetcher
+ */
+const fetchOrders = async (key) => {
+  const [, userId, page, filters] = key;
+
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  const limit = filters.limit || 30;
+  const startIndex = (page - 1) * limit;
+
+  console.log(`🔍 [주문 조회] userId=${userId}, page=${page}, limit=${limit}`);
+  console.log(`🔍 [주문 조회] limit > 1000? ${limit > 1000}`);
+
+  // 제외고객 목록 먼저 조회
+  const excludedCustomers = await fetchExcludedCustomers(userId);
+
+  // limit이 1000보다 크면 페이징으로 모든 데이터 가져오기
+  if (limit > 1000) {
+    console.log(`🔄 [주문 페이징] limit=${limit}으로 페이징 모드 시작...`);
+
+    // 첫 페이지를 먼저 가져와서 전체 개수 확인
+    const firstPageQuery = buildOrdersQuery(userId, filters, excludedCustomers);
+    const { data: firstPageData, error: firstPageError, count } = await firstPageQuery.range(0, 999);
+
+    if (firstPageError) {
+      console.error("첫 페이지 조회 실패:", firstPageError);
+      throw firstPageError;
+    }
+
+    const totalItems = count || 0;
+    console.log(`📊 [주문 페이징] 총 ${totalItems}개 데이터 발견`);
+
+    // 첫 페이지 데이터로 시작
+    let allData = firstPageData || [];
+
+    // 나머지 페이지들 가져오기
+    const pageSize = 1000;
+    const totalPageCount = Math.ceil(totalItems / pageSize);
+
+    console.log(`🔄 [주문 페이징] 총 ${totalPageCount}페이지 중 나머지 ${totalPageCount - 1}페이지 가져오기...`);
+
+    for (let pageIndex = 1; pageIndex < totalPageCount; pageIndex++) {
+      const start = pageIndex * pageSize;
+      const end = start + pageSize - 1;
+
+      // 각 페이지마다 새로운 쿼리 생성
+      const pageQuery = buildOrdersQuery(userId, filters, excludedCustomers);
+      const { data: pageData, error: pageError } = await pageQuery.range(start, end);
+
+      if (pageError) {
+        console.error("Supabase page error:", pageError);
+        throw new Error(`Failed to fetch page ${pageIndex + 1}`);
+      }
+
+      console.log(`✅ [주문 페이징] ${pageIndex + 1}/${totalPageCount} 페이지: ${pageData?.length || 0}개 가져옴`);
+      allData = allData.concat(pageData || []);
+    }
+
+    console.log(`✅ [주문 페이징] 완료! 총 ${allData.length}개 데이터 로드됨`);
+
+    // 데이터 후처리
+    let processedData = allData;
+
+    const needsPickupDateFilter = filters.subStatus === "수령가능";
+    if (needsPickupDateFilter && allData.length > 0) {
+      // processedData 처리 로직은 아래에서 재사용
+      processedData = allData.map(order => ({
+        ...order,
+        product_title: order.products?.title,
+        product_barcode: order.products?.barcode,
+        product_price_options: order.products?.price_options,
+        product_pickup_date: order.products?.pickup_date,
+        band_key: order.products?.band_key || order.band_key
+      }));
+    }
+
+    return {
+      success: true,
+      data: processedData,
+      pagination: {
+        totalItems,
+        totalPages: 1,
+        currentPage: 1,
+        limit: totalItems,
+      },
+    };
+  }
+
+  // 일반적인 경우: 한 번에 가져오기
+  console.log(`📄 [주문 단일 조회] limit=${limit}, startIndex=${startIndex}`);
+  const query = buildOrdersQuery(userId, filters, excludedCustomers);
+  const { data, error, count } = await query.range(startIndex, startIndex + limit - 1);
 
   if (error) {
     console.error("Supabase query error:", error);
@@ -211,9 +305,11 @@ const fetchOrders = async (key) => {
 
   const totalItems = count || 0;
   const totalPages = Math.ceil(totalItems / limit);
+  console.log(`📊 [주문 단일 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}`);
 
   // 주문완료+수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
   let processedData = data || [];
+  const needsPickupDateFilter = filters.subStatus === "수령가능";
   if (needsPickupDateFilter && data) {
     processedData = data.map(order => ({
       ...order,
@@ -908,7 +1004,7 @@ export function useOrderClientMutations() {
   /**
    * 대량 주문 상태 업데이트
    */
-  const bulkUpdateOrderStatus = async (orderIds, newStatus, userId) => {
+  const bulkUpdateOrderStatus = async (orderIds, newStatus, userId, subStatus = undefined) => {
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       throw new Error("Order IDs array is required");
     }
@@ -918,16 +1014,25 @@ export function useOrderClientMutations() {
       updated_at: new Date().toISOString(),
     };
 
+    // sub_status 파라미터가 명시적으로 제공된 경우 설정
+    if (subStatus !== undefined) {
+      updateFields.sub_status = subStatus;
+    }
+
     // 상태별 시간 필드 설정
     const nowISO = new Date().toISOString();
     if (newStatus === "수령완료") {
       updateFields.completed_at = nowISO;
       updateFields.canceled_at = null;
-      updateFields.sub_status = null;  // 수령완료 시 미수령 상태 제거
+      if (subStatus === undefined) {
+        updateFields.sub_status = null;  // 수령완료 시 미수령 상태 제거
+      }
     } else if (newStatus === "주문취소") {
       updateFields.canceled_at = nowISO;
       updateFields.completed_at = null;
-      updateFields.sub_status = null;  // 주문취소 시 미수령 상태 제거
+      if (subStatus === undefined) {
+        updateFields.sub_status = null;  // 주문취소 시 미수령 상태 제거
+      }
     } else if (newStatus === "주문완료") {
       updateFields.completed_at = null;
       updateFields.canceled_at = null;
