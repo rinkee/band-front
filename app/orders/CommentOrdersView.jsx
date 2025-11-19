@@ -568,15 +568,20 @@ export default function CommentOrdersView() {
 
       const results = [];
       try {
+        // 한 사용자 = 한 밴드이므로 user_id로 모든 상품 조회 (URL 길이 제한 문제 해결)
         if (postKeys.length > 0) {
-          const { data: byPk, error: e1 } = await sb
+          const { data: allProducts, error: e1 } = await sb
             .from("products")
             .select("*")
             .eq("user_id", uid)
-            .in("post_key", postKeys)
             .order("item_number", { ascending: true });
           if (e1) throw e1;
-          if (Array.isArray(byPk)) results.push(...byPk);
+          if (Array.isArray(allProducts)) {
+            // 클라이언트 사이드에서 필요한 post_key만 필터링
+            const postKeysSet = new Set(postKeys);
+            const byPk = allProducts.filter(p => postKeysSet.has(p.post_key));
+            results.push(...byPk);
+          }
         }
         for (const [band, postNumsSet] of bandMap.entries()) {
           const postNums = Array.from(postNumsSet);

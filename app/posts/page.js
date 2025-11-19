@@ -256,16 +256,20 @@ export default function PostsPage() {
       const postKeys = data?.map(post => post.post_key) || [];
 
       let productsData = [];
-      if (postKeys.length > 0) {
-        const { data: productsResult, error: productsError } = await supabase
-          .from('products')
-          .select('*')
-          .eq('user_id', userData.userId)
-          .in('post_key', postKeys)
-          .order('item_number', { ascending: true });
+      // 한 사용자 = 한 밴드이므로 user_id로 모든 상품 조회 (URL 길이 제한 문제 해결)
+      const { data: productsResult, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('user_id', userData.userId)
+        .order('item_number', { ascending: true });
 
-        if (!productsError) {
-          productsData = productsResult || [];
+      if (!productsError && productsResult) {
+        // 클라이언트 사이드에서 필요한 post_key만 필터링
+        if (postKeys.length > 0) {
+          const postKeysSet = new Set(postKeys);
+          productsData = productsResult.filter(p => postKeysSet.has(p.post_key));
+        } else {
+          productsData = productsResult;
         }
       }
 

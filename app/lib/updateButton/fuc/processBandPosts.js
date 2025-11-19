@@ -206,13 +206,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // DB에서 추가할 posts의 상세 정보 조회
     if (dbPostsToAdd.size > 0) {
       console.log(`[1-3단계] ${dbPostsToAdd.size}개의 추가 posts 정보 조회 중...`);
-      const { data: additionalPosts, error: additionalError } = await supabase
+      // 한 사용자 = 한 밴드이므로 user_id로 모든 posts 조회 후 필터링 (URL 길이 제한 문제 해결)
+      const { data: allPosts, error: additionalError } = await supabase
         .from("posts")
         .select("*")
-        .eq("user_id", userId)
-        .in("post_key", Array.from(dbPostsToAdd));
+        .eq("user_id", userId);
 
-      if (!additionalError && additionalPosts) {
+      if (!additionalError && allPosts) {
+        // 클라이언트 사이드에서 필요한 post_key만 필터링
+        const additionalPosts = allPosts.filter(p => dbPostsToAdd.has(p.post_key));
         for (const dbPost of additionalPosts) {
           posts.push({
             postKey: dbPost.post_key,
