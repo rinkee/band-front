@@ -448,7 +448,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 메모 저장 관련 상태 ---
   const [memoSavingStates, setMemoSavingStates] = useState({}); // { orderId: 'saving' | 'saved' | 'error' }
   const [memoValues, setMemoValues] = useState({}); // { orderId: memoText }
-  const memoDebounceTimers = useRef({});
+  const [focusedMemoId, setFocusedMemoId] = useState(null); // 현재 포커스된 메모 ID
+  const [originalMemoValues, setOriginalMemoValues] = useState({}); // 원본 메모 값 (취소용)
 
   // --- 댓글 관련 상태 ---
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
@@ -2752,62 +2753,95 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
-  // --- 메모 자동 저장 핸들러 (클라이언트에서 직접 Supabase 호출) ---
-  const handleMemoChange = useCallback((orderId, value) => {
-    // 즉시 UI 업데이트 (optimistic update)
-    setMemoValues(prev => ({ ...prev, [orderId]: value }));
+  // --- 메모 입력 ref 관리 (uncontrolled input으로 성능 최적화) ---
+  const memoInputRefs = useRef({});
 
-    // 기존 타이머가 있으면 취소
-    if (memoDebounceTimers.current[orderId]) {
-      clearTimeout(memoDebounceTimers.current[orderId]);
-    }
+  // --- 메모 포커스 핸들러 ---
+  const handleMemoFocus = useCallback((orderId, currentValue) => {
+    setFocusedMemoId(orderId);
+    // 원본 값 저장 (취소 시 복원용)
+    setOriginalMemoValues(prev => ({ ...prev, [orderId]: currentValue }));
+  }, []);
 
-    // 저장 중 상태로 표시 (1초 후 실행)
-    memoDebounceTimers.current[orderId] = setTimeout(async () => {
-      setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saving' }));
+  // --- 메모 저장 핸들러 ---
+  const handleMemoSave = useCallback(async (orderId) => {
+    // input ref에서 현재 값 가져오기
+    const value = memoInputRefs.current[orderId]?.value || "";
 
-      try {
-        // 클라이언트에서 직접 Supabase 호출
-        const { data, error } = await supabase
-          .from('orders')
-          .update({ memo: value || null })
-          .eq('order_id', orderId)
-          .select()
-          .single();
+    setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saving' }));
 
-        if (error) {
-          throw error;
-        }
+    try {
+      // DB 저장
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ memo: value || null })
+        .eq('order_id', orderId)
+        .select()
+        .single();
 
-        // 저장 완료 상태로 표시
-        setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saved' }));
+      if (error) throw error;
 
-        // 2초 후 저장 완료 표시 제거
-        setTimeout(() => {
-          setMemoSavingStates(prev => {
-            const newState = { ...prev };
-            delete newState[orderId];
-            return newState;
-          });
-        }, 2000);
+      // 저장 완료
+      setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saved' }));
+      setFocusedMemoId(null);
 
-        // 주문 데이터 갱신 (백그라운드에서)
-        mutateOrders();
-      } catch (error) {
-        console.error('메모 저장 오류:', error);
-        setMemoSavingStates(prev => ({ ...prev, [orderId]: 'error' }));
+      // 2초 후 저장 완료 표시 제거
+      setTimeout(() => {
+        setMemoSavingStates(prev => {
+          const newState = { ...prev };
+          delete newState[orderId];
+          return newState;
+        });
+      }, 2000);
 
-        // 3초 후 에러 표시 제거
-        setTimeout(() => {
-          setMemoSavingStates(prev => {
-            const newState = { ...prev };
-            delete newState[orderId];
-            return newState;
-          });
-        }, 3000);
+      // SWR 캐시 전체 갱신
+      const currentUserId = userData?.userId;
+      if (currentUserId) {
+        const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+
+        // Orders 캐시 갱신
+        globalMutate(
+          (key) => {
+            if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${currentUserId}`)) return true;
+            if (Array.isArray(key) && key[0] === "orders" && key[1] === currentUserId) return true;
+            return false;
+          },
+          undefined,
+          { revalidate: true }
+        );
+
+        // Comment Orders 캐시 갱신
+        globalMutate(
+          (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === currentUserId,
+          undefined,
+          { revalidate: true }
+        );
       }
-    }, 1000);
-  }, [mutateOrders]);
+
+      mutateOrders();
+    } catch (error) {
+      console.error('메모 저장 오류:', error);
+      setMemoSavingStates(prev => ({ ...prev, [orderId]: 'error' }));
+
+      setTimeout(() => {
+        setMemoSavingStates(prev => {
+          const newState = { ...prev };
+          delete newState[orderId];
+          return newState;
+        });
+      }, 3000);
+    }
+  }, [userData, globalMutate, mutateOrders]);
+
+  // --- 메모 취소 핸들러 ---
+  const handleMemoCancel = useCallback((orderId) => {
+    // 원본 값으로 복원
+    const originalValue = originalMemoValues[orderId] || "";
+    if (memoInputRefs.current[orderId]) {
+      memoInputRefs.current[orderId].value = originalValue;
+    }
+    setFocusedMemoId(null);
+  }, [originalMemoValues]);
 
   // --- 기존 검색 관련 useEffect 및 핸들러들은 위 함수들로 대체/통합 ---
 
@@ -3882,10 +3916,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 메모 */}
                           <td
-                            className={`py-2 px-4 text-base text-gray-600 w-48 ${
-                              (memoValues[order.order_id] !== undefined ? memoValues[order.order_id] : (order.memo || ""))
-                                ? "bg-blue-50"
-                                : ""
+                            className={`relative py-2 px-4 text-base text-gray-600 w-48 overflow-visible ${
+                              order.memo ? "bg-blue-50" : ""
                             }`}
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -3905,11 +3937,36 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             <div className="relative">
                               <input
                                 type="text"
-                                className="w-full px-2 py-1.5 text-sm border  border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                                placeholder=""
-                                value={memoValues[order.order_id] !== undefined ? memoValues[order.order_id] : (order.memo || "")}
-                                onChange={(e) => handleMemoChange(order.order_id, e.target.value)}
+                                ref={(el) => {
+                                  if (el) {
+                                    memoInputRefs.current[order.order_id] = el;
+                                  }
+                                }}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                placeholder="메모 입력..."
+                                defaultValue={order.memo || ""}
+                                onFocus={() => handleMemoFocus(order.order_id, order.memo || "")}
                               />
+
+                              {/* 저장/취소 버튼 (포커스 시 표시) */}
+                              {focusedMemoId === order.order_id && !memoSavingStates[order.order_id] && (
+                                <div className="absolute top-full left-0 mt-1 flex gap-1 z-50 shadow-md">
+                                  <button
+                                    onClick={() => handleMemoSave(order.order_id)}
+                                    className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    onClick={() => handleMemoCancel(order.order_id)}
+                                    className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* 저장 상태 표시 */}
                               {memoSavingStates[order.order_id] && (
                                 <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-1 text-xs">
                                   {memoSavingStates[order.order_id] === 'saving' && (
