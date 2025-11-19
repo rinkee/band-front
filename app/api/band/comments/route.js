@@ -22,8 +22,8 @@ export async function GET(request) {
       );
     }
 
-    // BAND API에 요청할 URL 구성
-    const bandApiUrl = new URL("https://openapi.band.us/v2/band/post/comments");
+    // BAND API에 요청할 URL 구성 (v2.1 사용 - 대댓글 지원)
+    const bandApiUrl = new URL("https://openapi.band.us/v2.1/band/post/comments");
     bandApiUrl.searchParams.append("access_token", accessToken);
     bandApiUrl.searchParams.append("band_key", bandKey);
     bandApiUrl.searchParams.append("post_key", postKey);

@@ -62,6 +62,15 @@ export async function generateOrderData(
     return { orders, customers, cancellationUsers, success: true };
   }
 
+  console.log('[대댓글 디버그 - generateOrderData] 입력 댓글:', {
+    total: comments.length,
+    has_underscore_keys: comments.filter(c => c.commentKey?.includes('_')).length,
+    sample: comments.slice(0, 3).map(c => ({
+      commentKey: c.commentKey,
+      content: c.content?.substring(0, 40)
+    }))
+  });
+
   console.info('댓글 처리 시작 (댓글 전용 모드)', {
     postKey,
     commentCount: comments.length
@@ -75,6 +84,15 @@ export async function generateOrderData(
     cancellationUsers = cancelUsers;
 
     processingSummary.skippedCancellation = comments.length - filteredComments.length;
+
+    console.log('[대댓글 디버그 - generateOrderData] 필터링 후:', {
+      total: filteredComments.length,
+      has_underscore_keys: filteredComments.filter(c => c.commentKey?.includes('_')).length,
+      sample: filteredComments.slice(0, 3).map(c => ({
+        commentKey: c.commentKey,
+        content: c.content?.substring(0, 40)
+      }))
+    });
 
     console.info('취소 댓글 필터링 완료', {
       total: comments.length,
@@ -196,6 +214,16 @@ export async function generateOrderData(
         orders.push(orderData);
         processingSummary.generatedOrders++;
 
+        // 대댓글인지 확인 (commentKey에 '_' 포함)
+        if (commentKey?.includes('_')) {
+          console.log('[대댓글 디버그 - generateOrderData] 대댓글 주문 생성:', {
+            commentKey,
+            content: content?.substring(0, 50),
+            order_id: orderId,
+            customer_name: authorName || author?.name
+          });
+        }
+
       } catch (commentError) {
         console.error('댓글 처리 중 오류', {
           commentKey: comment.commentKey,
@@ -209,6 +237,12 @@ export async function generateOrderData(
         // 개별 댓글 실패해도 계속 진행
       }
     }
+
+    console.log('[대댓글 디버그 - generateOrderData] 최종 주문 생성 결과:', {
+      total_orders: orders.length,
+      has_underscore_keys: orders.filter(o => o.comment_key?.includes('_')).length,
+      sample_order_keys: orders.slice(0, 5).map(o => o.comment_key)
+    });
 
     console.info('댓글 처리 완료', processingSummary);
 

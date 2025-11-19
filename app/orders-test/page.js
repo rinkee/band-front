@@ -439,6 +439,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 메모 저장 관련 상태 ---
   const [memoSavingStates, setMemoSavingStates] = useState({}); // { orderId: 'saving' | 'saved' | 'error' }
+  const [memoValues, setMemoValues] = useState({}); // { orderId: memoText }
   const memoDebounceTimers = useRef({});
 
   // --- 댓글 관련 상태 ---
@@ -1163,44 +1164,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
         const uid = userData.userId;
         const sb = getAuthedClient();
 
-        const items = ordersData.data;
-        const postKeys = Array.from(new Set(items.map((r) => r.post_key || r.postKey).filter(Boolean)));
-        const bandMap = new Map();
-        items.forEach((r) => {
-          if (!r.post_key && !r.postKey) {
-            const band = r.band_number || r.bandNumber;
-            const postNum = r.post_number ?? r.postNumber;
-            if (band != null && postNum != null) {
-              const key = String(band);
-              if (!bandMap.has(key)) bandMap.set(key, new Set());
-              bandMap.get(key).add(String(postNum));
-            }
-          }
-        });
+        // 한 사용자 = 한 밴드이므로 user_id로 모든 상품 조회 (URL 길이 제한 문제 해결)
+        const { data: results, error: e1 } = await sb
+          .from("products")
+          .select("*")
+          .eq("user_id", uid)
+          .order("item_number", { ascending: true });
 
-        const results = [];
-        if (postKeys.length > 0) {
-          const { data: byPk, error: e1 } = await sb
-            .from("products")
-            .select("*")
-            .eq("user_id", uid)
-            .in("post_key", postKeys)
-            .order("item_number", { ascending: true });
-          if (e1) throw e1;
-          if (Array.isArray(byPk)) results.push(...byPk);
+        if (e1) {
+          console.error('[상품] 조회 실패:', e1);
+          throw e1;
         }
-        for (const [band, postNumsSet] of bandMap.entries()) {
-          const postNums = Array.from(postNumsSet);
-          if (postNums.length === 0) continue;
-          const { data: byPair, error: e2 } = await sb
-            .from("products")
-            .select("*")
-            .eq("user_id", uid)
-            .eq("band_number", band)
-            .in("post_number", postNums)
-            .order("item_number", { ascending: true });
-          if (e2) throw e2;
-          if (Array.isArray(byPair)) results.push(...byPair);
+
+        if (!Array.isArray(results)) {
+          console.warn('[상품] 조회 결과가 배열이 아님');
+          return;
         }
 
         const byPostKeyMap = {};
@@ -1769,9 +1747,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
       (order) =>
         selectedOrderIds.includes(order.order_id) && order.status !== newStatus
     );
-    const orderIdsToProcess = ordersToUpdateFilter.map(
+    // 중복 제거하여 unique 주문 ID만 추출
+    const orderIdsToProcess = [...new Set(ordersToUpdateFilter.map(
       (order) => order.order_id
-    );
+    ))];
     const skippedCount = selectedOrderIds.length - orderIdsToProcess.length;
 
     if (orderIdsToProcess.length === 0) {
@@ -2712,6 +2691,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 메모 자동 저장 핸들러 (클라이언트에서 직접 Supabase 호출) ---
   const handleMemoChange = useCallback((orderId, value) => {
+    // 즉시 UI 업데이트 (optimistic update)
+    setMemoValues(prev => ({ ...prev, [orderId]: value }));
+
     // 기존 타이머가 있으면 취소
     if (memoDebounceTimers.current[orderId]) {
       clearTimeout(memoDebounceTimers.current[orderId]);
@@ -2746,7 +2728,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           });
         }, 2000);
 
-        // 주문 데이터 갱신
+        // 주문 데이터 갱신 (백그라운드에서)
         mutateOrders();
       } catch (error) {
         console.error('메모 저장 오류:', error);
@@ -4119,10 +4101,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                             <div className="relative">
                               <textarea
-                                key={`memo-${order.order_id}`}
                                 className="w-full min-h-[60px] px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
                                 placeholder="메모 입력..."
-                                defaultValue={order.memo || ""}
+                                value={memoValues[order.order_id] !== undefined ? memoValues[order.order_id] : (order.memo || "")}
                                 onChange={(e) => handleMemoChange(order.order_id, e.target.value)}
                               />
                               {memoSavingStates[order.order_id] && (

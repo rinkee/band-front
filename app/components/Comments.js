@@ -91,6 +91,54 @@ const isCancellationComment = (content) => {
   return content.includes('취소');
 };
 
+// 대댓글 항목 컴포넌트
+const ReplyItem = ({ reply, parentAuthorName, formatTimeAgo }) => {
+  const [replyImageError, setReplyImageError] = useState(false);
+
+  const hasValidReplyImage = useMemo(() => {
+    return (
+      reply.author?.profile_image_url &&
+      reply.author.profile_image_url.trim() !== "" &&
+      !replyImageError
+    );
+  }, [reply.author?.profile_image_url, replyImageError]);
+
+  return (
+    <div className="flex gap-2 pl-4 border-l-2 border-blue-200">
+      {/* 대댓글 프로필 이미지 */}
+      <div className="flex-shrink-0">
+        {hasValidReplyImage ? (
+          <img
+            src={reply.author.profile_image_url}
+            alt={reply.author?.name || "익명"}
+            className="w-8 h-8 rounded-full object-cover"
+            onError={() => setReplyImageError(true)}
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center">
+            <UserIcon className="w-5 h-5 text-blue-600" />
+          </div>
+        )}
+      </div>
+
+      {/* 대댓글 내용 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-medium text-sm text-gray-900">
+            {reply.author?.name || "익명"}
+          </span>
+          <span className="text-xs text-gray-400">
+            {formatTimeAgo(reply.created_at)}
+          </span>
+        </div>
+        <div className="text-sm text-gray-700 whitespace-pre-wrap break-words bg-blue-50 p-2 rounded">
+          <span className="font-semibold text-blue-700">@{parentAuthorName}</span> {decodeHtmlEntities(reply.body)}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // 댓글 항목 컴포넌트
 const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails, showOrderDetails }) => {
   const [imageError, setImageError] = useState(false);
@@ -267,6 +315,21 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
         <div className="text-sm text-gray-500">
           <span>{formatTimeAgo(comment.created_at)}</span>
         </div>
+
+        {/* 대댓글 표시 (v2.1 API) */}
+        {comment.latest_comments && Array.isArray(comment.latest_comments) && comment.latest_comments.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">대댓글 ({comment.latest_comments.length})</div>
+            {comment.latest_comments.map((reply, index) => (
+              <ReplyItem
+                key={`${comment.comment_key}_reply_${index}`}
+                reply={reply}
+                parentAuthorName={comment.author?.name}
+                formatTimeAgo={formatTimeAgo}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -990,6 +1053,21 @@ const CommentsModal = ({
       }
 
       const newComments = apiResponse.data?.items || [];
+
+      // 대댓글 디버그 로그
+      console.log('[CommentsModal 대댓글 디버그] Band API 응답:', {
+        total_comments: newComments.length,
+        has_latest_comments: newComments.some(c => c.latest_comments && c.latest_comments.length > 0),
+        comments_with_replies: newComments.filter(c => c.latest_comments && c.latest_comments.length > 0).map(c => ({
+          comment_key: c.comment_key,
+          content: c.content?.substring(0, 30),
+          replies_count: c.latest_comments.length,
+          replies: c.latest_comments.map(r => ({
+            author: r.author?.name,
+            body: r.body?.substring(0, 30)
+          }))
+        }))
+      });
 
       if (isRefresh) {
         setComments(newComments);

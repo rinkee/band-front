@@ -131,11 +131,32 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
       const data = result.result_data;
       const items = data.items || [];
 
-      const processed = items.map((c) => {
+      console.log('[대댓글 디버그 1-BackupFallback] Band API 응답 받음:', {
+        items_count: items.length,
+        has_latest_comments: items.some(c => c.latest_comments && c.latest_comments.length > 0)
+      });
+
+      const processed = items.flatMap((c, index) => {
         const ts = c.created_at;
         if (ts && (latestTs === null || ts > latestTs)) latestTs = ts;
 
-        return {
+        // 대댓글 정보 로깅
+        const hasReplies = c.latest_comments && Array.isArray(c.latest_comments) && c.latest_comments.length > 0;
+        if (hasReplies) {
+          console.log(`[대댓글 디버그 2-BackupFallback] 댓글 #${index} (${c.comment_key})에 대댓글 발견:`, {
+            parent_content: c.content?.substring(0, 30),
+            parent_author: c.author?.name,
+            replies_count: c.latest_comments.length,
+            replies: c.latest_comments.map(r => ({
+              author: r.author?.name,
+              body: r.body?.substring(0, 30),
+              created_at: r.created_at
+            }))
+          });
+        }
+
+        // 메인 댓글
+        const mainComment = {
           commentKey: c.comment_key,
           postKey: postKey,
           bandKey: bandKey,
@@ -148,9 +169,63 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
           content: c.content,
           createdAt: ts
         };
+
+        // 대댓글 처리 (v2.1 API)
+        const replies = [];
+        if (c.latest_comments && Array.isArray(c.latest_comments)) {
+          const parentAuthorName = c.author?.name || '';
+
+          c.latest_comments.forEach((reply, replyIndex) => {
+            const replyTs = reply.created_at;
+            if (replyTs && (latestTs === null || replyTs > latestTs)) latestTs = replyTs;
+
+            const processedReply = {
+              commentKey: `${c.comment_key}_${replyTs}`, // 타임스탬프 기반 고유 ID
+              postKey: postKey,
+              bandKey: bandKey,
+              author: reply.author ? {
+                name: reply.author.name,
+                userNo: reply.author.user_key,
+                user_key: reply.author.user_key,
+                profileImageUrl: reply.author.profile_image_url
+              } : null,
+              content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+              createdAt: replyTs
+            };
+
+            console.log(`[대댓글 디버그 3-BackupFallback] 대댓글 #${replyIndex} 변환 완료:`, {
+              original_body: reply.body,
+              processed_content: processedReply.content,
+              comment_key: processedReply.commentKey
+            });
+
+            replies.push(processedReply);
+          });
+        }
+
+        const result = [mainComment, ...replies];
+        if (replies.length > 0) {
+          console.log(`[대댓글 디버그 4-BackupFallback] 댓글 처리 결과:`, {
+            main_comment: mainComment.commentKey,
+            replies_count: replies.length,
+            total_returned: result.length
+          });
+        }
+
+        return result;
+      });
+
+      console.log('[대댓글 디버그 5-BackupFallback] flatMap 처리 완료:', {
+        original_items: items.length,
+        processed_comments: processed.length,
+        difference: processed.length - items.length
       });
 
       allComments = allComments.concat(processed);
+
+      console.log('[대댓글 디버그 6-BackupFallback] 현재까지 누적 댓글:', {
+        total_comments: allComments.length
+      });
 
       if (data.paging && data.paging.next_params) {
         nextParams = data.paging.next_params;
@@ -160,6 +235,11 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
         hasMore = false;
       }
     }
+
+    console.log('[대댓글 디버그 7-BackupFallback] 최종 결과:', {
+      total_comments: allComments.length,
+      latestTimestamp: latestTs
+    });
 
     return {
       comments: allComments,
@@ -389,8 +469,17 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
         band_key: bandKey,
         post_key: postKey,
         limit: apiPageLimit.toString(),
+        sort: "-created_at",  // 대댓글 포함을 위해 필수!
         ...nextParams
       };
+
+      console.log('[Band API 댓글 요청] 실제 전송 파라미터:', {
+        endpoint: 'https://openapi.band.us/v2.1/band/post/comments',
+        params: {
+          ...params,
+          access_token: params.access_token ? '(있음)' : '(없음)'
+        }
+      });
 
       let result;
 
@@ -442,6 +531,14 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
         throw new Error(`Band API comments logical error: ${result.result_code}`);
       }
 
+      console.log('[Band API 댓글 응답] 전체 응답 구조:', {
+        result_code: result.result_code,
+        result_data_keys: Object.keys(result.result_data),
+        items_count: result.result_data.items?.length || 0,
+        paging: result.result_data.paging,
+        first_item_raw: result.result_data.items?.[0]
+      });
+
       return result.result_data;
     };
 
@@ -449,11 +546,38 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
       const data = await bandApiFailover.executeWithFailover(apiCall, "get_comments", apiPageLimit);
       const items = data.items || [];
 
-      const processed = items.map((c) => {
+      console.log('[대댓글 디버그 1-Failover] Band API 응답 받음:', {
+        items_count: items.length,
+        has_latest_comments: items.some(c => c.latest_comments && c.latest_comments.length > 0),
+        first_item_structure: items[0] ? {
+          comment_key: items[0].comment_key,
+          has_latest_comments_field: 'latest_comments' in items[0],
+          latest_comments_value: items[0].latest_comments,
+          all_keys: Object.keys(items[0])
+        } : null
+      });
+
+      const processed = items.flatMap((c, index) => {
         const ts = c.created_at;
         if (ts && (latestTs === null || ts > latestTs)) latestTs = ts;
 
-        return {
+        // 대댓글 정보 로깅
+        const hasReplies = c.latest_comments && Array.isArray(c.latest_comments) && c.latest_comments.length > 0;
+        if (hasReplies) {
+          console.log(`[대댓글 디버그 2-Failover] 댓글 #${index} (${c.comment_key})에 대댓글 발견:`, {
+            parent_content: c.content?.substring(0, 30),
+            parent_author: c.author?.name,
+            replies_count: c.latest_comments.length,
+            replies: c.latest_comments.map(r => ({
+              author: r.author?.name,
+              body: r.body?.substring(0, 30),
+              created_at: r.created_at
+            }))
+          });
+        }
+
+        // 메인 댓글
+        const mainComment = {
           commentKey: c.comment_key,
           postKey: postKey,
           bandKey: bandKey,
@@ -466,9 +590,63 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
           content: c.content,
           createdAt: ts
         };
+
+        // 대댓글 처리 (v2.1 API)
+        const replies = [];
+        if (c.latest_comments && Array.isArray(c.latest_comments)) {
+          const parentAuthorName = c.author?.name || '';
+
+          c.latest_comments.forEach((reply, replyIndex) => {
+            const replyTs = reply.created_at;
+            if (replyTs && (latestTs === null || replyTs > latestTs)) latestTs = replyTs;
+
+            const processedReply = {
+              commentKey: `${c.comment_key}_${replyTs}`, // 타임스탬프 기반 고유 ID
+              postKey: postKey,
+              bandKey: bandKey,
+              author: reply.author ? {
+                name: reply.author.name,
+                userNo: reply.author.user_key,
+                user_key: reply.author.user_key,
+                profileImageUrl: reply.author.profile_image_url
+              } : null,
+              content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+              createdAt: replyTs
+            };
+
+            console.log(`[대댓글 디버그 3-Failover] 대댓글 #${replyIndex} 변환 완료:`, {
+              original_body: reply.body,
+              processed_content: processedReply.content,
+              comment_key: processedReply.commentKey
+            });
+
+            replies.push(processedReply);
+          });
+        }
+
+        const result = [mainComment, ...replies];
+        if (replies.length > 0) {
+          console.log(`[대댓글 디버그 4-Failover] 댓글 처리 결과:`, {
+            main_comment: mainComment.commentKey,
+            replies_count: replies.length,
+            total_returned: result.length
+          });
+        }
+
+        return result;
+      });
+
+      console.log('[대댓글 디버그 5-Failover] flatMap 처리 완료:', {
+        original_items: items.length,
+        processed_comments: processed.length,
+        difference: processed.length - items.length
       });
 
       allComments = allComments.concat(processed);
+
+      console.log('[대댓글 디버그 6-Failover] 현재까지 누적 댓글:', {
+        total_comments: allComments.length
+      });
 
       if (data.paging && data.paging.next_params) {
         nextParams = data.paging.next_params;
@@ -482,6 +660,11 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
       hasMore = false;
     }
   }
+
+  console.log('[대댓글 디버그 7-Failover] 최종 결과:', {
+    total_comments: allComments.length,
+    latestTimestamp: latestTs
+  });
 
   return {
     comments: allComments,
@@ -757,11 +940,32 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
       const data = result.result_data;
       const items = data.items || [];
 
-      const processed = items.map((c) => {
+      console.log('[대댓글 디버그 1-Single] Band API 응답 받음:', {
+        items_count: items.length,
+        has_latest_comments: items.some(c => c.latest_comments && c.latest_comments.length > 0)
+      });
+
+      const processed = items.flatMap((c, index) => {
         const ts = c.created_at;
         if (ts && (latestTs === null || ts > latestTs)) latestTs = ts;
 
-        return {
+        // 대댓글 정보 로깅
+        const hasReplies = c.latest_comments && Array.isArray(c.latest_comments) && c.latest_comments.length > 0;
+        if (hasReplies) {
+          console.log(`[대댓글 디버그 2-Single] 댓글 #${index} (${c.comment_key})에 대댓글 발견:`, {
+            parent_content: c.content?.substring(0, 30),
+            parent_author: c.author?.name,
+            replies_count: c.latest_comments.length,
+            replies: c.latest_comments.map(r => ({
+              author: r.author?.name,
+              body: r.body?.substring(0, 30),
+              created_at: r.created_at
+            }))
+          });
+        }
+
+        // 메인 댓글
+        const mainComment = {
           commentKey: c.comment_key,
           postKey: postKey,
           bandKey: bandKey,
@@ -774,9 +978,63 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
           content: c.content,
           createdAt: ts
         };
+
+        // 대댓글 처리 (v2.1 API)
+        const replies = [];
+        if (c.latest_comments && Array.isArray(c.latest_comments)) {
+          const parentAuthorName = c.author?.name || '';
+
+          c.latest_comments.forEach((reply, replyIndex) => {
+            const replyTs = reply.created_at;
+            if (replyTs && (latestTs === null || replyTs > latestTs)) latestTs = replyTs;
+
+            const processedReply = {
+              commentKey: `${c.comment_key}_${replyTs}`, // 타임스탬프 기반 고유 ID
+              postKey: postKey,
+              bandKey: bandKey,
+              author: reply.author ? {
+                name: reply.author.name,
+                userNo: reply.author.user_key,
+                user_key: reply.author.user_key,
+                profileImageUrl: reply.author.profile_image_url
+              } : null,
+              content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+              createdAt: replyTs
+            };
+
+            console.log(`[대댓글 디버그 3-Single] 대댓글 #${replyIndex} 변환 완료:`, {
+              original_body: reply.body,
+              processed_content: processedReply.content,
+              comment_key: processedReply.commentKey
+            });
+
+            replies.push(processedReply);
+          });
+        }
+
+        const result = [mainComment, ...replies];
+        if (replies.length > 0) {
+          console.log(`[대댓글 디버그 4-Single] 댓글 처리 결과:`, {
+            main_comment: mainComment.commentKey,
+            replies_count: replies.length,
+            total_returned: result.length
+          });
+        }
+
+        return result;
+      });
+
+      console.log('[대댓글 디버그 5-Single] flatMap 처리 완료:', {
+        original_items: items.length,
+        processed_comments: processed.length,
+        difference: processed.length - items.length
       });
 
       allComments = allComments.concat(processed);
+
+      console.log('[대댓글 디버그 6-Single] 현재까지 누적 댓글:', {
+        total_comments: allComments.length
+      });
 
       if (data.paging && data.paging.next_params) {
         nextParams = data.paging.next_params;
@@ -790,6 +1048,11 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
       hasMore = false;
     }
   }
+
+  console.log('[대댓글 디버그 7-Single] 최종 결과:', {
+    total_comments: allComments.length,
+    latestTimestamp: latestTs
+  });
 
   return {
     comments: allComments,
