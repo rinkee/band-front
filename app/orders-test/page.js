@@ -437,6 +437,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [newBarcodeValue, setNewBarcodeValue] = useState("");
   const [isSavingBarcode, setIsSavingBarcode] = useState(false);
 
+  // --- 메모 저장 관련 상태 ---
+  const [memoSavingStates, setMemoSavingStates] = useState({}); // { orderId: 'saving' | 'saved' | 'error' }
+  const memoDebounceTimers = useRef({});
+
   // --- 댓글 관련 상태 ---
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
@@ -543,6 +547,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       product_title: row.product_title || null,
       product_pickup_date: row.product_pickup_date || null,
       selected_barcode: row.selected_barcode || null,
+      memo: row.memo || null,
     };
   }, []);
 
@@ -1080,6 +1085,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
     isLoading: isOrdersLoading,
     mutate: mutateOrders,
   } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
+
+  // 메모 디버깅
+  useEffect(() => {
+    if (ordersData?.data && ordersData.data.length > 0) {
+      const firstOrder = ordersData.data[0];
+      console.log('[메모 디버깅] 첫 번째 주문 데이터:', {
+        order_id: firstOrder.order_id,
+        memo: firstOrder.memo,
+        hasMemoField: 'memo' in firstOrder,
+        allKeys: Object.keys(firstOrder).filter(k => k.includes('memo'))
+      });
+    }
+  }, [ordersData]);
 
   // 주문 데이터의 시그니처 (주문 ID 조합) - 실제 내용 기반
   const ordersSignature = useMemo(() => {
@@ -2692,6 +2710,58 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
+  // --- 메모 자동 저장 핸들러 ---
+  const handleMemoChange = useCallback((orderId, value) => {
+    // 기존 타이머가 있으면 취소
+    if (memoDebounceTimers.current[orderId]) {
+      clearTimeout(memoDebounceTimers.current[orderId]);
+    }
+
+    // 저장 중 상태로 표시 (1초 후 실행)
+    memoDebounceTimers.current[orderId] = setTimeout(async () => {
+      setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saving' }));
+
+      try {
+        const response = await fetch(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memo: value || null }),
+        });
+
+        if (!response.ok) {
+          throw new Error('메모 저장 실패');
+        }
+
+        // 저장 완료 상태로 표시
+        setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saved' }));
+
+        // 2초 후 저장 완료 표시 제거
+        setTimeout(() => {
+          setMemoSavingStates(prev => {
+            const newState = { ...prev };
+            delete newState[orderId];
+            return newState;
+          });
+        }, 2000);
+
+        // 주문 데이터 갱신
+        mutateOrders();
+      } catch (error) {
+        console.error('메모 저장 오류:', error);
+        setMemoSavingStates(prev => ({ ...prev, [orderId]: 'error' }));
+
+        // 3초 후 에러 표시 제거
+        setTimeout(() => {
+          setMemoSavingStates(prev => {
+            const newState = { ...prev };
+            delete newState[orderId];
+            return newState;
+          });
+        }, 3000);
+      }
+    }, 1000);
+  }, [mutateOrders]);
+
   // --- 기존 검색 관련 useEffect 및 핸들러들은 위 함수들로 대체/통합 ---
 
   const handleSortChange = (field) => {
@@ -3867,6 +3937,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <th className="py-2 px-4 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
                     </th>
+                    <th className="py-2 px-4 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider w-48 bg-gray-50">
+                      메모
+                    </th>
                     <th className="py-2 px-4 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
@@ -3887,7 +3960,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {isOrdersLoading && !ordersData && (
                     <tr>
-                      <td colSpan="8" className="px-6 py-10 text-center">
+                      <td colSpan="9" className="px-6 py-10 text-center">
                         <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                         <span className="text-sm text-gray-500 mt-2 block">
                           주문 목록 로딩 중...
@@ -3898,7 +3971,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   {!isOrdersLoading && displayOrders.length === 0 && (
                     <tr>
                       <td
-                        colSpan="8"
+                        colSpan="9"
                         className="px-6 py-10 text-center text-sm text-gray-500"
                       >
                         {searchTerm ||
@@ -3922,15 +3995,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       <React.Fragment key={group.groupId}>
                         <tr
                           className={`${
-                            editingOrderId === order.order_id 
-                              ? "bg-blue-50 border-l-4 border-blue-400" 
-                              : isSelected 
-                                ? "bg-orange-50" 
+                            editingOrderId === order.order_id
+                              ? "bg-blue-50 border-l-4 border-blue-400"
+                              : isSelected
+                                ? "bg-orange-50"
                                 : "hover:bg-gray-50"
-                          } transition-colors group cursor-pointer ${
+                          } transition-colors group ${
                             isOrdersLoading ? "opacity-70" : ""
                           }`}
-                          onClick={() => editingOrderId === order.order_id ? null : openDetailModal(order)}
                         >
                           <td
                             onClick={(e) => e.stopPropagation()}
@@ -4024,6 +4096,63 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 </div>
                               );
                             })()}
+                          </td>
+                          {/* 메모 */}
+                          <td
+                            className="py-2 px-4 text-base text-gray-600 w-48"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {(() => {
+                              // 디버깅: 실제 렌더링되는 order 확인
+                              if (order.order_id === 'order_AACtJhiiFjk5bNW_h69B8PUa_AABo75gGOTZMybZkBI7Nh0S0_item1') {
+                                console.log('[렌더링 디버깅]', {
+                                  order_id: order.order_id,
+                                  memo: order.memo,
+                                  hasMemo: 'memo' in order,
+                                  memoType: typeof order.memo,
+                                  memoLength: order.memo?.length
+                                });
+                              }
+                              return null;
+                            })()}
+                            <div className="relative">
+                              <textarea
+                                key={`memo-${order.order_id}`}
+                                className="w-full min-h-[60px] px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                                placeholder="메모 입력..."
+                                defaultValue={order.memo || ""}
+                                onChange={(e) => handleMemoChange(order.order_id, e.target.value)}
+                              />
+                              {memoSavingStates[order.order_id] && (
+                                <div className="absolute top-1 right-1 flex items-center gap-1 text-xs">
+                                  {memoSavingStates[order.order_id] === 'saving' && (
+                                    <>
+                                      <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      <span className="text-gray-500">저장 중...</span>
+                                    </>
+                                  )}
+                                  {memoSavingStates[order.order_id] === 'saved' && (
+                                    <>
+                                      <svg className="h-3 w-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                      </svg>
+                                      <span className="text-green-600">저장됨</span>
+                                    </>
+                                  )}
+                                  {memoSavingStates[order.order_id] === 'error' && (
+                                    <>
+                                      <svg className="h-3 w-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                      </svg>
+                                      <span className="text-red-600">저장 실패</span>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
                           <td

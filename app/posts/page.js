@@ -9,6 +9,7 @@ import PostDetailModal from "../components/PostDetailModal";
 import CommentsModal from "../components/Comments";
 import ToastContainer from "../components/ToastContainer";
 import OrdersInfoCard from "../components/OrdersInfoCard";
+import BarcodeDisplay from "../components/BarcodeDisplay";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 import { useScroll } from "../context/ScrollContext";
@@ -81,7 +82,7 @@ export default function PostsPage() {
   // 바코드 편집 상태
   const [editingBarcode, setEditingBarcode] = useState(null); // { postKey, productId, value }
   const [savingBarcode, setSavingBarcode] = useState(null);
-  const [savedBarcode, setSavedBarcode] = useState(null); // 저장 완료 표시용
+  const [savedBarcode, setSavedBarcode] = useState(null); // 저장 완료 배경색 표시용
 
   // 상품 추가 상태 (postKey별로 관리)
   const [addingProduct, setAddingProduct] = useState({}); // { [postKey]: { title, base_price, barcode } }
@@ -973,19 +974,19 @@ export default function PostsPage() {
 
       if (error) throw error;
 
-      // 성공 표시
-      setSavedBarcode(productId);
-
       // 편집 상태 초기화
       setEditingBarcode(null);
 
-      // 2초 후 체크 표시 제거
+      // 데이터 즉시 새로고침 (바코드 이미지 바로 표시)
+      mutate();
+
+      // 성공 배경색 표시
+      setSavedBarcode(productId);
+
+      // 1초 후 배경색만 제거
       setTimeout(() => {
         setSavedBarcode(null);
-      }, 2000);
-
-      // 데이터 새로고침
-      mutate();
+      }, 1000);
     } catch (error) {
       console.error('바코드 저장 오류:', error);
       showError(`바코드 저장 중 오류가 발생했습니다: ${error.message}`);
@@ -1667,8 +1668,8 @@ export default function PostsPage() {
                           <tbody className="bg-white">
                             {products.map((product, index) => {
                               const hasBarcode = product.barcode || product.productBarcode;
-                              const isSaved = savedBarcode === product.product_id;
                               const isEditing = editingProduct === product.product_id;
+                              const isSaved = savedBarcode === product.product_id;
 
                               if (isEditing) {
                                 return (
@@ -1702,13 +1703,26 @@ export default function PostsPage() {
                                       />
                                     </td>
                                     <td className="px-4 py-3 border-r border-gray-200">
-                                      <input
-                                        type="text"
-                                        value={editingProductData.barcode || ''}
-                                        onChange={(e) => setEditingProductData(prev => ({ ...prev, barcode: e.target.value }))}
-                                        placeholder="바코드"
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                      />
+                                      <div className="flex flex-col gap-2">
+                                        {/* 바코드 이미지 (입력값이 있을 때만 표시) */}
+                                        {editingProductData.barcode && (
+                                          <BarcodeDisplay
+                                            value={editingProductData.barcode}
+                                            height={40}
+                                            width={1.5}
+                                            displayValue={true}
+                                            fontSize={10}
+                                            margin={5}
+                                          />
+                                        )}
+                                        <input
+                                          type="text"
+                                          value={editingProductData.barcode || ''}
+                                          onChange={(e) => setEditingProductData(prev => ({ ...prev, barcode: e.target.value }))}
+                                          placeholder="바코드"
+                                          className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                        />
+                                      </div>
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex gap-1">
@@ -1747,9 +1761,19 @@ export default function PostsPage() {
                                       `${(product.base_price || product.price || product.basePrice).toLocaleString()}원` :
                                       '미입력'}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-200 relative">
+                                  <td className={`px-4 py-3 text-sm text-gray-900 border-r border-gray-200 relative transition-colors duration-500 ${isSaved ? 'bg-green-100' : ''}`}>
                                     {hasBarcode ? (
-                                      <span>{product.barcode || product.productBarcode}</span>
+                                      <div className="flex flex-col items-center gap-2">
+                                        {/* 바코드 이미지 */}
+                                        <BarcodeDisplay
+                                          value={product.barcode || product.productBarcode}
+                                          height={40}
+                                          width={1.5}
+                                          displayValue={true}
+                                          fontSize={10}
+                                          margin={5}
+                                        />
+                                      </div>
                                     ) : (
                                       <input
                                         type="text"
@@ -1770,12 +1794,6 @@ export default function PostsPage() {
                                           }
                                         }}
                                       />
-                                    )}
-                                    {/* 저장 완료 체크 표시 */}
-                                    {isSaved && (
-                                      <div className="absolute left-1/2 top-1/2 text-2xl animate-fade-in-out pointer-events-none">
-                                        ✅
-                                      </div>
                                     )}
                                   </td>
                                   <td className="px-4 py-3 text-sm text-gray-900">
@@ -1843,16 +1861,29 @@ export default function PostsPage() {
                                   />
                                 </td>
                                 <td className="px-4 py-3 border-r border-gray-200">
-                                  <input
-                                    type="text"
-                                    placeholder="바코드"
-                                    value={isAddingNewProduct.barcode || ''}
-                                    onChange={(e) => setAddingProduct(prev => ({
-                                      ...prev,
-                                      [post.post_key]: { ...prev[post.post_key], barcode: e.target.value }
-                                    }))}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                  />
+                                  <div className="flex flex-col gap-2">
+                                    {/* 바코드 이미지 (입력값이 있을 때만 표시) */}
+                                    {isAddingNewProduct.barcode && (
+                                      <BarcodeDisplay
+                                        value={isAddingNewProduct.barcode}
+                                        height={40}
+                                        width={1.5}
+                                        displayValue={true}
+                                        fontSize={10}
+                                        margin={5}
+                                      />
+                                    )}
+                                    <input
+                                      type="text"
+                                      placeholder="바코드"
+                                      value={isAddingNewProduct.barcode || ''}
+                                      onChange={(e) => setAddingProduct(prev => ({
+                                        ...prev,
+                                        [post.post_key]: { ...prev[post.post_key], barcode: e.target.value }
+                                      }))}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                    />
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="flex gap-1">

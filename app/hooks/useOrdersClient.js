@@ -62,9 +62,9 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
       `, { count: "exact" })
       .eq("user_id", userId);
   } else {
-    // 일반적인 경우: orders_with_products 뷰 사용 (Edge Function과 동일)
+    // 일반적인 경우: orders 테이블 직접 사용 (memo 필드 포함)
     query = supabase
-      .from("orders_with_products")
+      .from("orders")
       .select("*", { count: "exact" })
       .eq("user_id", userId);
   }
@@ -136,17 +136,16 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
     };
 
     if (isPostKeySearch) {
-      // post_key 정확 매칭 - 조인 모드와 뷰 모드 모두에서 작동
+      // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
     } else if (!needsPickupDateFilter) {
-      // 뷰 모드에서만 일반 검색 수행 (상품명, 바코드 포함)
-      // 조인 모드에서는 클라이언트 사이드 필터링으로 처리
+      // orders 테이블에서 검색 (product_name 사용)
       try {
         const normalizedTerm = normalizeForSearch(searchTerm);
         const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
-        
+
         query = query.or(
-          `customer_name.ilike.%${searchPattern}%,product_title.ilike.%${searchPattern}%,product_barcode.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
+          `customer_name.ilike.%${searchPattern}%,product_name.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
         );
       } catch (error) {
         console.warn('Search filter error:', error);

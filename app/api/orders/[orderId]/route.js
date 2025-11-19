@@ -30,7 +30,7 @@ const toValidNumber = (value) => {
 
 export async function PATCH(request, { params }) {
   try {
-    const { orderId } = params || {};
+    const { orderId } = await params;
     if (!orderId) {
       return NextResponse.json(
         { success: false, message: "order_id는 필수입니다." },
@@ -50,7 +50,8 @@ export async function PATCH(request, { params }) {
       "product_id" in body ||
       "product_name" in body ||
       "quantity" in body ||
-      "product_price" in body;
+      "product_price" in body ||
+      "memo" in body;
 
     if (!hasUpdatableField) {
       return NextResponse.json(
@@ -132,6 +133,10 @@ export async function PATCH(request, { params }) {
       }
       updatePayload.price = parsedPrice;
       priceForTotal = parsedPrice;
+    }
+
+    if ("memo" in body) {
+      updatePayload.memo = body.memo || null;
     }
 
     if (
