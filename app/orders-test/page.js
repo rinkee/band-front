@@ -388,6 +388,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
+  // const [searchType, setSearchType] = useState("customer"); // "customer" 또는 "product" // TODO: 내일 처리
+  const searchType = "customer"; // 임시로 고정값 사용
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
@@ -499,11 +501,65 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // URL에서 postKey를 받아서 자동으로 검색
   useEffect(() => {
     const postKey = searchParams.get('postKey');
+    const postedAt = searchParams.get('postedAt');
+
     if (postKey) {
+      // 검색어 설정
       setSearchTerm(postKey);
-      if (searchInputRef.current) {
-        searchInputRef.current.value = postKey;
+
+      // 검색 인풋에 값 설정 (여러 번 시도하여 확실하게 설정)
+      const setInputValue = () => {
+        if (searchInputRef.current) {
+          searchInputRef.current.value = postKey;
+          console.log('검색 인풋에 postKey 설정:', postKey);
+        }
+      };
+
+      setInputValue(); // 즉시 실행
+      setTimeout(setInputValue, 0); // 다음 틱에 실행
+      setTimeout(setInputValue, 100); // 100ms 후 실행
+      setTimeout(setInputValue, 300); // 300ms 후 실행
+
+      // 상태를 "전체"로 변경
+      setFilterSelection("all");
+
+      // 게시일 기준으로 조회 기간 자동 설정
+      if (postedAt) {
+        try {
+          const postedDate = new Date(postedAt);
+          const today = new Date();
+          const diffTime = Math.abs(today - postedDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          // 일수 차이에 따라 조회 기간 설정
+          if (diffDays <= 30) {
+            setFilterDateRange("30days");
+          } else if (diffDays <= 60) {
+            setFilterDateRange("60days");
+          } else if (diffDays <= 90) {
+            setFilterDateRange("90days");
+          } else if (diffDays <= 180) {
+            setFilterDateRange("180days");
+          } else {
+            setFilterDateRange("all");
+          }
+        } catch (e) {
+          // 날짜 파싱 실패 시 기본값 유지
+          console.error("Failed to parse postedAt:", e);
+        }
       }
+
+      setCurrentPage(1);
+      setExactCustomerFilter(null);
+      setSelectedOrderIds([]);
+
+      // URL에서 파라미터 즉시 제거 (다른 검색 동작을 방해하지 않도록)
+      setTimeout(() => {
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.delete("postKey");
+        newUrl.searchParams.delete("postedAt");
+        window.history.replaceState({}, "", newUrl.toString());
+      }, 500);
     }
   }, [searchParams]);
 
@@ -867,7 +923,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const orderStatusOptions = [
     { value: "all", label: "전체" },
     { value: "주문완료", label: "주문완료" },
-    { value: "주문완료+수령가능", label: "주문완료+수령가능" },
+    { value: "주문완료+수령가능", label: "수령가능만 보기" },
     { value: "수령완료", label: "수령완료" },
     { value: "미수령", label: "미수령" },
     { value: "주문취소", label: "주문취소" },
@@ -957,6 +1013,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     })(),
     // 검색어는 서버에서 처리
     search: searchTerm || undefined,
+    searchType: searchType, // "customer" 또는 "product"
     commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined,
     exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined,
     // 날짜 필터
@@ -1278,65 +1335,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
     swrOptions
   );
 
-  // 필터된 통계 데이터 (현재 필터 적용) - 필요시 사용
-  const {
-    data: filteredStatsData,
-    error: filteredStatsError,
-    isLoading: isFilteredStatsLoading,
-  } = useOrderStatsClient(
-    userData?.userId,
-    {
-      // 현재 적용된 필터를 전달하여 정확한 통계를 얻기
-      status: (() => {
-        if (
-          filterSelection === "확인필요" ||
-          filterSelection === "미수령" ||
-          filterSelection === "none"
-        ) {
-          return undefined;
-        }
-        if (filterSelection === "all") return undefined;
-        // '주문완료+수령가능' 선택 시 주문완료 상태로 전달
-        if (filterSelection === "주문완료+수령가능") return "주문완료";
-        // 주문완료 상태일 때도 명시적으로 전달
-        if (filterSelection === "주문완료") return "주문완료";
-        return filterSelection;
-      })(),
-      subStatus: (() => {
-        // 수령가능만 보기가 활성화된 경우 "수령가능" 필터 적용
-        if (showPickupAvailableOnly) {
-          return "수령가능";
-        }
-        // '주문완료+수령가능' 선택 시 "수령가능" 적용
-        if (filterSelection === "주문완료+수령가능") {
-          return "수령가능";
-        }
-        // 미수령, 확인필요, none은 서버에서 sub_status로 필터링
-        if (
-          filterSelection === "미수령" ||
-          filterSelection === "확인필요" ||
-          filterSelection === "none"
-        ) {
-          return filterSelection;
-        }
-        return undefined;
-      })(),
-      search: searchTerm.trim() || undefined,
-      exactCustomerName: exactCustomerFilter || undefined,
-      dateType: "created", // 항상 주문일시 기준 // 날짜 필터 타입 추가
-      startDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).startDate,
-      endDate: calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      ).endDate,
-    },
-    swrOptions
-  );
+  // 필터된 통계 데이터 - 사용하지 않으므로 비활성화 (불필요한 전체 데이터 페칭 방지)
+  // const {
+  //   data: filteredStatsData,
+  //   error: filteredStatsError,
+  //   isLoading: isFilteredStatsLoading,
+  // } = useOrderStatsClient(
+  //   userData?.userId,
+  //   {
+  //     ...필터 옵션...
+  //   },
+  //   swrOptions
+  // );
 
   // 클라이언트 사이드 mutation 함수들 (모드에 따라 다름)
   const rawMutations = useCommentOrderClientMutations();
@@ -1606,12 +1616,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
     // post_key가 제공되면 post_key로 검색 (해당 게시물의 모든 주문)
     // 그렇지 않으면 searchValue로 검색 (모든 게시물에서 상품명 검색)
     const searchTerm = postKey || searchValue;
-    const trimmedValue = searchTerm.trim();
+    const trimmedSearchTerm = searchTerm.trim();
+    const displayValue = searchValue ? searchValue.trim() : trimmedSearchTerm;
 
     if (searchInputRef.current) {
-      searchInputRef.current.value = trimmedValue; // 검색창 UI 업데이트
+      searchInputRef.current.value = displayValue; // 검색창에는 상품명 표시
     }
-    setSearchTerm(trimmedValue); // 실제 검색 상태 업데이트
+    setSearchTerm(trimmedSearchTerm); // 실제 검색은 postKey로
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
     // 검색 후 맨 위로 스크롤
@@ -2503,6 +2514,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
       return "Error";
     }
   };
+  const formatPickupDate = (ds) => {
+    if (!ds) return "-";
+    try {
+      const d = new Date(ds);
+      if (isNaN(d.getTime())) return "Invalid Date";
+      const weekdays = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const weekday = weekdays[d.getDay()];
+      return `${month}월 ${day}일 (${weekday})`;
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("Date Format Err:", e);
+      }
+      return "Error";
+    }
+  };
   const formatDateForPicker = (date) => {
     if (!date) return "";
     const d = new Date(date);
@@ -2594,6 +2622,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
       searchInputRef.current.value = "";
       searchInputRef.current.focus();
     }
+    setSearchTerm(""); // 검색어 상태도 초기화
+
+    // URL 파라미터 제거
+    if (typeof window !== 'undefined') {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("postedAt");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+
     // 페이지 최상단으로 즉시 스크롤
     if (mainTopRef.current) {
       mainTopRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -2614,6 +2652,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSearchTerm("");
     setCurrentPage(1);
     setSelectedOrderIds([]);
+
+    // URL 파라미터 제거
+    if (typeof window !== 'undefined') {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("postedAt");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
   };
 
   const clearCustomerFilter = () => {
@@ -2674,6 +2720,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
+
+    // URL 파라미터 제거
+    if (typeof window !== 'undefined') {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete("postKey");
+      newUrl.searchParams.delete("postedAt");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+
     // 페이지 최상단으로 즉시 스크롤
     if (mainTopRef.current) {
       mainTopRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -3374,6 +3429,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                       disabled={isDataLoading}
                     />
+                    {/* TODO: 내일 처리 - 검색 타입 선택 드롭다운 */}
+                    {/* <div className="flex items-center gap-2 w-full md:flex-grow md:max-w-lg order-1">
+                      <select
+                        value={searchType}
+                        onChange={(e) => setSearchType(e.target.value)}
+                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={isDataLoading}
+                      >
+                        <option value="customer">고객명</option>
+                        <option value="product">상품명</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          placeholder={searchType === "product" ? "상품명 검색..." : "고객명 검색..."}
+                          onKeyDown={handleKeyDown}
+                          className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                          disabled={isDataLoading}
+                        />
+                    </div> */}
                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                       <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                     </div>
@@ -3418,7 +3494,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
        
 
         {/* 필터 섹션 */}
-        <div className="px-4 lg:px-6 pb-4 pt-4">
+        <div className="px-4 lg:px-6 pt-4">
           <div>
             <LightCard padding="p-0" className="overflow-hidden">
               <div className="divide-y divide-gray-200">
@@ -3490,7 +3566,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         </div>
 
         {/* 검색 필터 - sticky */}
-        <div className="sticky top-0 z-20 bg-gray-100 px-4 lg:px-6 pb-4">
+        <div className="sticky top-0 z-20 bg-gray-100 px-4 lg:px-6 pb-4 mt-4 ">
           <div>
             <LightCard padding="p-0" className="overflow-hidden">
               <div className="grid grid-cols-[max-content_1fr] items-center">
@@ -3500,6 +3576,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2 justify-between">
                   <div className="flex items-center gap-2 flex-1">
+                    {/* TODO: 내일 처리 - 검색 타입 드롭다운 */}
+                    {/* <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value)}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      disabled={isDataLoading}
+                    >
+                      <option value="customer">고객명</option>
+                      <option value="product">상품명</option>
+                    </select> */}
+                    {/* 검색 입력 */}
                     <div className="relative w-full md:flex-grow md:max-w-sm">
                       <input
                         ref={searchInputRef}
@@ -3546,7 +3633,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     </div>
                   </div>
                   {/* UpdateButton - 우측 끝 */}
-                  <div className="py-2">
+                  <div className="py-2 flex items-center gap-3">
+                    {/* <span className="text-xs text-orange-600 font-medium whitespace-nowrap">
+                      ⚠️ 너무 자주 업데이트하면 문제가 생길 수 있습니다
+                    </span> */}
                     {userData?.function_number === 9 ? (
                       <TestUpdateButton
                         onProcessingChange={(isProcessing, result) => {

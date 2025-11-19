@@ -458,7 +458,7 @@ export default function PostsPage() {
     }, 1000);
   };
 
-  const handleViewOrders = (postKey) => {
+  const handleViewOrders = (postKey, postedAt) => {
     if (!postKey) return;
 
     // 페이지 상태만 저장 (스크롤 위치는 PostCard에서 이미 저장됨)
@@ -468,8 +468,12 @@ export default function PostsPage() {
       sessionStorage.setItem('postsSearchQuery', searchQuery);
     }
 
-    // 주문 관리 페이지로 이동: postKey를 직접 전달 (raw 모드 지원)
-    router.push(`/orders-test?postKey=${encodeURIComponent(postKey)}`);
+    // 주문 관리 페이지로 이동: postKey와 postedAt을 함께 전달
+    let url = `/orders-test?postKey=${encodeURIComponent(postKey)}`;
+    if (postedAt) {
+      url += `&postedAt=${encodeURIComponent(postedAt)}`;
+    }
+    router.push(url);
   };
 
   // 댓글 보기 동작 - Row 모드에서는 밴드 원본으로 이동, 기본은 모달
@@ -1581,6 +1585,8 @@ export default function PostsPage() {
                               const day = kst.getUTCDate();
                               const hours = kst.getUTCHours();
                               const minutes = kst.getUTCMinutes();
+                              const weekdays = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+                              const weekday = weekdays[kst.getUTCDay()];
 
                               // 날짜 차이 계산 (시간 무시하고 날짜만 비교)
                               const today = new Date();
@@ -1625,7 +1631,7 @@ export default function PostsPage() {
                                     {badgeText}
                                   </span>
                                   <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
-                                    {month}월 {day}일{timeStr}
+                                    {month}월 {day}일 ({weekday}){timeStr}
                                   </span>
                                 </div>
                               );
@@ -2829,14 +2835,14 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onViewOrders(post.post_key);
+              onViewOrders(post.post_key, post.posted_at);
             }}
             className="flex flex-row items-center justify-center gap-1.5 py-1.5 px-2 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
           >
             <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            <span className="text-xs text-gray-600">주문</span>
+            <span className="text-xs text-gray-600">주문 보기</span>
           </button>
           {post?.band_post_url ? (
             <a

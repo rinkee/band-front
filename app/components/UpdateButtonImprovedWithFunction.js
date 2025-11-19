@@ -131,25 +131,39 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
 
       // 모든 데이터를 동시에 갱신 (await로 대기)
       await Promise.all([
-        // 1. useOrders 훅의 데이터 갱신
+        // 1. Orders 데이터 갱신 (문자열 + 배열 키)
         mutate(
-          (key) => typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`),
+          (key) => {
+            if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`)) return true;
+            if (Array.isArray(key) && key[0] === "orders" && key[1] === userId) return true;
+            return false;
+          },
           undefined,
           mutateOptions
         ),
-        // 2. useProducts 훅의 데이터 갱신
+        // 2. Products 데이터 갱신 (문자열 + 배열 키)
         mutate(
-          (key) => typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`),
+          (key) => {
+            if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`)) return true;
+            if (Array.isArray(key) && key[0] === "products" && key[1] === userId) return true;
+            return false;
+          },
           undefined,
           mutateOptions
         ),
-        // 3. useOrderStats 훅의 데이터 갱신
+        // 3. Posts 데이터 갱신 (배열 키)
+        mutate(
+          (key) => Array.isArray(key) && key[0] === "posts" && key[1] === userId,
+          undefined,
+          mutateOptions
+        ),
+        // 4. Order Stats 데이터 갱신
         mutate(
           (key) => typeof key === "string" && key.startsWith(`/orders/stats?userId=${userId}`),
           undefined,
           mutateOptions
         ),
-        // 4. comment_orders 클라이언트 훅의 데이터 갱신 (raw 모드 핵심)
+        // 5. Comment Orders 데이터 갱신 (배열 키)
         mutate(
           (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
           undefined,
@@ -157,28 +171,44 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         )
       ]);
     } else {
-      // 일반 모드: 기존처럼 백그라운드 revalidation
-      const ordersKeyPattern = `${functionsBaseUrl}/orders-get-all?userId=${userId}`;
+      // 일반 모드: 백그라운드 revalidation (배열 + 문자열 키 모두 지원)
+      // Orders 갱신
       mutate(
-        (key) => typeof key === "string" && key.startsWith(ordersKeyPattern),
+        (key) => {
+          if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`)) return true;
+          if (Array.isArray(key) && key[0] === "orders" && key[1] === userId) return true;
+          return false;
+        },
         undefined,
         { revalidate: true }
       );
 
-      const productsKeyPattern = `${functionsBaseUrl}/products-get-all?userId=${userId}`;
+      // Products 갱신
       mutate(
-        (key) => typeof key === "string" && key.startsWith(productsKeyPattern),
+        (key) => {
+          if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`)) return true;
+          if (Array.isArray(key) && key[0] === "products" && key[1] === userId) return true;
+          return false;
+        },
         undefined,
         { revalidate: true }
       );
 
-      const statsKeyPattern = `/orders/stats?userId=${userId}`;
+      // Posts 갱신
       mutate(
-        (key) => typeof key === "string" && key.startsWith(statsKeyPattern),
+        (key) => Array.isArray(key) && key[0] === "posts" && key[1] === userId,
         undefined,
         { revalidate: true }
       );
 
+      // Order Stats 갱신
+      mutate(
+        (key) => typeof key === "string" && key.startsWith(`/orders/stats?userId=${userId}`),
+        undefined,
+        { revalidate: true }
+      );
+
+      // Comment Orders 갱신
       mutate(
         (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
         undefined,
