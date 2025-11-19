@@ -572,6 +572,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   );
                   comments = fetchResult.comments;
 
+                  console.log('[대댓글 디버그 - processBandPosts] fetchResult 결과:', {
+                    total_comments: comments?.length || 0,
+                    has_underscore_keys: comments?.filter(c => c.commentKey?.includes('_')).length || 0,
+                    sample_keys: comments?.slice(0, 5).map(c => c.commentKey)
+                  });
+
                   if (comments && comments.length > 0) {
                     const maxTimestamp = Math.max(...comments.map((c) => c.createdAt));
                     latestCommentTimestampForUpdate = new Date(maxTimestamp).toISOString();
@@ -595,6 +601,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       : null,
                     content: c.content
                   }));
+
+                  console.log('[대댓글 디버그 - processBandPosts] map 후 newComments:', {
+                    total: newComments.length,
+                    has_underscore_keys: newComments.filter(c => c.commentKey?.includes('_')).length,
+                    sample: newComments.slice(0, 3).map(c => ({
+                      commentKey: c.commentKey,
+                      content: c.content?.substring(0, 30)
+                    }))
+                  });
                 } catch (commentError) {
                   console.error(
                     `Comment fetch error for new post ${postKey}: ${commentError.message}`

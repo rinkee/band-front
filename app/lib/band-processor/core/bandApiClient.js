@@ -2,9 +2,9 @@ import { createLogger } from '../shared/utils/logger.js';
 
 const logger = createLogger("band-api-failover");
 
-// API 엔드포인트 상수 - Band API는 v2 사용
+// API 엔드포인트 상수 - Band API는 v2.1 사용 (대댓글 지원)
 const BAND_POSTS_API_URL = "https://openapi.band.us/v2/band/posts";
-const COMMENTS_API_URL = "https://openapi.band.us/v2/band/post/comments";
+const COMMENTS_API_URL = "https://openapi.band.us/v2.1/band/post/comments";
 
 /**
  * Band API 할당량 초과 에러 확인
@@ -626,10 +626,33 @@ export class BandApiFailover {
           );
         }
         
-        // 현재 페이지의 댓글 추가
-        const currentComments = data.result_data?.items || [];
-        allComments = allComments.concat(currentComments);
-        
+        // 현재 페이지의 댓글 처리 (메인 댓글 + 대댓글)
+        const items = data.result_data?.items || [];
+        const processedComments = items.flatMap((c) => {
+          // 메인 댓글
+          const mainComment = c;
+
+          // 대댓글 처리 (v2.1 API)
+          const replies = [];
+          if (c.latest_comments && Array.isArray(c.latest_comments)) {
+            const parentAuthorName = c.author?.name || '';
+
+            c.latest_comments.forEach((reply) => {
+              replies.push({
+                ...reply,
+                comment_key: `${c.comment_key}_${reply.created_at}`, // 타임스탬프 기반 고유 ID
+                content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+                post_key: postKey,
+                band_key: bandKey
+              });
+            });
+          }
+
+          return [mainComment, ...replies];
+        });
+
+        allComments = allComments.concat(processedComments);
+
         // 다음 페이지 확인
         if (data.result_data?.paging?.next_params) {
           nextParams = data.result_data.paging.next_params;

@@ -18,8 +18,8 @@ export async function POST(request) {
     }
 
     // Band API URL 구성
-    // 모든 엔드포인트는 v2 사용 (v2.1은 존재하지 않음)
-    const version = 'v2';
+    // 댓글 API는 v2.1 사용 (대댓글 지원), 나머지는 v2 사용
+    const version = endpoint.includes('/comments') ? 'v2.1' : 'v2';
     const baseUrl = `https://openapi.band.us/${version}`;
     const url = new URL(`${baseUrl}${endpoint}`);
     
