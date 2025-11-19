@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
+import { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import { processBandPosts } from "../lib/updateButton/fuc/processBandPosts";
 
@@ -8,6 +9,59 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const { mutate } = useSWRConfig();
+
+  // SWR 캐시 갱신 함수
+  const refreshSWRCache = useCallback(async (userId) => {
+    if (!userId) return;
+
+    const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
+
+    // Orders 캐시 갱신 (문자열 + 배열 키)
+    mutate(
+      (key) => {
+        if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`)) return true;
+        if (Array.isArray(key) && key[0] === "orders" && key[1] === userId) return true;
+        return false;
+      },
+      undefined,
+      { revalidate: true }
+    );
+
+    // Products 캐시 갱신 (문자열 + 배열 키)
+    mutate(
+      (key) => {
+        if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`)) return true;
+        if (Array.isArray(key) && key[0] === "products" && key[1] === userId) return true;
+        return false;
+      },
+      undefined,
+      { revalidate: true }
+    );
+
+    // Posts 캐시 갱신 (배열 키)
+    mutate(
+      (key) => Array.isArray(key) && key[0] === "posts" && key[1] === userId,
+      undefined,
+      { revalidate: true }
+    );
+
+    // Order Stats 캐시 갱신
+    mutate(
+      (key) => typeof key === "string" && key.startsWith(`/orders/stats?userId=${userId}`),
+      undefined,
+      { revalidate: true }
+    );
+
+    // Comment Orders 캐시 갱신 (배열 키)
+    mutate(
+      (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
+      undefined,
+      { revalidate: true }
+    );
+
+    console.log(`[TestUpdateButton] SWR 캐시 갱신 완료 (userId: ${userId})`);
+  }, [mutate]);
 
   const handleTestUpdate = async () => {
     try {
@@ -43,6 +97,10 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
       if (response.success) {
         setResult(response);
+
+        // SWR 캐시 갱신
+        await refreshSWRCache(userId);
+
         // 부모에게 완료 결과 전달
         if (onProcessingChange) onProcessingChange(false, response);
         if (onComplete) onComplete(response);

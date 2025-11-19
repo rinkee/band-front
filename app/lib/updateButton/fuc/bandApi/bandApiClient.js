@@ -469,7 +469,6 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
         band_key: bandKey,
         post_key: postKey,
         limit: apiPageLimit.toString(),
-        sort: "-created_at",  // 대댓글 포함을 위해 필수!
         ...nextParams
       };
 
