@@ -1332,7 +1332,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     isLoading: isGlobalStatsLoading,
     mutate: mutateGlobalStats,
   } = useOrderStatsClient(
-    userData?.userId,
+    null, // 통계 UI가 없으므로 비활성화 (전체 데이터 페이징 방지)
     {
       // 날짜 필터만 적용 (상태 필터는 제외)
       startDate: globalStatsDateParams.startDate,
@@ -1835,7 +1835,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         successCount = orderIdsToProcess.length;
       }
 
-      // 일괄 상태 변경 후 로컬 상태 optimistic update
+      // 일괄 상태 변경 후 로컬 상태만 optimistic update (서버 재검증 없음)
       setOrders(prevOrders =>
         prevOrders.map(order =>
           orderIdsToProcess.includes(order.order_id)
@@ -1843,9 +1843,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
             : order
         )
       );
-
-      // 서버 재검증은 한 번만 (mutateOrders로 통합)
-      await mutateOrders(undefined, { revalidate: true });
 
       if (successCount > 0) {
         console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
@@ -1859,7 +1856,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, orders, userData, mode, rawMutations, legacyMutations, mutateOrders, globalMutate, mutateGlobalStats]);
+  }, [selectedOrderIds, orders, userData, mode, rawMutations, legacyMutations, mutateOrders]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
