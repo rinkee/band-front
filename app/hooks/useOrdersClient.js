@@ -619,10 +619,9 @@ const fetchOrderStats = async (key) => {
     throw new Error("User ID is required");
   }
 
-  // 기본 통계 쿼리 - orders_with_products 뷰를 사용하여 모든 데이터 가져오기
-  // 이 뷰는 이미 products 정보가 조인되어 있음
+  // 기본 통계 쿼리 - orders 테이블을 사용하여 모든 데이터 가져오기
   let query = supabase
-    .from("orders_with_products")
+    .from("orders")
     .select("*", { count: "exact" })
     .eq("user_id", userId);
 
@@ -656,11 +655,11 @@ const fetchOrderStats = async (key) => {
       
       if (searchTerm.includes('(') || searchTerm.includes(')')) {
         query = query.or(
-          `customer_name.ilike.%${normalizedTerm}%,product_title.ilike.%${normalizedTerm}%`
+          `customer_name.ilike.%${normalizedTerm}%,product_name.ilike.%${normalizedTerm}%`
         );
       } else {
         query = query.or(
-          `customer_name.ilike.%${searchTerm}%,product_title.ilike.%${searchTerm}%`
+          `customer_name.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`
         );
       }
     } catch (error) {
@@ -770,7 +769,7 @@ const fetchOrderStats = async (key) => {
 
   // 상품별 통계 (검색된 결과에서)
   const productStats = data.reduce((acc, order) => {
-    const productTitle = order.product_title || "상품명 없음";
+    const productTitle = order.product_name || "상품명 없음";
     if (!acc[productTitle]) {
       acc[productTitle] = {
         totalOrders: 0,

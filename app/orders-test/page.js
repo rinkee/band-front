@@ -1207,18 +1207,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // --- 관련 포스트 이미지 일괄 조회 ---
         try {
-          const postKeysToFetch = Array.from(
-            new Set(results.map((p) => p.post_key).filter(Boolean))
-          );
-          if (postKeysToFetch.length > 0) {
-            const { data: posts, error: pe } = await sb
-              .from("posts")
-              .select("band_key, post_key, image_urls")
-              .eq("user_id", uid)
-              .in("post_key", postKeysToFetch);
-            if (!pe && Array.isArray(posts)) {
-              const map = {};
-              for (const row of posts) {
+          // 한 사용자 = 한 밴드이므로 user_id로 모든 posts 조회 (URL 길이 제한 문제 해결)
+          const { data: posts, error: pe } = await sb
+            .from("posts")
+            .select("band_key, post_key, image_urls")
+            .eq("user_id", uid);
+
+          if (!pe && Array.isArray(posts)) {
+            // 클라이언트 사이드에서 필요한 post_key만 필터링
+            const postKeysSet = new Set(results.map((p) => p.post_key).filter(Boolean));
+            const map = {};
+            for (const row of posts) {
+              if (postKeysSet.size === 0 || postKeysSet.has(row.post_key)) {
                 const key = `${row.band_key || ''}_${row.post_key || ''}`;
                 let urls = row.image_urls;
                 try {
@@ -1226,8 +1226,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 } catch {}
                 if (Array.isArray(urls) && urls.length > 0) map[key] = urls;
               }
-              setPostsImages(map);
             }
+            setPostsImages(map);
           }
         } catch (_) {
           // ignore image fetch errors
