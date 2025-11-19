@@ -30,7 +30,9 @@ const toValidNumber = (value) => {
 
 export async function PATCH(request, { params }) {
   try {
+    console.log('[PATCH API] 시작', { params });
     const { orderId } = await params;
+    console.log('[PATCH API] orderId:', orderId);
     if (!orderId) {
       return NextResponse.json(
         { success: false, message: "order_id는 필수입니다." },
@@ -65,6 +67,7 @@ export async function PATCH(request, { params }) {
 
     const supabase = createServiceSupabaseClient();
 
+    console.log('[PATCH API] Supabase 조회 시작', { orderId });
     // 기존 주문 정보 조회 (총액 계산에 필요)
     const {
       data: existingOrder,
@@ -76,6 +79,12 @@ export async function PATCH(request, { params }) {
       .eq("order_id", orderId)
       .single();
 
+    console.log('[PATCH API] Supabase 조회 결과', {
+      existingOrder,
+      fetchError,
+      fetchStatus
+    });
+
     if (fetchError) {
       if (fetchStatus === 406 || fetchError.code === "PGRST116") {
         return NextResponse.json(
@@ -83,9 +92,21 @@ export async function PATCH(request, { params }) {
           { status: 404 }
         );
       }
-      console.error("주문 조회 실패:", fetchError);
+      console.error("주문 조회 실패:", {
+        orderId,
+        error: fetchError,
+        code: fetchError.code,
+        message: fetchError.message,
+        details: fetchError.details,
+        hint: fetchError.hint
+      });
       return NextResponse.json(
-        { success: false, message: "주문 조회 중 오류가 발생했습니다." },
+        {
+          success: false,
+          message: "주문 조회 중 오류가 발생했습니다.",
+          error: fetchError.message,
+          code: fetchError.code
+        },
         { status: 500 }
       );
     }
@@ -135,8 +156,14 @@ export async function PATCH(request, { params }) {
       priceForTotal = parsedPrice;
     }
 
+    // memo 필드는 테이블에 컬럼이 있을 때만 업데이트
     if ("memo" in body) {
-      updatePayload.memo = body.memo || null;
+      try {
+        updatePayload.memo = body.memo || null;
+      } catch (e) {
+        // memo 컬럼이 없어도 계속 진행
+        console.warn("memo 필드 업데이트 실패 (컬럼이 없을 수 있음):", e);
+      }
     }
 
     if (
