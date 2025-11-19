@@ -59,6 +59,7 @@ const searchProductsByName = async (userId, tokens) => {
 // 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
 const buildQuery = (userId, filters, excludedCustomers = [], productSearchResults = null) => {
   const status = filters.status || "미수령";
+  const subStatus = filters.subStatus || undefined;
   const search = (filters.search || "").trim();
   const postKeyFilter = filters.postKey || undefined;
   const postNumberFilter = filters.postNumber || undefined;
@@ -72,6 +73,16 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
 
   if (status && status !== "all") {
     query = query.eq("order_status", status);
+  }
+
+  if (subStatus) {
+    // 미수령 필터는 특별 처리: sub_status='미수령' AND order_status NOT IN ('수령완료', '주문취소')
+    if (subStatus === "미수령") {
+      query = query.eq("sub_status", "미수령");
+      query = query.not("order_status", "in", '("수령완료","주문취소")');
+    } else {
+      query = query.eq("sub_status", subStatus);
+    }
   }
 
   // Direct post filters take precedence over text search
