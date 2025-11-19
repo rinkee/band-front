@@ -426,7 +426,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
   const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
-  const [isButtonsReversed, setIsButtonsReversed] = useState(false); // 하단 버튼 순서 토글
+  // 하단 버튼 순서 토글 - localStorage에서 복원
+  const [isButtonsReversed, setIsButtonsReversed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('orders-buttons-reversed');
+      return saved === 'true';
+    }
+    return false;
+  });
 
   // --- 주문 정보 수정 관련 상태 복구 ---
   const [isEditingDetails, setIsEditingDetails] = useState(false);
@@ -1828,20 +1835,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
         successCount = orderIdsToProcess.length;
       }
 
-      // 일괄 상태 변경 후 리스트/통계 새로고침
+      // 일괄 상태 변경 후 로컬 상태 optimistic update
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          orderIdsToProcess.includes(order.order_id)
+            ? { ...order, status: newStatus, order_status: newStatus }
+            : order
+        )
+      );
+
+      // 서버 재검증은 한 번만 (mutateOrders로 통합)
       await mutateOrders(undefined, { revalidate: true });
-      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
-      globalMutate(
-        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      globalMutate(
-        (key) => Array.isArray(key) && key[0] === "orderStats" && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      await mutateGlobalStats();
 
       if (successCount > 0) {
         console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
@@ -4175,7 +4179,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
               {/* 버튼 옮기기 */}
               <div className="flex items-center">
                 <button
-                  onClick={() => setIsButtonsReversed(!isButtonsReversed)}
+                  onClick={() => {
+                    const newState = !isButtonsReversed;
+                    setIsButtonsReversed(newState);
+                    // localStorage에 상태 저장
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('orders-buttons-reversed', newState.toString());
+                    }
+                  }}
                   className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border-2 border-dashed border-gray-400 rounded-lg hover:border-orange-500 hover:text-orange-600 transition-colors"
                 >
                   버튼 옮기기
