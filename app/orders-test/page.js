@@ -388,6 +388,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
+  // const [searchType, setSearchType] = useState("customer"); // "customer" 또는 "product" // TODO: 내일 처리
+  const searchType = "customer"; // 임시로 고정값 사용
   const [sortBy, setSortBy] = useState("ordered_at");
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
@@ -1011,6 +1013,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     })(),
     // 검색어는 서버에서 처리
     search: searchTerm || undefined,
+    searchType: searchType, // "customer" 또는 "product"
     commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined,
     exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined,
     // 날짜 필터
@@ -3426,6 +3429,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                       disabled={isDataLoading}
                     />
+                    {/* TODO: 내일 처리 - 검색 타입 선택 드롭다운 */}
+                    {/* <div className="flex items-center gap-2 w-full md:flex-grow md:max-w-lg order-1">
+                      <select
+                        value={searchType}
+                        onChange={(e) => setSearchType(e.target.value)}
+                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={isDataLoading}
+                      >
+                        <option value="customer">고객명</option>
+                        <option value="product">상품명</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          placeholder={searchType === "product" ? "상품명 검색..." : "고객명 검색..."}
+                          onKeyDown={handleKeyDown}
+                          className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                          disabled={isDataLoading}
+                        />
+                    </div> */}
                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                       <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                     </div>
@@ -3552,6 +3576,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2 justify-between">
                   <div className="flex items-center gap-2 flex-1">
+                    {/* TODO: 내일 처리 - 검색 타입 드롭다운 */}
+                    {/* <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value)}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      disabled={isDataLoading}
+                    >
+                      <option value="customer">고객명</option>
+                      <option value="product">상품명</option>
+                    </select> */}
+                    {/* 검색 입력 */}
                     <div className="relative w-full md:flex-grow md:max-w-sm">
                       <input
                         ref={searchInputRef}
@@ -3599,9 +3634,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   </div>
                   {/* UpdateButton - 우측 끝 */}
                   <div className="py-2 flex items-center gap-3">
-                    <span className="text-xs text-orange-600 font-medium whitespace-nowrap">
+                    {/* <span className="text-xs text-orange-600 font-medium whitespace-nowrap">
                       ⚠️ 너무 자주 업데이트하면 문제가 생길 수 있습니다
-                    </span>
+                    </span> */}
                     {userData?.function_number === 9 ? (
                       <TestUpdateButton
                         onProcessingChange={(isProcessing, result) => {
