@@ -2710,7 +2710,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
   };
 
-  // --- 메모 자동 저장 핸들러 ---
+  // --- 메모 자동 저장 핸들러 (클라이언트에서 직접 Supabase 호출) ---
   const handleMemoChange = useCallback((orderId, value) => {
     // 기존 타이머가 있으면 취소
     if (memoDebounceTimers.current[orderId]) {
@@ -2722,14 +2722,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saving' }));
 
       try {
-        const response = await fetch(`/api/orders/${orderId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ memo: value || null }),
-        });
+        // 클라이언트에서 직접 Supabase 호출
+        const { data, error } = await supabase
+          .from('orders')
+          .update({ memo: value || null })
+          .eq('order_id', orderId)
+          .select()
+          .single();
 
-        if (!response.ok) {
-          throw new Error('메모 저장 실패');
+        if (error) {
+          throw error;
         }
 
         // 저장 완료 상태로 표시
