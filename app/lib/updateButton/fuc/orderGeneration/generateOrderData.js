@@ -134,9 +134,46 @@ export async function generateOrderData(
           bodyWithMention = `${parentMention} ${sanitizedContent}`.trim();
         }
 
-        const commentContent = isReply
-          ? `[대댓글] ${replierName} ${bodyWithMention}`.trim()
-          : sanitizedContent;
+        // replier/parent 중복 방지용 유틸
+        const escapeRegExp = (str = "") =>
+          str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        const startsWithReplier = (text = "") => {
+          const trimmed = text.trim();
+          return (
+            trimmed.startsWith(replierName) ||
+            trimmed.startsWith(`@${replierName}`)
+          );
+        };
+
+        let commentContent;
+        if (isReply) {
+          const isSelfReply = parentName && parentName === replierName;
+          const contentBody = isSelfReply ? sanitizedContent : bodyWithMention;
+
+          // 본문이 이미 작성자 이름/@이름으로 시작하면 한 번 더 붙이지 않음
+          const dedupedBodyRaw = startsWithReplier(contentBody)
+            ? contentBody
+                .trim()
+                .replace(new RegExp(`^@?${escapeRegExp(replierName)}\\s*`), "")
+            : contentBody.trim();
+
+          let dedupedBody = dedupedBodyRaw.trim();
+
+          // 부모 이름이 앞에 한번 더 붙은 패턴 제거 (ex. "nh @nh ..." → "@nh ...")
+          if (parentName) {
+            const parentNameEsc = escapeRegExp(parentName);
+            dedupedBody = dedupedBody.replace(
+              new RegExp(`^${parentNameEsc}\\s*(?=@${parentNameEsc}\\b)`),
+              ""
+            ).trim();
+          }
+
+          const separator = dedupedBody.length > 0 ? " " : "";
+          commentContent = `[대댓글] ${replierName}:${separator}${dedupedBody}`.trim();
+        } else {
+          commentContent = sanitizedContent;
+        }
 
         // 필수 필드 검증
         if (!commentKey || !content) {

@@ -3844,7 +3844,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 px-1 lg:px-2 xl:px-3 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-1 lg:px-2 xl:px-3 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-26 bg-gray-50">
                       <button
                         onClick={() => handleSortChange("customer_name")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -4033,6 +4033,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 if (!commentChangeData) {
                                   return (
                                     <div className="break-words leading-tight font-semibold" title={currentComment}>
+                                      {order.sub_status === "확인필요" && (
+                                        <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
+                                      )}
                                       {currentComment || "-"}
                                     </div>
                                   );
@@ -4053,6 +4056,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                       </div>
                                     )}
                                     <div className="break-words leading-tight">
+                                      {order.sub_status === "확인필요" && (
+                                        <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
+                                      )}
                                       <span className="text-sm font-semibold text-orange-600 mr-1">[수정됨]</span>
                                       <span className="font-semibold">{currentComment}</span>
                                     </div>
