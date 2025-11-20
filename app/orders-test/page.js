@@ -13,7 +13,7 @@ import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import getAuthedClient from "../lib/authedSupabaseClient";
 import JsBarcode from "jsbarcode";
-import { useUser, useCommentOrdersClient, useCommentOrderClientMutations, useOrderStatsClient } from "../hooks";
+import { useUser, useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
 import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
@@ -24,9 +24,7 @@ import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임�
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
-import OrderStatsBar from "../components/OrderStatsBar"; // 새로운 통계 바 컴포넌트
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
-import OrderStatsSidebar from "../components/OrderStatsSidebar"; // 사이드바 통계 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 
 // --- 아이콘 (Heroicons) ---
@@ -442,8 +440,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [pickupViewMode, setPickupViewMode] = useState("detailed"); // 'simple' | 'detailed'
   const [barcodeViewMode, setBarcodeViewMode] = useState("small"); // 'small' | 'large'
-  const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
-  const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
   // 하단 버튼 순서 토글 - localStorage에서 복원
   const [isButtonsReversed, setIsButtonsReversed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -1286,28 +1282,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     await mutateOrders();
   }, [mutateOrders]);
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
-  const globalStatsDateParams = calculateDateFilterParams(
-    filterDateRange,
-    customStartDate,
-    customEndDate
-  );
-  
-  const {
-    data: globalStatsData,
-    error: globalStatsError,
-    isLoading: isGlobalStatsLoading,
-    mutate: mutateGlobalStats,
-  } = useOrderStatsClient(
-    userData?.userId || null,
-    {
-      // 날짜 필터만 적용 (상태 필터는 제외)
-      startDate: globalStatsDateParams.startDate,
-      endDate: globalStatsDateParams.endDate,
-      dateType: "created", // 항상 주문일시 기준 // 날짜 필터 타입 추가
-    },
-    swrOptions
-  );
-
   const { data: unreceivedCountData, mutate: mutateUnreceivedCount } = useSWR(
     userData?.userId ? ["unreceived-count", mode, userData.userId] : null,
     async () => {
@@ -1419,8 +1393,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   };
 
-  const isDataLoading =
-    isUserLoading || isOrdersLoading || isGlobalStatsLoading;
+  const isDataLoading = isUserLoading || isOrdersLoading;
   const displayedOrderIds = useMemo(
     () => groupedOrders.flatMap((g) => g.orderIds),
     [groupedOrders]
@@ -2118,19 +2091,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, [mutateProducts, userData?.userId]);
 
-  // 통계 데이터 변경 감지하여 새 주문 수 계산
-  useEffect(() => {
-    if (globalStatsData?.총주문수 && previousOrderCount > 0) {
-      const currentCount = globalStatsData.총주문수;
-      const addedOrders = Math.max(0, currentCount - previousOrderCount);
-      if (addedOrders > 0) {
-        setNewOrdersCount(addedOrders);
-        // 이전 주문 수 업데이트
-        setPreviousOrderCount(currentCount);
-      }
-    }
-  }, [globalStatsData?.총주문수, previousOrderCount]);
-
   useEffect(() => {
     if (ordersData?.data) {
       // comment_orders 데이터를 레거시 UI가 기대하는 형태로 변환하여 표시
@@ -2658,17 +2618,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       // 리스트/통계 새로고침
       await mutateOrders(undefined, { revalidate: true });
-      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시 무효화
       const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
         (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      globalMutate(
-        (key) => Array.isArray(key) && key[0] === "orderStats" && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -3072,21 +3026,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       // 즉시 주문 리스트 새로고침
       await mutateOrders(undefined, { revalidate: true });
-      // 통계 데이터도 갱신
-      await mutateGlobalStats(undefined, { revalidate: true });
 
       // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
       const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
         (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
-      );
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "orderStats" &&
-          key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
@@ -3794,23 +3738,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         }}
                         onComplete={async (result) => {
                           try {
-                            setPreviousOrderCount(globalStatsData?.총주문수 || 0);
                             await mutateOrders(undefined, { revalidate: true });
                             await mutateProducts(undefined, { revalidate: true });
-                            await mutateGlobalStats(undefined, { revalidate: true });
                           } catch (_) {}
                         }}
                       />
                     ) : (
                       <UpdateButton
                         pageType="orders"
-                        totalItems={globalStatsData?.총주문수 || 0}
+                        totalItems={totalItems}
                         onSuccess={async () => {
                           try {
-                            setPreviousOrderCount(globalStatsData?.총주문수 || 0);
                             await mutateOrders(undefined, { revalidate: true });
                             await mutateProducts(undefined, { revalidate: true });
-                            await mutateGlobalStats(undefined, { revalidate: true });
                           } catch (_) {}
                         }}
                       />
