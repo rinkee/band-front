@@ -46,6 +46,7 @@ export async function generateOrderData(
 ) {
   const orders = [];
   const customers = new Map();
+  // 취소 요청으로 자동 취소를 트리거하지 않도록 빈 Set 유지
   let cancellationUsers = new Set();
 
   const processingSummary = {
@@ -78,10 +79,7 @@ export async function generateOrderData(
 
   try {
     // 1. 취소 댓글 필터링
-    const { filteredComments, cancellationUsers: cancelUsers } = filterCancellationComments(comments);
-
-    // 취소 사용자 Set 할당
-    cancellationUsers = cancelUsers;
+    const { filteredComments } = filterCancellationComments(comments);
 
     processingSummary.skippedCancellation = comments.length - filteredComments.length;
 
@@ -110,8 +108,72 @@ export async function generateOrderData(
           authorName,
           authorUserNo,
           authorProfile,
-          createdAt
+          createdAt,
+          isCancellation,
+          parentAuthorName,
+          parentAuthorUserNo
         } = comment;
+
+        const isReply = commentKey?.includes('_');
+        const replierName = authorName || author?.name || "댓글작성자";
+
+        // band:refer 태그를 @닉네임으로 변환
+        const convertBandTags = (text = "") =>
+          text.replace(/<band:refer [^>]*>(.*?)<\/band:refer>/gi, (_m, p1) => `@${p1}`);
+
+        const sanitizedContent = convertBandTags(content || "");
+        const parentName =
+          comment.parentAuthorName ||
+          comment.parentAuthor ||
+          (comment.content && /<band:refer [^>]*>(.*?)<\/band:refer>/i.exec(comment.content)?.[1]) ||
+          null;
+
+        let bodyWithMention = sanitizedContent;
+        const parentMention = parentName ? `@${parentName}` : "";
+        if (parentMention && !sanitizedContent.includes(parentMention)) {
+          bodyWithMention = `${parentMention} ${sanitizedContent}`.trim();
+        }
+
+        // replier/parent 중복 방지용 유틸
+        const escapeRegExp = (str = "") =>
+          str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        const startsWithReplier = (text = "") => {
+          const trimmed = text.trim();
+          return (
+            trimmed.startsWith(replierName) ||
+            trimmed.startsWith(`@${replierName}`)
+          );
+        };
+
+        let commentContent;
+        if (isReply) {
+          const isSelfReply = parentName && parentName === replierName;
+          const contentBody = isSelfReply ? sanitizedContent : bodyWithMention;
+
+          // 본문이 이미 작성자 이름/@이름으로 시작하면 한 번 더 붙이지 않음
+          const dedupedBodyRaw = startsWithReplier(contentBody)
+            ? contentBody
+                .trim()
+                .replace(new RegExp(`^@?${escapeRegExp(replierName)}\\s*`), "")
+            : contentBody.trim();
+
+          let dedupedBody = dedupedBodyRaw.trim();
+
+          // 부모 이름이 앞에 한번 더 붙은 패턴 제거 (ex. "nh @nh ..." → "@nh ...")
+          if (parentName) {
+            const parentNameEsc = escapeRegExp(parentName);
+            dedupedBody = dedupedBody.replace(
+              new RegExp(`^${parentNameEsc}\\s*(?=@${parentNameEsc}\\b)`),
+              ""
+            ).trim();
+          }
+
+          const separator = dedupedBody.length > 0 ? " " : "";
+          commentContent = `[대댓글] ${replierName}:${separator}${dedupedBody}`.trim();
+        } else {
+          commentContent = sanitizedContent;
+        }
 
         // 필수 필드 검증
         if (!commentKey || !content) {
@@ -163,12 +225,20 @@ export async function generateOrderData(
 
           // 고객 정보
           customer_id: customerId,
-          customer_name: authorName || author?.name || '이름 없음',
-          customer_band_id: authorUserNo || author?.user_no || null,
+          customer_name: isReply
+            ? parentName || authorName || author?.name || '이름 없음'
+            : authorName || author?.name || '이름 없음',
+          customer_band_id: isReply
+            ? (parentAuthorUserNo ||
+              comment.parentAuthorUserNo ||
+              comment.authorUserNo ||
+              comment.author_user_no ||
+              null)
+            : authorUserNo || author?.user_no || null,
           customer_profile: authorProfile || author?.profile_image_url || null,
 
           // 댓글 내용
-          comment: content,
+          comment: commentContent,
           band_comment_id: commentKey,
           band_comment_url: null,
 
@@ -185,7 +255,7 @@ export async function generateOrderData(
 
           // 상태
           status: '주문완료',
-          sub_status: null,
+          sub_status: isCancellation ? '확인필요' : null,
 
           // 타임스탬프
           ordered_at: orderedAt,

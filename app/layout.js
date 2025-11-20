@@ -2,7 +2,7 @@
 // app/layout.js (또는 해당 레이아웃 파일)
 
 import "./globals.css"; // 전역 CSS 파일을 임포트합니다.
-import { useState, useEffect, Suspense } from "react"; // React 훅과 Suspense를 임포트합니다.
+import { useState, useEffect, Suspense, useRef } from "react"; // React 훅과 Suspense를 임포트합니다.
 import { usePathname } from "next/navigation"; // 현재 경로를 가져오는 Next.js 훅을 임포트합니다.
 import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니다.
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
@@ -27,6 +27,8 @@ function LayoutContent({ children }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   // 모바일 메뉴 열림/닫힘 상태
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 사용자 정보 드롭다운 열림/닫힘 상태
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   // 현재 페이지의 경로명 (클라이언트 측에서만 실행되므로 window 체크 불필요)
   const pathname = usePathname();
 
@@ -34,6 +36,9 @@ function LayoutContent({ children }) {
 
   // ScrollContext에서 scrollableContentRef 가져오기
   const { scrollableContentRef } = useScroll(); // <<< Context에서 ref 가져오기
+
+  // 사용자 드롭다운 ref
+  const userDropdownRef = useRef(null);
 
   // GitHub Pages(SPA) 경로 복원: 404.html이 `?/<path>`로 리다이렉트한 경우 원래 경로로 복원
   useEffect(() => {
@@ -106,7 +111,25 @@ function LayoutContent({ children }) {
   // 경로(pathname)가 변경될 때마다 모바일 메뉴를 닫습니다.
   useEffect(() => {
     setMobileMenuOpen(false);
+    setUserDropdownOpen(false);
   }, [pathname]); // pathname이 변경될 때 이 effect가 실행됩니다.
+
+  // 사용자 드롭다운 외부 클릭 감지
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        setUserDropdownOpen(false);
+      }
+    };
+
+    if (userDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [userDropdownOpen]);
 
   // 정적(비상) 모드에서 '/api/*' 호출을 외부 API로 우회 (선택)
   useEffect(() => {
@@ -349,10 +372,10 @@ function LayoutContent({ children }) {
             제한 모드: 현재 정적 백업 페이지가 제공 중입니다. 기능이 제한될 수 있습니다.
           </div>
         )}
-        <div className={`flex flex-col h-screen overflow-hidden ${isAdminPage ? 'bg-gray-50' : 'bg-gray-100'}`}>
+        <div className={`flex flex-col h-screen ${isAdminPage ? 'bg-gray-50' : 'bg-gray-100'}`}>
           {/* 로그인 상태이고 admin 페이지가 아닐 때만 헤더 표시 */}
           {isLoggedIn && !isAdminPage && (
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-10 w-full  ">
+            <header className="bg-white border-b border-gray-200 sticky top-0 w-full overflow-visible" style={{ zIndex: 50 }}>
               <div className="flex items-center justify-between px-4 py-2  mx-auto">
                 <div className="flex items-center">
                   <Link
@@ -365,7 +388,7 @@ function LayoutContent({ children }) {
                   <nav className="hidden md:flex space-x-1">
                     <Link
                       href="/dashboard"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      className={`px-2 md:px-3 py-2 text-xs md:text-sm lg:text-sm font-medium rounded-md ${
                         pathname === "/dashboard"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100" // 비활성 스타일
@@ -398,7 +421,7 @@ function LayoutContent({ children }) {
                     </Link> */}
                     <Link
                       href="/posts?page=1"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      className={`px-2 md:px-3 py-2 text-xs md:text-sm lg:text-sm font-medium rounded-md ${
                         pathname === "/posts"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
@@ -408,7 +431,7 @@ function LayoutContent({ children }) {
                     </Link>
                     <Link
                       href="/orders-test"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      className={`px-2 md:px-3 py-2 text-xs md:text-sm lg:text-sm font-medium rounded-md ${
                         pathname === "/orders-test"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
@@ -428,7 +451,7 @@ function LayoutContent({ children }) {
                     </Link> */}
                     <Link
                       href="/settings"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      className={`px-2 md:px-3 py-2 text-xs md:text-sm lg:text-sm font-medium rounded-md ${
                         pathname === "/settings"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
@@ -438,7 +461,7 @@ function LayoutContent({ children }) {
                     </Link>
                     <Link
                       href="/update-logs"
-                      className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      className={`px-2 md:px-3 py-2 text-xs md:text-sm lg:text-sm font-medium rounded-md ${
                         pathname === "/update-logs"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
                           : "text-gray-600 hover:bg-gray-100"
@@ -449,60 +472,85 @@ function LayoutContent({ children }) {
                   </nav>
                 </div>
                 {/* 헤더 우측 영역 */}
-                <div className="flex items-center space-x-4">
-                  {/* 사용자 정보 표시 */}
-                  <div className="hidden md:flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">
-                      로그인ID: {userData?.loginId}
-                    </span>
-                    {userData?.store_name && (
-                      <span className="text-sm text-gray-600">
-                        매장: {userData.store_name}
+                <div className="flex items-center gap-2">
+                  {/* 사용자 정보 드롭다운 */}
+                  <div className="hidden md:block relative" ref={userDropdownRef}>
+                    <button
+                      onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 rounded-md border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="text-xs lg:text-sm font-medium text-indigo-700">
+                        {userData?.loginId}
                       </span>
-                    )}
-                    {process.env.NEXT_PUBLIC_DB_NAME && (
-                      <span className="text-sm text-gray-600">
-                        DB: {process.env.NEXT_PUBLIC_DB_NAME}
-                      </span>
-                    )}
-                    {/* Function Number 표시 */}
-                    {userData?.function_number !== undefined && (
-                      <span className={`text-sm font-medium ${
-                        userData.function_number === 0 ? 'text-gray-600' :
-                        userData.function_number === 1 ? 'text-blue-600' :
-                        userData.function_number === 2 ? 'text-green-600' :
-                        'text-gray-600'
-                      }`}>
-                        서버: {
-                          userData.function_number === 0 ? '기본' :
-                          userData.function_number === 1 ? 'A' :
-                          userData.function_number === 2 ? 'B' :
-                          userData.function_number
-                        }
-                      </span>
+                      <svg className={`w-4 h-4 text-indigo-600 transition-transform ${userDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* 드롭다운 메뉴 */}
+                    {userDropdownOpen && (
+                      <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200" style={{ zIndex: 9999 }}>
+                        <div className="py-2">
+                          {userData?.store_name && (
+                            <div className="px-4 py-2.5 flex items-center gap-2 hover:bg-gray-50">
+                              <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                              </svg>
+                              <span className="text-sm text-gray-700">{userData.store_name}</span>
+                            </div>
+                          )}
+                          {process.env.NEXT_PUBLIC_DB_NAME && (
+                            <div className="px-4 py-2.5 flex items-center gap-2 hover:bg-gray-50">
+                              <svg className={`w-4 h-4 flex-shrink-0 ${
+                                process.env.NEXT_PUBLIC_DB_NAME === '개발' ? 'text-blue-600' : 'text-green-600'
+                              }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                              </svg>
+                              <span className={`text-sm font-medium ${
+                                process.env.NEXT_PUBLIC_DB_NAME === '개발' ? 'text-blue-700' : 'text-green-700'
+                              }`}>
+                                {process.env.NEXT_PUBLIC_DB_NAME}
+                              </span>
+                            </div>
+                          )}
+                          {userData?.function_number !== undefined && (
+                            <div className="px-4 py-2.5 flex items-center gap-2 hover:bg-gray-50">
+                              <svg className={`w-4 h-4 flex-shrink-0 ${
+                                userData.function_number === 0 ? 'text-gray-600' :
+                                userData.function_number === 1 ? 'text-purple-600' :
+                                userData.function_number === 2 ? 'text-orange-600' :
+                                'text-gray-600'
+                              }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                              </svg>
+                              <span className={`text-sm font-medium ${
+                                userData.function_number === 0 ? 'text-gray-700' :
+                                userData.function_number === 1 ? 'text-purple-700' :
+                                userData.function_number === 2 ? 'text-orange-700' :
+                                'text-gray-700'
+                              }`}>
+                                서버{userData.function_number}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="border-t border-gray-100 mt-1">
+                          <button
+                            onClick={handleLogout}
+                            className="w-full px-4 py-3 flex items-center gap-2 text-red-600 hover:bg-red-50 transition-colors rounded-b-lg"
+                          >
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            <span className="text-sm font-medium">로그아웃</span>
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
-
-                  {/* 로그아웃 버튼 */}
-                  <button
-                    onClick={handleLogout}
-                    className="hidden md:flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-md transition-colors"
-                  >
-                    <svg
-                      className="w-4 h-4 mr-1.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                      />
-                    </svg>
-                    로그아웃
-                  </button>
 
                   {/* 모바일 메뉴 토글 버튼 */}
                   <button
@@ -738,7 +786,7 @@ function LayoutContent({ children }) {
           {/* 메인 컨텐츠 영역 */}
           <div
             ref={scrollableContentRef}
-            className="flex-1 overflow-y-auto w-full"
+            className="flex-1 overflow-y-auto overflow-x-hidden w-full"
           >
             {/* 페이지별 컨텐츠 (children) + 내부 패딩 */}
             <main className="mx-auto h-full relative">

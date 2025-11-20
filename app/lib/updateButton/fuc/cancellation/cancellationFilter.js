@@ -23,27 +23,18 @@ export function filterCancellationComments(comments) {
   ];
 
   const filteredComments = [];
-  const cancellationUsers = new Set(); // 취소 요청한 사용자들
+  // 취소 요청 사용자 집계는 하지 않는다(자동 취소 방지)
+  const cancellationUsers = new Set();
 
   for (const comment of comments) {
     const commentContent = comment.content?.trim() || comment.body?.trim() || "";
     const isCancellation = cancellationPatterns.some((pattern) => pattern.test(commentContent));
 
-    if (isCancellation) {
-      const authorUserNo = comment.author?.user_key ||
-                          comment.author?.userNo ||
-                          comment.authorUserNo ||
-                          comment.author_user_no ||
-                          comment.customer_band_id ||
-                          comment.userKey ||
-                          comment.user_key;
-
-      if (authorUserNo) {
-        cancellationUsers.add(authorUserNo);
-      }
-    } else {
-      filteredComments.push(comment);
-    }
+    // 취소 댓글도 기록은 남기되 isCancellation 플래그로 표시
+    filteredComments.push({
+      ...comment,
+      isCancellation
+    });
   }
 
   return {
