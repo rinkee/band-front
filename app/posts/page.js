@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import ProductManagementModal from "../components/ProductManagementModal";
@@ -47,16 +47,14 @@ const getProxiedImageUrl = (url) => {
 
 export default function PostsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [userData, setUserData] = useState(null);
   const { scrollableContentRef } = useScroll();
 
-  // sessionStorage에서 저장된 페이지 번호 복원
+  // URL 파라미터에서 페이지 번호 읽기 (없으면 1)
   const [page, setPage] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const savedPage = sessionStorage.getItem('postsPageNumber');
-      return savedPage ? parseInt(savedPage, 10) : 1;
-    }
-    return 1;
+    const pageParam = searchParams.get('page');
+    return pageParam ? parseInt(pageParam, 10) : 1;
   });
   const [limit] = useState(20); // 4줄 x 5개 = 20개씩 표시
 
@@ -83,6 +81,7 @@ export default function PostsPage() {
   const [editingBarcode, setEditingBarcode] = useState(null); // { postKey, productId, value }
   const [savingBarcode, setSavingBarcode] = useState(null);
   const [savedBarcode, setSavedBarcode] = useState(null); // 저장 완료 배경색 표시용
+  const [pendingBarcodes, setPendingBarcodes] = useState({}); // { [productId]: barcodeValue } - 저장 대기 중인 바코드
 
   // 상품 추가 상태 (postKey별로 관리)
   const [addingProduct, setAddingProduct] = useState({}); // { [postKey]: { title, base_price, barcode } }
@@ -128,10 +127,18 @@ export default function PostsPage() {
     }
   }, [router]);
 
-  // 페이지 번호가 변경될 때마다 sessionStorage에 저장 및 스크롤 최상단 이동
+  // URL 파라미터에서 페이지 번호 변경 감지
+  useEffect(() => {
+    const pageParam = searchParams.get('page');
+    const newPage = pageParam ? parseInt(pageParam, 10) : 1;
+    if (newPage !== page) {
+      setPage(newPage);
+    }
+  }, [searchParams]);
+
+  // 페이지 번호가 변경될 때마다 스크롤 최상단 이동
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('postsPageNumber', page.toString());
       // 스크롤을 최상단으로 이동
       window.scrollTo(0, 0);
       // 저장된 스크롤 위치 초기화 (두 가지 키 모두)
@@ -385,7 +392,7 @@ export default function PostsPage() {
   // 검색 기능
   // 페이지 변경 핸들러
   const handlePageChange = (newPage) => {
-    setPage(newPage);
+    router.push(`/posts?page=${newPage}`);
   };
 
   const handleSearch = (e) => {
@@ -463,9 +470,8 @@ export default function PostsPage() {
   const handleViewOrders = (postKey, postedAt) => {
     if (!postKey) return;
 
-    // 페이지 상태만 저장 (스크롤 위치는 PostCard에서 이미 저장됨)
+    // 검색 상태만 저장 (스크롤 위치는 PostCard에서 이미 저장됨)
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('postsPageNumber', page.toString());
       sessionStorage.setItem('postsSearchTerm', searchTerm);
       sessionStorage.setItem('postsSearchQuery', searchQuery);
     }
@@ -1751,6 +1757,21 @@ export default function PostsPage() {
                                         <input
                                           type="text"
                                           value={editingProductData.barcode || ''}
+                                          onFocus={(e) => {
+                                            // 다른 상품에 저장되지 않은 바코드가 있는지 확인
+                                            const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                              if (pid === product.product_id) return false; // 현재 상품은 제외
+                                              const prod = products.find(p => p.product_id === pid);
+                                              const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                              return value !== originalBarcode;
+                                            });
+
+                                            if (unsavedBarcodes.length > 0) {
+                                              e.target.blur(); // 포커스 해제
+                                              alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                              return;
+                                            }
+                                          }}
                                           onChange={(e) => setEditingProductData(prev => ({ ...prev, barcode: e.target.value }))}
                                           placeholder="바코드"
                                           className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
@@ -1795,62 +1816,165 @@ export default function PostsPage() {
                                       '미입력'}
                                   </td>
                                   <td className={`px-4 py-3 text-sm text-gray-900 border-r border-gray-200 relative transition-colors duration-500 ${isSaved ? 'bg-green-100' : ''}`}>
-                                    {hasBarcode ? (
-                                      <div className="flex flex-col items-center gap-2">
-                                        {/* 바코드 이미지 */}
-                                        <BarcodeDisplay
-                                          value={product.barcode || product.productBarcode}
-                                          height={40}
-                                          width={1.5}
-                                          displayValue={true}
-                                          fontSize={10}
-                                          margin={5}
-                                        />
-                                      </div>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        placeholder="바코드"
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                        onBlur={async (e) => {
-                                          const value = e.target.value.trim();
-                                          if (value) {
-                                            await handleSaveBarcode(product.product_id, post.post_key, value);
-                                          }
-                                        }}
-                                        onKeyPress={async (e) => {
-                                          if (e.key === 'Enter') {
-                                            const value = e.target.value.trim();
-                                            if (value) {
-                                              await handleSaveBarcode(product.product_id, post.post_key, value);
-                                            }
-                                          }
-                                        }}
-                                      />
-                                    )}
+                                    <div className="flex flex-col items-center gap-2">
+                                      {(() => {
+                                        const currentBarcode = product.barcode || product.productBarcode || '';
+                                        const pendingBarcode = pendingBarcodes[product.product_id];
+                                        const isEditingBarcode = pendingBarcode !== undefined;
+
+                                        // 바코드가 있고 수정 중이 아니면 이미지만 표시
+                                        if (currentBarcode && !isEditingBarcode) {
+                                          return (
+                                            <BarcodeDisplay
+                                              value={currentBarcode}
+                                              height={40}
+                                              width={1.5}
+                                              displayValue={true}
+                                              fontSize={10}
+                                              margin={5}
+                                            />
+                                          );
+                                        }
+
+                                        // 바코드가 없거나 수정 중이면 input 표시
+                                        return (
+                                          <>
+                                            {/* 바코드 이미지 (입력값이 있을 때만) */}
+                                            {(isEditingBarcode && pendingBarcode) && (
+                                              <BarcodeDisplay
+                                                value={pendingBarcode}
+                                                height={40}
+                                                width={1.5}
+                                                displayValue={true}
+                                                fontSize={10}
+                                                margin={5}
+                                              />
+                                            )}
+                                            {/* 바코드 입력 필드 */}
+                                            <input
+                                              type="text"
+                                              placeholder="바코드 입력"
+                                              value={pendingBarcode ?? currentBarcode}
+                                              onFocus={(e) => {
+                                                // 다른 상품에 저장되지 않은 바코드가 있는지 확인
+                                                const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                                  if (pid === product.product_id) return false; // 현재 상품은 제외
+                                                  const prod = products.find(p => p.product_id === pid);
+                                                  const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                                  return value !== originalBarcode;
+                                                });
+
+                                                if (unsavedBarcodes.length > 0) {
+                                                  e.target.blur(); // 포커스 해제
+                                                  alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                                  return;
+                                                }
+                                              }}
+                                              onChange={(e) => {
+                                                setPendingBarcodes(prev => ({
+                                                  ...prev,
+                                                  [product.product_id]: e.target.value
+                                                }));
+                                              }}
+                                              className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                            />
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
                                   </td>
                                   <td className="px-4 py-3 text-sm text-gray-900">
                                     <div className="flex gap-1">
-                                      <button
-                                        onClick={() => {
-                                          setEditingProduct(product.product_id);
-                                          setEditingProductData({
-                                            item_number: product.item_number || '',
-                                            title: product.title || product.name || product.product_name || '',
-                                            base_price: (product.base_price ?? product.price ?? product.basePrice ?? ''),
-                                            barcode: product.barcode || product.productBarcode || ''
-                                          });
-                                        }}
-                                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
-                                      >
-                                        수정
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteProduct(product)}
-                                        className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs rounded transition-colors"
-                                      >
-                                        삭제
-                                      </button>
+                                      {(() => {
+                                        // 바코드가 변경되었는지 확인
+                                        const currentBarcode = product.barcode || product.productBarcode || '';
+                                        const pendingBarcode = pendingBarcodes[product.product_id];
+                                        const hasBarcodeChanged = pendingBarcode !== undefined && pendingBarcode !== currentBarcode;
+
+                                        return hasBarcodeChanged ? (
+                                          <>
+                                            <button
+                                              onClick={async () => {
+                                                await handleSaveBarcode(product.product_id, post.post_key, pendingBarcode);
+                                                // 저장 후 pending 상태 제거
+                                                setPendingBarcodes(prev => {
+                                                  const newPending = { ...prev };
+                                                  delete newPending[product.product_id];
+                                                  return newPending;
+                                                });
+                                              }}
+                                              disabled={savingBarcode === product.product_id}
+                                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-xs rounded transition-colors"
+                                            >
+                                              {savingBarcode === product.product_id ? '저장 중...' : '저장'}
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                // 취소: pending 상태 제거
+                                                setPendingBarcodes(prev => {
+                                                  const newPending = { ...prev };
+                                                  delete newPending[product.product_id];
+                                                  return newPending;
+                                                });
+                                              }}
+                                              className="px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded transition-colors"
+                                            >
+                                              취소
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                // 다른 상품에 저장되지 않은 바코드가 있는지 확인
+                                                const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                                  if (pid === product.product_id) return false; // 현재 상품은 제외
+                                                  const prod = products.find(p => p.product_id === pid);
+                                                  const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                                  return value !== originalBarcode;
+                                                });
+
+                                                if (unsavedBarcodes.length > 0) {
+                                                  alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                                  return;
+                                                }
+
+                                                // 전체 상품 정보 수정 모드로 전환
+                                                setEditingProduct(product.product_id);
+                                                setEditingProductData({
+                                                  item_number: product.item_number,
+                                                  title: product.title || product.name || product.product_name,
+                                                  base_price: product.base_price || product.price || product.basePrice,
+                                                  barcode: product.barcode || product.productBarcode || ''
+                                                });
+                                              }}
+                                              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
+                                            >
+                                              수정
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                // 저장되지 않은 바코드가 있는지 확인
+                                                const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                                  const prod = products.find(p => p.product_id === pid);
+                                                  const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                                  return value !== originalBarcode;
+                                                });
+
+                                                if (unsavedBarcodes.length > 0) {
+                                                  alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                                  return;
+                                                }
+
+                                                handleDeleteProduct(product);
+                                              }}
+                                              className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs rounded transition-colors"
+                                            >
+                                              삭제
+                                            </button>
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   </td>
                                 </tr>

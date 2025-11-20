@@ -331,7 +331,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       if (error) throw error;
 
-      setProducts(prev => [...prev, data[0]]);
+      const insertedProduct = data[0];
+      setProducts(prev => [...prev, insertedProduct]);
       setNewProduct({
         title: '',
         base_price: '',
@@ -342,6 +343,47 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(post.post_key));
+
+      // sessionStorage의 products 캐시도 업데이트 (orders-test 페이지 반영)
+      if (typeof window !== 'undefined' && insertedProduct) {
+        try {
+          // ordersProductsByPostKey 업데이트
+          const cachedByPostKey = sessionStorage.getItem('ordersProductsByPostKey');
+          if (cachedByPostKey) {
+            const byPostKeyMap = JSON.parse(cachedByPostKey);
+            const postKey = insertedProduct.post_key;
+
+            if (postKey) {
+              if (!byPostKeyMap[postKey]) {
+                byPostKeyMap[postKey] = [];
+              }
+              byPostKeyMap[postKey].push(insertedProduct);
+              sessionStorage.setItem('ordersProductsByPostKey', JSON.stringify(byPostKeyMap));
+              console.log(`✅ [sessionStorage] ordersProductsByPostKey에 신규 상품 추가: ${postKey}`);
+            }
+          }
+
+          // ordersProductsByBandPost 업데이트
+          const cachedByBandPost = sessionStorage.getItem('ordersProductsByBandPost');
+          if (cachedByBandPost) {
+            const byBandPostMap = JSON.parse(cachedByBandPost);
+            const bandNumber = insertedProduct.band_number;
+            const postNumber = insertedProduct.post_number;
+
+            if (bandNumber != null && postNumber != null) {
+              const key = `${bandNumber}_${String(postNumber)}`;
+              if (!byBandPostMap[key]) {
+                byBandPostMap[key] = [];
+              }
+              byBandPostMap[key].push(insertedProduct);
+              sessionStorage.setItem('ordersProductsByBandPost', JSON.stringify(byBandPostMap));
+              console.log(`✅ [sessionStorage] ordersProductsByBandPost에 신규 상품 추가: ${key}`);
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [sessionStorage] 신규 상품 추가 실패:', error);
+        }
+      }
 
       // 첫 상품을 수동으로 추가한 경우, posts.title을 해당 상품명으로 업데이트 (공지/실패 여부 무관)
       if (wasEmpty) {
