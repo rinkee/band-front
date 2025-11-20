@@ -1326,19 +1326,17 @@ export default function PostsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            
-{/* 검색 바 */}
-<div className="mt-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          {/* 검색 영역 */}
+          <div className="mb-4">
             <form
               onSubmit={handleSearch}
-              className="flex items-center space-x-3"
+              className="flex flex-wrap items-center gap-3"
             >
-              <div className="relative">
+              <div className="relative flex-1 min-w-[280px] max-w-xl">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg
-                    className="h-6 w-6 text-gray-400"
+                    className="h-5 w-5 text-gray-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1356,12 +1354,12 @@ export default function PostsPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="게시물 제목, 내용, 작성자로 검색..."
-                  className="block w-96 pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-base"
+                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center px-4 py-2.5 border border-transparent text-base font-medium rounded-md   text-white bg-black hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600"
+                className="inline-flex items-center px-4 py-2.5 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600"
               >
                 검색
               </button>
@@ -1369,10 +1367,10 @@ export default function PostsPage() {
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <svg
-                    className="h-5 w-5 mr-2"
+                    className="h-4 w-4 mr-2"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1389,51 +1387,52 @@ export default function PostsPage() {
               )}
             </form>
           </div>
-            {/* 통계 요약 및 업데이트 버튼 */}
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-6 text-base">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">
-                    {totalStats.totalPosts}
-                  </div>
-                  <div className="text-gray-500">전체</div>
+
+          {/* 통계 및 버튼 영역 */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {/* 통계 요약 */}
+            <div className="flex items-center gap-4 sm:gap-6">
+              <div className="text-center">
+                <div className="text-xl sm:text-2xl font-bold text-gray-900">
+                  {totalStats.totalPosts}
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {totalStats.totalProductPosts}
-                  </div>
-                  <div className="text-gray-500">상품</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {totalStats.totalCompletedPosts}
-                  </div>
-                  <div className="text-gray-500">처리완료</div>
-                </div>
+                <div className="text-xs sm:text-sm text-gray-500">전체</div>
               </div>
-              <div className="flex items-center gap-3">
-                {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
-                {userData?.function_number === 9 ? (
-                  <TestUpdateButton
-                    onProcessingChange={(isProcessing, result) => {
-                      setIsTestUpdating(isProcessing);
-                      if (!isProcessing && result) {
-                        setTestUpdateResult(result);
-                        // 3초 후 결과 닫기
-                        setTimeout(() => {
-                          setTestUpdateResult(null);
-                        }, 3000);
-                      }
-                    }}
-                  />
-                ) : (
-                  <UpdateButton pageType="posts" />
-                )}
+              <div className="text-center">
+                <div className="text-xl sm:text-2xl font-bold text-blue-600">
+                  {totalStats.totalProductPosts}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-500">상품</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl sm:text-2xl font-bold text-green-600">
+                  {totalStats.totalCompletedPosts}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-500">처리완료</div>
               </div>
             </div>
-          </div>
 
-          
+            {/* 업데이트 버튼 */}
+            <div className="flex items-center gap-3">
+              {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
+              {userData?.function_number === 9 ? (
+                <TestUpdateButton
+                  onProcessingChange={(isProcessing, result) => {
+                    setIsTestUpdating(isProcessing);
+                    if (!isProcessing && result) {
+                      setTestUpdateResult(result);
+                      // 3초 후 결과 닫기
+                      setTimeout(() => {
+                        setTestUpdateResult(null);
+                      }, 3000);
+                    }
+                  }}
+                />
+              ) : (
+                <UpdateButton pageType="posts" />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
