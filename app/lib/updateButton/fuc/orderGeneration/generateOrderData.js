@@ -111,10 +111,16 @@ export async function generateOrderData(
           createdAt,
           isCancellation,
           parentAuthorName,
-          parentAuthorUserNo
+          parentAuthorUserNo,
+          content_type,
+          origin_comment_id
         } = comment;
 
-        const isReply = commentKey?.includes('_');
+        const isReply =
+          comment.isReply === true ||
+          content_type === "post_comment_comment" ||
+          Boolean(origin_comment_id) ||
+          (commentKey?.includes("_") && (parentAuthorName || parentAuthorUserNo));
         const replierName = authorName || author?.name || "댓글작성자";
 
         // band:refer 태그를 @닉네임으로 변환

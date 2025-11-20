@@ -597,6 +597,14 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     ...c,
                     post_key: postKey,
                     band_key: bandKey,
+                    isReply: c.isReply === true,
+                    parentAuthorName: c.parentAuthorName || c.parentAuthor || null,
+                    parentAuthorUserNo: c.parentAuthorUserNo ||
+                      c.parentAuthor?.user_no ||
+                      c.parentAuthor?.userNo ||
+                      null,
+                    content_type: c.content_type || null,
+                    origin_comment_id: c.origin_comment_id || null,
                     commentKey: c.commentKey,
                     createdAt: c.createdAt,
                     author: c.author
@@ -1039,7 +1047,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           ? fullComments.map((c) => ({
                               ...c,
                               post_key: postKey,
-                              band_key: bandKey
+                              band_key: bandKey,
+                              isReply: c.isReply === true,
+                              parentAuthorName: c.parentAuthorName || c.parentAuthor || null,
+                              parentAuthorUserNo: c.parentAuthorUserNo ||
+                                c.parentAuthor?.user_no ||
+                                c.parentAuthor?.userNo ||
+                                null,
+                              content_type: c.content_type || null,
+                              origin_comment_id: c.origin_comment_id || null,
                             }))
                           : newComments;
 
