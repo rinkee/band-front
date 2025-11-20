@@ -174,6 +174,7 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
         const replies = [];
         if (c.latest_comments && Array.isArray(c.latest_comments)) {
           const parentAuthorName = c.author?.name || '';
+          const parentAuthorUserNo = c.author?.user_key || c.author?.userNo || null;
 
           c.latest_comments.forEach((reply, replyIndex) => {
             const replyTs = reply.created_at;
@@ -190,6 +191,8 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
                 profileImageUrl: reply.author.profile_image_url
               } : null,
               content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+              parentAuthorName,
+              parentAuthorUserNo,
               createdAt: replyTs
             };
 

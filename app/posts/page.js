@@ -1328,65 +1328,9 @@ export default function PostsPage() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">상품 및 게시물 관리</h1>
-              <p className="text-gray-600 mt-1">
-                총 {totalStats.totalPosts}개의 게시물 • 상품 게시물{" "}
-                {totalStats.totalProductPosts}개
-                {searchQuery && (
-                  <span className="text-blue-600 ml-2">
-                    • &quot;{searchQuery}&quot; 검색 결과
-                  </span>
-                )}
-              </p>
-            </div>
-
-            {/* 통계 요약 및 업데이트 버튼 */}
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-6 text-base">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">
-                    {totalStats.totalPosts}
-                  </div>
-                  <div className="text-gray-500">전체</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {totalStats.totalProductPosts}
-                  </div>
-                  <div className="text-gray-500">상품</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {totalStats.totalCompletedPosts}
-                  </div>
-                  <div className="text-gray-500">처리완료</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
-                {userData?.function_number === 9 ? (
-                  <TestUpdateButton
-                    onProcessingChange={(isProcessing, result) => {
-                      setIsTestUpdating(isProcessing);
-                      if (!isProcessing && result) {
-                        setTestUpdateResult(result);
-                        // 3초 후 결과 닫기
-                        setTimeout(() => {
-                          setTestUpdateResult(null);
-                        }, 3000);
-                      }
-                    }}
-                  />
-                ) : (
-                  <UpdateButton pageType="posts" />
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* 검색 바 */}
-          <div className="mt-3 flex items-center justify-between">
+            
+{/* 검색 바 */}
+<div className="mt-3 flex items-center justify-between">
             <form
               onSubmit={handleSearch}
               className="flex items-center space-x-3"
@@ -1445,6 +1389,51 @@ export default function PostsPage() {
               )}
             </form>
           </div>
+            {/* 통계 요약 및 업데이트 버튼 */}
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-6 text-base">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-gray-900">
+                    {totalStats.totalPosts}
+                  </div>
+                  <div className="text-gray-500">전체</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {totalStats.totalProductPosts}
+                  </div>
+                  <div className="text-gray-500">상품</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {totalStats.totalCompletedPosts}
+                  </div>
+                  <div className="text-gray-500">처리완료</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
+                {userData?.function_number === 9 ? (
+                  <TestUpdateButton
+                    onProcessingChange={(isProcessing, result) => {
+                      setIsTestUpdating(isProcessing);
+                      if (!isProcessing && result) {
+                        setTestUpdateResult(result);
+                        // 3초 후 결과 닫기
+                        setTimeout(() => {
+                          setTestUpdateResult(null);
+                        }, 3000);
+                      }
+                    }}
+                  />
+                ) : (
+                  <UpdateButton pageType="posts" />
+                )}
+              </div>
+            </div>
+          </div>
+
+          
         </div>
       </div>
 
@@ -1869,6 +1858,8 @@ export default function PostsPage() {
                                             displayValue={true}
                                             fontSize={10}
                                             margin={5}
+                                            productName={editingProductData.title || ''}
+                                            price={editingProductData.base_price}
                                           />
                                         )}
                                         <input
@@ -1949,6 +1940,8 @@ export default function PostsPage() {
                                               displayValue={true}
                                               fontSize={10}
                                               margin={5}
+                                              productName={product.title || product.name || product.product_name || ''}
+                                              price={product.base_price || product.price || product.basePrice}
                                             />
                                           );
                                         }
@@ -1965,6 +1958,8 @@ export default function PostsPage() {
                                                 displayValue={true}
                                                 fontSize={10}
                                                 margin={5}
+                                                productName={product.title || product.name || product.product_name || ''}
+                                                price={product.base_price || product.price || product.basePrice}
                                               />
                                             )}
                                             {/* 바코드 입력 필드 */}
@@ -2145,6 +2140,8 @@ export default function PostsPage() {
                                         displayValue={true}
                                         fontSize={10}
                                         margin={5}
+                                        productName={isAddingNewProduct.title || '신규 상품'}
+                                        price={isAddingNewProduct.base_price}
                                       />
                                     )}
                                     <input

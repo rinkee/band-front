@@ -1475,28 +1475,28 @@ const CommentsModal = ({
       />
 
       {/* 모달 컨텐츠 */}
-      <div className="flex min-h-full items-center justify-center p-6">
-        <div className="relative w-full max-w-[100rem] h-[92vh] bg-white rounded-3xl flex flex-col overflow-hidden">
+      <div className="flex min-h-full items-center justify-center p-2 sm:p-4 md:p-6">
+        <div className="relative w-full max-w-6xl lg:max-w-7xl h-[95vh] sm:h-[92vh] bg-white rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden">
           {/* 닫기 버튼 - 절대 위치로 우측 상단에 배치 */}
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 z-20 p-3 text-gray-100 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 z-20 p-2 sm:p-3 text-gray-100 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
           >
-            <XMarkIcon className="w-8 h-8" />
+            <XMarkIcon className="w-6 h-6 sm:w-8 sm:h-8" />
           </button>
-          
+
           {/* 상단 헤더 - 모던한 그라데이션 배경 */}
-          <div className="px-8 py-4 bg-gray-700">
-            <div className="pr-16"> {/* 닫기 버튼 공간 확보 */}
+          <div className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-gray-700">
+            <div className="pr-12 sm:pr-16"> {/* 닫기 버튼 공간 확보 */}
               {postTitle && (
                 <>
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-2 sm:gap-4">
                     <div className="flex-1">
-                      <h2 className="text-3xl font-bold text-white mb-2 leading-tight">
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">
                         {postTitle.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim()}
                       </h2>
-                      
-                      <div className="flex items-center gap-4 flex-wrap">
+
+                      <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                         {/* 수령일 표시 (수정 불가) */}
                         {(
                           // 표시 모드 (수정 불가, 단순 표시만)
@@ -1512,8 +1512,8 @@ const CommentsModal = ({
                                 
                                 if (!isNaN(displayDate.getTime())) {
                                   return (
-                                    <div className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
-                                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-100 text-blue-700 text-xs sm:text-sm font-medium rounded-full">
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                       </svg>
                                       {displayDate.toLocaleDateString('ko-KR', {
@@ -1528,16 +1528,16 @@ const CommentsModal = ({
                                 console.log('pickup_date 파싱 실패:', e);
                               }
                             }
-                          
+
                           // pickup_date가 없으면 수령일 표시 없음
                           return null;
                           })()
                         )}
-                        
+
                         {/* 작성일 표시 */}
                         {activePost?.posted_at && (
-                          <div className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-sm font-medium rounded-full">
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 bg-gray-100 text-gray-600 text-xs sm:text-sm font-medium rounded-full">
+                            <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             작성: {new Date(activePost.posted_at).toLocaleDateString('ko-KR', {
@@ -1555,15 +1555,15 @@ const CommentsModal = ({
             </div>
           </div>
 
-          {/* 메인 컨텐츠 영역 - 가로 3분할 레이아웃 */}
-          <div className="flex flex-1 overflow-hidden gap-4 p-4 bg-gray-200">
+          {/* 메인 컨텐츠 영역 - 반응형 레이아웃 */}
+          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden gap-2 sm:gap-3 md:gap-4 p-2 sm:p-3 md:p-4 bg-gray-200">
             {/* 게시물 내용 카드 */}
-            <div className="w-1/3 flex flex-col">
-              <div className="bg-white rounded-2xl  overflow-hidden flex flex-col h-full">
-                <div className="px-4 py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
+            <div className="w-full lg:w-1/3 flex flex-col max-h-[30vh] lg:max-h-full">
+              <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden flex flex-col h-full">
+                <div className="px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">게시물 내용</h3>
-                    <p className="text-base text-gray-500">원본 텍스트</p>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">게시물 내용</h3>
+                    <p className="text-sm sm:text-base text-gray-500">원본 텍스트</p>
                   </div>
                   
                   {/* 삭제 버튼 */}
@@ -1573,47 +1573,47 @@ const CommentsModal = ({
                         onDeletePost(post);
                         onClose(); // 삭제 후 모달 닫기
                       }}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="게시물 삭제"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       삭제
                     </button>
                   )}
                 </div>
-                
-                <div className="flex-1 overflow-y-auto p-4 min-h-0">
+
+                <div className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4 min-h-0">
                   {postContent ? (
-                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-base">
+                    <div className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed text-sm sm:text-base">
                       {decodeHtmlEntities(postContent)}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center h-full">
-                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex flex-col items-center justify-center py-4 sm:py-8 text-center h-full">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-full flex items-center justify-center mb-2 sm:mb-3">
+                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <p className="text-gray-500 text-base">게시물 내용이 없습니다</p>
+                      <p className="text-gray-500 text-sm sm:text-base">게시물 내용이 없습니다</p>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            
+
 
             {/* 댓글 목록 카드 */}
-            <div className="w-2/3 flex flex-col">
-              <div className="bg-white rounded-2xl  flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="w-full lg:w-2/3 flex flex-col flex-1 min-h-0">
+              <div className="bg-white rounded-xl sm:rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}
-                <div className="px-4 py-3 bg-gray-100">
+                <div className="px-3 sm:px-4 py-2 sm:py-3 bg-gray-100">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">댓글 목록</h3>
-                    <div className="flex items-center gap-1 text-base text-gray-500">
-                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>                      
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">댓글 목록</h3>
+                    <div className="flex items-center gap-1 text-sm sm:text-base text-gray-500">
+                      <span>총 {loading && comments.length === 0 ? '...' : visibleCommentsCount}개 중</span>
                       <span>{loading && Object.keys(savedComments).length === 0 ? '...' : visibleOrdersCount}개의 주문 댓글</span>
                     </div>
                   </div>
@@ -1641,46 +1641,46 @@ const CommentsModal = ({
                   />
                 </div>
               </div>
-              
+
               {/* 컨트롤 모듈들 - 댓글 카드 아래 */}
-              <div className="mt-4 flex items-center gap-3 flex-wrap">
+              <div className="mt-2 sm:mt-3 md:mt-4 flex items-center gap-2 sm:gap-3 flex-wrap">
                 {/* 제외 고객 숨김 모듈 */}
-                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl">
                   <button
                     onClick={() => setHideExcludedCustomers(!hideExcludedCustomers)}
-                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 ${
+                    className={`relative inline-flex h-5 w-8 sm:h-6 sm:w-9 items-center rounded-full transition-all duration-300 ${
                       hideExcludedCustomers ? 'bg-red-500' : 'bg-gray-300'
                     }`}
                   >
                     <span
-                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
-                        hideExcludedCustomers ? 'translate-x-5' : 'translate-x-1'
+                      className={`inline-block h-2.5 w-2.5 sm:h-3 sm:w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        hideExcludedCustomers ? 'translate-x-[14px] sm:translate-x-5' : 'translate-x-1'
                       }`}
                     />
                   </button>
-                  <span className="text-base font-medium text-gray-700">제외고객 숨김</span>
+                  <span className="text-sm sm:text-base font-medium text-gray-700">제외고객 숨김</span>
                 </div>
-                
+
                 {/* 주문 상세 보기 모듈 */}
-                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl">
                   <button
                     onClick={() => setShowOrderDetails(!showOrderDetails)}
-                    className={`relative inline-flex h-6 w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
+                    className={`relative inline-flex h-5 w-8 sm:h-6 sm:w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
                       showOrderDetails ? 'bg-blue-600' : 'bg-gray-300'
                     }`}
                   >
                     <span
-                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 ${
-                        showOrderDetails ? 'translate-x-5' : 'translate-x-1'
+                      className={`inline-block h-2.5 w-2.5 sm:h-3 sm:w-3 transform rounded-full bg-white transition-transform duration-300 ${
+                        showOrderDetails ? 'translate-x-[14px] sm:translate-x-5' : 'translate-x-1'
                       }`}
                     />
                   </button>
-                  <span className="text-base font-medium text-gray-700">주문 상세 보기</span>
+                  <span className="text-sm sm:text-base font-medium text-gray-700">주문 상세 보기</span>
                 </div>
-                
+
                 {/* 누락 주문 재처리 모듈 */}
                 {activePost && (
-                  <div className="flex items-center gap-2 bg-white p-3 rounded-2xl">
+                  <div className="flex items-center gap-1.5 sm:gap-2 bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl">
                     <button
                       onClick={async () => {
                         // is_product가 false인 경우 true로 변경
@@ -1726,7 +1726,7 @@ const CommentsModal = ({
                         const isCurrentlyPending = activePost.comment_sync_status === 'pending';
                         onToggleReprocess(activePost, !isCurrentlyPending);
                       }}
-                      className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 ${
+                      className={`relative inline-flex h-5 w-8 sm:h-6 sm:w-10 items-center rounded-full transition-all duration-300 ${
                         !activePost.is_product
                           ? 'bg-gray-300 cursor-pointer hover:bg-gray-400'
                           : activePost.comment_sync_status === 'pending'
@@ -1735,16 +1735,16 @@ const CommentsModal = ({
                       }`}
                     >
                       <span
-                        className={`inline-block h-3 w-3 transform rounded-full transition-transform duration-300 ${
+                        className={`inline-block h-2.5 w-2.5 sm:h-3 sm:w-3 transform rounded-full transition-transform duration-300 ${
                           !activePost.is_product
                             ? 'bg-white translate-x-1'
                             : activePost.comment_sync_status === 'pending'
-                            ? 'translate-x-5 bg-white'
+                            ? 'translate-x-[14px] sm:translate-x-5 bg-white'
                             : 'translate-x-1 bg-white'
                         }`}
                       />
                     </button>
-                    <span className={`text-base font-medium ${
+                    <span className={`text-sm sm:text-base font-medium ${
                       !activePost.is_product
                         ? 'text-gray-700 cursor-pointer'
                         : activePost.comment_sync_status === 'pending'

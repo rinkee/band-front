@@ -290,13 +290,13 @@ function StatusBadge({ status, processingMethod }) {
 
     switch (processingMethod) {
       case "ai":
-        return <SparklesIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1" />;
+        return <SparklesIcon className="h-2 w-2 xl:h-2.5 xl:w-2.5 mr-1" />;
       case "ai-fallback":
-        return <SparklesIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1 opacity-60" />;
+        return <SparklesIcon className="h-2 w-2 xl:h-2.5 xl:w-2.5 mr-1 opacity-60" />;
       case "pattern":
-        return <FunnelIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1" />;
+        return <FunnelIcon className="h-2 w-2 xl:h-2.5 xl:w-2.5 mr-1" />;
       case "manual":
-        return <PencilIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1" />;
+        return <PencilIcon className="h-2 w-2 xl:h-2.5 xl:w-2.5 mr-1" />;
       default:
         return null;
     }
@@ -304,7 +304,7 @@ function StatusBadge({ status, processingMethod }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 xl:px-2 py-1 xl:py-1 text-sm xl:text-sm font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center rounded-md px-1.5 xl:px-2 py-0.5 xl:py-1 text-xs xl:text-sm font-medium ${bgColor} ${textColor}`}
     >
       {getProcessingIcon()}
       {status}
@@ -440,7 +440,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
-  const [pickupViewMode, setPickupViewMode] = useState("simple"); // 'simple' | 'detailed'
+  const [pickupViewMode, setPickupViewMode] = useState("detailed"); // 'simple' | 'detailed'
   const [barcodeViewMode, setBarcodeViewMode] = useState("small"); // 'small' | 'large'
   const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
   const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
@@ -3612,7 +3612,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     {/* order-2, sm:w-auto */}
                     <button
                       onClick={handleSearch}
-                      className="flex-1 sm:flex-none px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
+                      className="flex-1 sm:flex-none px-8 py-2 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
                       disabled={isDataLoading}
                     >
                       검색
@@ -3620,7 +3620,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <button
                       onClick={handleClearSearch}
                       disabled={isDataLoading}
-                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
+                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 text-sm md:text-base rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
                       aria-label="검색 초기화"
                       title="검색 및 필터 초기화"
                     >
@@ -3643,8 +3643,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
               <div className="divide-y divide-gray-200">
                 {/* 조회 기간 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                    <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                    <CalendarDaysIcon className="w-4 h-4 md:w-5 md:h-5 mr-2 text-gray-400 flex-shrink-0" />
                     조회 기간
                   </div>
                   <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
@@ -3689,8 +3689,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 {/* 상태 필터 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                    <FunnelIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                    <FunnelIcon className="w-4 h-4 md:w-5 md:h-5 mr-2 text-gray-400 flex-shrink-0" />
                     상태
                   </div>
                   <div className="bg-white px-4 py-3">
@@ -3713,8 +3713,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
           <div>
             <LightCard padding="p-0" className="overflow-hidden">
               <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                  <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
+                <div className="bg-gray-50 px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
+                  <TagIcon className="w-4 h-4 md:w-5 md:h-5 mr-2 text-gray-400 flex-shrink-0" />
                   검색
                 </div>
                 <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2 justify-between">
@@ -3758,7 +3758,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <div className="flex flex-row gap-2 py-2">
                       <button
                         onClick={handleSearch}
-                        className="px-8 py-2 font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-8 py-2 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={isDataLoading}
                       >
                         검색
@@ -3766,7 +3766,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       <button
                         onClick={handleClearSearch}
                         disabled={isDataLoading}
-                        className="flex items-center justify-center px-5 py-2 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                        className="flex items-center justify-center px-5 py-2 text-sm md:text-base rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                         aria-label="검색 초기화"
                         title="검색 및 필터 초기화"
                       >
@@ -3829,7 +3829,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
             {/* 테이블 컨테이너 */}
             <div ref={tableContainerRef} className="relative">
               <table className="min-w-full ">
-                <thead className="bg-black sticky top-[72px] z-10">
+                <thead className="bg-black sticky top-[100px] lg:top-[72px] z-10">
                   <tr>
                     <th
                       scope="col"
@@ -3871,9 +3871,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       }}
                       role="button"
                       tabIndex={isDataLoading ? -1 : 0}
-                      title={isDataLoading ? "로딩 중..." : "수령일시 보기 모드 전환"}
+                      title={isDataLoading ? "로딩 중..." : "수령일 보기 모드 전환"}
                     >
-                      <span className={isDataLoading ? "text-gray-500" : "text-gray-800 hover:text-orange-600"}>수령일시</span>
+                      <span className={isDataLoading ? "text-gray-500" : "text-gray-800 hover:text-orange-600"}>수령일</span>
                     </th>
                     <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
@@ -3984,7 +3984,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           >
                             <div className="flex items-center min-h-[60px]">
                               <span
-                                className="text-base xl:text-lg text-gray-700 hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
+                                className="text-sm md:text-base xl:text-lg text-gray-700 hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
                                 title={order.customer_name}
                               >
                                 {order.customer_name || "-"}
@@ -3996,7 +3996,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
                           {/* 수령일시 */}
-                          <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center text-base xl:text-lg text-gray-700 w-20 xl:w-32">
+                          <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center text-sm md:text-base xl:text-lg text-gray-700 w-20 xl:w-32">
                             {(() => {
                               const list = getCandidateProductsForOrder(order);
                               let displayProd = null;
@@ -4009,7 +4009,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 댓글 */}
-                          <td className="py-2 xl:py-3 px-2 lg:px-4 xl:px-6 text-base xl:text-xl text-gray-600">
+                          <td className="py-2 xl:py-3 px-2 lg:px-4 xl:px-6 text-sm md:text-base xl:text-xl text-gray-600">
                             <div>
                               {(() => {
                                 const currentComment = processBandTags(order.comment || "");
@@ -4086,7 +4086,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         memoInputRefs.current[order.order_id] = el;
                                       }
                                     }}
-                                    className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
+                                    className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-sm md:text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
                                       order.memo ? "bg-red-50 text-red-600 font-semibold border-red-300" : ""
                                     }`}
                                     placeholder="메모 입력..."
@@ -4148,7 +4148,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
                           <td
-                            className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-base xl:text-xl text-gray-700 align-top"
+                            className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-sm md:text-base xl:text-xl text-gray-700 align-top"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {(() => {
@@ -4223,7 +4223,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                               </span>
                                             )}
                                             <span
-                                              className={`text-base xl:text-xl leading-snug text-gray-900 font-medium break-words line-clamp-2 xl:whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
+                                              className={`text-sm md:text-base xl:text-lg leading-snug text-gray-900 font-medium break-words line-clamp-2 xl:whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
                                               onClick={() => handleCellClickToSearch(title, order.post_key)}
                                               title="클릭하여 이 게시물의 주문 검색"
                                             >
@@ -4231,7 +4231,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                             </span>
                                           </div>
                                           {price != null && (
-                                            <div className="text-base xl:text-xl text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
+                                            <div className="text-sm md:text-base xl:text-lg text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
                                           )}
                                         </div>
                                       </div>
