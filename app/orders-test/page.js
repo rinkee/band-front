@@ -1249,7 +1249,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
             .select("*")
             .eq("user_id", uid)
             .in("post_key", newPostKeys)
-            .order("item_number", { ascending: true });
+            .order("item_number", { ascending: true })
+            .range(0, 9999); // 최대 10000개까지 가져오기
 
           if (e1) {
             console.error('[상품] post_key 조회 실패:', e1);
@@ -1267,7 +1268,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
             .eq("user_id", uid)
             .eq("band_number", band)
             .in("post_number", postNums)
-            .order("item_number", { ascending: true });
+            .order("item_number", { ascending: true })
+            .range(0, 9999); // 최대 10000개까지 가져오기
 
           if (e2) {
             console.error('[상품] band/post 조회 실패:', e2);
