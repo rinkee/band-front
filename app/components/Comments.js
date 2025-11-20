@@ -1555,10 +1555,10 @@ const CommentsModal = ({
             </div>
           </div>
 
-          {/* 메인 컨텐츠 영역 - 반응형 레이아웃 */}
-          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden gap-2 sm:gap-3 md:gap-4 p-2 sm:p-3 md:p-4 bg-gray-200">
-            {/* 게시물 내용 카드 */}
-            <div className="w-full lg:w-1/3 flex flex-col max-h-[30vh] lg:max-h-full">
+          {/* 메인 컨텐츠 영역 - 가로 배치 고정 */}
+          <div className="flex flex-row flex-1 overflow-hidden gap-2 sm:gap-3 md:gap-4 p-2 sm:p-3 md:p-4 bg-gray-200">
+            {/* 게시물 내용 카드 - PC에서만 표시 */}
+            <div className="hidden lg:flex lg:flex-col lg:w-1/3">
               <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden flex flex-col h-full">
                 <div className="px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between bg-gray-100 flex-shrink-0">
                   <div>
@@ -1605,7 +1605,7 @@ const CommentsModal = ({
 
 
 
-            {/* 댓글 목록 카드 */}
+            {/* 댓글 목록 카드 - 태블릿: 전체, PC: 2/3 */}
             <div className="w-full lg:w-2/3 flex flex-col flex-1 min-h-0">
               <div className="bg-white rounded-xl sm:rounded-2xl flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* 댓글 헤더 */}

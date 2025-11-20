@@ -160,23 +160,32 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
           commentKey: c.comment_key,
           postKey: postKey,
           bandKey: bandKey,
+          isReply: false,
+          content_type: c.content_type || null,
+          origin_comment_id: c.origin_comment_id || null,
           author: c.author ? {
             name: c.author.name,
-            userNo: c.author.user_key,
-            user_key: c.author.user_key,
+            userNo: c.author.user_no || c.author.user_key || c.author.userNo,
+            user_key: c.author.user_no || c.author.user_key || c.author.userNo,
             profileImageUrl: c.author.profile_image_url
           } : null,
           content: c.content,
           createdAt: ts
         };
 
-        // 대댓글 처리 (v2.1 API)
+        // 대댓글 처리 (v2.1 API) - latest_comments 또는 latest_comment 키 모두 지원
         const replies = [];
-        if (c.latest_comments && Array.isArray(c.latest_comments)) {
-          const parentAuthorName = c.author?.name || '';
-          const parentAuthorUserNo = c.author?.user_key || c.author?.userNo || null;
+        const childComments = Array.isArray(c.latest_comments)
+          ? c.latest_comments
+          : Array.isArray(c.latest_comment)
+            ? c.latest_comment
+            : [];
 
-          c.latest_comments.forEach((reply, replyIndex) => {
+        if (childComments.length > 0) {
+          const parentAuthorName = c.author?.name || '';
+          const parentAuthorUserNo = c.author?.user_no || c.author?.user_key || c.author?.userNo || null;
+
+          childComments.forEach((reply, replyIndex) => {
             const replyTs = reply.created_at;
             if (replyTs && (latestTs === null || replyTs > latestTs)) latestTs = replyTs;
 
@@ -184,10 +193,13 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
               commentKey: `${c.comment_key}_${replyTs}`, // 타임스탬프 기반 고유 ID
               postKey: postKey,
               bandKey: bandKey,
+              isReply: true,
+              content_type: reply.content_type || "post_comment_comment",
+              origin_comment_id: reply.origin_comment_id || c.comment_id || c.comment_key || null,
               author: reply.author ? {
                 name: reply.author.name,
-                userNo: reply.author.user_key,
-                user_key: reply.author.user_key,
+                userNo: reply.author.user_no || reply.author.user_key || reply.author.userNo,
+                user_key: reply.author.user_no || reply.author.user_key || reply.author.userNo,
                 profileImageUrl: reply.author.profile_image_url
               } : null,
               content: reply.body || "", // 원문만 저장 (부모 정보는 별도로 전달)
@@ -583,22 +595,32 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
           commentKey: c.comment_key,
           postKey: postKey,
           bandKey: bandKey,
+          isReply: false,
+          content_type: c.content_type || null,
+          origin_comment_id: c.origin_comment_id || null,
           author: c.author ? {
             name: c.author.name,
-            userNo: c.author.user_key,
-            user_key: c.author.user_key,
+            userNo: c.author.user_no || c.author.user_key || c.author.userNo,
+            user_key: c.author.user_no || c.author.user_key || c.author.userNo,
             profileImageUrl: c.author.profile_image_url
           } : null,
           content: c.content,
           createdAt: ts
         };
 
-        // 대댓글 처리 (v2.1 API)
+        // 대댓글 처리 (v2.1 API) - latest_comments 또는 latest_comment 키 모두 지원
         const replies = [];
-        if (c.latest_comments && Array.isArray(c.latest_comments)) {
-          const parentAuthorName = c.author?.name || '';
+        const childComments = Array.isArray(c.latest_comments)
+          ? c.latest_comments
+          : Array.isArray(c.latest_comment)
+            ? c.latest_comment
+            : [];
 
-          c.latest_comments.forEach((reply, replyIndex) => {
+        if (childComments.length > 0) {
+          const parentAuthorName = c.author?.name || '';
+          const parentAuthorUserNo = c.author?.user_no || c.author?.user_key || c.author?.userNo || null;
+
+          childComments.forEach((reply, replyIndex) => {
             const replyTs = reply.created_at;
             if (replyTs && (latestTs === null || replyTs > latestTs)) latestTs = replyTs;
 
@@ -606,13 +628,18 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
               commentKey: `${c.comment_key}_${replyTs}`, // 타임스탬프 기반 고유 ID
               postKey: postKey,
               bandKey: bandKey,
+              isReply: true,
+              content_type: reply.content_type || "post_comment_comment",
+              origin_comment_id: reply.origin_comment_id || c.comment_id || c.comment_key || null,
               author: reply.author ? {
                 name: reply.author.name,
-                userNo: reply.author.user_key,
-                user_key: reply.author.user_key,
+                userNo: reply.author.user_no || reply.author.user_key || reply.author.userNo,
+                user_key: reply.author.user_no || reply.author.user_key || reply.author.userNo,
                 profileImageUrl: reply.author.profile_image_url
               } : null,
-              content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+              content: reply.body || reply.content || "",
+              parentAuthorName,
+              parentAuthorUserNo,
               createdAt: replyTs
             };
 
@@ -989,10 +1016,13 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
           commentKey: c.comment_key,
           postKey: postKey,
           bandKey: bandKey,
+          isReply: false,
+          content_type: c.content_type || null,
+          origin_comment_id: c.origin_comment_id || null,
           author: c.author ? {
             name: c.author.name,
-            userNo: c.author.user_key,
-            user_key: c.author.user_key,
+            userNo: c.author.user_no || c.author.user_key || c.author.userNo,
+            user_key: c.author.user_no || c.author.user_key || c.author.userNo,
             profileImageUrl: c.author.profile_image_url
           } : null,
           content: c.content,
@@ -1003,6 +1033,7 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
         const replies = [];
         if (c.latest_comments && Array.isArray(c.latest_comments)) {
           const parentAuthorName = c.author?.name || '';
+          const parentAuthorUserNo = c.author?.user_no || c.author?.user_key || c.author?.userNo || null;
 
           c.latest_comments.forEach((reply, replyIndex) => {
             const replyTs = reply.created_at;
@@ -1012,13 +1043,18 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
               commentKey: `${c.comment_key}_${replyTs}`, // 타임스탬프 기반 고유 ID
               postKey: postKey,
               bandKey: bandKey,
+              isReply: true,
+              content_type: reply.content_type || "post_comment_comment",
+              origin_comment_id: reply.origin_comment_id || c.comment_id || c.comment_key || null,
               author: reply.author ? {
                 name: reply.author.name,
-                userNo: reply.author.user_key,
-                user_key: reply.author.user_key,
+                userNo: reply.author.user_no || reply.author.user_key || reply.author.userNo,
+                user_key: reply.author.user_no || reply.author.user_key || reply.author.userNo,
                 profileImageUrl: reply.author.profile_image_url
               } : null,
-              content: `${parentAuthorName} ${reply.body}`, // 부모 작성자 + 대댓글 내용
+              content: reply.body || reply.content || "",
+              parentAuthorName,
+              parentAuthorUserNo,
               createdAt: replyTs
             };
 

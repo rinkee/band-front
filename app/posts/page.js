@@ -1326,17 +1326,17 @@ export default function PostsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-2 sm:px-3 py-2 sm:py-2.5">
           {/* 검색 영역 */}
-          <div className="mb-4">
+          <div className="mb-2 sm:mb-3">
             <form
               onSubmit={handleSearch}
-              className="flex flex-wrap items-center gap-3"
+              className="flex flex-wrap items-center gap-2"
             >
-              <div className="relative flex-1 min-w-[280px] max-w-xl">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <div className="relative flex-1 min-w-[200px] max-w-xl">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
                   <svg
-                    className="h-5 w-5 text-gray-400"
+                    className="h-4 w-4 text-gray-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1354,12 +1354,12 @@ export default function PostsPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="게시물 제목, 내용, 작성자로 검색..."
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="block w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
                 />
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center px-4 py-2.5 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600"
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-black hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600"
               >
                 검색
               </button>
@@ -1367,10 +1367,10 @@ export default function PostsPage() {
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <svg
-                    className="h-4 w-4 mr-2"
+                    className="h-3 w-3 sm:h-4 sm:w-4 mr-1"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -1389,26 +1389,26 @@ export default function PostsPage() {
           </div>
 
           {/* 통계 및 버튼 영역 */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
             {/* 통계 요약 */}
-            <div className="flex items-center gap-4 sm:gap-6">
+            <div className="flex items-center gap-2 sm:gap-4">
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-gray-900">
+                <div className="text-sm sm:text-lg font-bold text-gray-900">
                   {totalStats.totalPosts}
                 </div>
-                <div className="text-xs sm:text-sm text-gray-500">전체</div>
+                <div className="text-[10px] sm:text-xs text-gray-500">전체</div>
               </div>
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-blue-600">
+                <div className="text-sm sm:text-lg font-bold text-blue-600">
                   {totalStats.totalProductPosts}
                 </div>
-                <div className="text-xs sm:text-sm text-gray-500">상품</div>
+                <div className="text-[10px] sm:text-xs text-gray-500">상품</div>
               </div>
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-green-600">
+                <div className="text-sm sm:text-lg font-bold text-green-600">
                   {totalStats.totalCompletedPosts}
                 </div>
-                <div className="text-xs sm:text-sm text-gray-500">처리완료</div>
+                <div className="text-[10px] sm:text-xs text-gray-500">처리완료</div>
               </div>
             </div>
 
@@ -1437,9 +1437,9 @@ export default function PostsPage() {
       </div>
 
       {/* 게시물 그리드 */}
-      <div className="mx-auto p-6 px-4 2xl:px-20">
+      <div className="mx-auto p-2 sm:p-3 px-2 sm:px-3 2xl:px-20">
         {posts.length === 0 ? (
-          <div className="bg-white rounded-lg   p-12 text-center">
+          <div className="bg-white rounded-lg p-6 sm:p-8 text-center">
             {searchQuery ? (
               <div>
                 <svg
@@ -1473,10 +1473,10 @@ export default function PostsPage() {
             )}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {posts.map((post) => (
-              <div key={post.post_key} className="grid grid-cols-3 gap-2">
-                {/* 게시물 카드 (1/3) */}
+              <div key={post.post_key} className="grid grid-cols-3 gap-1.5">
+                {/* 게시물 카드 (1/3) - 모든 화면에서 표시 */}
                 <div className="col-span-1">
                   <PostCard
                     post={post}
@@ -1494,9 +1494,9 @@ export default function PostsPage() {
                   />
                 </div>
 
-                {/* 상품정보 테이블 (2/3) */}
+                {/* 상품정보 테이블 (2/3) - 모든 화면에서 표시 */}
                 <div className="col-span-2 bg-white border border-gray-200 overflow-hidden flex flex-col">
-                  <div className={`px-4 py-4 border-b border-gray-200 ${
+                  <div className={`px-2 py-2 border-b border-gray-200 ${
                     (post.products && post.products.length > 0 &&
                      !post.pickup_date &&
                      !(post.products[0] && post.products[0].pickup_date))
@@ -1802,11 +1802,11 @@ export default function PostsPage() {
                           </colgroup>
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">번호</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">상품명</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">가격</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">바코드</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">작업</th>
+                              <th className="px-1 py-1.5 text-center text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">번호</th>
+                              <th className="px-2 py-1.5 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">상품명</th>
+                              <th className="px-2 py-1.5 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">가격</th>
+                              <th className="px-2 py-1.5 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-r border-gray-200">바코드</th>
+                              <th className="px-2 py-1.5 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">작업</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white">
@@ -1818,35 +1818,35 @@ export default function PostsPage() {
                               if (isEditing) {
                                 return (
                                   <tr key={product.product_id || index} className="bg-amber-50 border-b border-gray-200">
-                                    <td className="px-2 py-3 text-center border-r border-gray-200">
+                                    <td className="px-1 py-1.5 text-center border-r border-gray-200">
                                       <input
                                         type="number"
                                         value={editingProductData.item_number ?? ''}
                                         onChange={(e) => setEditingProductData(prev => ({ ...prev, item_number: e.target.value }))}
                                         placeholder="번호 *"
-                                        className="w-full px-2 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm text-center"
+                                        className="w-full px-1.5 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs text-center"
                                         min="1"
                                       />
                                     </td>
-                                    <td className="px-4 py-3 border-r border-gray-200">
+                                    <td className="px-2 py-1.5 border-r border-gray-200">
                                       <input
                                         type="text"
                                         value={editingProductData.title || ''}
                                         onChange={(e) => setEditingProductData(prev => ({ ...prev, title: e.target.value }))}
                                         placeholder="상품명 *"
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                        className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
                                       />
                                     </td>
-                                    <td className="px-4 py-3 border-r border-gray-200">
+                                    <td className="px-2 py-1.5 border-r border-gray-200">
                                       <input
                                         type="number"
                                         value={editingProductData.base_price ?? ''}
                                         onChange={(e) => setEditingProductData(prev => ({ ...prev, base_price: e.target.value }))}
                                         placeholder="가격 *"
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                        className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
                                       />
                                     </td>
-                                    <td className="px-4 py-3 border-r border-gray-200">
+                                    <td className="px-2 py-1.5 border-r border-gray-200">
                                       <div className="flex flex-col gap-2">
                                         {/* 바코드 이미지 (입력값이 있을 때만 표시) */}
                                         {editingProductData.barcode && (
@@ -1911,18 +1911,18 @@ export default function PostsPage() {
 
                               return (
                                 <tr key={product.product_id || index} className="hover:bg-gray-50 transition-colors relative border-b border-gray-200">
-                                  <td className="px-4 py-3 text-center text-sm font-medium text-gray-900 border-r border-gray-200">
+                                  <td className="px-1 py-1.5 text-center text-xs font-medium text-gray-900 border-r border-gray-200">
                                     {product.item_number || index + 1}
                                   </td>
-                                  <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">
+                                  <td className="px-2 py-1.5 text-xs font-medium text-gray-900 border-r border-gray-200">
                                     {product.title || product.name || product.product_name || '상품명 미입력'}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-200">
+                                  <td className="px-2 py-1.5 text-xs text-gray-900 border-r border-gray-200">
                                     {product.base_price || product.price || product.basePrice ?
                                       `${(product.base_price || product.price || product.basePrice).toLocaleString()}원` :
                                       '미입력'}
                                   </td>
-                                  <td className={`px-4 py-3 text-sm text-gray-900 border-r border-gray-200 relative transition-colors duration-500 ${isSaved ? 'bg-green-100' : ''}`}>
+                                  <td className={`px-2 py-1.5 text-xs text-gray-900 border-r border-gray-200 relative transition-colors duration-500 ${isSaved ? 'bg-green-100' : ''}`}>
                                     <div className="flex flex-col items-center gap-2">
                                       {(() => {
                                         const currentBarcode = product.barcode || product.productBarcode || '';
@@ -1987,14 +1987,14 @@ export default function PostsPage() {
                                                   [product.product_id]: e.target.value
                                                 }));
                                               }}
-                                              className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                              className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
                                             />
                                           </>
                                         );
                                       })()}
                                     </div>
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-900">
+                                  <td className="px-2 py-1.5 text-xs text-gray-900">
                                     <div className="flex gap-1">
                                       {(() => {
                                         // 바코드가 변경되었는지 확인
@@ -2095,7 +2095,7 @@ export default function PostsPage() {
                             {/* 상품 추가 행 */}
                             {isAddingNewProduct ? (
                               <tr className="bg-blue-50 border-b border-gray-200">
-                                <td className="px-4 py-3 text-center text-sm font-medium text-gray-500 border-r border-gray-200">
+                                <td className="px-1 py-1.5 text-center text-xs font-medium text-gray-500 border-r border-gray-200">
                                   {(() => {
                                     const maxItemNumber = products.reduce((max, p) => {
                                       const itemNum = parseInt(p.item_number) || 0;
@@ -2104,7 +2104,7 @@ export default function PostsPage() {
                                     return maxItemNumber + 1;
                                   })()}
                                 </td>
-                                <td className="px-4 py-3 border-r border-gray-200">
+                                <td className="px-2 py-1.5 border-r border-gray-200">
                                   <input
                                     type="text"
                                     placeholder="상품명 *"
@@ -2113,10 +2113,10 @@ export default function PostsPage() {
                                       ...prev,
                                       [post.post_key]: { ...prev[post.post_key], title: e.target.value }
                                     }))}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                    className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
                                   />
                                 </td>
-                                <td className="px-4 py-3 border-r border-gray-200">
+                                <td className="px-2 py-1.5 border-r border-gray-200">
                                   <input
                                     type="number"
                                     placeholder="가격 *"
@@ -2125,10 +2125,10 @@ export default function PostsPage() {
                                       ...prev,
                                       [post.post_key]: { ...prev[post.post_key], base_price: e.target.value }
                                     }))}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                    className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
                                   />
                                 </td>
-                                <td className="px-4 py-3 border-r border-gray-200">
+                                <td className="px-2 py-1.5 border-r border-gray-200">
                                   <div className="flex flex-col gap-2">
                                     {/* 바코드 이미지 (입력값이 있을 때만 표시) */}
                                     {isAddingNewProduct.barcode && (
@@ -2151,11 +2151,11 @@ export default function PostsPage() {
                                         ...prev,
                                         [post.post_key]: { ...prev[post.post_key], barcode: e.target.value }
                                       }))}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                      className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
                                     />
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-2 py-1.5">
                                   <div className="flex gap-1">
                                     <button
                                       onClick={() => handleAddNewProduct(post, isAddingNewProduct)}
