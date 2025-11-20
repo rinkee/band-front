@@ -1388,7 +1388,7 @@ export default function PostsPage() {
             </form>
           </div>
 
-          {/* 통계 및 버튼 영역 */}
+          {/* 통계 및 버튼 영역 배포가 안됌*/}
           <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
             {/* 통계 요약 */}
             <div className="flex items-center gap-2 sm:gap-4">
