@@ -257,11 +257,13 @@ export default function PostsPage() {
 
       let productsData = [];
       // 한 사용자 = 한 밴드이므로 user_id로 모든 상품 조회 (URL 길이 제한 문제 해결)
+      // Supabase 기본 제한(1000개)을 넘어 모든 데이터를 가져오기 위해 range 설정
       const { data: productsResult, error: productsError } = await supabase
         .from('products')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('user_id', userData.userId)
-        .order('item_number', { ascending: true });
+        .order('item_number', { ascending: true })
+        .range(0, 9999); // 최대 10000개까지 가져오기
 
       if (!productsError && productsResult) {
         // 클라이언트 사이드에서 필요한 post_key만 필터링
@@ -1164,6 +1166,15 @@ export default function PostsPage() {
       totalCompletedPosts: 0,
     },
   } = postsData;
+
+  // 디버깅: posts 데이터 확인
+  console.log('[DEBUG] postsData:', postsData);
+  console.log('[DEBUG] posts count:', posts.length);
+  if (posts.length > 0) {
+    console.log('[DEBUG] First post:', posts[0]);
+    console.log('[DEBUG] First post products:', posts[0]?.products);
+    console.log('[DEBUG] First post products count:', posts[0]?.products?.length);
+  }
 
   // 바코드 모달에서 "상품 추가"를 눌렀을 때, 해당 게시물에 대한 상품 관리 모달을 열어주는 핸들러
   const openProductManagementForSelected = () => {
