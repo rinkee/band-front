@@ -713,6 +713,10 @@ export default function PostsPage() {
         return newState;
       });
 
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
+
       // 데이터 새로고침
       mutate();
     } catch (error) {
@@ -838,6 +842,10 @@ export default function PostsPage() {
       setEditingProduct(null);
       setEditingProductData({});
 
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
+
       // 데이터 새로고침
       await mutate();
     } catch (error) {
@@ -880,6 +888,10 @@ export default function PostsPage() {
       if (productError) throw productError;
 
       showSuccess('상품이 삭제되었습니다.');
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
       // 데이터 새로고침 (완료 대기)
       await mutate();
