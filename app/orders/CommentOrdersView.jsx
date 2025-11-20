@@ -247,7 +247,7 @@ export default function CommentOrdersView() {
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   // 정렬 관련 state (기본: 주문일시 내림차순 - 최신 주문이 위로)
-  const [sortBy, setSortBy] = useState('comment_created_at'); // 'pickup_date' or 'comment_created_at'
+  const [sortBy, setSortBy] = useState('comment_created_at'); // pickup_date 정렬은 비활성화
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
   const [selected, setSelected] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -1228,8 +1228,9 @@ export default function CommentOrdersView() {
     return "-";
   };
 
-  // 정렬 토글 함수 - desc → asc → 초기화(null) 순환
+  // 정렬 토글 함수 - desc → asc → 초기화(null) 순환 (pickup_date 정렬 비활성화)
   const handleSort = (column) => {
+    if (column !== 'comment_created_at') return;
     if (sortBy === column) {
       // 같은 컬럼을 다시 클릭
       if (sortOrder === 'desc') {
@@ -1289,25 +1290,12 @@ export default function CommentOrdersView() {
       filteredItems = filteredItems.filter((row) => hasProductInCandidates(row, activeProductId));
     }
 
-    // 정렬: sortBy가 설정되어 있으면 정렬 적용
+    // 정렬: sortBy가 설정되어 있으면 정렬 적용 (pickup_date 정렬은 비활성화)
     if (sortBy) {
       const sorted = [...filteredItems].sort((a, b) => {
         let dateA, dateB;
 
-        if (sortBy === 'pickup_date') {
-          // 수령일시로 정렬
-          const valueA = getPickupDateForRow(a);
-          const valueB = getPickupDateForRow(b);
-
-          // null 값은 뒤로 보내기
-          if (!valueA && !valueB) return 0;
-          if (!valueA) return 1;
-          if (!valueB) return -1;
-
-          // Date 객체로 변환하여 비교
-          dateA = new Date(valueA);
-          dateB = new Date(valueB);
-        } else if (sortBy === 'comment_created_at') {
+        if (sortBy === 'comment_created_at') {
           // 주문일시로 정렬 - 원본 날짜 값 직접 비교
           const valueA = a.comment_created_at;
           const valueB = b.comment_created_at;
@@ -1741,15 +1729,10 @@ export default function CommentOrdersView() {
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">고객명</th>
                   <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600">상태</th>
-                  <th
-                    className="px-4 py-2 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort('pickup_date')}
-                  >
+                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400">
                     <div className="flex items-center justify-center gap-1">
                       <span>수령일시</span>
-                      <span className={sortBy === 'pickup_date' ? "text-orange-600" : "text-gray-400"}>
-                        {sortBy === 'pickup_date' ? (sortOrder === 'asc' ? '↑' : '↓') : '↕'}
-                      </span>
+                      <span className="text-gray-300">↕</span>
                     </div>
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">댓글</th>

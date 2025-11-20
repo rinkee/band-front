@@ -24,6 +24,7 @@ export class BandApiFailover {
     this.userId = userId;
     this.sessionId = sessionId;
     this.simulateQuotaError = simulateQuotaError;
+    this.failoverCallback = null;
 
     this.currentKeyIndex = 0;
     this.mainApiKey = null;
@@ -88,6 +89,14 @@ export class BandApiFailover {
       }
     }
     return null;
+  }
+
+  /**
+   * 페일오버 발생 시 호출될 콜백을 등록합니다.
+   * @param {Function|null} callback - 콜백 함수 (fromIndex, toIndex, errorType 전달)
+   */
+  setFailoverCallback(callback) {
+    this.failoverCallback = typeof callback === "function" ? callback : null;
   }
 
   /**
@@ -231,7 +240,20 @@ export class BandApiFailover {
         );
 
         // 할당량 초과나 인증 오류인 경우에만 다음 키로 시도, 아니면 break
-        if (!(errorType === "quota_exceeded" || errorType === "invalid_token")) {
+        const canFailover = errorType === "quota_exceeded" || errorType === "invalid_token";
+        if (canFailover && i < totalKeys - 1 && this.failoverCallback) {
+          try {
+            this.failoverCallback({
+              fromIndex: this.currentKeyIndex,
+              toIndex: this.currentKeyIndex + 1,
+              errorType
+            });
+          } catch (callbackError) {
+            console.error("[API Failover] failoverCallback 실행 오류:", callbackError);
+          }
+        }
+
+        if (!canFailover) {
           break;
         }
       }

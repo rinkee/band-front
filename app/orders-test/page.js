@@ -17,6 +17,7 @@ import { useUser, useCommentOrdersClient, useCommentOrderClientMutations, useOrd
 import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
+import useSWR from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
@@ -187,12 +188,27 @@ function CustomRadioGroup({
               <CheckIcon className="w-3.5 h-3.5 text-white" />
             )}
           </div>
-          <span
-            className={`text-sm ${
-              disabled ? "text-gray-400" : "text-gray-700"
-            }`}
-          >
-            {option.label}
+          <span className="flex items-center">
+            <span
+              className={`text-sm ${
+                disabled ? "text-gray-400" : "text-gray-700"
+              }`}
+            >
+              {option.label}
+            </span>
+            {typeof option.badgeCount === "number" && option.badgeCount > 0 && (
+              <span
+                className={`ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-white text-[11px] leading-none ${
+                  option.badgeColor === "blue"
+                    ? "bg-blue-500"
+                    : option.badgeColor === "yellow"
+                    ? "bg-yellow-500 text-gray-900"
+                    : "bg-red-500"
+                }`}
+              >
+                {option.badgeCount.toLocaleString()}
+              </span>
+            )}
           </span>
           <input
             type="radio"
@@ -274,13 +290,13 @@ function StatusBadge({ status, processingMethod }) {
 
     switch (processingMethod) {
       case "ai":
-        return <SparklesIcon className="h-2.5 w-2.5 mr-1" />;
+        return <SparklesIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1" />;
       case "ai-fallback":
-        return <SparklesIcon className="h-2.5 w-2.5 mr-1 opacity-60" />;
+        return <SparklesIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1 opacity-60" />;
       case "pattern":
-        return <FunnelIcon className="h-2.5 w-2.5 mr-1" />;
+        return <FunnelIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1" />;
       case "manual":
-        return <PencilIcon className="h-2.5 w-2.5 mr-1" />;
+        return <PencilIcon className="h-2.5 w-2.5 xl:h-3 xl:w-3 mr-1" />;
       default:
         return null;
     }
@@ -288,7 +304,7 @@ function StatusBadge({ status, processingMethod }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${bgColor} ${textColor}`}
+      className={`inline-flex items-center rounded-md px-2 xl:px-2 py-1 xl:py-1 text-sm xl:text-sm font-medium ${bgColor} ${textColor}`}
     >
       {getProcessingIcon()}
       {status}
@@ -390,7 +406,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
   // const [searchType, setSearchType] = useState("customer"); // "customer" 또는 "product" // TODO: 내일 처리
   const searchType = "customer"; // 임시로 고정값 사용
-  const [sortBy, setSortBy] = useState("ordered_at");
+  const [sortBy, setSortBy] = useState(null); // 기본값: 정렬 안함
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
   const [exactCustomerFilter, setExactCustomerFilter] = useState(null); // <<< 정확한 고객명 필터용 상태 추가
@@ -424,6 +440,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
+  const [pickupViewMode, setPickupViewMode] = useState("simple"); // 'simple' | 'detailed'
+  const [barcodeViewMode, setBarcodeViewMode] = useState("small"); // 'small' | 'large'
   const [newOrdersCount, setNewOrdersCount] = useState(0); // 새로 추가된 주문 수
   const [previousOrderCount, setPreviousOrderCount] = useState(0); // 이전 주문 수
   // 하단 버튼 순서 토글 - localStorage에서 복원
@@ -774,73 +792,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, [displayOrders]);
 
-  // 미수령 수량 계산 (필터 표시용)
-  const unreceivedCount = useMemo(() => {
-    if (!orders || orders.length === 0) return 0;
-
-    const now = new Date();
-    const KST_OFFSET = 9 * 60 * 60 * 1000;
-    const k = new Date(now.getTime() + KST_OFFSET);
-    const todayYmd = k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate();
-
-    const toKstYmdLocal = (dateInput) => {
-      if (!dateInput) return null;
-      try {
-        let y, m, d;
-        if (typeof dateInput === 'string' && dateInput.includes('T')) {
-          const dt = new Date(dateInput);
-          if (isNaN(dt.getTime())) return null;
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else if (dateInput instanceof Date) {
-          const k = new Date(dateInput.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else {
-          return null;
-        }
-        return y * 10000 + m * 100 + d;
-      } catch (_) { return null; }
-    };
-
-    const getOrderPickupDate = (o) => {
-      const pk = o.post_key || o.postKey;
-      const band = o.band_number || o.bandNumber || o.band_key || o.bandKey;
-      const postNum = o.post_number ?? o.postNumber;
-
-      let list = [];
-      if (pk && postProductsByPostKey[pk]) {
-        list = postProductsByPostKey[pk];
-      } else if (band != null && postNum != null) {
-        const k = `${band}_${String(postNum)}`;
-        if (postProductsByBandPost[k]) {
-          list = postProductsByBandPost[k];
-        }
-      }
-
-      let displayProd = null;
-      if (o.product_id && Array.isArray(list)) {
-        displayProd = list.find(p => p.product_id === o.product_id);
-      }
-      if (!displayProd && Array.isArray(list)) {
-        displayProd = list[0];
-      }
-
-      return displayProd?.pickup_date || null;
-    };
-
-    return orders.filter(o => {
-      // 수령완료, 주문취소 제외
-      const status = o.status || o.order_status;
-      if (status === "수령완료" || status === "주문취소") {
-        return false;
-      }
-
-      const pickupDate = getOrderPickupDate(o);
-      if (!pickupDate) return false;
-      const ymd = toKstYmdLocal(pickupDate);
-      return ymd ? ymd < todayYmd : false;
-    }).length;
-  }, [orders, postProductsByPostKey, postProductsByBandPost]);
+  const unreceivedCount =
+    clientStats.subStatusCounts?.["미수령"] ||
+    allStats.subStatusCounts?.["미수령"] ||
+    0;
 
   // 그룹 키: band + (comment_key 없으면 post_key) + ordered_at + updated_at
   const getGroupKey = useCallback((o) => {
@@ -869,13 +824,31 @@ function OrdersTestPageContent({ mode = "raw" }) {
       })[0];
       groups.push({ groupId: key, rows, rep, orderIds: rows.map(r => r.order_id) });
     }
-    // 정렬은 대표행 기준으로 기존 정렬(주문일시 desc 등)에 가깝게 유지
+    // 정렬이 비활성화되면 원본 순서 유지
+    if (!sortBy) {
+      return groups;
+    }
+
+    // 정렬은 대표행 기준으로 수행 (pickup_date 정렬 비활성화)
     return groups.sort((g1, g2) => {
-      const t1 = g1.rep?.ordered_at ? new Date(g1.rep.ordered_at).getTime() : 0;
-      const t2 = g2.rep?.ordered_at ? new Date(g2.rep.ordered_at).getTime() : 0;
-      return sortOrder === 'asc' ? (t1 - t2) : (t2 - t1);
+      const currentSort = sortBy === 'pickup_date' ? 'ordered_at' : sortBy;
+      let val1, val2;
+
+      if (currentSort === 'customer_name') {
+        val1 = (g1.rep?.customer_name || g1.rep?.commenter_name || '').toLowerCase();
+        val2 = (g2.rep?.customer_name || g2.rep?.commenter_name || '').toLowerCase();
+        const result = val1.localeCompare(val2);
+        return sortOrder === 'asc' ? result : -result;
+      } else if (currentSort === 'ordered_at') {
+        val1 = g1.rep?.ordered_at ? new Date(g1.rep.ordered_at).getTime() : 0;
+        val2 = g2.rep?.ordered_at ? new Date(g2.rep.ordered_at).getTime() : 0;
+        return sortOrder === 'asc' ? (val1 - val2) : (val2 - val1);
+      }
+
+      // 기본값: 정렬 안함
+      return 0;
     });
-  }, [displayOrders, getGroupKey, sortOrder]);
+  }, [displayOrders, getGroupKey, sortBy, sortOrder, postProductsByPostKey, postProductsByBandPost]);
 
   // 서버 페이지네이션 사용 (클라이언트 페이지네이션 제거)
   const groupedOrders = useMemo(() => {
@@ -927,16 +900,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     { value: "30days", label: "1개월" },
     { value: "7days", label: "1주" },
     { value: "today", label: "오늘" },
-  ];
-  const orderStatusOptions = [
-    { value: "all", label: "전체" },
-    { value: "주문완료", label: "주문완료" },
-    { value: "주문완료+수령가능", label: "수령가능만 보기" },
-    { value: "수령완료", label: "수령완료" },
-    { value: "미수령", label: "미수령" },
-    { value: "주문취소", label: "주문취소" },
-    { value: "결제완료", label: "결제완료" },
-    { value: "확인필요", label: "확인필요" },
   ];
 
   // SWR 캐시 비교 함수: 데이터가 실제로 변경되었을 때만 리렌더링
@@ -1335,7 +1298,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     isLoading: isGlobalStatsLoading,
     mutate: mutateGlobalStats,
   } = useOrderStatsClient(
-    null, // 통계 UI가 없으므로 비활성화 (전체 데이터 페이징 방지)
+    userData?.userId || null,
     {
       // 날짜 필터만 적용 (상태 필터는 제외)
       startDate: globalStatsDateParams.startDate,
@@ -1343,6 +1306,91 @@ function OrdersTestPageContent({ mode = "raw" }) {
       dateType: "created", // 항상 주문일시 기준 // 날짜 필터 타입 추가
     },
     swrOptions
+  );
+
+  const { data: unreceivedCountData, mutate: mutateUnreceivedCount } = useSWR(
+    userData?.userId ? ["unreceived-count", mode, userData.userId] : null,
+    async () => {
+      const sb = getAuthedClient();
+      const tableName = mode === "raw" ? "comment_orders" : "orders";
+      const { count, error } = await sb
+        .from(tableName)
+        .select("*", { head: true, count: "exact" })
+        .eq("user_id", userData.userId)
+        .eq("sub_status", "미수령");
+
+      if (error) {
+        console.error("[미수령 카운트] error:", error);
+        return 0;
+      }
+      return count || 0;
+    },
+    {
+      revalidateOnFocus: true,
+      dedupingInterval: 60000,
+    }
+  );
+
+  const { data: completedCountData, mutate: mutateCompletedCount } = useSWR(
+    userData?.userId ? ["completed-count", mode, userData.userId] : null,
+    async () => {
+      const sb = getAuthedClient();
+      const tableName = mode === "raw" ? "comment_orders" : "orders";
+      const statusField = mode === "raw" ? "order_status" : "status";
+      const { count, error } = await sb
+        .from(tableName)
+        .select("*", { head: true, count: "exact" })
+        .eq("user_id", userData.userId)
+        .eq(statusField, "주문완료");
+      if (error) {
+        console.error("[주문완료 카운트] error:", error);
+        return 0;
+      }
+      return count || 0;
+    },
+    {
+      revalidateOnFocus: true,
+      dedupingInterval: 60000,
+    }
+  );
+
+  const { data: paidCountData, mutate: mutatePaidCount } = useSWR(
+    userData?.userId ? ["paid-count", mode, userData.userId] : null,
+    async () => {
+      const sb = getAuthedClient();
+      const tableName = mode === "raw" ? "comment_orders" : "orders";
+      const statusField = mode === "raw" ? "order_status" : "status";
+      const { count, error } = await sb
+        .from(tableName)
+        .select("*", { head: true, count: "exact" })
+        .eq("user_id", userData.userId)
+        .eq(statusField, "결제완료");
+      if (error) {
+        console.error("[결제완료 카운트] error:", error);
+        return 0;
+      }
+      return count || 0;
+    },
+    {
+      revalidateOnFocus: true,
+      dedupingInterval: 60000,
+    }
+  );
+
+  const unreceivedBadgeCount = unreceivedCountData ?? 0;
+
+  const orderStatusOptions = useMemo(
+    () => [
+      { value: "all", label: "전체" },
+      { value: "주문완료", label: "주문완료", badgeCount: completedCountData ?? 0, badgeColor: "blue" },
+      { value: "주문완료+수령가능", label: "수령가능만 보기" },
+      { value: "수령완료", label: "수령완료" },
+      { value: "미수령", label: "미수령", badgeCount: unreceivedBadgeCount },
+      { value: "주문취소", label: "주문취소" },
+      { value: "결제완료", label: "결제완료", badgeCount: paidCountData ?? 0, badgeColor: "yellow" },
+      { value: "확인필요", label: "확인필요" },
+    ],
+    [completedCountData, paidCountData, unreceivedBadgeCount]
   );
 
   // 필터된 통계 데이터 - 사용하지 않으므로 비활성화 (불필요한 전체 데이터 페칭 방지)
@@ -1853,13 +1901,24 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (failCount > 0) {
         console.warn(`⚠️ ${failCount}건 업데이트 실패`);
       }
+
+      // 카운트 SWR 갱신 (미수령/주문완료/결제완료)
+      try {
+        await Promise.all([
+          mutateUnreceivedCount?.(),
+          mutateCompletedCount?.(),
+          mutatePaidCount?.(),
+        ]);
+      } catch (e) {
+        // ignore
+      }
     } catch (err) {
       alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, orders, userData, mode, rawMutations, legacyMutations, mutateOrders]);
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, mutateUnreceivedCount, mutateCompletedCount, mutatePaidCount]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -2353,16 +2412,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
         const ampm = hours < 12 ? '오전' : '오후';
         hours = hours % 12;
         if (hours === 0) hours = 12;
-        dateOnly = `${month}월${day}일`;
+        dateOnly = `${month}.${day}`;
         // 분이 00이면 시간만, 아니면 시간:분 형식
-        timeOnly = minutes === '00' ? `${ampm} ${hours}시` : `${ampm} ${hours}:${minutes}`;
+        timeOnly = minutes === '00' ? `${ampm}${hours}시` : `${ampm}${hours}:${minutes}`;
       } else if (typeof value === 'string' && /\d{4}-\d{1,2}-\d{1,2}/.test(value)) {
         // YYYY-MM-DD 형식
         const d = new Date(value);
         if (!Number.isNaN(d.getTime())) {
           const month = d.getMonth() + 1;
           const day = d.getDate();
-          dateOnly = `${month}월${day}일`;
+          dateOnly = `${month}.${day}`;
           timeOnly = null;
         }
       } else if (typeof value === 'string') {
@@ -2371,7 +2430,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (m) {
           const month = parseInt(m[1], 10);
           const day = parseInt(m[2], 10);
-          dateOnly = `${month}월${day}일`;
+          dateOnly = `${month}.${day}`;
           timeOnly = null;
         }
       }
@@ -2412,6 +2471,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
 
     return null;
+  };
+
+  const renderPickupDisplay = (pickupDate) => {
+    if (!pickupDate) return "-";
+
+    if (pickupViewMode === "simple") {
+      // 간단 모드: 상대 시간만 표시 (오늘, 내일, 4일 전, 6일 후)
+      const { days, isPast, relativeText } = calculateDaysUntilPickup(pickupDate);
+
+      // 색상 결정
+      let textColorClass = "text-gray-700 font-semibold"; // 기본값
+      if (isPast) {
+        textColorClass = "text-red-500 font-semibold"; // 지난 날짜 - 빨간색
+      } else if (days === 0) {
+        textColorClass = "text-green-600 font-semibold"; // 오늘 - 초록색
+      }
+
+      return <span className={textColorClass}>{relativeText}</span>;
+    }
+
+    // detailed 모드: 상대 시간 + 날짜 + 시간
+    const relative = formatPickupRelativeDateTime(pickupDate);
+    return relative || "-";
   };
 
   const getProductBarcode = (id) => {
@@ -2773,11 +2855,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setMemoSavingStates(prev => ({ ...prev, [orderId]: 'saving' }));
 
     try {
+      const currentUserId = userData?.userId;
+      if (!currentUserId) {
+        throw new Error("로그인이 필요합니다.");
+      }
+
+      // 인증된 클라이언트로 본인 주문만 업데이트
+      const sb = getAuthedClient();
+
       // DB 저장
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from('orders')
         .update({ memo: value || null })
         .eq('order_id', orderId)
+        .eq('user_id', currentUserId)
         .select()
         .single();
 
@@ -2797,7 +2888,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }, 2000);
 
       // SWR 캐시 전체 갱신
-      const currentUserId = userData?.userId;
       if (currentUserId) {
         const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 
@@ -2848,13 +2938,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 기존 검색 관련 useEffect 및 핸들러들은 위 함수들로 대체/통합 ---
 
   const handleSortChange = (field) => {
-    if (sortBy === field)
-      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-    else {
+    if (field === "pickup_date") return; // 수령일시 정렬 비활성화
+    if (sortBy === field) {
+      // 같은 필드를 다시 클릭: desc → asc → 정렬 해제
+      if (sortOrder === "desc") {
+        setSortOrder("asc");
+      } else if (sortOrder === "asc") {
+        setSortBy(null); // 정렬 해제
+        setSortOrder("desc"); // 다음에 다시 클릭할 때를 위해 기본값 설정
+      }
+    } else {
+      // 다른 필드 클릭: desc부터 시작
       setSortBy(field);
       setSortOrder("desc");
     }
     setCurrentPage(1);
+  };
+
+  const togglePickupViewMode = () => {
+    setPickupViewMode((prev) => (prev === "simple" ? "detailed" : "simple"));
+  };
+
+  const toggleBarcodeViewMode = () => {
+    setBarcodeViewMode((prev) => (prev === "small" ? "large" : "small"));
   };
   // 필터 변경 핸들러 (선택된 값을 filterSelection state에 저장)
   const handleFilterChange = (selectedValue) => {
@@ -3717,7 +3823,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         </div>
 
         {/* 주문 리스트 영역 */}
-        <div className="pb-24 px-4 lg:px-6 pt-0">
+        <div className="pb-24 px-2 lg:px-6 pt-0">
           <div className="bg-white rounded-lg shadow-sm">
             {/* 업데이트 버튼 제거: 상단 우측 영역으로 이동 */}
             {/* 테이블 컨테이너 */}
@@ -3738,7 +3844,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 px-2 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-1 lg:px-2 xl:px-3 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       <button
                         onClick={() => handleSortChange("customer_name")}
                         className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
@@ -3747,39 +3853,70 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    <th className="py-2 px-4 text-center text-sm font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
                       상태
                     </th>
-                    <th className="py-2 px-4 text-center text-sm font-semibold text-gray-600 uppercase tracking-wider w-28 bg-gray-50">
-                      수령일시
+                    <th
+                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-20 xl:w-32 bg-gray-50 transition-colors ${
+                        isDataLoading
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer select-none hover:bg-gray-100"
+                      }`}
+                      onClick={isDataLoading ? undefined : togglePickupViewMode}
+                      onKeyDown={isDataLoading ? undefined : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          togglePickupViewMode();
+                        }
+                      }}
+                      role="button"
+                      tabIndex={isDataLoading ? -1 : 0}
+                      title={isDataLoading ? "로딩 중..." : "수령일시 보기 모드 전환"}
+                    >
+                      <span className={isDataLoading ? "text-gray-500" : "text-gray-800 hover:text-orange-600"}>수령일시</span>
                     </th>
-                    <th className="py-2 px-4 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                    <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
                     </th>
-                    <th className="py-2 px-4 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider w-48 bg-gray-50">
-                      메모
-                    </th>
-                    <th className="py-2 px-4 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
+                    <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
                       상품정보
                     </th>
-                    <th className="py-2 px-4 text-center text-sm font-semibold text-gray-600 uppercase tracking-wider w-40 bg-gray-50">
-                      바코드
-                    </th>
-                    <th className="py-2 px-2 text-center text-sm font-semibold text-gray-600 uppercase tracking-wider w-32 bg-gray-50">
-                      <button
-                        onClick={() => handleSortChange("ordered_at")}
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isDataLoading}
-                      >
-                        주문일시 {getSortIcon("ordered_at")}
-                      </button>
+                    <th
+                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-40 bg-gray-50 transition-colors ${
+                        isDataLoading
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer select-none hover:bg-gray-100"
+                      }`}
+                      onClick={isDataLoading ? undefined : toggleBarcodeViewMode}
+                      onKeyDown={isDataLoading ? undefined : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleBarcodeViewMode();
+                        }
+                      }}
+                      role="button"
+                      tabIndex={isDataLoading ? -1 : 0}
+                      title={isDataLoading ? "로딩 중..." : "바코드 크기 전환"}
+                    >
+                      <div className={`inline-flex items-center justify-center gap-1.5 ${isDataLoading ? "text-gray-500" : "text-gray-800 hover:text-orange-600"}`}>
+                        <span>바코드</span>
+                        {barcodeViewMode === "small" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+                          </svg>
+                        )}
+                      </div>
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {isOrdersLoading && !ordersData && (
                     <tr>
-                      <td colSpan="9" className="px-6 py-10 text-center">
+                      <td colSpan="7" className="px-6 py-10 text-center">
                         <LoadingSpinner className="h-6 w-6 mx-auto text-gray-400" />
                         <span className="text-sm text-gray-500 mt-2 block">
                           주문 목록 로딩 중...
@@ -3790,7 +3927,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   {!isOrdersLoading && displayOrders.length === 0 && (
                     <tr>
                       <td
-                        colSpan="9"
+                        colSpan="7"
                         className="px-6 py-10 text-center text-sm text-gray-500"
                       >
                         {searchTerm ||
@@ -3839,21 +3976,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 고객명 */}
                           <td
-                            className="py-2 pr-2 text-base text-gray-700 whitespace-nowrap w-24 truncate hover:text-orange-600 hover:underline cursor-pointer"
-                            title={order.customer_name}
+                            className="py-2 xl:py-3 pr-1 lg:pr-2 xl:pr-3 w-24"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleExactCustomerSearch(order.customer_name);
                             }}
                           >
-                            {order.customer_name || "-"}
+                            <div className="flex items-center min-h-[60px]">
+                              <span
+                                className="text-base xl:text-lg text-gray-700 hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
+                                title={order.customer_name}
+                              >
+                                {order.customer_name || "-"}
+                              </span>
+                            </div>
                           </td>
                           {/* 상태 */}
-                          <td className="py-2 px-4 text-center whitespace-nowrap w-24">
+                          <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center whitespace-nowrap w-24">
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
                           {/* 수령일시 */}
-                          <td className="py-2 px-4 text-center text-base text-gray-700 w-28">
+                          <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center text-base xl:text-lg text-gray-700 w-20 xl:w-32">
                             {(() => {
                               const list = getCandidateProductsForOrder(order);
                               let displayProd = null;
@@ -3862,147 +4005,150 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               }
                               if (!displayProd) displayProd = list[0] || null;
                               const pickupDate = displayProd?.pickup_date || null;
-                              return formatPickupRelativeDateTime(pickupDate) || "-";
+                              return renderPickupDisplay(pickupDate);
                             })()}
                           </td>
                           {/* 댓글 */}
-                          <td className="py-2 px-4 text-base text-gray-600">
-                            {(() => {
-                              const currentComment = processBandTags(order.comment || "");
-                              let commentChangeData = null;
+                          <td className="py-2 xl:py-3 px-2 lg:px-4 xl:px-6 text-base xl:text-xl text-gray-600">
+                            <div>
+                              {(() => {
+                                const currentComment = processBandTags(order.comment || "");
+                                let commentChangeData = null;
 
-                              // comment_change 파싱
-                              try {
-                                if (order.comment_change) {
-                                  const parsed = typeof order.comment_change === 'string'
-                                    ? JSON.parse(order.comment_change)
-                                    : order.comment_change;
-                                  if (parsed && parsed.status === 'updated' && Array.isArray(parsed.history) && parsed.history.length > 0) {
-                                    commentChangeData = parsed;
+                                // comment_change 파싱
+                                try {
+                                  if (order.comment_change) {
+                                    const parsed = typeof order.comment_change === 'string'
+                                      ? JSON.parse(order.comment_change)
+                                      : order.comment_change;
+                                    if (parsed && parsed.status === 'updated' && Array.isArray(parsed.history) && parsed.history.length > 0) {
+                                      commentChangeData = parsed;
+                                    }
                                   }
+                                } catch (e) {
+                                  // JSON 파싱 실패 시 무시
                                 }
-                              } catch (e) {
-                                // JSON 파싱 실패 시 무시
-                              }
 
-                              // 수정되지 않은 댓글
-                              if (!commentChangeData) {
+                                // 수정되지 않은 댓글
+                                if (!commentChangeData) {
+                                  return (
+                                    <div className="break-words leading-tight font-semibold" title={currentComment}>
+                                      {currentComment || "-"}
+                                    </div>
+                                  );
+                                }
+
+                                // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
+                                const history = commentChangeData.history;
+                                const previousComment = history.length > 0
+                                  ? history[history.length - 1].replace(/^version:\d+\s*/, '')
+                                  : '';
+
                                 return (
-                                  <div className="line-clamp-3 break-words leading-tight font-semibold" title={currentComment}>
-                                    {currentComment || "-"}
+                                  <div className="space-y-1">
+                                    {previousComment && (
+                                      <div className="text-gray-500 line-through text-sm">
+                                        <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                                        <span className="break-words leading-tight font-semibold">{previousComment}</span>
+                                      </div>
+                                    )}
+                                    <div className="break-words leading-tight">
+                                      <span className="text-sm font-semibold text-orange-600 mr-1">[수정됨]</span>
+                                      <span className="font-semibold">{currentComment}</span>
+                                    </div>
                                   </div>
                                 );
-                              }
+                              })()}
+                              {/* 주문일시 */}
+                              <div className="text-xs xl:text-sm text-gray-400 mt-1">
+                                {formatDate(order.ordered_at)}
+                              </div>
+                              {/* 메모 */}
+                              <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                                {(() => {
+                                  // 디버깅: 실제 렌더링되는 order 확인
+                                  if (order.order_id === 'order_AACtJhiiFjk5bNW_h69B8PUa_AABo75gGOTZMybZkBI7Nh0S0_item1') {
+                                    console.log('[렌더링 디버깅]', {
+                                      order_id: order.order_id,
+                                      memo: order.memo,
+                                      hasMemo: 'memo' in order,
+                                      memoType: typeof order.memo,
+                                      memoLength: order.memo?.length
+                                    });
+                                  }
+                                  return null;
+                                })()}
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    ref={(el) => {
+                                      if (el) {
+                                        memoInputRefs.current[order.order_id] = el;
+                                      }
+                                    }}
+                                    className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
+                                      order.memo ? "bg-red-50 text-red-600 font-semibold border-red-300" : ""
+                                    }`}
+                                    placeholder="메모 입력..."
+                                    defaultValue={order.memo || ""}
+                                    onFocus={() => handleMemoFocus(order.order_id, order.memo || "")}
+                                  />
 
-                              // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
-                              const history = commentChangeData.history;
-                              const previousComment = history.length > 0
-                                ? history[history.length - 1].replace(/^version:\d+\s*/, '')
-                                : '';
-
-                              return (
-                                <div className="space-y-1">
-                                  {previousComment && (
-                                    <div className="text-gray-500 line-through text-sm">
-                                      <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
-                                      <span className="break-words leading-tight font-semibold">{previousComment}</span>
+                                  {/* 저장/취소 버튼 (포커스 시 표시) */}
+                                  {focusedMemoId === order.order_id && !memoSavingStates[order.order_id] && (
+                                    <div className="absolute top-full left-0 mt-1 flex gap-1 z-50 shadow-md">
+                                      <button
+                                        onClick={() => handleMemoSave(order.order_id)}
+                                        className="px-3 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.99] transition"
+                                      >
+                                        저장
+                                      </button>
+                                      <button
+                                        onClick={() => handleMemoCancel(order.order_id)}
+                                        className="px-3 py-2 text-sm bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 active:scale-[0.99] transition"
+                                      >
+                                        취소
+                                      </button>
                                     </div>
                                   )}
-                                  <div className="break-words leading-tight">
-                                    <span className="text-sm font-semibold text-orange-600 mr-1">[수정됨]</span>
-                                    <span className="font-semibold">{currentComment}</span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          {/* 메모 */}
-                          <td
-                            className={`relative py-2 px-4 text-base text-gray-600 w-48 overflow-visible ${
-                              order.memo ? "bg-blue-50" : ""
-                            }`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {(() => {
-                              // 디버깅: 실제 렌더링되는 order 확인
-                              if (order.order_id === 'order_AACtJhiiFjk5bNW_h69B8PUa_AABo75gGOTZMybZkBI7Nh0S0_item1') {
-                                console.log('[렌더링 디버깅]', {
-                                  order_id: order.order_id,
-                                  memo: order.memo,
-                                  hasMemo: 'memo' in order,
-                                  memoType: typeof order.memo,
-                                  memoLength: order.memo?.length
-                                });
-                              }
-                              return null;
-                            })()}
-                            <div className="relative">
-                              <input
-                                type="text"
-                                ref={(el) => {
-                                  if (el) {
-                                    memoInputRefs.current[order.order_id] = el;
-                                  }
-                                }}
-                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                                placeholder="메모 입력..."
-                                defaultValue={order.memo || ""}
-                                onFocus={() => handleMemoFocus(order.order_id, order.memo || "")}
-                              />
 
-                              {/* 저장/취소 버튼 (포커스 시 표시) */}
-                              {focusedMemoId === order.order_id && !memoSavingStates[order.order_id] && (
-                                <div className="absolute top-full left-0 mt-1 flex gap-1 z-50 shadow-md">
-                                  <button
-                                    onClick={() => handleMemoSave(order.order_id)}
-                                    className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
-                                  >
-                                    저장
-                                  </button>
-                                  <button
-                                    onClick={() => handleMemoCancel(order.order_id)}
-                                    className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors"
-                                  >
-                                    취소
-                                  </button>
-                                </div>
-                              )}
-
-                              {/* 저장 상태 표시 */}
-                              {memoSavingStates[order.order_id] && (
-                                <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-1 text-xs">
-                                  {memoSavingStates[order.order_id] === 'saving' && (
-                                    <>
-                                      <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                      </svg>
-                                      <span className="text-gray-500">저장 중...</span>
-                                    </>
-                                  )}
-                                  {memoSavingStates[order.order_id] === 'saved' && (
-                                    <>
-                                      <svg className="h-3 w-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                                      </svg>
-                                      <span className="text-green-600">저장됨</span>
-                                    </>
-                                  )}
-                                  {memoSavingStates[order.order_id] === 'error' && (
-                                    <>
-                                      <svg className="h-3 w-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                      </svg>
-                                      <span className="text-red-600">저장 실패</span>
-                                    </>
+                                  {/* 저장 상태 표시 */}
+                                  {memoSavingStates[order.order_id] && (
+                                    <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-1 text-xs">
+                                      {memoSavingStates[order.order_id] === 'saving' && (
+                                        <>
+                                          <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                          <span className="text-gray-500">저장 중...</span>
+                                        </>
+                                      )}
+                                      {memoSavingStates[order.order_id] === 'saved' && (
+                                        <>
+                                          <svg className="h-3 w-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                          </svg>
+                                          <span className="text-green-600">저장됨</span>
+                                        </>
+                                      )}
+                                      {memoSavingStates[order.order_id] === 'error' && (
+                                        <>
+                                          <svg className="h-3 w-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                          </svg>
+                                          <span className="text-red-600">저장 실패</span>
+                                        </>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
+                              </div>
                             </div>
                           </td>
                           {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
                           <td
-                            className="py-2 pl-4 text-base text-gray-700 align-top"
+                            className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-base xl:text-xl text-gray-700 align-top"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {(() => {
@@ -4070,14 +4216,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                           )}
                                         </div>
                                         <div className="flex-1">
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-start xl:items-center gap-2">
                                             {list.length > 1 && (
-                                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-[13px] font-semibold text-gray-900">
+                                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-[13px] font-semibold text-gray-900 flex-shrink-0">
                                                 {itemNo}번
                                               </span>
                                             )}
                                             <span
-                                              className={`text-base leading-snug text-gray-900 font-medium whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
+                                              className={`text-base xl:text-xl leading-snug text-gray-900 font-medium break-words line-clamp-2 xl:whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
                                               onClick={() => handleCellClickToSearch(title, order.post_key)}
                                               title="클릭하여 이 게시물의 주문 검색"
                                             >
@@ -4085,7 +4231,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                             </span>
                                           </div>
                                           {price != null && (
-                                            <div className="text-base text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
+                                            <div className="text-base xl:text-xl text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
                                           )}
                                         </div>
                                       </div>
@@ -4096,7 +4242,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             })()}
                           </td>
                           {/* 바코드 */}
-                          <td className="py-2 pr-4 text-center text-base text-gray-700 w-32 align-top">
+                          <td className="py-2 xl:py-3 pr-1 lg:pr-4 xl:pr-6 text-center text-base xl:text-lg text-gray-700 w-32 align-top">
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) return <span className="text-sm text-gray-400">없음</span>;
@@ -4111,10 +4257,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                       <div
                                         key={p?.product_id || `${idx}`}
                                         className={`flex items-center justify-center px-2 ${isLastBarcode ? "py-2" : "pt-2  border-b border-gray-200"}`}
-                                        style={{ minHeight: "86px" }}
+                                        style={{ minHeight: barcodeViewMode === "large" ? "120px" : "86px" }}
                                       >
                                         {barcodeVal ? (
-                                          <Barcode value={barcodeVal} height={32} width={1.2} fontSize={12} />
+                                          <Barcode
+                                            value={barcodeVal}
+                                            height={barcodeViewMode === "large" ? 50 : 32}
+                                            width={barcodeViewMode === "large" ? 1.8 : 1.2}
+                                            fontSize={barcodeViewMode === "large" ? 16 : 12}
+                                          />
                                         ) : (
                                           <span className="text-sm text-gray-400">없음</span>
                                         )}
@@ -4124,10 +4275,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 </div>
                               );
                             })()}
-                          </td>
-                          {/* 주문일시 */}
-                          <td className="py-2 px-2 text-center text-base text-gray-600 whitespace-nowrap w-32">
-                            {formatDate(order.ordered_at)}
                           </td>
                         </tr>
 
@@ -4254,37 +4401,37 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 <span className="text-sm font-medium text-gray-700">
                   선택: <span className="text-orange-600 font-bold">{selectedOrderIds.length}</span>개
                 </span>
-                <div className={`flex gap-2 ${isButtonsReversed ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex gap-3 ${isButtonsReversed ? 'flex-row-reverse' : ''}`}>
                 <button
                   onClick={() => handleBulkStatusUpdate("주문취소")}
                   disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  <XCircleIcon className="w-4 h-4 mr-1" />
+                  <XCircleIcon className="w-5 h-5 mr-1.5" />
                   선택 주문취소
                 </button>
                 <button
                   onClick={() => handleBulkStatusUpdate("결제완료")}
                   disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium bg-yellow-100 text-yellow-700 hover:bg-yellow-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  <CurrencyDollarIcon className="w-4 h-4 mr-1" />
+                  <CurrencyDollarIcon className="w-5 h-5 mr-1.5" />
                   선택 결제완료
                 </button>
                 <button
                   onClick={() => handleBulkStatusUpdate("주문완료")}
                   disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-md px-3 py-2 text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  <ArrowLongLeftIcon className="w-4 h-4 mr-1" />
+                  <ArrowLongLeftIcon className="w-5 h-5 mr-1.5" />
                   주문완료로 되돌리기
                 </button>
                 <button
                   onClick={() => handleBulkStatusUpdate("수령완료")}
                   disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  <CheckCircleIcon className="w-4 h-4 mr-1" />
+                  <CheckCircleIcon className="w-5 h-5 mr-1.5" />
                   선택 수령완료
                 </button>
                 </div>

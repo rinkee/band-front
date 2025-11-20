@@ -397,7 +397,7 @@ function LayoutContent({ children }) {
                       </span>
                     </Link> */}
                     <Link
-                      href="/posts"
+                      href="/posts?page=1"
                       className={`px-3 py-2 text-sm font-medium rounded-md ${
                         pathname === "/posts"
                           ? "bg-gray-100 text-gray-900 font-semibold" // 활성 스타일
@@ -580,7 +580,7 @@ function LayoutContent({ children }) {
                     상품 관리
                   </Link> */}
                   <Link
-                    href="/posts"
+                    href="/posts?page=1"
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       pathname === "/posts"
                         ? "bg-blue-100 text-gray-900"

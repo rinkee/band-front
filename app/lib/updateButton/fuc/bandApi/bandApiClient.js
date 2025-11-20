@@ -455,93 +455,93 @@ export async function fetchBandPostsWithFailover(bandApiFailover, userId, limit,
  * @returns {Promise<{comments: Array, latestTimestamp: number|null}>} 댓글 목록 및 최신 타임스탬프
  */
 export async function fetchBandCommentsWithFailover(bandApiFailover, userId, postKey, bandKey, supabase) {
-  let allComments = [];
-  let nextParams = {};
-  let hasMore = true;
-  let latestTs = null;
-  const apiPageLimit = 50;
+  const fetchWithFailoverKeys = async () => {
+    let allComments = [];
+    let nextParams = {};
+    let hasMore = true;
+    let latestTs = null;
+    const apiPageLimit = 50;
 
-  while (hasMore) {
-    // Failover를 사용한 API 호출
-    const apiCall = async (accessToken, bandKey) => {
-      const params = {
-        access_token: accessToken,
-        band_key: bandKey,
-        post_key: postKey,
-        limit: apiPageLimit.toString(),
-        ...nextParams
-      };
+    while (hasMore) {
+      // Failover를 사용한 API 호출
+      const apiCall = async (accessToken, bandKey) => {
+        const params = {
+          access_token: accessToken,
+          band_key: bandKey,
+          post_key: postKey,
+          limit: apiPageLimit.toString(),
+          ...nextParams
+        };
 
-      console.log('[Band API 댓글 요청] 실제 전송 파라미터:', {
-        endpoint: 'https://openapi.band.us/v2.1/band/post/comments',
-        params: {
-          ...params,
-          access_token: params.access_token ? '(있음)' : '(없음)'
-        }
-      });
-
-      let result;
-
-      // 브라우저 환경에서는 프록시 사용
-      if (typeof window !== 'undefined') {
-        const response = await fetch('/api/band-api', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            endpoint: '/band/post/comments',
-            params,
-            method: 'GET'
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(
-            `Band API comments error: ${response.statusText} - ${await response.text()}`
-          );
-        }
-
-        result = await response.json();
-      } else {
-        // 서버 환경에서는 직접 호출
-        const apiUrl = new URL(COMMENTS_API_URL);
-        Object.entries(params).forEach(([key, value]) =>
-          apiUrl.searchParams.set(key, value)
-        );
-
-        const response = await fetch(apiUrl.toString(), {
-          method: "GET",
-          headers: {
-            Accept: "application/json"
+        console.log('[Band API 댓글 요청] 실제 전송 파라미터:', {
+          endpoint: 'https://openapi.band.us/v2.1/band/post/comments',
+          params: {
+            ...params,
+            access_token: params.access_token ? '(있음)' : '(없음)'
           }
         });
 
-        if (!response.ok) {
-          throw new Error(
-            `Band API comments error: ${response.statusText} - ${await response.text()}`
+        let result;
+
+        // 브라우저 환경에서는 프록시 사용
+        if (typeof window !== 'undefined') {
+          const response = await fetch('/api/band-api', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              endpoint: '/band/post/comments',
+              params,
+              method: 'GET'
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Band API comments error: ${response.statusText} - ${await response.text()}`
+            );
+          }
+
+          result = await response.json();
+        } else {
+          // 서버 환경에서는 직접 호출
+          const apiUrl = new URL(COMMENTS_API_URL);
+          Object.entries(params).forEach(([key, value]) =>
+            apiUrl.searchParams.set(key, value)
           );
+
+          const response = await fetch(apiUrl.toString(), {
+            method: "GET",
+            headers: {
+              Accept: "application/json"
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Band API comments error: ${response.statusText} - ${await response.text()}`
+            );
+          }
+
+          result = await response.json();
         }
 
-        result = await response.json();
-      }
+        if (result.result_code !== 1 || !result.result_data) {
+          throw new Error(`Band API comments logical error: ${result.result_code}`);
+        }
 
-      if (result.result_code !== 1 || !result.result_data) {
-        throw new Error(`Band API comments logical error: ${result.result_code}`);
-      }
+        console.log('[Band API 댓글 응답] 전체 응답 구조:', {
+          result_code: result.result_code,
+          result_data_keys: Object.keys(result.result_data),
+          items_count: result.result_data.items?.length || 0,
+          paging: result.result_data.paging,
+          first_item_raw: result.result_data.items?.[0]
+        });
 
-      console.log('[Band API 댓글 응답] 전체 응답 구조:', {
-        result_code: result.result_code,
-        result_data_keys: Object.keys(result.result_data),
-        items_count: result.result_data.items?.length || 0,
-        paging: result.result_data.paging,
-        first_item_raw: result.result_data.items?.[0]
-      });
+        return result.result_data;
+      };
 
-      return result.result_data;
-    };
-
-    try {
       const data = await bandApiFailover.executeWithFailover(apiCall, "get_comments", apiPageLimit);
       const items = data.items || [];
 
@@ -654,21 +654,39 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
       } else {
         hasMore = false;
       }
-    } catch (error) {
-      console.error(`댓글 가져오기 실패`, error, { postKey, bandKey });
-      hasMore = false;
     }
-  }
 
-  console.log('[대댓글 디버그 7-Failover] 최종 결과:', {
-    total_comments: allComments.length,
-    latestTimestamp: latestTs
-  });
+    console.log('[대댓글 디버그 7-Failover] 최종 결과:', {
+      total_comments: allComments.length,
+      latestTimestamp: latestTs
+    });
 
-  return {
-    comments: allComments,
-    latestTimestamp: latestTs
+    return {
+      comments: allComments,
+      latestTimestamp: latestTs
+    };
   };
+
+  // 1차: failover 키 사용, 실패 시 backup access token으로 재시도
+  try {
+    return await fetchWithFailoverKeys();
+  } catch (primaryError) {
+    console.warn(
+      `[Band API 댓글] Failover 경로 실패, band_backup_access_token으로 재시도: ${primaryError.message}`
+    );
+
+    const fallbackResult = await fetchBandCommentsWithBackupFallback(
+      userId,
+      postKey,
+      bandKey,
+      supabase
+    );
+
+    return {
+      ...fallbackResult,
+      usedBackupFallback: true
+    };
+  }
 }
 
 /**

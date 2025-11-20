@@ -248,6 +248,49 @@ export function useProductClientMutations() {
       { revalidate: true }
     );
 
+    // sessionStorage의 products 캐시도 업데이트 (orders-test 페이지 반영)
+    if (typeof window !== 'undefined') {
+      try {
+        // ordersProductsByPostKey 업데이트
+        const cachedByPostKey = sessionStorage.getItem('ordersProductsByPostKey');
+        if (cachedByPostKey) {
+          const byPostKeyMap = JSON.parse(cachedByPostKey);
+          const postKey = data.post_key;
+
+          if (postKey && byPostKeyMap[postKey]) {
+            // 해당 post_key의 상품 배열에서 업데이트된 상품 찾아서 교체
+            byPostKeyMap[postKey] = byPostKeyMap[postKey].map(p =>
+              p.product_id === productId ? data : p
+            );
+            sessionStorage.setItem('ordersProductsByPostKey', JSON.stringify(byPostKeyMap));
+            console.log(`✅ [sessionStorage] ordersProductsByPostKey 업데이트: ${postKey}`);
+          }
+        }
+
+        // ordersProductsByBandPost 업데이트
+        const cachedByBandPost = sessionStorage.getItem('ordersProductsByBandPost');
+        if (cachedByBandPost) {
+          const byBandPostMap = JSON.parse(cachedByBandPost);
+          const bandNumber = data.band_number;
+          const postNumber = data.post_number;
+
+          if (bandNumber != null && postNumber != null) {
+            const key = `${bandNumber}_${String(postNumber)}`;
+            if (byBandPostMap[key]) {
+              // 해당 band/post의 상품 배열에서 업데이트된 상품 찾아서 교체
+              byBandPostMap[key] = byBandPostMap[key].map(p =>
+                p.product_id === productId ? data : p
+              );
+              sessionStorage.setItem('ordersProductsByBandPost', JSON.stringify(byBandPostMap));
+              console.log(`✅ [sessionStorage] ordersProductsByBandPost 업데이트: ${key}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [sessionStorage] 업데이트 실패:', error);
+      }
+    }
+
     return data;
   };
 

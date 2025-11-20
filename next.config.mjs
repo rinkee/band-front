@@ -58,6 +58,50 @@ const nextConfig = {
     );
     return [];
   },
+  // 배포 시 HTML은 항상 새로 받고, 해시된 정적 자산만 장기 캐싱
+  async headers() {
+    return [
+      // Next 빌드 산출물: 파일명에 해시가 포함되므로 강력 캐싱
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      // 폰트 등 정적 리소스도 동일하게 캐싱 (경로에 맞게 추가)
+      {
+        source: "/fonts/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/images/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      // 나머지 응답(HTML 등)은 캐시 금지
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, must-revalidate",
+          },
+        ],
+      },
+    ];
+  },
   // env 블록은 build-time 환경 변수 주입용. rewrites의 런타임 변수와는 직접 관련 없음.
   // 필요 없다면 제거해도 무방.
   // env: {

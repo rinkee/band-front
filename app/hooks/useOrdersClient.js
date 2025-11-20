@@ -30,18 +30,24 @@ const fetchExcludedCustomers = async (userId) => {
  * 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
  */
 const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
-  const sortBy = filters.sortBy || "ordered_at";
+  // pickup_date 정렬은 불안정하므로 주문일시 정렬로 대체
+  const sortBy = filters.sortBy === "pickup_date" ? "ordered_at" : (filters.sortBy || "ordered_at");
   const ascending = filters.sortOrder === "asc";
 
   // 수령가능 필터인 경우 products 테이블과 조인 필요
   const needsPickupDateFilter = filters.subStatus === "수령가능";
+  // pickup_date 정렬은 강제로 ordered_at으로 대체하므로 정렬 목적의 조인이 필요 없음
+  const needsPickupDateSorting = false;
+  const needsProductJoin = needsPickupDateFilter || needsPickupDateSorting;
   
   // Map sortBy to actual column names based on query mode
   let actualSortBy = sortBy;
-  if (needsPickupDateFilter) {
+  if (needsProductJoin) {
     // When joining with products table, map column names
     if (sortBy === 'product_name' || sortBy === 'product_title') {
       actualSortBy = 'products.title';
+    } else if (sortBy === 'pickup_date') {
+      actualSortBy = 'products.pickup_date';
     }
     // Other columns remain the same as they're on the orders table
   } else {
@@ -52,13 +58,15 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
   }
   
   let query;
-  if (needsPickupDateFilter) {
-    // 주문완료+수령가능 필터: orders와 products를 조인
+  if (needsProductJoin) {
+    // 제품 정보가 필요한 경우 products 테이블 조인
+    // 수령가능 필터는 inner join, 정렬만 필요한 경우에는 left join
+    const joinType = needsPickupDateFilter ? "inner" : "left";
     query = supabase
       .from("orders")
       .select(`
         *,
-        products!inner(pickup_date, title, barcode, price_options, band_key)
+        products!${joinType}(pickup_date, title, barcode, price_options, band_key)
       `, { count: "exact" })
       .eq("user_id", userId);
   } else {
@@ -190,7 +198,13 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
   }
 
   // 정렬만 적용 (range는 나중에)
-  query = query.order(actualSortBy, { ascending });
+  if (needsProductJoin && actualSortBy.startsWith("products.")) {
+    // Supabase는 조인 테이블 정렬 시 foreignTable 옵션 필요
+    const column = actualSortBy.split(".")[1] || actualSortBy;
+    query = query.order(column, { ascending, foreignTable: "products" });
+  } else {
+    query = query.order(actualSortBy, { ascending });
+  }
 
   return query;
 };
@@ -210,6 +224,10 @@ const fetchOrders = async (key) => {
 
   console.log(`🔍 [주문 조회] userId=${userId}, page=${page}, limit=${limit}`);
   console.log(`🔍 [주문 조회] limit > 1000? ${limit > 1000}`);
+
+  const needsPickupDateFilter = filters.subStatus === "수령가능";
+  const needsPickupDateSorting = false;
+  const needsProductJoin = needsPickupDateFilter || needsPickupDateSorting;
 
   // 제외고객 목록 먼저 조회
   const excludedCustomers = await fetchExcludedCustomers(userId);
@@ -261,8 +279,7 @@ const fetchOrders = async (key) => {
     // 데이터 후처리
     let processedData = allData;
 
-    const needsPickupDateFilter = filters.subStatus === "수령가능";
-    if (needsPickupDateFilter && allData.length > 0) {
+    if (needsProductJoin && allData.length > 0) {
       // processedData 처리 로직은 아래에서 재사용
       processedData = allData.map(order => ({
         ...order,
@@ -308,8 +325,7 @@ const fetchOrders = async (key) => {
 
   // 주문완료+수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
   let processedData = data || [];
-  const needsPickupDateFilter = filters.subStatus === "수령가능";
-  if (needsPickupDateFilter && data) {
+  if (needsProductJoin && data) {
     processedData = data.map(order => ({
       ...order,
       product_title: order.products?.title,
@@ -318,7 +334,9 @@ const fetchOrders = async (key) => {
       product_pickup_date: order.products?.pickup_date,
       band_key: order.products?.band_key || order.band_key
     }));
-    
+  }
+  
+  if (needsPickupDateFilter && processedData) {
     // Debug flag via localStorage('debugPickup') === 'true'
     const isDebug = false;
 

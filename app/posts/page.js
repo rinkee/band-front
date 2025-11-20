@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import useSWR from "swr";
+import { useRouter, useSearchParams } from "next/navigation";
+import useSWR, { useSWRConfig } from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import ProductManagementModal from "../components/ProductManagementModal";
 import PostDetailModal from "../components/PostDetailModal";
@@ -47,18 +47,17 @@ const getProxiedImageUrl = (url) => {
 
 export default function PostsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [userData, setUserData] = useState(null);
   const { scrollableContentRef } = useScroll();
+  const { mutate: globalMutate } = useSWRConfig();
 
-  // sessionStorage에서 저장된 페이지 번호 복원
+  // URL 파라미터에서 페이지 번호 읽기 (없으면 1)
   const [page, setPage] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const savedPage = sessionStorage.getItem('postsPageNumber');
-      return savedPage ? parseInt(savedPage, 10) : 1;
-    }
-    return 1;
+    const pageParam = searchParams.get('page');
+    return pageParam ? parseInt(pageParam, 10) : 1;
   });
-  const [limit] = useState(20); // 4줄 x 5개 = 20개씩 표시
+  const [limit] = useState(10); // 페이지당 10개씩 표시
 
   // 검색 관련 상태 - sessionStorage에서 복원
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -83,6 +82,7 @@ export default function PostsPage() {
   const [editingBarcode, setEditingBarcode] = useState(null); // { postKey, productId, value }
   const [savingBarcode, setSavingBarcode] = useState(null);
   const [savedBarcode, setSavedBarcode] = useState(null); // 저장 완료 배경색 표시용
+  const [pendingBarcodes, setPendingBarcodes] = useState({}); // { [productId]: barcodeValue } - 저장 대기 중인 바코드
 
   // 상품 추가 상태 (postKey별로 관리)
   const [addingProduct, setAddingProduct] = useState({}); // { [postKey]: { title, base_price, barcode } }
@@ -128,10 +128,18 @@ export default function PostsPage() {
     }
   }, [router]);
 
-  // 페이지 번호가 변경될 때마다 sessionStorage에 저장 및 스크롤 최상단 이동
+  // URL 파라미터에서 페이지 번호 변경 감지
+  useEffect(() => {
+    const pageParam = searchParams.get('page');
+    const newPage = pageParam ? parseInt(pageParam, 10) : 1;
+    if (newPage !== page) {
+      setPage(newPage);
+    }
+  }, [searchParams]);
+
+  // 페이지 번호가 변경될 때마다 스크롤 최상단 이동
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('postsPageNumber', page.toString());
       // 스크롤을 최상단으로 이동
       window.scrollTo(0, 0);
       // 저장된 스크롤 위치 초기화 (두 가지 키 모두)
@@ -199,30 +207,47 @@ export default function PostsPage() {
         }
       }
 
-      // 전체 통계를 위한 별도 쿼리
-      let statsQuery = supabase
-        .from("posts")
-        .select("is_product, comment_sync_status, post_key", { count: 'exact', head: false })
-        .eq("user_id", userData.userId);
-
-      // 검색어가 있으면 통계 쿼리에도 적용
-      if (searchQuery) {
+      // 전체 통계: 카운트만 가져와 네트워크/메모리 사용 최소화
+      const statsFilters = (() => {
+        if (!searchQuery) return null;
         if (productPostKeys.length > 0) {
-          // 게시물 필드 또는 상품명에 일치하는 post_key
-          statsQuery = statsQuery.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,post_key.in.(${productPostKeys.join(',')})`);
-        } else {
-          // 상품명 매칭이 없으면 게시물 필드만 검색
-          statsQuery = statsQuery.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
+          return `title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,post_key.in.(${productPostKeys.join(',')})`;
         }
+        return `title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`;
+      })();
+
+      const countPosts = supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userData.userId);
+      const countProductPosts = supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userData.userId)
+        .eq("is_product", true);
+      const countCompletedPosts = supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userData.userId)
+        .eq("comment_sync_status", "success");
+
+      // 검색어 필터를 각 카운트 쿼리에 적용
+      if (statsFilters) {
+        countPosts.or(statsFilters);
+        countProductPosts.or(statsFilters);
+        countCompletedPosts.or(statsFilters);
       }
 
-      const { data: statsData, count: totalCount } = await statsQuery;
+      const [
+        { count: totalCount },
+        { count: totalProductCount },
+        { count: totalCompletedCount }
+      ] = await Promise.all([countPosts, countProductPosts, countCompletedPosts]);
 
-      // 전체 통계 계산
       const totalStats = {
         totalPosts: totalCount || 0,
-        totalProductPosts: statsData?.filter(post => post.is_product).length || 0,
-        totalCompletedPosts: statsData?.filter(post => post.comment_sync_status === 'success').length || 0,
+        totalProductPosts: totalProductCount || 0,
+        totalCompletedPosts: totalCompletedCount || 0,
       };
 
       // 페이지네이션된 데이터 가져오기
@@ -256,21 +281,16 @@ export default function PostsPage() {
       const postKeys = data?.map(post => post.post_key) || [];
 
       let productsData = [];
-      // 한 사용자 = 한 밴드이므로 user_id로 모든 상품 조회 (URL 길이 제한 문제 해결)
-      // Supabase 기본 제한(1000개)을 넘어 모든 데이터를 가져오기 위해 range 설정
-      const { data: productsResult, error: productsError } = await supabase
-        .from('products')
-        .select('*', { count: 'exact' })
-        .eq('user_id', userData.userId)
-        .order('item_number', { ascending: true })
-        .range(0, 9999); // 최대 10000개까지 가져오기
+      if (postKeys.length > 0) {
+        // 현재 페이지에 필요한 게시물의 상품만 조회
+        const { data: productsResult, error: productsError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('user_id', userData.userId)
+          .in('post_key', postKeys)
+          .order('item_number', { ascending: true });
 
-      if (!productsError && productsResult) {
-        // 클라이언트 사이드에서 필요한 post_key만 필터링
-        if (postKeys.length > 0) {
-          const postKeysSet = new Set(postKeys);
-          productsData = productsResult.filter(p => postKeysSet.has(p.post_key));
-        } else {
+        if (!productsError && productsResult) {
           productsData = productsResult;
         }
       }
@@ -385,7 +405,7 @@ export default function PostsPage() {
   // 검색 기능
   // 페이지 변경 핸들러
   const handlePageChange = (newPage) => {
-    setPage(newPage);
+    router.push(`/posts?page=${newPage}`);
   };
 
   const handleSearch = (e) => {
@@ -463,9 +483,8 @@ export default function PostsPage() {
   const handleViewOrders = (postKey, postedAt) => {
     if (!postKey) return;
 
-    // 페이지 상태만 저장 (스크롤 위치는 PostCard에서 이미 저장됨)
+    // 검색 상태만 저장 (스크롤 위치는 PostCard에서 이미 저장됨)
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('postsPageNumber', page.toString());
       sessionStorage.setItem('postsSearchTerm', searchTerm);
       sessionStorage.setItem('postsSearchQuery', searchQuery);
     }
@@ -919,24 +938,62 @@ export default function PostsPage() {
       return;
     }
 
+    // 날짜와 시간 조합하여 ISO 문자열 생성 (KST 타임존 명시)
+    const [year, month, day] = dateParts;
+    const hours = dateData.hours || '0';
+    const minutes = dateData.minutes || '0';
+    const ampm = dateData.ampm || '오전';
+
+    // 12시간 형식을 24시간 형식으로 변환
+    let hour24 = parseInt(hours);
+    if (ampm === '오후' && hour24 !== 12) {
+      hour24 += 12;
+    } else if (ampm === '오전' && hour24 === 12) {
+      hour24 = 0;
+    }
+
+    // KST 타임존이 명시된 ISO 문자열 생성 (+09:00)
+    const pickupDateISO = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+09:00`;
+
+    // 새 수령일과 현재시간 비교
+    const newPickupDateTime = new Date(pickupDateISO);
+    const currentTime = new Date();
+    const shouldResetUndeliveredStatus = newPickupDateTime > currentTime;
+
+    // 날짜 포맷 함수
+    const formatDateTime = (date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const hours = date.getHours();
+      const ampm = hours < 12 ? '오전' : '오후';
+      const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+      return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
+    };
+
+    // 기존 수령일 찾기 (postsData에서 해당 post 찾기)
+    const currentPost = postsData?.posts?.find(p => p.post_key === postKey);
+    const oldPickupDate = currentPost?.pickup_date;
+    const oldDateStr = oldPickupDate ? formatDateTime(new Date(oldPickupDate)) : '미정';
+    const newDateStr = formatDateTime(newPickupDateTime);
+
+    // 확인 알림
+    let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
+    confirmMsg += `기존: ${oldDateStr}\n`;
+    confirmMsg += `변경: ${newDateStr}\n\n`;
+
+    if (shouldResetUndeliveredStatus) {
+      confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
+    } else {
+      confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
+    }
+
+    if (!confirm(confirmMsg)) {
+      return; // 사용자가 취소하면 함수 종료
+    }
+
     setSavingPickupDate(postKey);
     try {
-      // 날짜와 시간 조합하여 ISO 문자열 생성 (KST 타임존 명시)
-      const [year, month, day] = dateParts;
-      const hours = dateData.hours || '0';
-      const minutes = dateData.minutes || '0';
-      const ampm = dateData.ampm || '오전';
-
-      // 12시간 형식을 24시간 형식으로 변환
-      let hour24 = parseInt(hours);
-      if (ampm === '오후' && hour24 !== 12) {
-        hour24 += 12;
-      } else if (ampm === '오전' && hour24 === 12) {
-        hour24 = 0;
-      }
-
-      // KST 타임존이 명시된 ISO 문자열 생성 (+09:00)
-      const pickupDateISO = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+09:00`;
 
       // 1. posts 테이블 업데이트
       const { error: postError } = await supabase
@@ -956,6 +1013,53 @@ export default function PostsPage() {
 
       if (productsError) throw productsError;
 
+      // 3. orders 테이블 sub_status 업데이트
+      const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+      const bandKey = currentPost?.band_key;
+
+      if (shouldResetUndeliveredStatus) {
+        // 수령일이 미래로 변경 → sub_status 초기화
+        console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
+
+        const { error: ordersResetError } = await supabase
+          .from('orders')
+          .update({
+            sub_status: null,
+            updated_at: nowMinus9Iso
+          })
+          .eq('user_id', userData.userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
+          .not('sub_status', 'is', null);
+
+        if (ordersResetError) {
+          console.error('주문 상태 초기화 실패:', ordersResetError);
+          // 에러가 발생해도 수령일 업데이트는 계속 진행
+        } else {
+          console.log('미수령 주문 상태 초기화 완료');
+        }
+      } else if (newPickupDateTime <= currentTime) {
+        // 수령일이 과거 → sub_status를 '미수령'으로 설정
+        console.log('수령일이 과거이므로 주문을 미수령 상태로 설정합니다.');
+
+        const { error: ordersUndeliveredError } = await supabase
+          .from('orders')
+          .update({
+            sub_status: '미수령',
+            updated_at: nowMinus9Iso
+          })
+          .eq('user_id', userData.userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
+          .eq('status', '주문완료');
+
+        if (ordersUndeliveredError) {
+          console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
+        } else {
+          console.log('미수령 상태 설정 완료');
+        }
+      }
+
       showSuccess('수령일이 수정되었습니다.');
 
       // 편집 상태 초기화
@@ -965,6 +1069,17 @@ export default function PostsPage() {
         delete newState[postKey];
         return newState;
       });
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
+
+      // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === 'orders',
+        undefined,
+        { revalidate: true }
+      );
 
       // 데이터 새로고침
       mutate();
@@ -998,6 +1113,10 @@ export default function PostsPage() {
 
       // 편집 상태 초기화
       setEditingBarcode(null);
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
       // 데이터 즉시 새로고침 (바코드 이미지 바로 표시)
       mutate();
@@ -1081,6 +1200,10 @@ export default function PostsPage() {
 
       // 성공 메시지 표시
       showSuccess(`삭제 완료: ${result.message}`);
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
       // 데이터 새로고침
       mutate();
@@ -1685,9 +1808,9 @@ export default function PostsPage() {
                           <colgroup>
                             <col style={{ width: '5%' }} />
                             <col style={{ width: '35%' }} />
-                            <col style={{ width: '13%' }} />
+                            <col style={{ width: '12%' }} />
                             <col style={{ width: '20%' }} />
-                            <col style={{ width: '13%' }} />
+                            <col style={{ width: '15%' }} />
                           </colgroup>
                           <thead className="bg-gray-50">
                             <tr>
@@ -1751,6 +1874,21 @@ export default function PostsPage() {
                                         <input
                                           type="text"
                                           value={editingProductData.barcode || ''}
+                                          onFocus={(e) => {
+                                            // 다른 상품에 저장되지 않은 바코드가 있는지 확인
+                                            const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                              if (pid === product.product_id) return false; // 현재 상품은 제외
+                                              const prod = products.find(p => p.product_id === pid);
+                                              const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                              return value !== originalBarcode;
+                                            });
+
+                                            if (unsavedBarcodes.length > 0) {
+                                              e.target.blur(); // 포커스 해제
+                                              alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                              return;
+                                            }
+                                          }}
                                           onChange={(e) => setEditingProductData(prev => ({ ...prev, barcode: e.target.value }))}
                                           placeholder="바코드"
                                           className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
@@ -1795,62 +1933,165 @@ export default function PostsPage() {
                                       '미입력'}
                                   </td>
                                   <td className={`px-4 py-3 text-sm text-gray-900 border-r border-gray-200 relative transition-colors duration-500 ${isSaved ? 'bg-green-100' : ''}`}>
-                                    {hasBarcode ? (
-                                      <div className="flex flex-col items-center gap-2">
-                                        {/* 바코드 이미지 */}
-                                        <BarcodeDisplay
-                                          value={product.barcode || product.productBarcode}
-                                          height={40}
-                                          width={1.5}
-                                          displayValue={true}
-                                          fontSize={10}
-                                          margin={5}
-                                        />
-                                      </div>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        placeholder="바코드"
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                        onBlur={async (e) => {
-                                          const value = e.target.value.trim();
-                                          if (value) {
-                                            await handleSaveBarcode(product.product_id, post.post_key, value);
-                                          }
-                                        }}
-                                        onKeyPress={async (e) => {
-                                          if (e.key === 'Enter') {
-                                            const value = e.target.value.trim();
-                                            if (value) {
-                                              await handleSaveBarcode(product.product_id, post.post_key, value);
-                                            }
-                                          }
-                                        }}
-                                      />
-                                    )}
+                                    <div className="flex flex-col items-center gap-2">
+                                      {(() => {
+                                        const currentBarcode = product.barcode || product.productBarcode || '';
+                                        const pendingBarcode = pendingBarcodes[product.product_id];
+                                        const isEditingBarcode = pendingBarcode !== undefined;
+
+                                        // 바코드가 있고 수정 중이 아니면 이미지만 표시
+                                        if (currentBarcode && !isEditingBarcode) {
+                                          return (
+                                            <BarcodeDisplay
+                                              value={currentBarcode}
+                                              height={40}
+                                              width={1.5}
+                                              displayValue={true}
+                                              fontSize={10}
+                                              margin={5}
+                                            />
+                                          );
+                                        }
+
+                                        // 바코드가 없거나 수정 중이면 input 표시
+                                        return (
+                                          <>
+                                            {/* 바코드 이미지 (입력값이 있을 때만) */}
+                                            {(isEditingBarcode && pendingBarcode) && (
+                                              <BarcodeDisplay
+                                                value={pendingBarcode}
+                                                height={40}
+                                                width={1.5}
+                                                displayValue={true}
+                                                fontSize={10}
+                                                margin={5}
+                                              />
+                                            )}
+                                            {/* 바코드 입력 필드 */}
+                                            <input
+                                              type="text"
+                                              placeholder="바코드 입력"
+                                              value={pendingBarcode ?? currentBarcode}
+                                              onFocus={(e) => {
+                                                // 다른 상품에 저장되지 않은 바코드가 있는지 확인
+                                                const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                                  if (pid === product.product_id) return false; // 현재 상품은 제외
+                                                  const prod = products.find(p => p.product_id === pid);
+                                                  const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                                  return value !== originalBarcode;
+                                                });
+
+                                                if (unsavedBarcodes.length > 0) {
+                                                  e.target.blur(); // 포커스 해제
+                                                  alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                                  return;
+                                                }
+                                              }}
+                                              onChange={(e) => {
+                                                setPendingBarcodes(prev => ({
+                                                  ...prev,
+                                                  [product.product_id]: e.target.value
+                                                }));
+                                              }}
+                                              className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                                            />
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
                                   </td>
                                   <td className="px-4 py-3 text-sm text-gray-900">
                                     <div className="flex gap-1">
-                                      <button
-                                        onClick={() => {
-                                          setEditingProduct(product.product_id);
-                                          setEditingProductData({
-                                            item_number: product.item_number || '',
-                                            title: product.title || product.name || product.product_name || '',
-                                            base_price: (product.base_price ?? product.price ?? product.basePrice ?? ''),
-                                            barcode: product.barcode || product.productBarcode || ''
-                                          });
-                                        }}
-                                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
-                                      >
-                                        수정
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteProduct(product)}
-                                        className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs rounded transition-colors"
-                                      >
-                                        삭제
-                                      </button>
+                                      {(() => {
+                                        // 바코드가 변경되었는지 확인
+                                        const currentBarcode = product.barcode || product.productBarcode || '';
+                                        const pendingBarcode = pendingBarcodes[product.product_id];
+                                        const hasBarcodeChanged = pendingBarcode !== undefined && pendingBarcode !== currentBarcode;
+
+                                        return hasBarcodeChanged ? (
+                                          <>
+                                            <button
+                                              onClick={async () => {
+                                                await handleSaveBarcode(product.product_id, post.post_key, pendingBarcode);
+                                                // 저장 후 pending 상태 제거
+                                                setPendingBarcodes(prev => {
+                                                  const newPending = { ...prev };
+                                                  delete newPending[product.product_id];
+                                                  return newPending;
+                                                });
+                                              }}
+                                              disabled={savingBarcode === product.product_id}
+                                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-xs rounded transition-colors"
+                                            >
+                                              {savingBarcode === product.product_id ? '저장 중...' : '저장'}
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                // 취소: pending 상태 제거
+                                                setPendingBarcodes(prev => {
+                                                  const newPending = { ...prev };
+                                                  delete newPending[product.product_id];
+                                                  return newPending;
+                                                });
+                                              }}
+                                              className="px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded transition-colors"
+                                            >
+                                              취소
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                // 다른 상품에 저장되지 않은 바코드가 있는지 확인
+                                                const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                                  if (pid === product.product_id) return false; // 현재 상품은 제외
+                                                  const prod = products.find(p => p.product_id === pid);
+                                                  const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                                  return value !== originalBarcode;
+                                                });
+
+                                                if (unsavedBarcodes.length > 0) {
+                                                  alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                                  return;
+                                                }
+
+                                                // 전체 상품 정보 수정 모드로 전환
+                                                setEditingProduct(product.product_id);
+                                                setEditingProductData({
+                                                  item_number: product.item_number,
+                                                  title: product.title || product.name || product.product_name,
+                                                  base_price: product.base_price || product.price || product.basePrice,
+                                                  barcode: product.barcode || product.productBarcode || ''
+                                                });
+                                              }}
+                                              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded transition-colors"
+                                            >
+                                              수정
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                // 저장되지 않은 바코드가 있는지 확인
+                                                const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
+                                                  const prod = products.find(p => p.product_id === pid);
+                                                  const originalBarcode = prod?.barcode || prod?.productBarcode || '';
+                                                  return value !== originalBarcode;
+                                                });
+
+                                                if (unsavedBarcodes.length > 0) {
+                                                  alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
+                                                  return;
+                                                }
+
+                                                handleDeleteProduct(product);
+                                              }}
+                                              className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs rounded transition-colors"
+                                            >
+                                              삭제
+                                            </button>
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   </td>
                                 </tr>
@@ -2041,6 +2282,44 @@ export default function PostsPage() {
               ? `${editPickupDate}T00:00:00+09:00`
               : `${editPickupDate}T${editPickupTime}:00+09:00`;
 
+            // 새 수령일을 Date 객체로 변환 (한국 시간 기준)
+            const newPickupDateTime = new Date(datetime);
+            const currentTime = new Date();
+
+            // 수령일이 미래로 변경되었는지 확인
+            const shouldResetUndeliveredStatus = newPickupDateTime > currentTime;
+
+            // 날짜 포맷 함수
+            const formatDateTime = (date) => {
+              const year = date.getFullYear();
+              const month = date.getMonth() + 1;
+              const day = date.getDate();
+              const hours = date.getHours();
+              const ampm = hours < 12 ? '오전' : '오후';
+              const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+              return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
+            };
+
+            // 기존 수령일과 새 수령일 포맷
+            const oldPickupDate = selectedPostForDetail.pickup_date;
+            const oldDateStr = oldPickupDate ? formatDateTime(new Date(oldPickupDate)) : '미정';
+            const newDateStr = formatDateTime(newPickupDateTime);
+
+            // 확인 알림
+            let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
+            confirmMsg += `기존: ${oldDateStr}\n`;
+            confirmMsg += `변경: ${newDateStr}\n\n`;
+
+            if (shouldResetUndeliveredStatus) {
+              confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
+            } else {
+              confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
+            }
+
+            if (!confirm(confirmMsg)) {
+              return; // 사용자가 취소하면 함수 종료
+            }
+
             // 1. posts 테이블 업데이트
             const { error: postsError } = await supabase
               .from('posts')
@@ -2061,9 +2340,69 @@ export default function PostsPage() {
               // products 업데이트 실패해도 계속 진행
             }
 
+            // 3. orders 테이블 sub_status 업데이트
+            const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+            const postKey = selectedPostForDetail.post_key;
+            const bandKey = selectedPostForDetail.band_key;
+            const userId = userData?.userId;
+
+            if (shouldResetUndeliveredStatus) {
+              // 수령일이 미래로 변경 → sub_status 초기화
+              console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
+
+              const { error: ordersResetError } = await supabase
+                .from('orders')
+                .update({
+                  sub_status: null,
+                  updated_at: nowMinus9Iso
+                })
+                .eq('user_id', userId)
+                .eq('post_key', postKey)
+                .eq('band_key', bandKey)
+                .not('sub_status', 'is', null);
+
+              if (ordersResetError) {
+                console.error('주문 상태 초기화 실패:', ordersResetError);
+                // 에러가 발생해도 수령일 업데이트는 계속 진행
+              } else {
+                console.log('미수령 주문 상태 초기화 완료');
+              }
+            } else if (newPickupDateTime <= currentTime) {
+              // 수령일이 과거 → sub_status를 '미수령'으로 설정
+              console.log('수령일이 과거이므로 주문을 미수령 상태로 설정합니다.');
+
+              const { error: ordersUndeliveredError } = await supabase
+                .from('orders')
+                .update({
+                  sub_status: '미수령',
+                  updated_at: nowMinus9Iso
+                })
+                .eq('user_id', userId)
+                .eq('post_key', postKey)
+                .eq('band_key', bandKey)
+                .eq('status', '주문완료');
+
+              if (ordersUndeliveredError) {
+                console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
+              } else {
+                console.log('미수령 상태 설정 완료');
+              }
+            }
+
             // 로컬 상태 업데이트
             selectedPostForDetail.pickup_date = datetime;
             setIsEditingPickupDate(false);
+
+            // orders-test 페이지의 상품 캐시 무효화
+            sessionStorage.removeItem('ordersProductsByPostKey');
+            sessionStorage.removeItem('ordersProductsByBandPost');
+
+            // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
+            globalMutate(
+              (key) => Array.isArray(key) && key[0] === 'orders',
+              undefined,
+              { revalidate: true }
+            );
 
             // 성공 메시지
             showSuccess('수령일이 업데이트되었습니다.');
@@ -2824,7 +3163,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
         {/* 오른쪽: 이미지 & 개수 */}
         {hasImages && (
-          <div className="relative w-24 h-24 flex-shrink-0 m-4">
+          <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
             <img
               src={getProxiedImageUrl(mainImage)}
               alt={cleanTitle || "게시물 이미지"}
