@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import ProductManagementModal from "../components/ProductManagementModal";
 import PostDetailModal from "../components/PostDetailModal";
@@ -50,13 +50,14 @@ export default function PostsPage() {
   const searchParams = useSearchParams();
   const [userData, setUserData] = useState(null);
   const { scrollableContentRef } = useScroll();
+  const { mutate: globalMutate } = useSWRConfig();
 
   // URL 파라미터에서 페이지 번호 읽기 (없으면 1)
   const [page, setPage] = useState(() => {
     const pageParam = searchParams.get('page');
     return pageParam ? parseInt(pageParam, 10) : 1;
   });
-  const [limit] = useState(20); // 4줄 x 5개 = 20개씩 표시
+  const [limit] = useState(10); // 페이지당 10개씩 표시
 
   // 검색 관련 상태 - sessionStorage에서 복원
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -206,30 +207,47 @@ export default function PostsPage() {
         }
       }
 
-      // 전체 통계를 위한 별도 쿼리
-      let statsQuery = supabase
-        .from("posts")
-        .select("is_product, comment_sync_status, post_key", { count: 'exact', head: false })
-        .eq("user_id", userData.userId);
-
-      // 검색어가 있으면 통계 쿼리에도 적용
-      if (searchQuery) {
+      // 전체 통계: 카운트만 가져와 네트워크/메모리 사용 최소화
+      const statsFilters = (() => {
+        if (!searchQuery) return null;
         if (productPostKeys.length > 0) {
-          // 게시물 필드 또는 상품명에 일치하는 post_key
-          statsQuery = statsQuery.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,post_key.in.(${productPostKeys.join(',')})`);
-        } else {
-          // 상품명 매칭이 없으면 게시물 필드만 검색
-          statsQuery = statsQuery.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
+          return `title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,post_key.in.(${productPostKeys.join(',')})`;
         }
+        return `title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`;
+      })();
+
+      const countPosts = supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userData.userId);
+      const countProductPosts = supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userData.userId)
+        .eq("is_product", true);
+      const countCompletedPosts = supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userData.userId)
+        .eq("comment_sync_status", "success");
+
+      // 검색어 필터를 각 카운트 쿼리에 적용
+      if (statsFilters) {
+        countPosts.or(statsFilters);
+        countProductPosts.or(statsFilters);
+        countCompletedPosts.or(statsFilters);
       }
 
-      const { data: statsData, count: totalCount } = await statsQuery;
+      const [
+        { count: totalCount },
+        { count: totalProductCount },
+        { count: totalCompletedCount }
+      ] = await Promise.all([countPosts, countProductPosts, countCompletedPosts]);
 
-      // 전체 통계 계산
       const totalStats = {
         totalPosts: totalCount || 0,
-        totalProductPosts: statsData?.filter(post => post.is_product).length || 0,
-        totalCompletedPosts: statsData?.filter(post => post.comment_sync_status === 'success').length || 0,
+        totalProductPosts: totalProductCount || 0,
+        totalCompletedPosts: totalCompletedCount || 0,
       };
 
       // 페이지네이션된 데이터 가져오기
@@ -263,21 +281,16 @@ export default function PostsPage() {
       const postKeys = data?.map(post => post.post_key) || [];
 
       let productsData = [];
-      // 한 사용자 = 한 밴드이므로 user_id로 모든 상품 조회 (URL 길이 제한 문제 해결)
-      // Supabase 기본 제한(1000개)을 넘어 모든 데이터를 가져오기 위해 range 설정
-      const { data: productsResult, error: productsError } = await supabase
-        .from('products')
-        .select('*', { count: 'exact' })
-        .eq('user_id', userData.userId)
-        .order('item_number', { ascending: true })
-        .range(0, 9999); // 최대 10000개까지 가져오기
+      if (postKeys.length > 0) {
+        // 현재 페이지에 필요한 게시물의 상품만 조회
+        const { data: productsResult, error: productsError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('user_id', userData.userId)
+          .in('post_key', postKeys)
+          .order('item_number', { ascending: true });
 
-      if (!productsError && productsResult) {
-        // 클라이언트 사이드에서 필요한 post_key만 필터링
-        if (postKeys.length > 0) {
-          const postKeysSet = new Set(postKeys);
-          productsData = productsResult.filter(p => postKeysSet.has(p.post_key));
-        } else {
+        if (!productsError && productsResult) {
           productsData = productsResult;
         }
       }
@@ -925,24 +938,62 @@ export default function PostsPage() {
       return;
     }
 
+    // 날짜와 시간 조합하여 ISO 문자열 생성 (KST 타임존 명시)
+    const [year, month, day] = dateParts;
+    const hours = dateData.hours || '0';
+    const minutes = dateData.minutes || '0';
+    const ampm = dateData.ampm || '오전';
+
+    // 12시간 형식을 24시간 형식으로 변환
+    let hour24 = parseInt(hours);
+    if (ampm === '오후' && hour24 !== 12) {
+      hour24 += 12;
+    } else if (ampm === '오전' && hour24 === 12) {
+      hour24 = 0;
+    }
+
+    // KST 타임존이 명시된 ISO 문자열 생성 (+09:00)
+    const pickupDateISO = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+09:00`;
+
+    // 새 수령일과 현재시간 비교
+    const newPickupDateTime = new Date(pickupDateISO);
+    const currentTime = new Date();
+    const shouldResetUndeliveredStatus = newPickupDateTime > currentTime;
+
+    // 날짜 포맷 함수
+    const formatDateTime = (date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const hours = date.getHours();
+      const ampm = hours < 12 ? '오전' : '오후';
+      const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+      return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
+    };
+
+    // 기존 수령일 찾기 (postsData에서 해당 post 찾기)
+    const currentPost = postsData?.posts?.find(p => p.post_key === postKey);
+    const oldPickupDate = currentPost?.pickup_date;
+    const oldDateStr = oldPickupDate ? formatDateTime(new Date(oldPickupDate)) : '미정';
+    const newDateStr = formatDateTime(newPickupDateTime);
+
+    // 확인 알림
+    let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
+    confirmMsg += `기존: ${oldDateStr}\n`;
+    confirmMsg += `변경: ${newDateStr}\n\n`;
+
+    if (shouldResetUndeliveredStatus) {
+      confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
+    } else {
+      confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
+    }
+
+    if (!confirm(confirmMsg)) {
+      return; // 사용자가 취소하면 함수 종료
+    }
+
     setSavingPickupDate(postKey);
     try {
-      // 날짜와 시간 조합하여 ISO 문자열 생성 (KST 타임존 명시)
-      const [year, month, day] = dateParts;
-      const hours = dateData.hours || '0';
-      const minutes = dateData.minutes || '0';
-      const ampm = dateData.ampm || '오전';
-
-      // 12시간 형식을 24시간 형식으로 변환
-      let hour24 = parseInt(hours);
-      if (ampm === '오후' && hour24 !== 12) {
-        hour24 += 12;
-      } else if (ampm === '오전' && hour24 === 12) {
-        hour24 = 0;
-      }
-
-      // KST 타임존이 명시된 ISO 문자열 생성 (+09:00)
-      const pickupDateISO = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+09:00`;
 
       // 1. posts 테이블 업데이트
       const { error: postError } = await supabase
@@ -962,6 +1013,53 @@ export default function PostsPage() {
 
       if (productsError) throw productsError;
 
+      // 3. orders 테이블 sub_status 업데이트
+      const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+      const bandKey = currentPost?.band_key;
+
+      if (shouldResetUndeliveredStatus) {
+        // 수령일이 미래로 변경 → sub_status 초기화
+        console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
+
+        const { error: ordersResetError } = await supabase
+          .from('orders')
+          .update({
+            sub_status: null,
+            updated_at: nowMinus9Iso
+          })
+          .eq('user_id', userData.userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
+          .not('sub_status', 'is', null);
+
+        if (ordersResetError) {
+          console.error('주문 상태 초기화 실패:', ordersResetError);
+          // 에러가 발생해도 수령일 업데이트는 계속 진행
+        } else {
+          console.log('미수령 주문 상태 초기화 완료');
+        }
+      } else if (newPickupDateTime <= currentTime) {
+        // 수령일이 과거 → sub_status를 '미수령'으로 설정
+        console.log('수령일이 과거이므로 주문을 미수령 상태로 설정합니다.');
+
+        const { error: ordersUndeliveredError } = await supabase
+          .from('orders')
+          .update({
+            sub_status: '미수령',
+            updated_at: nowMinus9Iso
+          })
+          .eq('user_id', userData.userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
+          .eq('status', '주문완료');
+
+        if (ordersUndeliveredError) {
+          console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
+        } else {
+          console.log('미수령 상태 설정 완료');
+        }
+      }
+
       showSuccess('수령일이 수정되었습니다.');
 
       // 편집 상태 초기화
@@ -971,6 +1069,17 @@ export default function PostsPage() {
         delete newState[postKey];
         return newState;
       });
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
+
+      // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === 'orders',
+        undefined,
+        { revalidate: true }
+      );
 
       // 데이터 새로고침
       mutate();
@@ -1004,6 +1113,10 @@ export default function PostsPage() {
 
       // 편집 상태 초기화
       setEditingBarcode(null);
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
       // 데이터 즉시 새로고침 (바코드 이미지 바로 표시)
       mutate();
@@ -1087,6 +1200,10 @@ export default function PostsPage() {
 
       // 성공 메시지 표시
       showSuccess(`삭제 완료: ${result.message}`);
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
       // 데이터 새로고침
       mutate();
@@ -1691,9 +1808,9 @@ export default function PostsPage() {
                           <colgroup>
                             <col style={{ width: '5%' }} />
                             <col style={{ width: '35%' }} />
-                            <col style={{ width: '13%' }} />
+                            <col style={{ width: '12%' }} />
                             <col style={{ width: '20%' }} />
-                            <col style={{ width: '13%' }} />
+                            <col style={{ width: '15%' }} />
                           </colgroup>
                           <thead className="bg-gray-50">
                             <tr>
@@ -2165,6 +2282,44 @@ export default function PostsPage() {
               ? `${editPickupDate}T00:00:00+09:00`
               : `${editPickupDate}T${editPickupTime}:00+09:00`;
 
+            // 새 수령일을 Date 객체로 변환 (한국 시간 기준)
+            const newPickupDateTime = new Date(datetime);
+            const currentTime = new Date();
+
+            // 수령일이 미래로 변경되었는지 확인
+            const shouldResetUndeliveredStatus = newPickupDateTime > currentTime;
+
+            // 날짜 포맷 함수
+            const formatDateTime = (date) => {
+              const year = date.getFullYear();
+              const month = date.getMonth() + 1;
+              const day = date.getDate();
+              const hours = date.getHours();
+              const ampm = hours < 12 ? '오전' : '오후';
+              const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+              return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
+            };
+
+            // 기존 수령일과 새 수령일 포맷
+            const oldPickupDate = selectedPostForDetail.pickup_date;
+            const oldDateStr = oldPickupDate ? formatDateTime(new Date(oldPickupDate)) : '미정';
+            const newDateStr = formatDateTime(newPickupDateTime);
+
+            // 확인 알림
+            let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
+            confirmMsg += `기존: ${oldDateStr}\n`;
+            confirmMsg += `변경: ${newDateStr}\n\n`;
+
+            if (shouldResetUndeliveredStatus) {
+              confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
+            } else {
+              confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
+            }
+
+            if (!confirm(confirmMsg)) {
+              return; // 사용자가 취소하면 함수 종료
+            }
+
             // 1. posts 테이블 업데이트
             const { error: postsError } = await supabase
               .from('posts')
@@ -2185,9 +2340,69 @@ export default function PostsPage() {
               // products 업데이트 실패해도 계속 진행
             }
 
+            // 3. orders 테이블 sub_status 업데이트
+            const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+            const postKey = selectedPostForDetail.post_key;
+            const bandKey = selectedPostForDetail.band_key;
+            const userId = userData?.userId;
+
+            if (shouldResetUndeliveredStatus) {
+              // 수령일이 미래로 변경 → sub_status 초기화
+              console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
+
+              const { error: ordersResetError } = await supabase
+                .from('orders')
+                .update({
+                  sub_status: null,
+                  updated_at: nowMinus9Iso
+                })
+                .eq('user_id', userId)
+                .eq('post_key', postKey)
+                .eq('band_key', bandKey)
+                .not('sub_status', 'is', null);
+
+              if (ordersResetError) {
+                console.error('주문 상태 초기화 실패:', ordersResetError);
+                // 에러가 발생해도 수령일 업데이트는 계속 진행
+              } else {
+                console.log('미수령 주문 상태 초기화 완료');
+              }
+            } else if (newPickupDateTime <= currentTime) {
+              // 수령일이 과거 → sub_status를 '미수령'으로 설정
+              console.log('수령일이 과거이므로 주문을 미수령 상태로 설정합니다.');
+
+              const { error: ordersUndeliveredError } = await supabase
+                .from('orders')
+                .update({
+                  sub_status: '미수령',
+                  updated_at: nowMinus9Iso
+                })
+                .eq('user_id', userId)
+                .eq('post_key', postKey)
+                .eq('band_key', bandKey)
+                .eq('status', '주문완료');
+
+              if (ordersUndeliveredError) {
+                console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
+              } else {
+                console.log('미수령 상태 설정 완료');
+              }
+            }
+
             // 로컬 상태 업데이트
             selectedPostForDetail.pickup_date = datetime;
             setIsEditingPickupDate(false);
+
+            // orders-test 페이지의 상품 캐시 무효화
+            sessionStorage.removeItem('ordersProductsByPostKey');
+            sessionStorage.removeItem('ordersProductsByBandPost');
+
+            // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
+            globalMutate(
+              (key) => Array.isArray(key) && key[0] === 'orders',
+              undefined,
+              { revalidate: true }
+            );
 
             // 성공 메시지
             showSuccess('수령일이 업데이트되었습니다.');
@@ -2948,7 +3163,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
 
         {/* 오른쪽: 이미지 & 개수 */}
         {hasImages && (
-          <div className="relative w-24 h-24 flex-shrink-0 m-4">
+          <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
             <img
               src={getProxiedImageUrl(mainImage)}
               alt={cleanTitle || "게시물 이미지"}

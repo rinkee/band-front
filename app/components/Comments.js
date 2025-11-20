@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   ChatBubbleBottomCenterTextIcon,
   XMarkIcon,
@@ -660,9 +660,95 @@ const CommentsModal = ({
   const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
   const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
+  const [useBackupByDefault, setUseBackupByDefault] = useState(false); // current_band_key_index > 0 인 경우
+  const [dbBackupToken, setDbBackupToken] = useState(null); // DB에서 가져온 백업 토큰
+  const [userId, setUserId] = useState(null); // 세션 사용자 ID 저장
   const dateInputRef = useRef(null); // 수령일 input ref
   const scrollContainerRef = useRef(null);
   const { mutate: globalMutate } = useSWRConfig();
+
+  // 세션에서 사용자 정보 초기화
+  useEffect(() => {
+    const sessionData = sessionStorage.getItem("userData");
+    if (!sessionData) return;
+
+    try {
+      const parsed = JSON.parse(sessionData);
+      if (parsed?.userId) setUserId(parsed.userId);
+
+      // 세션에 백업 키가 있으면 우선 저장
+      const backupFromSession = Array.isArray(parsed?.backup_band_keys) && parsed.backup_band_keys.length > 0
+        ? parsed.backup_band_keys[0].access_token || parsed.backup_band_keys[0]
+        : null;
+      if (backupFromSession) setDbBackupToken((prev) => prev || backupFromSession);
+    } catch (err) {
+      console.error("세션 사용자 정보 파싱 오류:", err);
+    }
+  }, []);
+
+  // current_band_key_index 및 백업 토큰을 DB에서 가져와 실시간 상태 반영
+  const refreshKeyStatus = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("current_band_key_index, backup_band_keys")
+        .eq("user_id", userId)
+        .single();
+
+      if (error) {
+        // 공개 클라이언트 권한 부족 등으로 발생할 수 있어 경고만 남기고 메인 키로 유지
+        console.warn("키 상태 조회 실패(현재 키 상태 유지):", error?.message || error);
+        return;
+      }
+
+      if (!data) {
+        console.warn("키 상태 조회 결과가 없습니다. 기존 상태를 유지합니다.");
+        return;
+      }
+
+      const currentIndex = data.current_band_key_index ?? 0;
+      setUseBackupByDefault(currentIndex > 0);
+
+      const backupFromDb = Array.isArray(data?.backup_band_keys) && data.backup_band_keys.length > 0
+        ? data.backup_band_keys[0].access_token || data.backup_band_keys[0]
+        : null;
+
+      if (backupFromDb) {
+        setDbBackupToken((prev) => prev || backupFromDb);
+      }
+    } catch (err) {
+      console.error("키 상태 갱신 중 오류:", err);
+    }
+  }, [userId]);
+
+  const markBackupInUse = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({ current_band_key_index: 1 })
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("백업 키 사용 상태 업데이트 실패:", error);
+      }
+    } catch (err) {
+      console.error("백업 키 사용 상태 업데이트 중 오류:", err);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (userId) {
+      refreshKeyStatus();
+    }
+  }, [userId, refreshKeyStatus]);
+
+  useEffect(() => {
+    if (isOpen && userId) {
+      refreshKeyStatus();
+    }
+  }, [isOpen, userId, refreshKeyStatus]);
 
   // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
   const { data: currentPost } = useSWR(
@@ -787,10 +873,46 @@ const CommentsModal = ({
         postKey
       });
 
+      // 날짜 포맷 함수
+      const formatDateTime = (date) => {
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        const hours = date.getHours();
+        const ampm = hours < 12 ? '오전' : '오후';
+        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+        return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
+      };
+
+      // 새 수령일과 현재시간 비교
+      const newPickupDateTime = new Date(dateToSave);
+      const currentTime = new Date();
+      const shouldResetUndeliveredStatus = newPickupDateTime > currentTime;
+
+      // 기존 수령일과 새 수령일 포맷
+      const oldPickupDate = activePost?.pickup_date;
+      const oldDateStr = oldPickupDate ? formatDateTime(new Date(oldPickupDate)) : '미정';
+      const newDateStr = formatDateTime(newPickupDateTime);
+
+      // 확인 알림
+      let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
+      confirmMsg += `기존: ${oldDateStr}\n`;
+      confirmMsg += `변경: ${newDateStr}\n\n`;
+
+      if (shouldResetUndeliveredStatus) {
+        confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
+      } else {
+        confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
+      }
+
+      if (!confirm(confirmMsg)) {
+        return; // 사용자가 취소하면 함수 종료
+      }
+
       // products 테이블의 pickup_date 업데이트 - user_id 필터 추가
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
       const userId = userData.userId;
-      
+
       if (!userId) {
         throw new Error('사용자 ID를 찾을 수 없습니다.');
       }
@@ -807,6 +929,53 @@ const CommentsModal = ({
       console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
 
       if (productsError) throw productsError;
+
+      // orders 테이블 sub_status 업데이트
+      const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+      const bandKey = activePost?.band_key;
+
+      if (shouldResetUndeliveredStatus) {
+        // 수령일이 미래로 변경 → sub_status 초기화
+        console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
+
+        const { error: ordersResetError } = await supabase
+          .from('orders')
+          .update({
+            sub_status: null,
+            updated_at: nowMinus9Iso
+          })
+          .eq('user_id', userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
+          .not('sub_status', 'is', null);
+
+        if (ordersResetError) {
+          console.error('주문 상태 초기화 실패:', ordersResetError);
+          // 에러가 발생해도 수령일 업데이트는 계속 진행
+        } else {
+          console.log('미수령 주문 상태 초기화 완료');
+        }
+      } else if (newPickupDateTime <= currentTime) {
+        // 수령일이 과거 → sub_status를 '미수령'으로 설정
+        console.log('수령일이 과거이므로 주문을 미수령 상태로 설정합니다.');
+
+        const { error: ordersUndeliveredError } = await supabase
+          .from('orders')
+          .update({
+            sub_status: '미수령',
+            updated_at: nowMinus9Iso
+          })
+          .eq('user_id', userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
+          .eq('status', '주문완료');
+
+        if (ordersUndeliveredError) {
+          console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
+        } else {
+          console.log('미수령 상태 설정 완료');
+        }
+      }
 
       // posts 테이블의 title 업데이트 (날짜 부분 교체)
       if (activePost?.title) {
@@ -834,13 +1003,20 @@ const CommentsModal = ({
 
       // 성공 시 편집 모드 종료
       setIsEditingPickupDate(false);
-      
+
       // SWR 캐시 갱신 (전역 mutate 사용)
       await globalMutate(`/api/posts/${postKey}`);
       await globalMutate(`products-${postKey}`);
-      
+
       // 모든 관련 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(postKey));
+
+      // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
+      await globalMutate(
+        (key) => Array.isArray(key) && key[0] === 'orders',
+        undefined,
+        { revalidate: true }
+      );
       
       // 부모 컴포넌트의 게시물 목록도 갱신하기 위해 전역 이벤트 발생
       if (typeof window !== 'undefined') {
@@ -1014,13 +1190,23 @@ const CommentsModal = ({
     setError(null);
 
     try {
-      // props로 받은 백업 토큰 사용 (없으면 세션에서 가져오기)
+      // props로 받은 백업 토큰 → DB/세션 순으로 우선 사용
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
       const backupKeys = userData.backup_band_keys;
-      const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
-      
+      const backupToken =
+        backupAccessToken ||
+        dbBackupToken ||
+        (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
+
+      const shouldUseBackup = useBackupToken || useBackupByDefault;
+      const tokenToUse = shouldUseBackup && backupToken ? backupToken : accessToken;
+
+      if (shouldUseBackup && !backupToken) {
+        console.warn("백업 토큰이 없어 기본 토큰으로 진행합니다.");
+      }
+
       const params = new URLSearchParams({
-        access_token: useBackupToken && backupToken ? backupToken : accessToken,
+        access_token: tokenToUse,
         band_key: bandKey,
         post_key: postKey,
         sort: "created_at", // 오래된 순 정렬로 변경
@@ -1031,7 +1217,9 @@ const CommentsModal = ({
 
       if (!response.ok) {
         // 메인 토큰 실패 시 백업 토큰으로 재시도
-        if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
+        if (!shouldUseBackup && backupToken && [400, 401, 403, 429].includes(response.status)) {
+          setUseBackupByDefault(true);
+          markBackupInUse();
           return fetchComments(isRefresh, true);
         }
         
@@ -1113,15 +1301,17 @@ const CommentsModal = ({
     setLoading(true);
     try {
       const params = new URLSearchParams(nextParams);
-      
-      // 백업 토큰 사용 시 access_token 파라미터 교체
-      if (useBackupToken) {
-        const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
-        const backupKeys = userData.backup_band_keys;
-        const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
-        if (backupToken) {
-          params.set('access_token', backupToken);
-        }
+
+      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const backupKeys = userData.backup_band_keys;
+      const backupToken =
+        backupAccessToken ||
+        dbBackupToken ||
+        (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
+
+      const shouldUseBackup = useBackupToken || useBackupByDefault;
+      if (shouldUseBackup && backupToken) {
+        params.set("access_token", backupToken);
       }
 
       // 프록시 API 엔드포인트 사용
@@ -1131,8 +1321,13 @@ const CommentsModal = ({
         // 메인 토큰 실패 시 백업 토큰으로 재시도
         const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
         const backupKeys = userData.backup_band_keys;
-        const backupToken = backupAccessToken || (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
-        if (!useBackupToken && backupToken && [400, 401, 403, 429].includes(response.status)) {
+        const retryBackupToken =
+          backupAccessToken ||
+          dbBackupToken ||
+          (Array.isArray(backupKeys) && backupKeys.length > 0 ? backupKeys[0].access_token : null);
+        if (!shouldUseBackup && retryBackupToken && [400, 401, 403, 429].includes(response.status)) {
+          setUseBackupByDefault(true);
+          markBackupInUse();
           return loadMoreComments(true);
         }
         throw new Error(`댓글 조회 실패: ${response.status}`);

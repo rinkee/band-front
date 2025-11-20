@@ -41,6 +41,7 @@ import { enhancePickupDateFromContent } from './utils/pickupDateEnhancer.js';
  *     - processingLimit: 처리할 게시물 수 (기본값: 사용자 설정값)
  *     - processWithAI: AI 처리 여부 (기본값: true)
  *     - simulateQuotaError: 할당량 에러 시뮬레이션 (기본값: false)
+ *     - onFailover: 메인 키 할당량 초과 시 백업 키로 전환될 때 실행될 콜백 (선택)
  * 리턴값: {success, message, stats} 처리 결과 객체
  */
 export async function processBandPosts(supabase, userId, options = {}) {
@@ -48,7 +49,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
     testMode = false,
     processingLimit: requestedLimit = null,
     processWithAI = true,
-    simulateQuotaError = false
+    simulateQuotaError = false,
+    onFailover = null
   } = options;
 
   let executionKey = null;
@@ -122,6 +124,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // === Band API Failover 초기화 ===
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     bandApiFailover = new BandApiFailover(supabase, userId, sessionId, simulateQuotaError);
+    if (typeof onFailover === "function") {
+      bandApiFailover.setFailoverCallback(onFailover);
+    }
 
     try {
       await bandApiFailover.loadApiKeys();

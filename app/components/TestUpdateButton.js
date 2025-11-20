@@ -7,9 +7,68 @@ import { processBandPosts } from "../lib/updateButton/fuc/processBandPosts";
 
 export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [keyStatus, setKeyStatus] = useState("main"); // main | backup
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const { mutate } = useSWRConfig();
+
+  const fetchKeyStatus = useCallback(async () => {
+    try {
+      const sessionData = sessionStorage.getItem("userData");
+      if (!sessionData) return;
+
+      const userData = JSON.parse(sessionData);
+      const userId = userData?.userId;
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("current_band_key_index")
+        .eq("user_id", userId)
+        .single();
+
+      if (error) {
+        console.error("키 상태 조회 실패:", error);
+        return;
+      }
+
+      const isBackup = (data?.current_band_key_index ?? 0) > 0;
+      setKeyStatus(isBackup ? "backup" : "main");
+    } catch (err) {
+      console.error("키 상태 조회 중 오류:", err);
+    }
+  }, []);
+
+  const handleFailover = useCallback(async (info) => {
+    const nextIndex = typeof info?.toIndex === "number" ? info.toIndex : 1;
+    setKeyStatus(nextIndex > 0 ? "backup" : "main");
+
+    try {
+      const sessionData = sessionStorage.getItem("userData");
+      if (!sessionData) return;
+
+      const userData = JSON.parse(sessionData);
+      const userId = userData?.userId;
+      if (!userId) return;
+
+      const { error } = await supabase
+        .from("users")
+        .update({ current_band_key_index: nextIndex })
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("백업 키 상태 업데이트 실패:", error);
+      }
+    } catch (err) {
+      console.error("백업 키 상태 업데이트 중 오류:", err);
+    } finally {
+      fetchKeyStatus();
+    }
+  }, [fetchKeyStatus]);
+
+  React.useEffect(() => {
+    fetchKeyStatus();
+  }, [fetchKeyStatus]);
 
   // SWR 캐시 갱신 함수
   const refreshSWRCache = useCallback(async (userId) => {
@@ -66,6 +125,8 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const handleTestUpdate = async () => {
     try {
       setIsProcessing(true);
+      setKeyStatus("main");
+      fetchKeyStatus();
       if (onProcessingChange) onProcessingChange(true, null);
       setResult(null);
       setError(null);
@@ -90,7 +151,8 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
         testMode: false, // 실제 DB에 저장
         processingLimit: 10, // 최대 10개 게시물만 처리
         processWithAI: true,
-        simulateQuotaError: false
+        simulateQuotaError: false,
+        onFailover: handleFailover
       });
 
       console.log("TestUpdateButton: processBandPosts 결과:", response);
@@ -100,6 +162,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
         // SWR 캐시 갱신
         await refreshSWRCache(userId);
+        await fetchKeyStatus();
 
         // 부모에게 완료 결과 전달
         if (onProcessingChange) onProcessingChange(false, response);
@@ -117,42 +180,54 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
     }
   };
 
+  const showKeyStatus = true;
+  const keyStatusLabel = keyStatus === "backup" ? "백업키 사용중" : "기본키 사용중";
+  const keyStatusClass =
+    keyStatus === "backup" ? "text-amber-500" : "text-emerald-600";
+
   return (
-    <button
-      onClick={handleTestUpdate}
-      disabled={isProcessing}
-      className={`
-        px-4 py-2 rounded-lg font-medium text-white transition-colors
-        ${
-          isProcessing
-            ? "bg-gray-400 cursor-not-allowed"
-            : "bg-green-600 hover:bg-green-700"
-        }
-      `}
-    >
-      {isProcessing ? (
-        <div className="flex items-center gap-2">
-          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-              fill="none"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          <span>처리 중...</span>
-        </div>
-      ) : (
-        "업데이트"
+    <div className="flex items-center gap-3">
+      {showKeyStatus && (
+        <span className={`text-xs font-semibold ${keyStatusClass}`}>
+          {keyStatusLabel}
+        </span>
       )}
-    </button>
+      <button
+        onClick={handleTestUpdate}
+        disabled={isProcessing}
+        className={`
+          px-4 py-2 rounded-lg font-medium text-white transition-colors
+          ${
+            isProcessing
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-green-600 hover:bg-green-700"
+          }
+        `}
+      >
+        {isProcessing ? (
+          <div className="flex items-center gap-2">
+            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+                fill="none"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <span>처리 중...</span>
+          </div>
+        ) : (
+          "업데이트"
+        )}
+      </button>
+    </div>
   );
 }

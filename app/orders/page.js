@@ -197,12 +197,19 @@ function CustomRadioGroup({
               <CheckIcon className="w-3.5 h-3.5 text-white" />
             )}
           </div>
-          <span
-            className={`text-sm ${
-              disabled ? "text-gray-400" : "text-gray-700"
-            }`}
-          >
-            {option.label}
+          <span className="flex items-center">
+            <span
+              className={`text-sm ${
+                disabled ? "text-gray-400" : "text-gray-700"
+              }`}
+            >
+              {option.label}
+            </span>
+            {typeof option.badgeCount === "number" && option.badgeCount > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-none">
+                {option.badgeCount.toLocaleString()}
+              </span>
+            )}
           </span>
           <input
             type="radio"
@@ -570,16 +577,6 @@ function LegacyOrdersPage() {
     { value: "30days", label: "1개월" },
     { value: "7days", label: "1주" },
     { value: "today", label: "오늘" },
-  ];
-  const orderStatusOptions = [
-    { value: "all", label: "전체" },
-    { value: "주문완료", label: "주문완료" },
-    { value: "주문완료+수령가능", label: "주문완료+수령가능" },
-    { value: "수령완료", label: "수령완료" },
-    { value: "미수령", label: "미수령" },
-    { value: "주문취소", label: "주문취소" },
-    { value: "결제완료", label: "결제완료" },
-    { value: "확인필요", label: "확인필요" },
   ];
 
   // SWR 옵션 설정
@@ -2213,6 +2210,19 @@ function LegacyOrdersPage() {
   const totalPendingOrders = statsData?.data?.subStatusCounts?.["미수령"] || 0;
   const statusCounts = statsData?.data?.statusCounts || {};
   const subStatusCounts = statsData?.data?.subStatusCounts || {};
+  const orderStatusOptions = useMemo(
+    () => [
+      { value: "all", label: "전체" },
+      { value: "주문완료", label: "주문완료" },
+      { value: "주문완료+수령가능", label: "주문완료+수령가능" },
+      { value: "수령완료", label: "수령완료" },
+      { value: "미수령", label: "미수령", badgeCount: totalPendingOrders },
+      { value: "주문취소", label: "주문취소" },
+      { value: "결제완료", label: "결제완료" },
+      { value: "확인필요", label: "확인필요" },
+    ],
+    [totalPendingOrders]
+  );
 
 
   const completionRate =

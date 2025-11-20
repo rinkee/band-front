@@ -341,49 +341,12 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       });
       setIsAddingNew(false);
 
+      // orders-test 페이지의 상품 캐시 무효화 (간단하고 확실한 방법)
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
+
       // 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(post.post_key));
-
-      // sessionStorage의 products 캐시도 업데이트 (orders-test 페이지 반영)
-      if (typeof window !== 'undefined' && insertedProduct) {
-        try {
-          // ordersProductsByPostKey 업데이트
-          const cachedByPostKey = sessionStorage.getItem('ordersProductsByPostKey');
-          if (cachedByPostKey) {
-            const byPostKeyMap = JSON.parse(cachedByPostKey);
-            const postKey = insertedProduct.post_key;
-
-            if (postKey) {
-              if (!byPostKeyMap[postKey]) {
-                byPostKeyMap[postKey] = [];
-              }
-              byPostKeyMap[postKey].push(insertedProduct);
-              sessionStorage.setItem('ordersProductsByPostKey', JSON.stringify(byPostKeyMap));
-              console.log(`✅ [sessionStorage] ordersProductsByPostKey에 신규 상품 추가: ${postKey}`);
-            }
-          }
-
-          // ordersProductsByBandPost 업데이트
-          const cachedByBandPost = sessionStorage.getItem('ordersProductsByBandPost');
-          if (cachedByBandPost) {
-            const byBandPostMap = JSON.parse(cachedByBandPost);
-            const bandNumber = insertedProduct.band_number;
-            const postNumber = insertedProduct.post_number;
-
-            if (bandNumber != null && postNumber != null) {
-              const key = `${bandNumber}_${String(postNumber)}`;
-              if (!byBandPostMap[key]) {
-                byBandPostMap[key] = [];
-              }
-              byBandPostMap[key].push(insertedProduct);
-              sessionStorage.setItem('ordersProductsByBandPost', JSON.stringify(byBandPostMap));
-              console.log(`✅ [sessionStorage] ordersProductsByBandPost에 신규 상품 추가: ${key}`);
-            }
-          }
-        } catch (error) {
-          console.warn('⚠️ [sessionStorage] 신규 상품 추가 실패:', error);
-        }
-      }
 
       // 첫 상품을 수동으로 추가한 경우, posts.title을 해당 상품명으로 업데이트 (공지/실패 여부 무관)
       if (wasEmpty) {
@@ -564,9 +527,13 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       if (error) throw error;
 
-      setProducts(prev => prev.map(p => 
+      setProducts(prev => prev.map(p =>
         p.product_id === productId ? { ...p, ...normalizedUpdates } : p
       ));
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
       if (parsedBasePrice !== null) {
         const { data: relatedOrders, error: ordersFetchError } = await supabase
@@ -634,6 +601,10 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       if (error) throw error;
 
       setProducts(prev => prev.filter(p => p.product_id !== productId));
+
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
 
     } catch (error) {
       console.error('상품 삭제 실패:', error);
@@ -767,6 +738,36 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       // 보정된 UTC ISO 문자열 저장 (DB에서 KST로 볼 때 의도한 시간으로 표시)
       const dateToSave = utcForDb;
 
+      // 날짜 포맷 함수
+      const formatDateTime = (date) => {
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        const hours = date.getHours();
+        const ampm = hours < 12 ? '오전' : '오후';
+        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+        return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
+      };
+
+      // 기존 수령일과 새 수령일 포맷
+      const oldDateStr = oldPickupDate ? formatDateTime(oldPickupDate) : '미정';
+      const newDateStr = formatDateTime(newPickupDateTime);
+
+      // 확인 알림
+      let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
+      confirmMsg += `기존: ${oldDateStr}\n`;
+      confirmMsg += `변경: ${newDateStr}\n\n`;
+
+      if (shouldResetUndeliveredStatus) {
+        confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
+      } else if (newPickupDateTime <= currentTime) {
+        confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
+      }
+
+      if (!confirm(confirmMsg)) {
+        return; // 사용자가 취소하면 함수 종료
+      }
+
       // products 테이블 업데이트 - user_id 필터 추가
       const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
 
@@ -782,17 +783,20 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       if (productsError) throw productsError;
 
       // 주문 상태 업데이트 (수령일 기준)
+      const bandKey = post?.band_key;
+
       if (shouldResetUndeliveredStatus) {
         console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
-        
+
         const { error: ordersResetError } = await supabase
           .from('orders')
-          .update({ 
+          .update({
             sub_status: null,
             updated_at: nowMinus9Iso
           })
-          .eq('post_key', postKey)
           .eq('user_id', userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
           .not('sub_status', 'is', null);  // sub_status가 null이 아닌 것만 업데이트
 
         if (ordersResetError) {
@@ -803,16 +807,16 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         }
       } else if (newPickupDateTime <= currentTime) {
         // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
-        // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
-        
+
         const { error: ordersUndeliveredError } = await supabase
           .from('orders')
-          .update({ 
+          .update({
             sub_status: '미수령',
             updated_at: nowMinus9Iso
           })
-          .eq('post_key', postKey)
           .eq('user_id', userId)
+          .eq('post_key', postKey)
+          .eq('band_key', bandKey)
           .eq('status', '주문완료');  // 주문완료 상태인 것만 미수령으로 변경
 
         if (ordersUndeliveredError) {
@@ -825,15 +829,15 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       // posts 테이블의 title 업데이트 (날짜 정보만 포함, 시간 제외)
       if (post?.title) {
         const currentTitle = post.title;
-        const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
+        const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);
         if (dateMatch) {
           // 한국 시간 기준으로 날짜 표시
           const month = newPickupDateTime.getMonth() + 1;
           const day = newPickupDateTime.getDate();
-          
-          const newDateStr = `${month}월${day}일`;
-          const newTitle = `[${newDateStr}]${dateMatch[1]}`;
-          
+
+          const postTitleDateStr = `${month}월${day}일`;
+          const newTitle = `[${postTitleDateStr}]${dateMatch[1]}`;
+
           const { error: postsError } = await supabase
             .from('posts')
             .update({ title: newTitle, updated_at: nowMinus9Iso })
@@ -851,26 +855,26 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 상품 title 업데이트 (날짜 정보만 포함, 시간 제외)
       // 한국 시간 기준으로 날짜 표시
-      const month = newPickupDateTime.getMonth() + 1;
-      const day = newPickupDateTime.getDate();
-      
-      const newDateStr = `${month}월${day}일`;
+      const productMonth = newPickupDateTime.getMonth() + 1;
+      const productDay = newPickupDateTime.getDate();
+
+      const productTitleDateStr = `${productMonth}월${productDay}일`;
 
       const updatedProducts = products.map(product => {
         let newTitle = product.title;
         const dateMatch = newTitle.match(/^\[([^\]]+)\](.*)/);
         if (dateMatch) {
-          newTitle = `[${newDateStr}]${dateMatch[2]}`;
+          newTitle = `[${productTitleDateStr}]${dateMatch[2]}`;
         }
         return { ...product, pickup_date: dateToSave, title: newTitle };
       });
 
       // 제목 업데이트를 위해 각 상품의 title도 업데이트
       for (const product of products) {
-        const dateMatch = product.title.match(/^\[([^\]]+)\](.*)/);  
+        const dateMatch = product.title.match(/^\[([^\]]+)\](.*)/);
         if (dateMatch) {
-          const newTitle = `[${newDateStr}]${dateMatch[2]}`;
-          
+          const newTitle = `[${productTitleDateStr}]${dateMatch[2]}`;
+
           await supabase
             .from('products')
             .update({ title: newTitle })
@@ -884,8 +888,19 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       setEditPickupDate('');
       setEditPickupTime('00:00');
 
+      // orders-test 페이지의 상품 캐시 무효화
+      sessionStorage.removeItem('ordersProductsByPostKey');
+      sessionStorage.removeItem('ordersProductsByBandPost');
+
       // 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(postKey));
+
+      // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
+      await globalMutate(
+        (key) => Array.isArray(key) && key[0] === 'orders',
+        undefined,
+        { revalidate: true }
+      );
 
       // 전역 이벤트 발생
       if (typeof window !== 'undefined') {
@@ -895,13 +910,7 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         localStorage.setItem('pickupDateUpdated', Date.now().toString());
       }
 
-      let successMsg = '수령일이 성공적으로 변경되었습니다.';
-      if (shouldResetUndeliveredStatus) {
-        successMsg += '\n미수령 주문 상태도 초기화되었습니다.';
-      } else if (newPickupDateTime <= currentTime) {
-        successMsg += '\n해당 주문들을 미수령 상태로 설정했습니다.';
-      }
-      alert(successMsg);
+      alert('수령일이 성공적으로 변경되었습니다.');
 
     } catch (error) {
       console.error('수령일 업데이트 실패:', error);
