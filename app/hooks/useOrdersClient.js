@@ -1,6 +1,7 @@
 // hooks/useOrdersClient.js - 클라이언트 사이드 직접 Supabase 호출
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
+import getAuthedClient from "../lib/authedSupabaseClient";
 
 /**
  * 제외고객 목록 조회
@@ -25,11 +26,33 @@ const fetchExcludedCustomers = async (userId) => {
   return [];
 };
 
+// 상품명 검색: products.title에서 post_key/band_number/post_number 추출
+const searchProductsByName = async (userId, tokens) => {
+  const sb = getAuthedClient();
+  try {
+    let pQuery = sb
+      .from("products")
+      .select("post_key, band_number, post_number")
+      .eq("user_id", userId);
+
+    if (tokens.length > 0) {
+      const safe = (s) => s.replace(/[%,]/g, "");
+      const titleOr = tokens.map((t) => `title.ilike.%${safe(t)}%`).join(",");
+      if (titleOr) pQuery = pQuery.or(titleOr);
+    }
+
+    const { data: pData, error: pErr } = await pQuery;
+    return { data: pData, error: pErr };
+  } catch (err) {
+    return { data: null, error: err };
+  }
+};
+
 /**
  * 쿼리 빌드 함수 (재사용 가능하도록 분리)
  * 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
  */
-const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
+const buildOrdersQuery = (userId, filters, excludedCustomers = [], productSearchResults = null) => {
   // pickup_date 정렬은 불안정하므로 주문일시 정렬로 대체
   const sortBy = filters.sortBy === "pickup_date" ? "ordered_at" : (filters.sortBy || "ordered_at");
   const ascending = filters.sortOrder === "asc";
@@ -128,6 +151,9 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
   // 검색 필터링 - post_key 우선 처리
   if (filters.search && filters.search !== "undefined") {
     const searchTerm = filters.search;
+    const searchType = (filters.searchType || "combined").toLowerCase(); // customer | product | combined
+    const shouldSearchCustomers = searchType === "customer" || searchType === "combined";
+    const shouldSearchProducts = searchType === "product" || searchType === "combined";
 
     // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
     const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
@@ -147,14 +173,62 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = []) => {
       // post_key 정확 매칭
       query = query.eq("post_key", searchTerm);
     } else if (!needsPickupDateFilter) {
-      // orders 테이블에서 검색 (product_name 사용)
       try {
         const normalizedTerm = normalizeForSearch(searchTerm);
         const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
+        const orConditions = [];
 
-        query = query.or(
-          `customer_name.ilike.%${searchPattern}%,product_name.ilike.%${searchPattern}%,post_key.ilike.%${searchPattern}%`
-        );
+        if (shouldSearchCustomers) {
+          orConditions.push(
+            `customer_name.ilike.%${searchPattern}%`,
+            `product_name.ilike.%${searchPattern}%`,
+            `post_key.ilike.%${searchPattern}%`
+          );
+        }
+
+        if (shouldSearchProducts) {
+          const pData = productSearchResults?.data;
+          const pErr = productSearchResults?.error;
+
+          if (!pErr && Array.isArray(pData) && pData.length > 0) {
+            const pkSet = new Set();
+            const bandMap = new Map(); // band -> Set(post_number)
+            for (const p of pData) {
+              if (p?.post_key) {
+                pkSet.add(String(p.post_key));
+              } else if (
+                (p?.band_number !== undefined && p?.band_number !== null) &&
+                (p?.post_number !== undefined && p?.post_number !== null)
+              ) {
+                const b = String(p.band_number);
+                const n = String(p.post_number);
+                if (!bandMap.has(b)) bandMap.set(b, new Set());
+                bandMap.get(b).add(n);
+              }
+            }
+
+            if (pkSet.size > 0) {
+              const quoted = Array.from(pkSet)
+                .map((v) => `"${String(v).replace(/\"/g, '""')}"`)
+                .join(",");
+              orConditions.push(`post_key.in.(${quoted})`);
+            }
+            for (const [band, numsSet] of bandMap.entries()) {
+              const values = Array.from(numsSet)
+                .map((v) => (/^\d+$/.test(v) ? v : `"${v.replace(/\"/g, '""')}"`))
+                .join(",");
+              const bandVal = /^\d+$/.test(band) ? band : `"${band.replace(/\"/g, '""')}"`;
+              orConditions.push(`and(band_number.eq.${bandVal},post_number.in.(${values}))`);
+            }
+          } else if (searchType === "product") {
+            // 상품 검색만 요청했는데 매칭이 없으면 결과가 비어야 하므로 강제 무매칭 조건
+            query = query.eq("customer_name", "__no_match__");
+          }
+        }
+
+        if (orConditions.length > 0) {
+          query = query.or(orConditions.join(","));
+        }
       } catch (error) {
         console.warn('Search filter error:', error);
         // 에러 발생시 고객명만 필터링
@@ -219,6 +293,22 @@ const fetchOrders = async (key) => {
     throw new Error("User ID is required");
   }
 
+  const search = (filters.search || "").trim();
+  const searchType = filters.searchType || "combined";
+  const searchMode = searchType.toLowerCase();
+  const shouldSearchProducts = searchMode === "product" || searchMode === "combined";
+
+  let productSearchResults = null;
+  if (shouldSearchProducts && search) {
+    const tokens = search
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    if (tokens.length > 0) {
+      productSearchResults = await searchProductsByName(userId, tokens);
+    }
+  }
+
   const limit = filters.limit || 30;
   const startIndex = (page - 1) * limit;
 
@@ -237,7 +327,7 @@ const fetchOrders = async (key) => {
     console.log(`🔄 [주문 페이징] limit=${limit}으로 페이징 모드 시작...`);
 
     // 첫 페이지를 먼저 가져와서 전체 개수 확인
-    const firstPageQuery = buildOrdersQuery(userId, filters, excludedCustomers);
+    const firstPageQuery = buildOrdersQuery(userId, filters, excludedCustomers, productSearchResults);
     const { data: firstPageData, error: firstPageError, count } = await firstPageQuery.range(0, 999);
 
     if (firstPageError) {
@@ -262,7 +352,7 @@ const fetchOrders = async (key) => {
       const end = start + pageSize - 1;
 
       // 각 페이지마다 새로운 쿼리 생성
-      const pageQuery = buildOrdersQuery(userId, filters, excludedCustomers);
+      const pageQuery = buildOrdersQuery(userId, filters, excludedCustomers, productSearchResults);
       const { data: pageData, error: pageError } = await pageQuery.range(start, end);
 
       if (pageError) {
@@ -305,7 +395,7 @@ const fetchOrders = async (key) => {
 
   // 일반적인 경우: 한 번에 가져오기
   console.log(`📄 [주문 단일 조회] limit=${limit}, startIndex=${startIndex}`);
-  const query = buildOrdersQuery(userId, filters, excludedCustomers);
+  const query = buildOrdersQuery(userId, filters, excludedCustomers, productSearchResults);
   const { data, error, count } = await query.range(startIndex, startIndex + limit - 1);
 
   if (error) {

@@ -402,8 +402,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
-  // const [searchType, setSearchType] = useState("customer"); // "customer" 또는 "product" // TODO: 내일 처리
-  const searchType = "customer"; // 임시로 고정값 사용
+  // 검색 타입: 고객/상품을 모두 찾는 통합 모드로 기본값 설정
+  const searchType = "combined"; // "customer" | "product" | "combined"
   const [sortBy, setSortBy] = useState(null); // 기본값: 정렬 안함
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
@@ -448,6 +448,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
     return false;
   });
+  // 현재 날짜 필터의 실제 범위 (카운트에도 동일 적용)
+  const dateFilterParams = useMemo(
+    () => calculateDateFilterParams(filterDateRange, customStartDate, customEndDate),
+    [filterDateRange, customStartDate, customEndDate]
+  );
 
   // --- 주문 정보 수정 관련 상태 복구 ---
   const [isEditingDetails, setIsEditingDetails] = useState(false);
@@ -1034,6 +1039,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
     mutate: mutateOrders,
   } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
 
+  // 서버 페이지네이션 데이터 사용
+  const totalItems = ordersData?.pagination?.totalItems ?? 0;
+  const totalPages = ordersData?.pagination?.totalPages ?? 1;
+
   // 메모 디버깅
   useEffect(() => {
     if (ordersData?.data && ordersData.data.length > 0) {
@@ -1294,15 +1303,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [mutateOrders]);
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
   const { data: unreceivedCountData, mutate: mutateUnreceivedCount } = useSWR(
-    userData?.userId ? ["unreceived-count", mode, userData.userId] : null,
+    userData?.userId
+      ? [
+          "unreceived-count",
+          mode,
+          userData.userId,
+          filterDateRange,
+          dateFilterParams.startDate,
+          dateFilterParams.endDate,
+        ]
+      : null,
     async () => {
       const sb = getAuthedClient();
       const tableName = mode === "raw" ? "comment_orders" : "orders";
+      const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
       const { count, error } = await sb
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq("sub_status", "미수령");
+        .eq("sub_status", "미수령")
+        .gte(dateColumn, dateFilterParams.startDate)
+        .lte(dateColumn, dateFilterParams.endDate);
 
       if (error) {
         console.error("[미수령 카운트] error:", error);
@@ -1317,16 +1338,28 @@ function OrdersTestPageContent({ mode = "raw" }) {
   );
 
   const { data: completedCountData, mutate: mutateCompletedCount } = useSWR(
-    userData?.userId ? ["completed-count", mode, userData.userId] : null,
+    userData?.userId
+      ? [
+          "completed-count",
+          mode,
+          userData.userId,
+          filterDateRange,
+          dateFilterParams.startDate,
+          dateFilterParams.endDate,
+        ]
+      : null,
     async () => {
       const sb = getAuthedClient();
       const tableName = mode === "raw" ? "comment_orders" : "orders";
       const statusField = mode === "raw" ? "order_status" : "status";
+      const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
       const { count, error } = await sb
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq(statusField, "주문완료");
+        .eq(statusField, "주문완료")
+        .gte(dateColumn, dateFilterParams.startDate)
+        .lte(dateColumn, dateFilterParams.endDate);
       if (error) {
         console.error("[주문완료 카운트] error:", error);
         return 0;
@@ -1340,16 +1373,28 @@ function OrdersTestPageContent({ mode = "raw" }) {
   );
 
   const { data: paidCountData, mutate: mutatePaidCount } = useSWR(
-    userData?.userId ? ["paid-count", mode, userData.userId] : null,
+    userData?.userId
+      ? [
+          "paid-count",
+          mode,
+          userData.userId,
+          filterDateRange,
+          dateFilterParams.startDate,
+          dateFilterParams.endDate,
+        ]
+      : null,
     async () => {
       const sb = getAuthedClient();
       const tableName = mode === "raw" ? "comment_orders" : "orders";
       const statusField = mode === "raw" ? "order_status" : "status";
+      const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
       const { count, error } = await sb
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq(statusField, "결제완료");
+        .eq(statusField, "결제완료")
+        .gte(dateColumn, dateFilterParams.startDate)
+        .lte(dateColumn, dateFilterParams.endDate);
       if (error) {
         console.error("[결제완료 카운트] error:", error);
         return 0;
@@ -1362,6 +1407,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   );
 
+  const isSearchCountingActive = Boolean((searchTerm || "").trim());
   const unreceivedBadgeCount = unreceivedCountData ?? 0;
 
   const orderStatusOptions = useMemo(
@@ -1405,6 +1451,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   const isDataLoading = isUserLoading || isOrdersLoading;
+  const isSearchLoading = isOrdersLoading;
+  const hasLoadedOrdersOnceRef = useRef(false);
+  useEffect(() => {
+    if (ordersData?.data) {
+      hasLoadedOrdersOnceRef.current = true;
+    }
+  }, [ordersData?.data]);
+  const showSearchOverlay = isSearchLoading && hasLoadedOrdersOnceRef.current;
   const displayedOrderIds = useMemo(
     () => groupedOrders.flatMap((g) => g.orderIds),
     [groupedOrders]
@@ -3363,15 +3417,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       </div>
     );
 
-  // --- 데이터 준비 ---
-  // 서버 페이지네이션 데이터 사용
-  const totalItems = ordersData?.pagination?.totalItems ?? 0;
-  const totalPages = ordersData?.pagination?.totalPages ?? 1;
-
-  // 현재 검색된 주문 데이터에서 직접 통계 계산
-  const currentOrders = ordersData?.data || [];
-
-
   // --- 메인 UI ---
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 flex">
@@ -3382,6 +3427,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           <span className="text-sm font-medium text-gray-700">동기화 중...</span>
         </div>
       )}
+
       {/* 주문 방식 변경 안내 모달 */}
       {showNoticeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
@@ -3514,6 +3560,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       {/* 우측 메인 컨텐츠 영역 - 페이지 스크롤 */}
       <main className="flex-1">
+        {showSearchOverlay && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+            <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 max-w-md w-[92%] border border-orange-200">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-orange-50">
+                  <ArrowPathIcon className="w-7 h-7 text-orange-500 animate-spin" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-lg font-semibold text-gray-900">검색 중...</span>
+                  <span className="text-sm text-gray-600">주문과 상품을 불러오고 있습니다</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {/* 스크롤 최상단 앵커 */}
         <div ref={mainTopRef} className="h-0"></div>
         {/* 필터 섹션 - 임시로 숨김 */}
@@ -3814,6 +3875,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
                       {isSyncing ? "동기화 중..." : "동기화"}
                     </button>
+                    {isSearchLoading && (
+                      <div className="flex items-center gap-1 text-xs text-orange-600 whitespace-nowrap" aria-live="polite">
+                        <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                        <span>검색 중...</span>
+                      </div>
+                    )}
                   </div>
                   {/* 두 번째 줄: UpdateButton */}
                   <div className="flex items-center gap-2">
