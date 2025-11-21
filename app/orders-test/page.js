@@ -524,8 +524,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   }, []);
 
-  // URL에서 postKey를 받아서 자동으로 검색
+  // URL에서 postKey를 받아서 자동으로 검색 (초기 동기화 완료 후)
   useEffect(() => {
+    // 초기 동기화 중이면 대기
+    if (initialSyncing) return;
+
     const postKey = searchParams.get('postKey');
     const postedAt = searchParams.get('postedAt');
 
@@ -587,7 +590,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         window.history.replaceState({}, "", newUrl.toString());
       }, 500);
     }
-  }, [searchParams]);
+  }, [searchParams, initialSyncing]);
 
   // comment_orders -> legacy orders shape 매핑
   const mapCommentOrderToLegacy = useCallback((row) => {
