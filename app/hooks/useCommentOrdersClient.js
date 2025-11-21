@@ -61,10 +61,13 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
   const status = filters.status || "미수령";
   const subStatus = filters.subStatus || undefined;
   const search = (filters.search || "").trim();
-  const searchType = filters.searchType || "customer"; // "customer" 또는 "product"
+  const searchType = filters.searchType || "combined"; // "customer" | "product" | "combined"
   const postKeyFilter = filters.postKey || undefined;
   const postNumberFilter = filters.postNumber || undefined;
   const bandNumberFilter = filters.bandNumber || undefined;
+  const searchMode = searchType.toLowerCase();
+  const shouldSearchCustomers = searchMode === "customer" || searchMode === "combined";
+  const shouldSearchProducts = searchMode === "product" || searchMode === "combined";
 
   const sb = getAuthedClient();
   let query = sb
@@ -102,8 +105,20 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
 
     const safe = (s) => s.replace(/[%,]/g, "");
 
-    if (searchType === "product") {
-      // 상품명 검색: products 테이블 기반으로만 검색
+    const orConditions = [];
+
+    if (shouldSearchCustomers) {
+      const textConds = tokens.flatMap((t) => [
+        `commenter_name.ilike.%${safe(t)}%`,
+        `comment_body.ilike.%${safe(t)}%`,
+      ]);
+      const postNumConds = tokens
+        .filter((t) => /^\d+$/.test(t))
+        .map((n) => `post_number.eq.${n}`);
+      orConditions.push(...textConds, ...postNumConds);
+    }
+
+    if (shouldSearchProducts) {
       const pData = productSearchResults?.data;
       const pErr = productSearchResults?.error;
 
@@ -124,37 +139,27 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
           }
         }
 
-        const postConds = [];
         if (pkSet.size > 0) {
           const quoted = Array.from(pkSet)
             .map((v) => `"${String(v).replace(/\"/g, '""')}"`)
             .join(",");
-          postConds.push(`post_key.in.(${quoted})`);
+          orConditions.push(`post_key.in.(${quoted})`);
         }
         for (const [band, numsSet] of bandMap.entries()) {
           const values = Array.from(numsSet)
             .map((v) => (/^\d+$/.test(v) ? v : `"${v.replace(/\"/g, '""')}"`))
             .join(",");
           const bandVal = /^\d+$/.test(band) ? band : `"${band.replace(/\"/g, '""')}"`;
-          postConds.push(`and(band_number.eq.${bandVal},post_number.in.(${values}))`);
+          orConditions.push(`and(band_number.eq.${bandVal},post_number.in.(${values}))`);
         }
-
-        if (postConds.length > 0) {
-          query = query.or(postConds.join(","));
-        }
+      } else if (searchMode === "product") {
+        // 상품 검색 모드에서 매칭이 없으면 빈 결과 반환
+        query = query.eq("commenter_name", "__no_match__");
       }
-    } else {
-      // 고객명 검색 (기본값): 댓글/고객명 필드만 검색
-      const textConds = tokens.flatMap((t) => [
-        `commenter_name.ilike.%${safe(t)}%`,
-        `comment_body.ilike.%${safe(t)}%`,
-      ]);
-      const postNumConds = tokens
-        .filter((t) => /^\d+$/.test(t))
-        .map((n) => `post_number.eq.${n}`);
+    }
 
-      const fallbackConds = [...textConds, ...postNumConds];
-      if (fallbackConds.length > 0) query = query.or(fallbackConds.join(","));
+    if (orConditions.length > 0) {
+      query = query.or(orConditions.join(","));
     }
   }
 
@@ -203,8 +208,11 @@ const fetchCommentOrders = async (key) => {
   // 상품명 검색 결과 미리 조회 (searchType이 "product"이고 search가 있는 경우)
   let productSearchResults = null;
   const search = (filters.search || "").trim();
-  const searchType = filters.searchType || "customer";
-  if (searchType === "product" && search && !filters.postKey && !filters.postNumber) {
+  const searchType = filters.searchType || "combined";
+  const searchMode = searchType.toLowerCase();
+  const shouldSearchProducts = searchMode === "product" || searchMode === "combined";
+
+  if (shouldSearchProducts && search && !filters.postKey && !filters.postNumber) {
     const tokens = search
       .split(/\s+/)
       .map((t) => t.trim())
