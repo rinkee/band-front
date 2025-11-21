@@ -683,6 +683,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             );
                           }
                         } else {
+                          // 저장 실패 시 완료 처리하지 않도록 플래그 내림
+                          successfullyProcessedNewComments = false;
                           console.error(`❌ 트랜잭션 실패: ${saveResult.error}`);
                         }
                       }
@@ -1097,6 +1099,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           }
 
                           const { orders, customers, cancellationUsers } = result;
+                          let ordersSaved = testMode; // 테스트 모드는 저장 스킵이므로 true 취급
 
                           if (!testMode) {
                             const saveResult = await saveOrdersAndCustomersSafely(
@@ -1107,12 +1110,17 @@ export async function processBandPosts(supabase, userId, options = {}) {
                               savedPostId
                             );
 
-                            if (saveResult.success && cancellationUsers && cancellationUsers.size > 0) {
-                              await processCancellationRequests(
-                                supabase,
-                                postKey,
-                                cancellationUsers
-                              );
+                            if (saveResult.success) {
+                              ordersSaved = true;
+                              if (cancellationUsers && cancellationUsers.size > 0) {
+                                await processCancellationRequests(
+                                  supabase,
+                                  postKey,
+                                  cancellationUsers
+                                );
+                              }
+                            } else {
+                              console.error(`❌ 트랜잭션 실패: ${saveResult.error}`);
                             }
                           } else {
                             console.log(
@@ -1120,9 +1128,16 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             );
                           }
 
-                          console.log(`${commentsToProcess.length}개의 댓글 처리 완료`);
-                          // 통계를 위해 실제 처리한 댓글만 저장
-                          comments = commentsToProcess;
+                          if (!ordersSaved) {
+                            // 주문 저장 실패 시 완료 처리하지 않고 실패로 마크
+                            shouldUpdateCommentInfo = false;
+                            console.log(`주문 저장 실패로 comment_sync_status 업데이트를 건너뜀 (post ${postKey})`);
+                          } else {
+                            console.log(`${commentsToProcess.length}개의 댓글 처리 완료`);
+                            // 통계를 위해 실제 처리한 댓글만 저장
+                            comments = commentsToProcess;
+                            shouldUpdateCommentInfo = true;
+                          }
                         }
                       }
                     } else {
