@@ -83,8 +83,8 @@ export async function saveOrdersAndCustomersSafely(
       const { error: orderError } = await supabase
         .from("orders")
         .upsert(normalizedOrders, {
-          // 사용자/밴드/게시물/댓글/아이템 조합으로 중복 차단
-          onConflict: "user_id,band_key,post_key,comment_key,item_number",
+          // DB에 이미 존재하는 유니크 제약(order_id)에 맞춰 진행
+          onConflict: "order_id",
           ignoreDuplicates: true,
         });
       
