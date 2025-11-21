@@ -419,7 +419,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(30);
+  const [itemsPerPage] = useState(100);
   const [products, setProducts] = useState([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -508,6 +508,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [noticeChecked, setNoticeChecked] = useState(false); // 내용 확인 체크
   const [dontShowAgain, setDontShowAgain] = useState(false); // 다시 보지 않기 체크
+  const [isSyncing, setIsSyncing] = useState(false); // 수동 동기화 버튼 로딩 상태
+  const [productReloadToken, setProductReloadToken] = useState(0); // 강제 상품 재조회 트리거
+  const [initialSyncing, setInitialSyncing] = useState(true); // 첫 진입 동기화 진행 여부
+  const [lastSyncAt, setLastSyncAt] = useState(0); // 마지막 동기화 시각 (ms)
 
   // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
@@ -956,7 +960,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 서버 사이드 필터링 + 진짜 페이지네이션 (효율적 데이터 로딩)
   const ordersFilters = {
-    limit: 30, // 한 페이지에 30개씩
+    limit: itemsPerPage, // 한 페이지에 100개씩
     sortBy,
     sortOrder,
     // 서버에서 필터링 가능한 항목들
@@ -1151,7 +1155,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
     };
     fetchPostImages();
-  }, [userData?.userId, ordersData?.data, postsImages]);
+  }, [userData?.userId, ordersData?.data, postsImages, productReloadToken]);
 
   // comment_orders에 맞는 상품 배치 조회 - 누적 캐싱 적용
   useEffect(() => {
@@ -1168,7 +1172,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
         }
 
         console.log('🔄 [상품] fetch 시작...');
-        lastProductSignatureRef.current = productKeysSignature;
 
         const uid = userData.userId;
         const sb = getAuthedClient();
@@ -1264,14 +1267,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
           console.warn('sessionStorage 저장 실패:', e);
         }
 
+        // 성공적으로 누적 후에만 시그니처 저장 (실패 시 재시도 가능)
+        lastProductSignatureRef.current = productKeysSignature;
+
       } catch (e) {
         if (process.env.NODE_ENV === "development") {
           console.warn("상품 배치 조회 실패:", e?.message || e);
         }
+        // 실패 시 재시도할 수 있도록 시그니처 무효화
+        lastProductSignatureRef.current = null;
       }
     };
     fetchBatchProducts();
-  }, [userData?.userId, productKeysSignature]); // productKeysSignature만 의존성 - 캐시는 내부에서 직접 참조
+  }, [userData?.userId, productKeysSignature, productReloadToken]); // 강제 재조회 토큰 포함
 
   // useProducts 훅 비활성화 - fetchBatchProducts에서 이미 전체 products를 가져오고 있음 (중복 방지)
   const productsData = null;
@@ -2441,11 +2449,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const { days, isPast, relativeText } = calculateDaysUntilPickup(pickupDate);
 
       // 색상 결정
-      let textColorClass = "text-gray-700 font-semibold"; // 기본값
+      let textColorClass = "text-gray-700"; // 기본값
       if (isPast) {
-        textColorClass = "text-red-500 font-semibold"; // 지난 날짜 - 빨간색
+        textColorClass = "text-red-500"; // 지난 날짜 - 빨간색
       } else if (days === 0) {
-        textColorClass = "text-green-600 font-semibold"; // 오늘 - 초록색
+        textColorClass = "text-green-600"; // 오늘 - 초록색
       }
 
       return <span className={textColorClass}>{relativeText}</span>;
@@ -2790,6 +2798,59 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setCurrentPage(1);
     setSelectedOrderIds([]);
   };
+
+  // 서버와 강제 동기화 버튼
+  const handleSyncNow = useCallback(async () => {
+    const now = Date.now();
+    if (!userData?.userId || isSyncing) return;
+    // 10초 쿨다운
+    if (lastSyncAt && now - lastSyncAt < 10_000) {
+      showError("너무 빠르게 요청했습니다. 잠시 후 다시 시도하세요.");
+      return;
+    }
+    setIsSyncing(true);
+    const start = Date.now();
+    try {
+      // 캐시된 시그니처 무효화해서 재조회 강제
+      lastProductSignatureRef.current = null;
+      lastImageSignatureRef.current = null;
+      // 상품/이미지 캐시 초기화
+      setPostProductsByPostKey({});
+      setPostProductsByBandPost({});
+      setPostsImages({});
+      try {
+        sessionStorage.removeItem('ordersProductsByPostKey');
+        sessionStorage.removeItem('ordersProductsByBandPost');
+      } catch (_) {}
+      setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
+      await mutateOrders(undefined, { revalidate: true });
+    } finally {
+      const elapsed = Date.now() - start;
+      const minDuration = 1000; // 최소 1초는 로딩 표시 유지
+      if (elapsed < minDuration) {
+        await new Promise((resolve) => setTimeout(resolve, minDuration - elapsed));
+      }
+      setLastSyncAt(Date.now());
+      setIsSyncing(false);
+    }
+  }, [userData?.userId, mutateOrders, isSyncing, lastSyncAt]);
+
+  // 페이지 진입 시 1회 자동 동기화
+  const initialSyncDoneRef = useRef(false);
+  useEffect(() => {
+    if (userData?.userId && !initialSyncDoneRef.current) {
+      initialSyncDoneRef.current = true;
+      const run = async () => {
+        setInitialSyncing(true);
+        try {
+          await handleSyncNow();
+        } finally {
+          setInitialSyncing(false);
+        }
+      };
+      run();
+    }
+  }, [userData?.userId, handleSyncNow]);
 
   // --- 메모 입력 ref 관리 (uncontrolled input으로 성능 최적화) ---
   const memoInputRefs = useRef({});
@@ -3251,6 +3312,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
         <p className="ml-3 text-gray-600">인증 정보 확인 중...</p>
       </div>
     );
+
+  // 초기 동기화 중이거나 동기화 버튼 실행 중이면 전체 로딩 화면 유지
+  if (initialSyncing || isSyncing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-5">
+          <ArrowPathIcon className="w-12 h-12 text-gray-400 animate-spin" />
+          <div className="text-center space-y-1.5">
+            <p className="text-lg font-medium text-gray-900">데이터 동기화 중</p>
+            <p className="text-sm text-gray-500">잠시만 기다려주세요</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (error)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5">
@@ -3296,6 +3372,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 메인 UI ---
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 flex">
+      {/* 수동 동기화 로딩 인디케이터 */}
+      {isSyncing && (
+        <div className="fixed top-4 right-4 z-[60] px-4 py-2 bg-white border border-gray-200 shadow-lg rounded-lg flex items-center gap-2">
+          <ArrowPathIcon className="w-5 h-5 text-orange-500 animate-spin" />
+          <span className="text-sm font-medium text-gray-700">동기화 중...</span>
+        </div>
+      )}
       {/* 주문 방식 변경 안내 모달 */}
       {showNoticeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
@@ -3571,6 +3654,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
                       초기화
                     </button>
+                    <button
+                      onClick={handleSyncNow}
+                      disabled={isDataLoading || isSyncing}
+                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 text-sm md:text-base rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      aria-label="데이터 동기화"
+                      title="서버에서 최신 데이터 다시 불러오기"
+                    >
+                      <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+                      {isSyncing ? "동기화 중..." : "동기화"}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -3587,9 +3680,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
               <div className="divide-y divide-gray-200">
                 {/* 조회 기간 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                    <CalendarDaysIcon className="w-4 h-4 md:w-5 md:h-5 mr-2 text-gray-400 flex-shrink-0" />
-                    조회 기간
+                  <div className="bg-gray-50 px-3 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-28 self-stretch">
+                    <CalendarDaysIcon className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                    <span className="hidden sm:inline">조회 기간</span>
+                    <span className="sm:hidden">기간</span>
                   </div>
                   <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
                     <DatePicker
@@ -3633,8 +3727,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 {/* 상태 필터 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                    <FunnelIcon className="w-4 h-4 md:w-5 md:h-5 mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-3 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-28 self-stretch">
+                    <FunnelIcon className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
                     상태
                   </div>
                   <div className="bg-white px-4 py-3">
@@ -3657,24 +3751,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
           <div>
             <LightCard padding="p-0" className="overflow-hidden">
               <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                  <TagIcon className="w-4 h-4 md:w-5 md:h-5 mr-2 text-gray-400 flex-shrink-0" />
+                <div className="bg-gray-50 px-3 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-28 self-stretch">
+                  <TagIcon className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
                   검색
                 </div>
-                <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2 justify-between">
-                  <div className="flex items-center gap-2 flex-1">
-                    {/* TODO: 내일 처리 - 검색 타입 드롭다운 */}
-                    {/* <select
-                      value={searchType}
-                      onChange={(e) => setSearchType(e.target.value)}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-                      disabled={isDataLoading}
-                    >
-                      <option value="customer">고객명</option>
-                      <option value="product">상품명</option>
-                    </select> */}
+                <div className="bg-white flex-grow w-full px-3 md:px-4 py-2 flex flex-col lg:flex-row items-stretch lg:items-center gap-2 lg:justify-between">
+                  {/* 첫 번째 줄: 검색 입력 + 버튼들 */}
+                  <div className="flex items-center gap-2 flex-wrap lg:flex-1">
                     {/* 검색 입력 */}
-                    <div className="relative w-full md:flex-grow md:max-w-sm">
+                    <div className="relative flex-1 min-w-[150px] lg:max-w-sm">
                       <input
                         ref={searchInputRef}
                         type="text"
@@ -3699,31 +3784,36 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         <XMarkIcon className="w-5 h-5" />
                       </button>
                     </div>
-                    <div className="flex flex-row gap-2 py-2">
-                      <button
-                        onClick={handleSearch}
-                        className="px-8 py-2 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={isDataLoading}
-                      >
-                        검색
-                      </button>
-                      <button
-                        onClick={handleClearSearch}
-                        disabled={isDataLoading}
-                        className="flex items-center justify-center px-5 py-2 text-sm md:text-base rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                        aria-label="검색 초기화"
-                        title="검색 및 필터 초기화"
-                      >
-                        <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
-                        초기화
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleSearch}
+                      className="px-5 lg:px-6 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      disabled={isDataLoading}
+                    >
+                      검색
+                    </button>
+                    <button
+                      onClick={handleClearSearch}
+                      disabled={isDataLoading}
+                      className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      aria-label="검색 초기화"
+                      title="검색 및 필터 초기화"
+                    >
+                      <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
+                      초기화
+                    </button>
+                    <button
+                      onClick={handleSyncNow}
+                      disabled={isDataLoading || isSyncing}
+                      className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      aria-label="데이터 동기화"
+                      title="서버에서 최신 데이터 다시 불러오기"
+                    >
+                      <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+                      {isSyncing ? "동기화 중..." : "동기화"}
+                    </button>
                   </div>
-                  {/* UpdateButton - 우측 끝 */}
-                  <div className="py-2 flex items-center gap-3">
-                    {/* <span className="text-xs text-orange-600 font-medium whitespace-nowrap">
-                      ⚠️ 너무 자주 업데이트하면 문제가 생길 수 있습니다
-                    </span> */}
+                  {/* 두 번째 줄: UpdateButton */}
+                  <div className="flex items-center gap-2">
                     {userData?.function_number === 9 ? (
                       <TestUpdateButton
                         onProcessingChange={(isProcessing, result) => {
@@ -4232,8 +4322,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
               </table>
             </div>
 
-            {/* 페이지네이션 - 검색어가 없을 때 표시 (미수령 필터는 클라이언트 페이지네이션), 하단 고정 */}
-            {!searchTerm && totalItems > itemsPerPage && (
+            {/* 페이지네이션 - 검색 여부와 상관없이 표시 (하단 고정) */}
+            {totalItems > itemsPerPage && (
               <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white">
                 <div>
                   <p className="text-sm text-gray-700">

@@ -597,21 +597,21 @@ export function getRelativeTimeText(days, isPast) {
   if (absDays === 0) {
     return "오늘";
   } else if (absDays === 1) {
-    return isPast ? "어제" : "내일";
+    return isPast ? "1일 지남" : "내일";
   } else if (absDays === 2) {
-    return isPast ? "그저께" : "모레";
+    return isPast ? "2일 지남" : "모레";
   } else if (absDays <= 7) {
-    return isPast ? `${absDays}일 전` : `${absDays}일 후`;
+    return isPast ? `${absDays}일 지남` : `${absDays}일 후`;
   } else if (absDays <= 14) {
     const weeks = Math.round(absDays / 7);
-    return isPast ? `${weeks}주 전` : `${weeks}주 후`;
+    return isPast ? `${weeks}주 지남` : `${weeks}주 후`;
   } else if (absDays <= 30) {
-    return isPast ? `${absDays}일 전` : `${absDays}일 후`;
+    return isPast ? `${absDays}일 지남` : `${absDays}일 후`;
   } else if (absDays <= 365) {
     const months = Math.round(absDays / 30);
-    return isPast ? `${months}개월 전` : `${months}개월 후`;
+    return isPast ? `${months}개월 지남` : `${months}개월 후`;
   } else {
     const years = Math.round(absDays / 365);
-    return isPast ? `${years}년 전` : `${years}년 후`;
+    return isPast ? `${years}년 지남` : `${years}년 후`;
   }
 }

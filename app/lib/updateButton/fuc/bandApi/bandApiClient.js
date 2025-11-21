@@ -44,7 +44,7 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
     // 메인 토큰과 백업 토큰 모두 조회
     const { data, error } = await supabase
       .from("users")
-      .select("band_access_token, band_backup_access_token")
+      .select("band_access_token, band_access_tokens, band_backup_access_token")
       .eq("user_id", userId)
       .single();
 
@@ -52,8 +52,23 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
       throw new Error(`Band access token not found for user ${userId}: ${error?.message}`);
     }
 
-    mainAccessToken = data.band_access_token;
-    backupAccessToken = data.band_backup_access_token;
+    const tokensArray = Array.isArray(data.band_access_tokens) ? data.band_access_tokens : [];
+
+    if (tokensArray.length > 0) {
+      const normalized = tokensArray
+        .map((t) => (typeof t === "string" ? { access_token: t } : t))
+        .filter((t) => t?.access_token);
+
+      if (normalized.length === 0) {
+        throw new Error("band_access_tokens에 유효한 access_token이 없습니다.");
+      }
+
+      mainAccessToken = normalized[0].access_token;
+      backupAccessToken = normalized[1]?.access_token || data.band_backup_access_token || null;
+    } else {
+      mainAccessToken = data.band_access_token;
+      backupAccessToken = data.band_backup_access_token || null;
+    }
   } catch (e) {
     console.error('토큰 조회 오류', e);
     throw e;

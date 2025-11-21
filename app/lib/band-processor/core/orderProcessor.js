@@ -326,7 +326,14 @@ function createOrderFromExtraction(extraction, comment, postInfo, userId, bandNu
                      comment._original?.comment_key || 
                      `${comment.author?.userNo || 'unknown'}_${comment.createdAt || Date.now()}`;
   
-  const orderId = generateOrderUniqueId(postKey, commentKey, itemNumber);
+  const orderId = generateOrderUniqueId(
+    userId,
+    bandKey,
+    postKey,
+    commentKey,
+    itemNumber,
+    0
+  );
   const product = postInfo.products?.find(
     p => (p.itemNumber || p.item_number) === itemNumber
   ) || postInfo.products?.[itemNumber - 1]; // itemNumber로 못 찾으면 인덱스로 시도
@@ -385,7 +392,14 @@ function createOrderFromAI(aiOrder, postInfo, userId, bandNumber, postId) {
   // order_id 생성 시 post_key, comment_key, 그리고 상품 식별자 사용
   const itemIdentifier = aiOrder.productItemNumber || aiOrder.itemNumber || 1;
   const commentKey = aiOrder.commentKey || aiOrder.comment_key || 'unknown';
-  const orderId = generateOrderUniqueId(postKey, commentKey, itemIdentifier);
+  const orderId = generateOrderUniqueId(
+    userId,
+    bandKey,
+    postKey,
+    commentKey,
+    itemIdentifier,
+    0
+  );
   
   const unitPrice = aiOrder.unitPrice || 0;
   

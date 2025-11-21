@@ -43,7 +43,7 @@ export default function BandApiKeyManager({ userId }) {
       const { data, error } = await supabase
         .from("users")
         .select(
-          "band_access_token, band_key, backup_band_keys, current_band_key_index"
+          "band_access_token, band_access_tokens, band_key, backup_band_keys, current_band_key_index"
         )
         .eq("user_id", userId)
         .single();
@@ -52,9 +52,11 @@ export default function BandApiKeyManager({ userId }) {
 
       setBandKey(data.band_key || "");
 
-      // backup_band_keys가 직접 배열로 저장됨
+      // band_access_tokens 배열을 우선 사용, 없으면 기존 필드 폴백
       let tokens = [];
-      if (data.backup_band_keys && Array.isArray(data.backup_band_keys)) {
+      if (Array.isArray(data.band_access_tokens) && data.band_access_tokens.length > 0) {
+        tokens = data.band_access_tokens;
+      } else if (data.backup_band_keys && Array.isArray(data.backup_band_keys)) {
         tokens = data.backup_band_keys;
       } else if (data.band_access_token) {
         // 백업 키가 없으면 기존 메인 토큰을 첫 번째로 사용
@@ -98,7 +100,8 @@ export default function BandApiKeyManager({ userId }) {
         .update({
           band_access_token: validTokens[safeCurrentIndex], // 현재 활성 토큰
           band_key: bandKey,
-          backup_band_keys: validTokens, // 백업 토큰들을 배열로 직접 저장
+          band_access_tokens: validTokens, // band_access_tokens만 사용
+          backup_band_keys: null, // 구 필드는 비워서 중복 저장 방지
           current_band_key_index: safeCurrentIndex,
         })
         .eq("user_id", userId);

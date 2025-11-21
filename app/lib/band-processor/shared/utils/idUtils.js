@@ -29,8 +29,13 @@ export function generateProductUniqueIdForItem(
  *   - itemIdentifier: 상품 식별자
  * 리턴값: 생성된 주문 ID
  */
-export function generateOrderUniqueId(postId, commentKey, itemIdentifier) {
-  return `order_${postId}_${commentKey}_item${itemIdentifier}`;
+export function generateOrderUniqueId(userId, bandKey, postId, commentKey, itemIdentifier, variantIndex = 0) {
+  const safeUser = userId ?? 'unknown_user';
+  const safeBand = bandKey ?? 'unknown_band';
+  const safePost = postId ?? 'unknown_post';
+  const safeComment = commentKey ?? 'unknown_comment';
+  const safeItem = itemIdentifier ?? 'unknown_item';
+  return `order_${safeUser}_${safeBand}_${safePost}_${safeComment}_item${safeItem}_${variantIndex}`;
 }
 
 /**
