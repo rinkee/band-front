@@ -62,10 +62,16 @@ export async function saveOrdersAndCustomersSafely(
     // 2단계: 주문 저장
     if (orders.length > 0) {
       console.log(`[데이터 정합성] 2단계: 주문 ${orders.length}개 저장 중...`);
+
+      // item_number가 비어 있으면 1로 보정하여 conflict 키 일관성 확보
+      const normalizedOrders = orders.map((o) => ({
+        ...o,
+        item_number: o.item_number ?? 1,
+      }));
       
       // 저장하려는 주문 데이터 디버깅
       console.log(`[데이터 정합성] 저장할 주문 데이터 샘플:`, 
-        orders.slice(0, 2).map(o => ({
+        normalizedOrders.slice(0, 2).map(o => ({
           order_id: o.order_id,
           customer_id: o.customer_id,
           fields: Object.keys(o),
@@ -76,8 +82,9 @@ export async function saveOrdersAndCustomersSafely(
       
       const { error: orderError } = await supabase
         .from("orders")
-        .upsert(orders, {
-          onConflict: "order_id",
+        .upsert(normalizedOrders, {
+          // 사용자/밴드/게시물/댓글/아이템 조합으로 중복 차단
+          onConflict: "user_id,band_key,post_key,comment_key,item_number",
           ignoreDuplicates: true,
         });
       

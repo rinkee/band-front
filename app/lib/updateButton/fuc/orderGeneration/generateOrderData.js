@@ -207,6 +207,8 @@ export async function generateOrderData(
 
         // 주문 ID 생성 (item_number는 항상 1)
         const orderId = generateOrderUniqueId(
+          userId,
+          bandKey,
           postKey,
           commentKey,
           1, // item_number (댓글 전용이므로 항상 1)

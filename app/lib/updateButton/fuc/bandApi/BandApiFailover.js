@@ -46,7 +46,7 @@ export class BandApiFailover {
   async loadApiKeys() {
     const { data: userData, error } = await this.supabase
       .from("users")
-      .select("band_access_token, band_key, backup_band_keys, current_band_key_index")
+      .select("band_access_token, band_access_tokens, band_key, backup_band_keys, current_band_key_index")
       .eq("user_id", this.userId)
       .single();
 
@@ -54,18 +54,54 @@ export class BandApiFailover {
       throw new Error(`Failed to load user API keys: ${error?.message}`);
     }
 
-    // Band Key 설정 (고정)
-    this.bandKey = userData.band_key || "";
+    // band_access_tokens 배열이 있으면 그것을 1순위로 사용 (문자열 or {access_token})
+    const tokensArray = Array.isArray(userData.band_access_tokens)
+      ? userData.band_access_tokens
+      : null;
 
-    // 메인 API 키 설정
-    this.mainApiKey = {
-      access_token: userData.band_access_token,
-      band_key: this.bandKey
-    };
+    if (tokensArray && tokensArray.length > 0) {
+      const normalizedTokens = tokensArray
+        .map((t) => {
+          if (!t) return null;
+          if (typeof t === "string") {
+            return { access_token: t, band_key: userData.band_key || "" };
+          }
+          if (t.access_token) {
+            return { access_token: t.access_token, band_key: t.band_key || userData.band_key || "" };
+          }
+          return null;
+        })
+        .filter(Boolean);
 
-    // 백업 Access Token 설정 (문자열 배열)
-    this.backupAccessTokens = userData.backup_band_keys || [];
-    this.currentKeyIndex = userData.current_band_key_index || 0;
+      if (normalizedTokens.length === 0) {
+        throw new Error("band_access_tokens에 유효한 access_token이 없습니다.");
+      }
+
+      const safeIndex = Math.min(
+        userData.current_band_key_index || 0,
+        normalizedTokens.length - 1
+      );
+
+      // Band Key 설정 (배열에 band_key가 있으면 우선 사용)
+      this.bandKey = normalizedTokens[safeIndex].band_key || userData.band_key || "";
+
+      // 메인/백업 토큰 설정
+      this.mainApiKey = {
+        access_token: normalizedTokens[0].access_token,
+        band_key: normalizedTokens[0].band_key || this.bandKey
+      };
+      this.backupAccessTokens = normalizedTokens.slice(1).map((t) => t.access_token);
+      this.currentKeyIndex = safeIndex;
+    } else {
+      // 기존 필드 폴백 (구 데이터 대응)
+      this.bandKey = userData.band_key || "";
+      this.mainApiKey = {
+        access_token: userData.band_access_token,
+        band_key: this.bandKey
+      };
+      this.backupAccessTokens = userData.backup_band_keys || [];
+      this.currentKeyIndex = userData.current_band_key_index || 0;
+    }
 
     if (this.simulateQuotaError) {
       console.info('테스트 모드: 할당량 초과 시뮬레이션 활성화');
@@ -268,13 +304,16 @@ export class BandApiFailover {
    * @returns {string} 에러 타입 ('quota_exceeded', 'invalid_token', 'network_error', 'unknown_error')
    */
   analyzeErrorType(error) {
-    const message = error.message.toLowerCase();
+    const message = (error.message || "").toLowerCase();
+    const has429Status =
+      message.includes("429") || message.includes("too many requests");
 
     if (
       message.includes("quota") ||
       message.includes("limit") ||
       message.includes("rate") ||
-      message.includes("logical error: 1001") // Band API 1001 에러도 할당량 초과로 처리
+      message.includes("logical error: 1001") || // Band API 1001 에러도 할당량 초과로 처리
+      has429Status
     ) {
       return "quota_exceeded";
     } else if (
