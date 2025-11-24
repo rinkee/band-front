@@ -195,14 +195,41 @@ export default function LoginPage() {
     };
     console.log("Credentials for fetch:", credentials);
 
+    // Edge Function 호출 전에 is_active 체크
     try {
-      // Next.js API 라우트를 통해 서버에서 Supabase Edge Function 호출
-      const response = await fetch("/api/auth/login", {
+      // 먼저 사용자 정보와 is_active 상태 확인
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("login_id, is_active, login_password")
+        .eq("login_id", loginId)
+        .single();
+
+      if (userError || !userData) {
+        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      // is_active 체크
+      if (userData.is_active === false) {
+        console.warn(`로그인 차단: 비활성화된 계정 - ${loginId}`);
+        setError("비활성화된 계정입니다. 관리자에게 문의해주세요.");
+        return;
+      }
+
+      // 비밀번호 체크 (선택적 - 보안을 위해 서버에서만 체크하려면 이 부분 제거)
+      if (userData.login_password !== loginPassword) {
+        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      // is_active가 true인 경우에만 Edge Function 호출
+      const response = await fetch(`${functionsBaseUrl}/auth-login`, {
         method: "POST",
         headers: {
+          apikey: supabaseAnonKey, // 필수!
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify(credentials), // 요청 본문
       });
 
       const result = await response.json(); // 응답 본문을 JSON으로 파싱
