@@ -124,11 +124,11 @@ const getProxiedImageUrl = (url) => {
       const u = new URL(urlString);
       const host = u.hostname.toLowerCase();
       return host.endsWith('.naver.net') ||
-             host.endsWith('.naver.com') ||
-             host.endsWith('.pstatic.net') ||
-             host === 'naver.net' ||
-             host === 'naver.com' ||
-             host === 'pstatic.net';
+        host.endsWith('.naver.com') ||
+        host.endsWith('.pstatic.net') ||
+        host === 'naver.net' ||
+        host === 'naver.com' ||
+        host === 'pstatic.net';
     } catch {
       return false;
     }
@@ -178,20 +178,18 @@ function CustomRadioGroup({
       {options.map((option) => (
         <label
           key={option.value}
-          className={`flex items-center cursor-pointer ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
+          className={`flex items-center cursor-pointer ${disabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           onClick={(e) => {
             if (disabled) e.preventDefault();
           }}
         >
           <div
             onClick={() => !disabled && onChange(option.value)}
-            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mr-2 flex-shrink-0 ${
-              selectedValue === option.value
+            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mr-2 flex-shrink-0 ${selectedValue === option.value
                 ? "bg-orange-500 border-orange-500"
                 : "bg-white border-gray-300 hover:border-gray-400"
-            } ${disabled ? "!bg-gray-100 !border-gray-200" : ""} `}
+              } ${disabled ? "!bg-gray-100 !border-gray-200" : ""} `}
           >
             {selectedValue === option.value && (
               <CheckIcon className="w-3.5 h-3.5 text-white" />
@@ -199,9 +197,8 @@ function CustomRadioGroup({
           </div>
           <span className="flex items-center">
             <span
-              className={`text-sm ${
-                disabled ? "text-gray-400" : "text-gray-700"
-              }`}
+              className={`text-sm ${disabled ? "text-gray-400" : "text-gray-700"
+                }`}
             >
               {option.label}
             </span>
@@ -255,7 +252,7 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 // --- 상태 배지 ---
 function StatusBadge({ status, processingMethod }) {
   let bgColor, textColor;
-  
+
   switch (status) {
     case "수령완료":
       bgColor = "bg-green-100";
@@ -415,7 +412,7 @@ function LegacyOrdersPage() {
           "legacy";
         setRawMode(String(mode).toLowerCase() === "raw");
       }
-    } catch (_) {}
+    } catch (_) { }
     setMounted(true);
   }, []);
 
@@ -440,7 +437,7 @@ function LegacyOrdersPage() {
   const [products, setProducts] = useState([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  
+
   // 편집 관련 상태들
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editValues, setEditValues] = useState({});
@@ -485,23 +482,23 @@ function LegacyOrdersPage() {
   // 같은 고객 주문들을 순서 번호로 정렬하고 첫 번째 _0 주문에만 댓글 표시
   const processOrdersForDisplay = (orders) => {
     if (!orders || orders.length === 0) return [];
-    
+
     // 1단계: 주문 그룹 키 생성 함수
     const getOrderGroupKey = (orderId) => {
       if (!orderId) return 'no-group';
       return orderId.replace(/_item\d+_\d+$/, '');
     };
-    
+
     // 2단계: 주문 순서 번호 추출 함수 (_뒤의 숫자)
     const getOrderNumber = (orderId) => {
       if (!orderId) return 999;
       const match = orderId.match(/_(\d+)$/);
       return match ? parseInt(match[1], 10) : 999;
     };
-    
+
     // 3단계: 같은 고객별로 그룹화하고 순서 번호로 정렬
     const groupedOrders = new Map();
-    
+
     orders.forEach(order => {
       const groupKey = getOrderGroupKey(order.order_id);
       if (!groupedOrders.has(groupKey)) {
@@ -509,7 +506,7 @@ function LegacyOrdersPage() {
       }
       groupedOrders.get(groupKey).push(order);
     });
-    
+
     // 각 그룹 내에서 순서 번호로 정렬
     const sortedOrders = [];
     groupedOrders.forEach((groupOrders, groupKey) => {
@@ -518,29 +515,29 @@ function LegacyOrdersPage() {
       });
       sortedOrders.push(...sorted);
     });
-    
+
     // 4단계: 각 그룹의 첫 번째 _0 주문 식별
     const groupFirstZeroOrders = new Map();
-    
+
     for (const order of sortedOrders) {
       const orderGroupKey = getOrderGroupKey(order.order_id);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
-      
+
       if (endsWithZero && !groupFirstZeroOrders.has(orderGroupKey)) {
         groupFirstZeroOrders.set(orderGroupKey, order.order_id);
       }
     }
-    
+
     // 5단계: 댓글 표시 로직 적용
     return sortedOrders.map(order => {
       const orderGroupKey = getOrderGroupKey(order.order_id);
       const endsWithZero = order.order_id && order.order_id.endsWith('_0');
       const orderNumber = getOrderNumber(order.order_id);
-      
+
       // 해당 주문이 그룹의 첫 번째 _0 주문인지 확인
       const showComment = endsWithZero && groupFirstZeroOrders.get(orderGroupKey) === order.order_id;
-      
-      
+
+
       return {
         ...order,
         showComment: showComment
@@ -601,7 +598,7 @@ function LegacyOrdersPage() {
             type: typeof err,
             errorKeys: Object.keys(err)
           });
-          
+
           // 401 에러인 경우 로그인 페이지로 리다이렉트 고려
           if (err?.status === 401) {
           }
@@ -618,14 +615,14 @@ function LegacyOrdersPage() {
     isLoading: isUserLoading,
   } = useUser(userData?.userId, swrOptions);
   // useOrdersClient 훅 호출 부분 수정
-  
+
   // 날짜 필터 파라미터 계산
   const dateFilterParams = calculateDateFilterParams(
     filterDateRange,
     customStartDate,
     customEndDate
   );
-  
+
   // 필터 객체 생성
   const filters = {
     // 검색어가 있으면 페이지네이션 없이 전체 표시 (최대 10000개)
@@ -684,8 +681,8 @@ function LegacyOrdersPage() {
         ? undefined
         : dateFilterParams.endDate,
   };
-  
-  
+
+
   const {
     data: ordersData,
     error: ordersError,
@@ -712,7 +709,7 @@ function LegacyOrdersPage() {
       refreshInterval: 300000, // 상품 데이터는 5분마다 업데이트 (주문보다 자주)
     }
   );
-  
+
   // 전체 주문 통계를 위한 hook 사용 - 날짜 필터만 적용
   const {
     data: statsData,
@@ -749,15 +746,15 @@ function LegacyOrdersPage() {
 
   // 선택된 주문들의 총 수량과 총 금액 계산
   const selectedOrderTotals = useMemo(() => {
-    const selectedOrders = displayOrders.filter(order => 
+    const selectedOrders = displayOrders.filter(order =>
       selectedOrderIds.includes(order.order_id)
     );
-    
+
     const totalQuantity = selectedOrders.reduce((sum, order) => {
       const quantity = parseInt(order.quantity, 10);
       return sum + (isNaN(quantity) ? 0 : quantity);
     }, 0);
-    
+
     const totalAmount = selectedOrders.reduce((sum, order) => {
       // selected_barcode_option이 있으면 그 가격 사용, 없으면 기본 가격 사용
       let price = 0;
@@ -769,7 +766,7 @@ function LegacyOrdersPage() {
       const quantity = parseInt(order.quantity, 10) || 0;
       return sum + (price * quantity);
     }, 0);
-    
+
     return { totalQuantity, totalAmount };
   }, [displayOrders, selectedOrderIds]);
 
@@ -822,20 +819,20 @@ function LegacyOrdersPage() {
 
     // 캐시 키를 band_key와 post_key 조합으로 변경
     const cacheKey = `${bandKey}_${postId}`;
-    
+
     if (availableProducts[cacheKey]) {
       return availableProducts[cacheKey];
     }
 
     try {
       // user_id와 band_key를 쿼리 파라미터로 추가
-      const url = bandKey 
+      const url = bandKey
         ? `${window.location.origin}/api/posts/${postId}/products?user_id=${userId}&band_key=${bandKey}`
         : `${window.location.origin}/api/posts/${postId}/products?user_id=${userId}`;
-      
+
       const response = await fetch(url);
       const result = await response.json();
-      
+
       if (result.success) {
         setAvailableProducts(prev => ({
           ...prev,
@@ -848,7 +845,7 @@ function LegacyOrdersPage() {
     } catch (error) {
       console.error('상품 목록 조회 실패:', error);
     }
-    
+
     return [];
   };
 
@@ -866,7 +863,7 @@ function LegacyOrdersPage() {
     const bandKey = order.band_key;
     console.log('Edit start - order:', order);
     console.log('Using postKey:', postKey, 'bandKey:', bandKey);
-    
+
     if (postKey && bandKey && userData?.userId) {
       await fetchProductsForPost(postKey, bandKey, userData.userId);
     } else {
@@ -886,7 +883,7 @@ function LegacyOrdersPage() {
 
   const handleEditSave = async (order) => {
     setSavingEdit(true);
-    
+
     // product_name이 없다면 기존 값을 사용
     const updateData = {
       ...editValues,
@@ -894,7 +891,7 @@ function LegacyOrdersPage() {
     };
 
     console.log('저장할 데이터:', updateData);
-    
+
     try {
       const response = await fetch(`${window.location.origin}/api/orders/${order.order_id}`, {
         method: 'PATCH',
@@ -915,10 +912,10 @@ function LegacyOrdersPage() {
 
       setEditingOrderId(null);
       setEditValues({});
-      
+
       // Toast 알림 표시
       addToast('주문 정보가 성공적으로 업데이트되었습니다.');
-      
+
     } catch (error) {
       console.error('주문 업데이트 에러:', error);
       addToast('주문 정보 업데이트에 실패했습니다: ' + error.message);
@@ -941,7 +938,7 @@ function LegacyOrdersPage() {
     const cacheKey = `${bandKey}_${postKey}`;
     const products = availableProducts[cacheKey] || [];
     const selectedProduct = products.find(p => p.product_id === productId);
-    
+
     if (selectedProduct) {
       setEditValues(prev => ({
         ...prev,
@@ -982,9 +979,9 @@ function LegacyOrdersPage() {
     if (
       !window.confirm(
         `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
-          (skippedCount > 0
-            ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
-            : "")
+        (skippedCount > 0
+          ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
+          : "")
       )
     ) {
       setBulkUpdateLoading(false);
@@ -1040,11 +1037,11 @@ function LegacyOrdersPage() {
   };
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
-    
+
     let startDate = new Date();
     const endDate = new Date(now);
     endDate.setHours(23, 59, 59, 999);
-    
+
     if (range === "custom" && customStart) {
       const start = new Date(customStart);
       start.setHours(0, 0, 0, 0);
@@ -1052,7 +1049,7 @@ function LegacyOrdersPage() {
       end.setHours(23, 59, 59, 999);
       return { startDate: start.toISOString(), endDate: end.toISOString() };
     }
-    
+
     switch (range) {
       case "today":
         startDate.setHours(0, 0, 0, 0);
@@ -1072,35 +1069,32 @@ function LegacyOrdersPage() {
       default:
         return { startDate: undefined, endDate: undefined };
     }
-    
+
     const result = {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString()
     };
-    
+
     return result;
   }
   const CustomDateInputButton = forwardRef(
     ({ value, onClick, isActive, disabled }, ref) => (
       <button
-        className={`flex items-center pl-3 pr-8 py-1.5 rounded-md text-xs font-medium transition border whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] sm:max-w-none ${
-          isActive
+        className={`flex items-center pl-3 pr-8 py-1.5 rounded-md text-xs font-medium transition border whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] sm:max-w-none ${isActive
             ? "bg-orange-500 text-white border-orange-500 shadow-sm"
             : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 hover:border-gray-400"
-        } ${
-          disabled
+          } ${disabled
             ? "!bg-gray-100 !border-gray-200 text-gray-400 cursor-not-allowed opacity-50"
             : ""
-        }`}
+          }`}
         onClick={onClick}
         ref={ref}
         disabled={disabled}
         title={value || "날짜 직접 선택"}
       >
         <CalendarDaysIcon
-          className={`w-4 h-4 mr-1.5 flex-shrink-0 ${
-            isActive ? "text-white" : "text-gray-400"
-          }`}
+          className={`w-4 h-4 mr-1.5 flex-shrink-0 ${isActive ? "text-white" : "text-gray-400"
+            }`}
         />
         <span className="overflow-hidden text-ellipsis">
           {value || "직접 선택"}
@@ -1228,7 +1222,7 @@ function LegacyOrdersPage() {
     };
 
     window.addEventListener('postUpdated', handlePostUpdated);
-    
+
     return () => {
       window.removeEventListener('postUpdated', handlePostUpdated);
     };
@@ -1290,20 +1284,20 @@ function LegacyOrdersPage() {
   }, [mutateProducts, userData?.userId]);
   useEffect(() => {
     if (ordersData?.data) {
-      
+
       // 날짜 분석
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayEnd = new Date();
       todayEnd.setHours(23, 59, 59, 999);
-      
-      
+
+
       // 오늘 주문된 건수
       const todayOrderedCount = ordersData.data.filter(order => {
         const orderDate = new Date(order.ordered_at);
         return orderDate >= today && orderDate <= todayEnd;
       }).length;
-      
+
       // 오늘 수령완료된 건수
       const todayCompletedCount = ordersData.data.filter(order => {
         if (!order.completed_at) return false;
@@ -1354,18 +1348,18 @@ function LegacyOrdersPage() {
     if (product?.title) {
       return product.title;
     }
-    
+
     // orders 데이터에서 product_name 필드 사용 (폴백)
     const order = orders.find((o) => o.product_id === id);
     if (order?.product_name && order.product_name !== "상품명 없음") {
       return order.product_name;
     }
-    
+
     // product_title 필드도 확인 (orders_with_products 뷰에서)
     if (order?.product_title) {
       return order.product_title;
     }
-    
+
     return "상품명 없음";
   };
 
@@ -1552,13 +1546,13 @@ function LegacyOrdersPage() {
     if (product?.barcode) {
       return product.barcode;
     }
-    
+
     // orders 데이터에서 product_barcode 필드 사용 (폴백)
     const order = orders.find((o) => o.product_id === id);
     if (order?.product_barcode) {
       return order.product_barcode;
     }
-    
+
     return "";
   };
   const getProductById = (id) =>
@@ -1570,7 +1564,7 @@ function LegacyOrdersPage() {
   const debugPickupLogging = () => {
     if (typeof window === 'undefined') return;
     let debug = false;
-    try { debug = window.localStorage.getItem('debugPickup') === 'true'; } catch {}
+    try { debug = window.localStorage.getItem('debugPickup') === 'true'; } catch { }
     if (!debug) return;
 
     try {
@@ -1607,7 +1601,7 @@ function LegacyOrdersPage() {
       const objFromMap = (m) => Object.fromEntries(Array.from(m.entries()));
       console.groupCollapsed('[Pickup Debug] Orders Page');
       console.log('filterSelection', filterSelection, '| mode:', KSTflag);
-      console.log('counts', { all: all.length, available: Array.from(byBandAvail.values()).reduce((a,b)=>a+b,0) });
+      console.log('counts', { all: all.length, available: Array.from(byBandAvail.values()).reduce((a, b) => a + b, 0) });
       console.log('byBand', { all: objFromMap(byBandAll), available: objFromMap(byBandAvail) });
       console.table(samples);
       console.groupEnd();
@@ -1741,7 +1735,7 @@ function LegacyOrdersPage() {
     setTempPrice(order.price ?? 0);
     setIsEditingDetails(false); // 편집 모드 비활성화로 시작
     setActiveTab("status");
-    
+
     setIsDetailModalOpen(true);
   };
   const closeDetailModal = () => {
@@ -1962,9 +1956,8 @@ function LegacyOrdersPage() {
         },
         total_amount: selectedOption.price,
         price_option_used: selectedOption.name,
-        price_option_description: `${selectedOption.name} (${
-          selectedOption.barcode
-        }) - ₩${selectedOption.price.toLocaleString()}`,
+        price_option_description: `${selectedOption.name} (${selectedOption.barcode
+          }) - ₩${selectedOption.price.toLocaleString()}`,
       };
 
       console.log("Updating order barcode option:", { orderId, updateData });
@@ -2027,7 +2020,7 @@ function LegacyOrdersPage() {
     const product = getProductById(order.product_id);
     // product의 content 필드에 게시물 내용이 저장되어 있음
     const postContent = product?.content || product?.description || "";
-    
+
     // 디버깅용 로그
     console.log("Opening comments for order:", order.order_id);
     console.log("Product ID:", order.product_id);
@@ -2273,8 +2266,8 @@ function LegacyOrdersPage() {
                 최근 업데이트 :
                 {userDataFromHook?.data?.last_crawl_at // Change this line! Access via .data
                   ? getTimeDifferenceInMinutes(
-                      userDataFromHook.data.last_crawl_at
-                    ) // Also change here
+                    userDataFromHook.data.last_crawl_at
+                  ) // Also change here
                   : "알 수 없음"}
                 {isUserLoading && (
                   <LoadingSpinner
@@ -2302,10 +2295,10 @@ function LegacyOrdersPage() {
               >
                 <dt className="text-sm text-gray-500 uppercase">
                   {searchTerm ||
-                  filterSelection !== "all" ||
-                  filterDateRange !== "30days" || // 기본값 변경 반영
-                  (filterDateRange === "custom" &&
-                    (customStartDate || customEndDate))
+                    filterSelection !== "all" ||
+                    filterDateRange !== "30days" || // 기본값 변경 반영
+                    (filterDateRange === "custom" &&
+                      (customStartDate || customEndDate))
                     ? "필터된 주문"
                     : "총 주문"}
                 </dt>
@@ -2363,7 +2356,7 @@ function LegacyOrdersPage() {
             <div className="grid grid-cols-[max-content_1fr] items-center">
               <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                 <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                조회 기간
+                기간
               </div>
               <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
                 <DatePicker
@@ -2384,11 +2377,10 @@ function LegacyOrdersPage() {
                       disabled={isDataLoading}
                       value={
                         customStartDate
-                          ? `${formatDateForPicker(customStartDate)}${
-                              customEndDate
-                                ? ` ~ ${formatDateForPicker(customEndDate)}`
-                                : ""
-                            }`
+                          ? `${formatDateForPicker(customStartDate)}${customEndDate
+                            ? ` ~ ${formatDateForPicker(customEndDate)}`
+                            : ""
+                          }`
                           : ""
                       }
                     />
@@ -2573,10 +2565,10 @@ function LegacyOrdersPage() {
                       className="px-6 py-10 text-center text-sm text-gray-500"
                     >
                       {searchTerm ||
-                      filterSelection !== "all" ||
-                      filterDateRange !== "30days" || // 기본값 변경 반영
-                      (filterDateRange === "custom" &&
-                        (customStartDate || customEndDate))
+                        filterSelection !== "all" ||
+                        filterDateRange !== "30days" || // 기본값 변경 반영
+                        (filterDateRange === "custom" &&
+                          (customStartDate || customEndDate))
                         ? "조건에 맞는 주문이 없습니다."
                         : "표시할 주문이 없습니다."}
                     </td>
@@ -2591,17 +2583,15 @@ function LegacyOrdersPage() {
                   return (
                     <React.Fragment key={order.order_id}>
                       <tr
-                        className={`${
-                          editingOrderId === order.order_id 
-                            ? "bg-blue-50 border-l-4 border-blue-400" 
+                        className={`${editingOrderId === order.order_id
+                            ? "bg-blue-50 border-l-4 border-blue-400"
                             : order.sub_status === "미수령"
                               ? "bg-red-50 border-l-4 border-red-400"
-                              : isSelected 
-                                ? "bg-orange-50" 
+                              : isSelected
+                                ? "bg-orange-50"
                                 : "hover:bg-gray-50"
-                        } transition-colors group cursor-pointer ${
-                          isOrdersLoading ? "opacity-70" : ""
-                        }`}
+                          } transition-colors group cursor-pointer ${isOrdersLoading ? "opacity-70" : ""
+                          }`}
                         onClick={() => editingOrderId === order.order_id ? null : openDetailModal(order)}
                       >
                         <td
@@ -2621,7 +2611,7 @@ function LegacyOrdersPage() {
                           </div>
                         </td>
                         <td
-                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44" 
+                          className="py-2 pr-4 text-sm text-gray-700 font-medium w-44"
                           title={getProductNameById(order.product_id)}
                         >
                           {editingOrderId === order.order_id ? (
@@ -2642,7 +2632,7 @@ function LegacyOrdersPage() {
                             </select>
                           ) : (
                             // 일반 표시 모드
-                            <div 
+                            <div
                               className="hover:text-orange-600 hover:underline cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -2669,11 +2659,10 @@ function LegacyOrdersPage() {
                                 return (
                                   <div className="flex flex-col">
                                     <div
-                                      className={`font-medium ${
-                                        isAvailable
+                                      className={`font-medium ${isAvailable
                                           ? "text-orange-600 font-bold"
                                           : ""
-                                      }`}
+                                        }`}
                                     >
                                       {name}
                                     </div>
@@ -2875,7 +2864,7 @@ function LegacyOrdersPage() {
                                 <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4 opacity-50" />
                               </button>
                             )}
-                            
+
                             {/* 편집 버튼 */}
                             {editingOrderId === order.order_id ? (
                               <div className="flex space-x-1 animate-pulse">
@@ -2985,11 +2974,10 @@ function LegacyOrdersPage() {
                         key={page}
                         onClick={() => paginate(page)}
                         disabled={isDataLoading}
-                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                          currentPage === page
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === page
                             ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
                             : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                        }`}
+                          }`}
                         aria-current={currentPage === page ? "page" : undefined}
                       >
                         {page}
@@ -3028,7 +3016,7 @@ function LegacyOrdersPage() {
               </span>
             )}
           </div>
-          
+
           {/* 오른쪽 영역 - 총계 및 버튼 */}
           <div className="flex items-center gap-4">
             {/* 총계 표시 */}
@@ -3081,59 +3069,56 @@ function LegacyOrdersPage() {
                 </>
               )
             )}
-            
+
             {/* 일괄 처리 버튼들 */}
             <button
-            onClick={() => handleBulkStatusUpdate("주문취소")}
-            disabled={
-              selectedOrderIds.length === 0 ||
-              isDataLoading ||
-              bulkUpdateLoading
-            }
-            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
-              selectedOrderIds.length === 0
-                ? "opacity-0 scale-95 pointer-events-none"
-                : "opacity-100 scale-100"
-            }`}
-            aria-hidden={selectedOrderIds.length === 0}
-          >
-            <XCircleIcon className="w-5 h-5" /> 선택 주문취소 (
-            {selectedOrderIds.length})
-          </button>
-          <button
-            onClick={() => handleBulkStatusUpdate("결제완료")}
-            disabled={
-              selectedOrderIds.length === 0 ||
-              isDataLoading ||
-              bulkUpdateLoading
-            }
-            className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
-              selectedOrderIds.length === 0
-                ? "opacity-0 scale-95 pointer-events-none"
-                : "opacity-100 scale-100"
-            }`}
-            aria-hidden={selectedOrderIds.length === 0}
-          >
-            <CurrencyDollarIcon className="w-5 h-5" /> 선택 결제완료 (
-            {selectedOrderIds.length})
-          </button>
-          <button
-            onClick={() => handleBulkStatusUpdate("수령완료")}
-            disabled={
-              selectedOrderIds.length === 0 ||
-              isDataLoading ||
-              bulkUpdateLoading
-            }
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${
-              selectedOrderIds.length === 0
-                ? "opacity-0 scale-95 pointer-events-none"
-                : "opacity-100 scale-100"
-            }`}
-            aria-hidden={selectedOrderIds.length === 0}
-          >
-            <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
-            {selectedOrderIds.length})
-          </button>
+              onClick={() => handleBulkStatusUpdate("주문취소")}
+              disabled={
+                selectedOrderIds.length === 0 ||
+                isDataLoading ||
+                bulkUpdateLoading
+              }
+              className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedOrderIds.length === 0
+                  ? "opacity-0 scale-95 pointer-events-none"
+                  : "opacity-100 scale-100"
+                }`}
+              aria-hidden={selectedOrderIds.length === 0}
+            >
+              <XCircleIcon className="w-5 h-5" /> 선택 주문취소 (
+              {selectedOrderIds.length})
+            </button>
+            <button
+              onClick={() => handleBulkStatusUpdate("결제완료")}
+              disabled={
+                selectedOrderIds.length === 0 ||
+                isDataLoading ||
+                bulkUpdateLoading
+              }
+              className={`mr-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedOrderIds.length === 0
+                  ? "opacity-0 scale-95 pointer-events-none"
+                  : "opacity-100 scale-100"
+                }`}
+              aria-hidden={selectedOrderIds.length === 0}
+            >
+              <CurrencyDollarIcon className="w-5 h-5" /> 선택 결제완료 (
+              {selectedOrderIds.length})
+            </button>
+            <button
+              onClick={() => handleBulkStatusUpdate("수령완료")}
+              disabled={
+                selectedOrderIds.length === 0 ||
+                isDataLoading ||
+                bulkUpdateLoading
+              }
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 ${selectedOrderIds.length === 0
+                  ? "opacity-0 scale-95 pointer-events-none"
+                  : "opacity-100 scale-100"
+                }`}
+              aria-hidden={selectedOrderIds.length === 0}
+            >
+              <CheckCircleIcon className="w-5 h-5" /> 선택 수령완료 (
+              {selectedOrderIds.length})
+            </button>
           </div>
         </div>
 
@@ -3158,9 +3143,8 @@ function LegacyOrdersPage() {
                     return (
                       <div className="flex flex-col">
                         <div
-                          className={`${
-                            isAvailable ? "text-orange-600 font-bold" : ""
-                          }`}
+                          className={`${isAvailable ? "text-orange-600 font-bold" : ""
+                            }`}
                         >
                           {name}
                         </div>
@@ -3192,33 +3176,30 @@ function LegacyOrdersPage() {
                     {/* 상태 관리 탭 */}
                     <button
                       onClick={() => handleTabChange("status")}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                        activeTab === "status"
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "status"
                           ? "border-orange-500 text-orange-600"
                           : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
+                        }`}
                     >
                       <QrCodeIcon className="w-5 h-5 mr-1.5" /> 상태 관리
                     </button>
                     {/* 주문 정보 탭 (복구) */}
                     <button
                       onClick={() => handleTabChange("info")}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                        activeTab === "info"
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "info"
                           ? "border-orange-500 text-orange-600"
                           : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
+                        }`}
                     >
                       <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
                     </button>
                     {/* 주문 처리 탭 */}
                     <button
                       onClick={() => handleTabChange("processing")}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                        activeTab === "processing"
+                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "processing"
                           ? "border-orange-500 text-orange-600"
                           : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
+                        }`}
                     >
                       <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
                     </button>
@@ -3300,7 +3281,7 @@ function LegacyOrdersPage() {
                             )}
                           </div>
                           {!getProductBarcode(selectedOrder.product_id) && (
-                            <button 
+                            <button
                               onClick={() => handleSaveBarcode(selectedOrder.product_id, newBarcodeValue)}
                               disabled={!newBarcodeValue.trim() || isSavingBarcode}
                               className="w-full mt-3 px-4 py-3 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-all disabled:bg-gray-300"
@@ -3314,32 +3295,31 @@ function LegacyOrdersPage() {
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                           <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 상태 변경</h3>
                           <div className="grid grid-cols-2 gap-2">
-                            <button 
+                            <button
                               onClick={() => handleStatusChange(selectedOrder.order_id, "주문완료")}
                               className="px-3 py-3 bg-blue-100 text-blue-700 text-sm font-semibold rounded-xl hover:bg-blue-200 transition-all"
                             >
                               주문완료
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleStatusChange(selectedOrder.order_id, "주문취소")}
                               className="px-3 py-3 bg-red-100 text-red-700 text-sm font-semibold rounded-xl hover:bg-red-200 transition-all"
                             >
                               주문취소
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleStatusChange(selectedOrder.order_id, "확인필요")}
                               className="px-3 py-3 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 transition-all"
                             >
                               확인필요
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleStatusChange(selectedOrder.order_id, "수령완료")}
                               disabled={selectedOrder.status === '수령완료'}
-                              className={`px-3 py-3 text-sm font-semibold rounded-xl transition-all ${
-                                selectedOrder.status === '수령완료' 
-                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                              className={`px-3 py-3 text-sm font-semibold rounded-xl transition-all ${selectedOrder.status === '수령완료'
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-green-100 text-green-700 hover:bg-green-200'
-                              }`}
+                                }`}
                             >
                               수령완료
                             </button>
@@ -3352,7 +3332,7 @@ function LegacyOrdersPage() {
                         {/* 주문 정보 수정 카드 - 토스 스타일 */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                           <h3 className="text-xs font-semibold text-gray-500 mb-4">주문 정보</h3>
-                          
+
                           <div className="space-y-4">
                             {/* 상품 표시 */}
                             <div>
@@ -3374,7 +3354,7 @@ function LegacyOrdersPage() {
                                 <span className="text-sm text-gray-500">개</span>
                               </div>
                             </div>
-                            
+
                             {/* 단가 표시 */}
                             <div>
                               <label className="text-xs font-semibold text-gray-500 mb-2 block">단가</label>
@@ -3385,7 +3365,7 @@ function LegacyOrdersPage() {
                                 <span className="text-sm text-gray-500">원</span>
                               </div>
                             </div>
-                            
+
                             {/* 총 금액 표시 */}
                             <div>
                               <label className="text-xs font-semibold text-gray-500 mb-2 block">총 금액</label>
@@ -3423,11 +3403,10 @@ function LegacyOrdersPage() {
                             return (
                               <div className="flex flex-col">
                                 <div
-                                  className={`${
-                                    isAvailable
+                                  className={`${isAvailable
                                       ? "text-orange-600 font-bold"
                                       : ""
-                                  }`}
+                                    }`}
                                 >
                                   {name}
                                 </div>
@@ -3554,22 +3533,19 @@ function LegacyOrdersPage() {
                           </label>
                           {item.readOnly ? (
                             <div
-                              className={`px-3 py-2 rounded-md border ${
-                                item.highlight
+                              className={`px-3 py-2 rounded-md border ${item.highlight
                                   ? "bg-orange-50 border-orange-200 text-orange-700 font-semibold text-lg"
                                   : "bg-gray-100 border-gray-200 text-gray-800"
-                              } ${
-                                item.smallText ? "text-xs break-all" : "text-sm"
-                              } ${
-                                item.preWrap // Apply preWrap style if needed
+                                } ${item.smallText ? "text-xs break-all" : "text-sm"
+                                } ${item.preWrap // Apply preWrap style if needed
                                   ? "whitespace-pre-wrap break-words"
                                   : ""
-                              } min-h-[38px] flex items-center`}
+                                } min-h-[38px] flex items-center`}
                             >
                               {/* Display simple value or React node */}
                               {typeof item.value === "string" ||
-                              typeof item.value === "number" ||
-                              React.isValidElement(item.value)
+                                typeof item.value === "number" ||
+                                React.isValidElement(item.value)
                                 ? item.value
                                 : String(item.value)}
                             </div>
@@ -3768,10 +3744,10 @@ function LegacyOrdersPage() {
                               try {
                                 const aiResult =
                                   typeof selectedOrder.ai_extraction_result ===
-                                  "string"
+                                    "string"
                                     ? JSON.parse(
-                                        selectedOrder.ai_extraction_result
-                                      )
+                                      selectedOrder.ai_extraction_result
+                                    )
                                     : selectedOrder.ai_extraction_result;
 
                                 return (
@@ -3955,21 +3931,21 @@ function LegacyOrdersPage() {
                             <span className="text-sm text-gray-600">
                               {selectedOrder.ordered_at
                                 ? (() => {
-                                    const minutes = getTimeDifferenceInMinutes(
-                                      selectedOrder.ordered_at
-                                    );
-                                    if (minutes < 60) {
-                                      return `${minutes}분 전`;
-                                    } else if (minutes < 1440) {
-                                      return `${Math.floor(
-                                        minutes / 60
-                                      )}시간 전`;
-                                    } else {
-                                      return `${Math.floor(
-                                        minutes / 1440
-                                      )}일 전`;
-                                    }
-                                  })()
+                                  const minutes = getTimeDifferenceInMinutes(
+                                    selectedOrder.ordered_at
+                                  );
+                                  if (minutes < 60) {
+                                    return `${minutes}분 전`;
+                                  } else if (minutes < 1440) {
+                                    return `${Math.floor(
+                                      minutes / 60
+                                    )}시간 전`;
+                                  } else {
+                                    return `${Math.floor(
+                                      minutes / 1440
+                                    )}일 전`;
+                                  }
+                                })()
                                 : "N/A"}
                             </span>
                           </div>
@@ -4154,13 +4130,11 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
           {barcodeOptions.map((option, index) => (
             <label
               key={index}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-              } transition-all text-sm ${
-                selectedOption?.barcode === option.barcode
+              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                } transition-all text-sm ${selectedOption?.barcode === option.barcode
                   ? "border-blue-400 bg-blue-100 shadow-sm"
                   : "border-gray-200 bg-white hover:border-gray-300"
-              }`}
+                }`}
             >
               <input
                 type="radio"

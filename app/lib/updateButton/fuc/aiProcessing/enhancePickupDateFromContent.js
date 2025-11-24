@@ -159,6 +159,9 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
   }
 
   // 🔍 특수 패턴: "상품수령기간 : 9.12~13" 형식 (특정 밴드용)
+  const isExpiryContext = (text) =>
+    /소비기한|유통기한|품질유지|보관기한|유효기간|expiration|expiry/i.test(text);
+
   const receiptPeriodPattern = /상품수령기간\s*:\s*(\d{1,2})\.(\d{1,2})~(\d{1,2})/;
   const receiptMatch = receiptPeriodPattern.exec(postContent);
   let extractedMonth = null;
@@ -182,6 +185,11 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
     const baseYear = baseDate.getFullYear();
 
     while ((match = explicitDateRegex.exec(postContent)) !== null) {
+      const startIdx = Math.max(0, match.index - 12);
+      const endIdx = Math.min(postContent.length, match.index + match[0].length + 12);
+      const context = postContent.substring(startIdx, endIdx);
+      if (isExpiryContext(context)) continue;
+
       const month = parseInt(match[1], 10);
       const day = parseInt(match[2], 10);
       if (Number.isNaN(month) || Number.isNaN(day)) continue;
@@ -423,7 +431,7 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
         }
         newPickupDate.setHours(finalHour, extractedMinute || 0, 0, 0);
       } else {
-        // 시간 정보가 없으면 아침 9시로 설정
+        // 시간 정보가 없으면 기본 9시
         newPickupDate.setHours(9, 0, 0, 0);
         pickupReason.push('기본 9시 설정');
       }

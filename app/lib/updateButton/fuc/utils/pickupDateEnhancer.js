@@ -148,6 +148,9 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
   }
 
   // 🔍 특수 패턴: "상품수령기간 : 9.12~13" 형식 (특정 밴드용)
+  const isExpiryContext = (text) =>
+    /소비기한|유통기한|품질유지|보관기한|유효기간|expiration|expiry/i.test(text);
+
   const receiptPeriodPattern = /상품수령기간\s*:\s*(\d{1,2})\.(\d{1,2})~(\d{1,2})/;
   const receiptMatch = receiptPeriodPattern.exec(postContent);
   let extractedMonth = null;
@@ -170,6 +173,11 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
     const baseYear = baseDate.getFullYear();
 
     while ((match = explicitDateRegex.exec(postContent)) !== null) {
+      const startIdx = Math.max(0, match.index - 12);
+      const endIdx = Math.min(postContent.length, match.index + match[0].length + 12);
+      const context = postContent.substring(startIdx, endIdx);
+      if (isExpiryContext(context)) continue;
+
       const month = parseInt(match[1], 10);
       const day = parseInt(match[2], 10);
 
@@ -203,6 +211,37 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
         matched: bestCandidate.matchText,
         diffDays: bestCandidate.diffDays
       });
+    } else {
+      // 🔍 "수요일 26일" 같이 요일 + 일자만 있는 패턴 처리 (월 정보는 게시일 기준 월로 사용)
+      const weekdayWithDayPattern = /(월요일|화요일|수요일|목요일|금요일|토요일|일요일)\s*(\d{1,2})일/;
+      const weekdayWithDayMatch = weekdayWithDayPattern.exec(postContent);
+
+      if (weekdayWithDayMatch) {
+        const startIdx = Math.max(0, weekdayWithDayMatch.index - 12);
+        const endIdx = Math.min(
+          postContent.length,
+          weekdayWithDayMatch.index + weekdayWithDayMatch[0].length + 12
+        );
+        const context = postContent.substring(startIdx, endIdx);
+
+        // 소비기한/유통기한 등의 문맥은 제외
+        if (!isExpiryContext(context)) {
+          const baseMonth = baseDate.getMonth() + 1;
+          const day = parseInt(weekdayWithDayMatch[2], 10);
+
+          if (!Number.isNaN(day)) {
+            extractedMonth = baseMonth;
+            extractedDate = day;
+            monthDaySource = 'weekdayDate';
+
+            console.log('[PICKUP_DATE 후처리] 요일+일자 패턴 감지', {
+              month: extractedMonth,
+              date: extractedDate,
+              matched: weekdayWithDayMatch[0]
+            });
+          }
+        }
+      }
     }
   }
 
@@ -411,7 +450,7 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
         }
         newPickupDate.setHours(finalHour, extractedMinute || 0, 0, 0);
       } else {
-        // 시간 정보가 없으면 아침 9시로 설정
+        // 시간 정보가 없으면 기본 9시
         newPickupDate.setHours(9, 0, 0, 0);
         pickupReason.push('기본 9시 설정');
       }

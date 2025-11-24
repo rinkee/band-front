@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const isGithubPages = process.env.GITHUB_PAGES === "true";
 
+const isProd = process.env.NODE_ENV === "production";
+
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
@@ -60,6 +62,21 @@ const nextConfig = {
   },
   // 배포 시 HTML은 항상 새로 받고, 해시된 정적 자산만 장기 캐싱
   async headers() {
+    // dev 모드에서는 모든 응답을 캐시하지 않도록 강제
+    if (!isProd) {
+      return [
+        {
+          source: "/:path*",
+          headers: [
+            {
+              key: "Cache-Control",
+              value: "no-store, must-revalidate",
+            },
+          ],
+        },
+      ];
+    }
+
     return [
       // Next 빌드 산출물: 파일명에 해시가 포함되므로 강력 캐싱
       {

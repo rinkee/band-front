@@ -6,10 +6,10 @@
  * 파라미터: utcTimestamp - UTC 타임스탬프 (숫자 또는 Date 객체)
  * 리턴값: KST로 변환된 Date 객체
  *
- * 🔧 버그 수정: 이미 타임존 정보가 포함된 문자열은 추가 변환하지 않음
  */ export function convertUTCtoKST(utcTimestamp) {
   let utcDate;
-  let hasTimezone = false;
+  let hasOffsetTimezone = false;
+  let hasZulu = false;
 
   if (utcTimestamp instanceof Date) {
     utcDate = utcTimestamp;
@@ -17,8 +17,9 @@
     utcDate = new Date(utcTimestamp);
   } else if (typeof utcTimestamp === "string") {
     // 타임존 정보가 포함되어 있는지 확인
-    // 패턴: +09, +09:00, +0900, -05:00, Z 등 (문자열 끝에 있어야 함)
-    hasTimezone = /(?:[+-]\d{2}(?::\d{2})?|Z)$/i.test(utcTimestamp);
+    // 패턴: +09, +09:00, +0900, -05:00 (명시적 오프셋), Z(UTC)
+    hasOffsetTimezone = /[+-]\d{2}(?::\d{2})?$/.test(utcTimestamp);
+    hasZulu = /Z$/i.test(utcTimestamp);
 
     // 문자열인 경우 숫자로 변환 시도
     const numericTimestamp = parseInt(utcTimestamp);
@@ -34,12 +35,14 @@
     utcDate = new Date();
   }
 
-  // 타임존 정보가 이미 포함되어 있으면 변환하지 않음
-  if (hasTimezone) {
+  // 명시적 오프셋(+09:00 등)이 있으면 추가 변환하지 않음
+  if (hasOffsetTimezone) {
     return utcDate;
   }
 
-  // UTC에서 KST로 변환 (9시간 추가)
+  // Z(UTC) 또는 타임존 없는 값은 KST로 변환 (9시간 추가)
+  // hasZulu === true → UTC 기준이므로 +9h
+  // hasZulu === false (타임존 없음) → UTC로 간주 후 +9h
   const kstDate = new Date(utcDate.getTime() + 9 * 60 * 60 * 1000);
   return kstDate;
 }

@@ -9,6 +9,13 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ko } from "date-fns/locale"; // 한국어 로케일
 
+// Global style for datepicker z-index
+const datePickerStyle = `
+  .react-datepicker-popper {
+    z-index: 9999 !important;
+  }
+`;
+
 import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import getAuthedClient from "../lib/authedSupabaseClient";
@@ -102,11 +109,11 @@ const getProxiedImageUrl = (url) => {
       const u = new URL(urlString);
       const host = u.hostname.toLowerCase();
       return host.endsWith('.naver.net') ||
-             host.endsWith('.naver.com') ||
-             host.endsWith('.pstatic.net') ||
-             host === 'naver.net' ||
-             host === 'naver.com' ||
-             host === 'pstatic.net';
+        host.endsWith('.naver.com') ||
+        host.endsWith('.pstatic.net') ||
+        host === 'naver.net' ||
+        host === 'naver.com' ||
+        host === 'pstatic.net';
     } catch {
       return false;
     }
@@ -163,46 +170,42 @@ function CustomRadioGroup({
   disabled = false,
 }) {
   return (
-    <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+    <div className="flex items-center gap-x-4 md:gap-x-6 gap-y-3 flex-wrap">
       {options.map((option) => (
         <label
           key={option.value}
-          className={`flex items-center cursor-pointer ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
+          className={`flex items-center cursor-pointer group ${disabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           onClick={(e) => {
             if (disabled) e.preventDefault();
           }}
         >
           <div
             onClick={() => !disabled && onChange(option.value)}
-            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mr-2 flex-shrink-0 ${
-              selectedValue === option.value
-                ? "bg-orange-500 border-orange-500"
-                : "bg-white border-gray-300 hover:border-gray-400"
-            } ${disabled ? "!bg-gray-100 !border-gray-200" : ""} `}
+            className={`w-5 h-5 md:w-6 md:h-6 rounded-full border-2 flex items-center justify-center transition-colors mr-2 md:mr-2 flex-shrink-0 ${selectedValue === option.value
+              ? "bg-orange-500 border-orange-500"
+              : "bg-white border-gray-300 group-hover:border-gray-400"
+              } ${disabled ? "!bg-gray-100 !border-gray-200" : ""} `}
           >
             {selectedValue === option.value && (
-              <CheckIcon className="w-3.5 h-3.5 text-white" />
+              <CheckIcon className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
             )}
           </div>
           <span className="flex items-center">
             <span
-              className={`text-sm ${
-                disabled ? "text-gray-400" : "text-gray-700"
-              }`}
+              className={`text-sm md:text-base ${disabled ? "text-gray-400" : "text-gray-700"
+                }`}
             >
               {option.label}
             </span>
             {typeof option.badgeCount === "number" && option.badgeCount > 0 && (
               <span
-                className={`ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-white text-[11px] leading-none ${
-                  option.badgeColor === "blue"
-                    ? "bg-blue-500"
-                    : option.badgeColor === "yellow"
+                className={`ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] md:min-w-[22px] md:h-[22px] px-1 rounded-full text-white text-[11px] md:text-xs leading-none ${option.badgeColor === "blue"
+                  ? "bg-blue-500"
+                  : option.badgeColor === "yellow"
                     ? "bg-yellow-500 text-gray-900"
                     : "bg-red-500"
-                }`}
+                  }`}
               >
                 {option.badgeCount.toLocaleString()}
               </span>
@@ -425,13 +428,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
   const tableContainerRef = useRef(null); // 테이블 컨테이너 스크롤 제어용
-  
+
   // 편집 관련 상태들
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editValues, setEditValues] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [availableProducts, setAvailableProducts] = useState({});
-  
+
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
   const [filterDateType, setFilterDateType] = useState("created"); // 날짜 필터 타입: created(주문일시) or updated(수령/변경일시)
@@ -1147,13 +1150,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
             .in("post_key", newPostKeys);
 
           if (!pe && Array.isArray(posts)) {
-            const newMap = {...postsImages}; // 기존 캐시 복사
+            const newMap = { ...postsImages }; // 기존 캐시 복사
             for (const row of posts) {
               const key = `${row.band_key || ''}_${row.post_key || ''}`;
               let urls = row.image_urls;
               try {
                 if (typeof urls === 'string') urls = JSON.parse(urls);
-              } catch {}
+              } catch { }
               if (Array.isArray(urls) && urls.length > 0) newMap[key] = urls;
             }
             setPostsImages(newMap);
@@ -1212,7 +1215,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           }
         }
 
-        console.log(`📦 [상품] 캐시: ${cachedPostKeys.size + cachedBandPosts.size}개, 신규: ${newPostKeys.length + Array.from(newBandMap.values()).reduce((a,b) => a + b.length, 0)}개`);
+        console.log(`📦 [상품] 캐시: ${cachedPostKeys.size + cachedBandPosts.size}개, 신규: ${newPostKeys.length + Array.from(newBandMap.values()).reduce((a, b) => a + b.length, 0)}개`);
 
         const results = [];
 
@@ -1253,8 +1256,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
         }
 
         // 기존 캐시와 병합 (누적)
-        const byPostKeyMap = {...postProductsByPostKey};
-        const byBandPostMap = {...postProductsByBandPost};
+        const byPostKeyMap = { ...postProductsByPostKey };
+        const byBandPostMap = { ...postProductsByBandPost };
 
         results.forEach((p) => {
           if (p.post_key) {
@@ -1305,13 +1308,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const { data: unreceivedCountData, mutate: mutateUnreceivedCount } = useSWR(
     userData?.userId
       ? [
-          "unreceived-count",
-          mode,
-          userData.userId,
-          filterDateRange,
-          dateFilterParams.startDate,
-          dateFilterParams.endDate,
-        ]
+        "unreceived-count",
+        mode,
+        userData.userId,
+        filterDateRange,
+        dateFilterParams.startDate,
+        dateFilterParams.endDate,
+      ]
       : null,
     async () => {
       const sb = getAuthedClient();
@@ -1340,13 +1343,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const { data: completedCountData, mutate: mutateCompletedCount } = useSWR(
     userData?.userId
       ? [
-          "completed-count",
-          mode,
-          userData.userId,
-          filterDateRange,
-          dateFilterParams.startDate,
-          dateFilterParams.endDate,
-        ]
+        "completed-count",
+        mode,
+        userData.userId,
+        filterDateRange,
+        dateFilterParams.startDate,
+        dateFilterParams.endDate,
+      ]
       : null,
     async () => {
       const sb = getAuthedClient();
@@ -1375,13 +1378,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const { data: paidCountData, mutate: mutatePaidCount } = useSWR(
     userData?.userId
       ? [
-          "paid-count",
-          mode,
-          userData.userId,
-          filterDateRange,
-          dateFilterParams.startDate,
-          dateFilterParams.endDate,
-        ]
+        "paid-count",
+        mode,
+        userData.userId,
+        filterDateRange,
+        dateFilterParams.startDate,
+        dateFilterParams.endDate,
+      ]
       : null,
     async () => {
       const sb = getAuthedClient();
@@ -1478,15 +1481,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 선택된 주문들의 총 수량과 총 금액 계산
   const selectedOrderTotals = useMemo(() => {
-    const selectedOrders = displayOrders.filter(order => 
+    const selectedOrders = displayOrders.filter(order =>
       selectedOrderIds.includes(order.order_id)
     );
-    
+
     const totalQuantity = selectedOrders.reduce((sum, order) => {
       const quantity = parseInt(order.quantity, 10);
       return sum + (isNaN(quantity) ? 0 : quantity);
     }, 0);
-    
+
     const totalAmount = selectedOrders.reduce((sum, order) => {
       // selected_barcode_option이 있으면 그 가격 사용, 없으면 기본 가격 사용
       let price = 0;
@@ -1498,7 +1501,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const quantity = parseInt(order.quantity, 10) || 0;
       return sum + (price * quantity);
     }, 0);
-    
+
     return { totalQuantity, totalAmount };
   }, [displayOrders, selectedOrderIds]);
 
@@ -1736,7 +1739,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     try {
       const response = await fetch(`${window.location.origin}/api/posts/${postId}/products`);
       const result = await response.json();
-      
+
       if (result.success) {
         setAvailableProducts(prev => ({
           ...prev,
@@ -1747,7 +1750,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     } catch (error) {
       console.error('상품 목록 조회 실패:', error);
     }
-    
+
     return [];
   };
 
@@ -1764,7 +1767,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const postKey = order.post_key;
     console.log('Edit start - order:', order);
     console.log('Using postKey:', postKey);
-    
+
     if (postKey) {
       await fetchProductsForPost(postKey);
     } else {
@@ -1825,7 +1828,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const postKey = order.post_key;
     const products = availableProducts[postKey] || [];
     const selectedProduct = products.find(p => p.product_id === productId);
-    
+
     if (selectedProduct) {
       setEditValues(prev => ({
         ...prev,
@@ -1868,9 +1871,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (
       !window.confirm(
         `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
-          (skippedCount > 0
-            ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
-            : "")
+        (skippedCount > 0
+          ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
+          : "")
       )
     ) {
       setBulkUpdateLoading(false);
@@ -1961,7 +1964,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const now = new Date();
     let startDate = new Date();
     const endDate = new Date(now);
-    
+
     if (range === "custom" && customStart) {
       const start = new Date(customStart);
       start.setHours(0, 0, 0, 0);
@@ -1969,7 +1972,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       end.setHours(23, 59, 59, 999);
       return { startDate: start.toISOString(), endDate: end.toISOString() };
     }
-    
+
     switch (range) {
       case "today":
         // 로컬 시간으로 오늘의 시작과 끝 설정
@@ -1977,13 +1980,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
         todayStart.setHours(0, 0, 0, 0);
         const todayEnd = new Date(now);
         todayEnd.setHours(23, 59, 59, 999);
-        
+
         console.log("Today filter debug:", {
           localNow: now.toString(),
           startDate: todayStart.toISOString(),
           endDate: todayEnd.toISOString()
         });
-        
+
         return { startDate: todayStart.toISOString(), endDate: todayEnd.toISOString() };
         break;
       case "7days":
@@ -2004,7 +2007,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       default:
         return { startDate: undefined, endDate: undefined };
     }
-    
+
     return {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
@@ -2013,24 +2016,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const CustomDateInputButton = forwardRef(
     ({ value, onClick, isActive, disabled }, ref) => (
       <button
-        className={`flex items-center pl-3 pr-8 py-1.5 rounded-md text-xs font-medium transition border whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] sm:max-w-none ${
-          isActive
-            ? "bg-orange-500 text-white border-orange-500 shadow-sm"
-            : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 hover:border-gray-400"
-        } ${
-          disabled
+        className={`flex items-center pl-3 pr-8 py-2 md:py-2.5 rounded-md text-xs md:text-sm font-medium transition border whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] sm:max-w-none ${isActive
+          ? "bg-orange-500 text-white border-orange-500 shadow-sm"
+          : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 hover:border-gray-400"
+          } ${disabled
             ? "!bg-gray-100 !border-gray-200 text-gray-400 cursor-not-allowed opacity-50"
             : ""
-        }`}
+          }`}
         onClick={onClick}
         ref={ref}
         disabled={disabled}
         title={value || "날짜 직접 선택"}
       >
         <CalendarDaysIcon
-          className={`w-4 h-4 mr-1.5 flex-shrink-0 ${
-            isActive ? "text-white" : "text-gray-400"
-          }`}
+          className={`w-4 h-4 md:w-5 md:h-5 mr-1.5 md:mr-2 flex-shrink-0 ${isActive ? "text-white" : "text-gray-400"
+            }`}
         />
         <span className="overflow-hidden text-ellipsis">
           {value || "직접 선택"}
@@ -2211,18 +2211,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (product?.title) {
       return product.title;
     }
-    
+
     // orders 데이터에서 product_name 필드 사용 (폴백)
     const order = orders.find((o) => o.product_id === id);
     if (order?.product_name && order.product_name !== "상품명 없음") {
       return order.product_name;
     }
-    
+
     // product_title 필드도 확인 (orders_with_products 뷰에서)
     if (order?.product_title) {
       return order.product_title;
     }
-    
+
     return "상품명 없음";
   };
 
@@ -2527,13 +2527,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (product?.barcode) {
       return product.barcode;
     }
-    
+
     // orders 데이터에서 product_barcode 필드 사용 (폴백)
     const order = orders.find((o) => o.product_id === id);
     if (order?.product_barcode) {
       return order.product_barcode;
     }
-    
+
     return "";
   };
   const getProductById = (id) =>
@@ -2545,7 +2545,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const debugPickupLogging = () => {
     if (typeof window === 'undefined') return;
     let debug = false;
-    try { debug = window.localStorage.getItem('debugPickup') === 'true'; } catch {}
+    try { debug = window.localStorage.getItem('debugPickup') === 'true'; } catch { }
     if (!debug) return;
 
     try {
@@ -2581,7 +2581,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const objFromMap = (m) => Object.fromEntries(Array.from(m.entries()));
       console.groupCollapsed('[Pickup Debug] Orders Beta Page');
       console.log('filterSelection', filterSelection);
-      console.log('counts', { all: all.length, available: Array.from(byBandAvail.values()).reduce((a,b)=>a+b,0) });
+      console.log('counts', { all: all.length, available: Array.from(byBandAvail.values()).reduce((a, b) => a + b, 0) });
       console.log('byBand', { all: objFromMap(byBandAll), available: objFromMap(byBandAvail) });
       console.table(samples);
       console.groupEnd();
@@ -2878,7 +2878,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       try {
         sessionStorage.removeItem('ordersProductsByPostKey');
         sessionStorage.removeItem('ordersProductsByBandPost');
-      } catch (_) {}
+      } catch (_) { }
       setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
       await mutateOrders(undefined, { revalidate: true });
     } finally {
@@ -3045,17 +3045,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const handlePickupAvailableToggle = () => {
     const newToggleState = !showPickupAvailableOnly;
     setShowPickupAvailableOnly(newToggleState);
-    
+
     // localStorage에 상태 저장
     if (typeof window !== 'undefined') {
       localStorage.setItem('showPickupAvailableOnly', newToggleState.toString());
     }
-    
+
     if (newToggleState) {
       // 수령가능만 보기가 활성화되면 주문완료로 설정하고 수령가능 필터 추가
       setFilterSelection("주문완료");
     }
-    
+
     setCurrentPage(1);
     setSelectedOrderIds([]);
   };
@@ -3232,10 +3232,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
 
     const product = getProductById(order.product_id);
-    
+
     // product의 content 필드에 게시물 내용이 저장되어 있음
     const postContent = product?.content || product?.description || "";
-    
+
     // 디버깅용 로그
     console.log("Opening comments for order:", order.order_id);
     console.log("Product ID:", order.product_id);
@@ -3420,6 +3420,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 메인 UI ---
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 flex">
+      <style>{datePickerStyle}</style>
       {/* 수동 동기화 로딩 인디케이터 */}
       {isSyncing && (
         <div className="fixed top-4 right-4 z-[60] px-4 py-2 bg-white border border-gray-200 shadow-lg rounded-lg flex items-center gap-2">
@@ -3483,11 +3484,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 }
               }}
               disabled={!noticeChecked}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-all ${
-                noticeChecked
-                  ? 'bg-orange-600 hover:bg-orange-700 text-white cursor-pointer'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-all ${noticeChecked
+                ? 'bg-orange-600 hover:bg-orange-700 text-white cursor-pointer'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
             >
               확인
             </button>
@@ -3585,7 +3585,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
               <div className="grid grid-cols-[max-content_1fr] items-center">
                 <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
                   <CalendarDaysIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                  조회 기간
+                  기간
                 </div>
                 <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
                   <DatePicker
@@ -3606,11 +3606,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         disabled={isDataLoading}
                         value={
                           customStartDate
-                            ? `${formatDateForPicker(customStartDate)}${
-                                customEndDate
-                                  ? ` ~ ${formatDateForPicker(customEndDate)}`
-                                  : ""
-                              }`
+                            ? `${formatDateForPicker(customStartDate)}${customEndDate
+                              ? ` ~ ${formatDateForPicker(customEndDate)}`
+                              : ""
+                            }`
                             : ""
                         }
                       />
@@ -3660,7 +3659,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       type="text"
                       placeholder="고객명, 상품명, 바코드, post_key..."
                       onKeyDown={handleKeyDown}
-                      className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full pl-9 pr-10 py-2 md:py-3 text-sm md:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                       disabled={isDataLoading}
                     />
                     {/* TODO: 내일 처리 - 검색 타입 선택 드롭다운 */}
@@ -3703,7 +3702,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     {/* order-2, sm:w-auto */}
                     <button
                       onClick={handleSearch}
-                      className="flex-1 sm:flex-none px-8 py-2 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
+                      className="flex-1 sm:flex-none px-8 py-2 md:py-3 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
                       disabled={isDataLoading}
                     >
                       검색
@@ -3711,21 +3710,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <button
                       onClick={handleClearSearch}
                       disabled={isDataLoading}
-                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 text-sm md:text-base rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
+                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 md:py-3 text-sm md:text-base rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
                       aria-label="검색 초기화"
                       title="검색 및 필터 초기화"
                     >
-                      <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
+                      <ArrowUturnLeftIcon className="w-4 h-4 md:w-5 md:h-5 mr-1" />
                       초기화
                     </button>
                     <button
                       onClick={handleSyncNow}
                       disabled={isDataLoading || isSyncing}
-                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 text-sm md:text-base rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 md:py-3 text-sm md:text-base rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                       aria-label="데이터 동기화"
                       title="서버에서 최신 데이터 다시 불러오기"
                     >
-                      <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+                      <ArrowPathIcon className={`w-4 h-4 md:w-5 md:h-5 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
                       {isSyncing ? "동기화 중..." : "동기화"}
                     </button>
                   </div>
@@ -3735,21 +3734,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
           </LightCard>
         </div>
 
-       
+
 
         {/* 필터 섹션 */}
-        <div className="px-4 lg:px-6 pt-4">
+        <div className="px-4 lg:px-6 pt-4 relative z-40">
           <div>
-            <LightCard padding="p-0" className="overflow-hidden">
+            <LightCard padding="p-0" className="relative z-40 overflow-visible">
               <div className="divide-y divide-gray-200">
                 {/* 조회 기간 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-3 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-28 self-stretch">
-                    <CalendarDaysIcon className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
-                    <span className="hidden sm:inline">조회 기간</span>
+                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-4 text-xs md:text-base font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-32 self-stretch rounded-tl-xl">
+                    <CalendarDaysIcon className="w-4 h-4 md:w-6 md:h-6 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                    <span className="hidden sm:inline">기간</span>
                     <span className="sm:hidden">기간</span>
                   </div>
-                  <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
+                  <div className="bg-white px-4 md:px-6 py-2 md:py-4 flex items-center gap-x-4 md:gap-x-6 gap-y-3 flex-wrap rounded-tr-xl relative z-50">
                     <DatePicker
                       selectsRange={true}
                       startDate={customStartDate}
@@ -3762,17 +3761,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       placeholderText="직접 선택"
                       disabled={isDataLoading}
                       popperPlacement="bottom-start"
+                      popperProps={{ strategy: 'fixed' }}
+                      popperClassName="!z-50"
                       customInput={
                         <CustomDateInputButton
                           isActive={filterDateRange === "custom"}
                           disabled={isDataLoading}
                           value={
                             customStartDate
-                              ? `${formatDateForPicker(customStartDate)}${
-                                  customEndDate
-                                    ? ` ~ ${formatDateForPicker(customEndDate)}`
-                                    : ""
-                                }`
+                              ? `${formatDateForPicker(customStartDate)}${customEndDate
+                                ? ` ~ ${formatDateForPicker(customEndDate)}`
+                                : ""
+                              }`
                               : ""
                           }
                         />
@@ -3791,11 +3791,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 {/* 상태 필터 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-3 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-28 self-stretch">
-                    <FunnelIcon className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-2 text-xs md:text-base font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-32 self-stretch rounded-bl-xl">
+                    <FunnelIcon className="w-4 h-4 md:w-6 md:h-6 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
                     상태
                   </div>
-                  <div className="bg-white px-4 py-3">
+                  <div className="bg-white px-4 md:px-6 py-3 md:py-3 rounded-br-xl">
                     <CustomRadioGroup
                       name="orderStatus"
                       options={orderStatusOptions}
@@ -3811,7 +3811,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         </div>
 
         {/* 검색 필터 - sticky */}
-        <div className="sticky top-0 z-20 bg-gray-100 px-4 lg:px-6 pb-4 mt-4 ">
+        <div className="sticky top-0 z-10 bg-gray-100 px-4 lg:px-6 pb-4 mt-4 ">
           <div>
             <LightCard padding="p-0" className="overflow-hidden">
               <div className="grid grid-cols-[max-content_1fr] items-center">
@@ -3900,7 +3900,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           try {
                             await mutateOrders(undefined, { revalidate: true });
                             await mutateProducts(undefined, { revalidate: true });
-                          } catch (_) {}
+                          } catch (_) { }
                         }}
                       />
                     ) : (
@@ -3911,7 +3911,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           try {
                             await mutateOrders(undefined, { revalidate: true });
                             await mutateProducts(undefined, { revalidate: true });
-                          } catch (_) {}
+                          } catch (_) { }
                         }}
                       />
                     )}
@@ -3957,11 +3957,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       상태
                     </th>
                     <th
-                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-20 xl:w-32 bg-gray-50 transition-colors ${
-                        isDataLoading
-                          ? "cursor-not-allowed opacity-50"
-                          : "cursor-pointer select-none hover:bg-gray-100"
-                      }`}
+                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-20 xl:w-32 bg-gray-50 transition-colors ${isDataLoading
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer select-none hover:bg-gray-100"
+                        }`}
                       onClick={isDataLoading ? undefined : togglePickupViewMode}
                       onKeyDown={isDataLoading ? undefined : (e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -3982,11 +3981,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       상품정보
                     </th>
                     <th
-                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-40 bg-gray-50 transition-colors ${
-                        isDataLoading
-                          ? "cursor-not-allowed opacity-50"
-                          : "cursor-pointer select-none hover:bg-gray-100"
-                      }`}
+                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-40 bg-gray-50 transition-colors ${isDataLoading
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer select-none hover:bg-gray-100"
+                        }`}
                       onClick={isDataLoading ? undefined : toggleBarcodeViewMode}
                       onKeyDown={isDataLoading ? undefined : (e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -4031,10 +4029,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         className="px-6 py-10 text-center text-sm text-gray-500"
                       >
                         {searchTerm ||
-                        filterSelection !== "all" ||
-                        filterDateRange !== "30days" || // 기본값 변경 반영
-                        (filterDateRange === "custom" &&
-                          (customStartDate || customEndDate))
+                          filterSelection !== "all" ||
+                          filterDateRange !== "30days" || // 기본값 변경 반영
+                          (filterDateRange === "custom" &&
+                            (customStartDate || customEndDate))
                           ? "조건에 맞는 주문이 없습니다."
                           : "표시할 주문이 없습니다."}
                       </td>
@@ -4050,15 +4048,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     return (
                       <React.Fragment key={group.groupId}>
                         <tr
-                          className={`${
-                            editingOrderId === order.order_id
-                              ? "bg-blue-50 border-l-4 border-blue-400"
-                              : isSelected
-                                ? "bg-orange-50"
-                                : "hover:bg-gray-50"
-                          } transition-colors group ${
-                            isOrdersLoading ? "opacity-70" : ""
-                          }`}
+                          className={`${editingOrderId === order.order_id
+                            ? "bg-blue-50 border-l-4 border-blue-400"
+                            : isSelected
+                              ? "bg-orange-50"
+                              : "hover:bg-gray-50"
+                            } transition-colors group ${isOrdersLoading ? "opacity-70" : ""
+                            }`}
                         >
                           <td
                             onClick={(e) => e.stopPropagation()}
@@ -4076,7 +4072,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 고객명 */}
                           <td
-                            className="py-2 xl:py-3 pr-1 lg:pr-2 xl:pr-3 w-24"
+                            className="py-2 xl:py-3 pr-1 md:pr-2 xl:pr-3 w-24"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleExactCustomerSearch(order.customer_name);
@@ -4084,7 +4080,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           >
                             <div className="flex items-center min-h-[60px]">
                               <span
-                                className="text-sm md:text-base xl:text-lg text-gray-700 hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
+                                className="text-sm text-gray-700 font-medium hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
                                 title={order.customer_name}
                               >
                                 {order.customer_name || "-"}
@@ -4096,7 +4092,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             <StatusBadge status={order.status} processingMethod={order.processing_method} />
                           </td>
                           {/* 수령일시 */}
-                          <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center text-sm md:text-base xl:text-lg text-gray-700 w-20 xl:w-32">
+                          <td className="py-2 xl:py-3 px-1 md:px-3 lg:px-4 xl:px-6 text-center w-20 md:w-24 xl:w-32">
                             {(() => {
                               const list = getCandidateProductsForOrder(order);
                               let displayProd = null;
@@ -4105,11 +4101,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               }
                               if (!displayProd) displayProd = list[0] || null;
                               const pickupDate = displayProd?.pickup_date || null;
-                              return renderPickupDisplay(pickupDate);
+                              return (
+                                <div className="text-sm md:text-base font-medium text-gray-900">
+                                  {renderPickupDisplay(pickupDate)}
+                                </div>
+                              );
                             })()}
                           </td>
                           {/* 댓글 */}
-                          <td className="py-2 xl:py-3 px-2 lg:px-4 xl:px-6 text-sm md:text-base xl:text-xl text-gray-600">
+                          <td className="py-2 xl:py-3 px-2 md:px-3 lg:px-4 xl:px-6 w-60 md:w-72 xl:w-80">
                             <div>
                               {(() => {
                                 const currentComment = processBandTags(order.comment || "");
@@ -4192,9 +4192,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         memoInputRefs.current[order.order_id] = el;
                                       }
                                     }}
-                                    className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-sm md:text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
-                                      order.memo ? "bg-red-50 text-red-600 font-semibold border-red-300" : ""
-                                    }`}
+                                    className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-sm md:text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${order.memo ? "bg-red-50 text-red-600 font-semibold border-red-300" : ""
+                                      }`}
                                     placeholder="메모 입력..."
                                     defaultValue={order.memo || ""}
                                     onFocus={() => handleMemoFocus(order.order_id, order.memo || "")}
@@ -4272,7 +4271,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                     const n = parseInt(m[1], 10);
                                     if (Number.isFinite(n) && n > 0) return n;
                                   }
-                                } catch {}
+                                } catch { }
                                 return idx + 1;
                               };
 
@@ -4288,8 +4287,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                     const price = (selected && Number.isFinite(order?.selected_price))
                                       ? Number(order.selected_price)
                                       : (Number.isFinite(Number(p?.base_price))
-                                          ? Number(p.base_price)
-                                          : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null));
+                                        ? Number(p.base_price)
+                                        : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null));
                                     let imgUrl = p?.image_url || p?.thumbnail_url || p?.thumb_url || null;
                                     if (!imgUrl) {
                                       const bk = p?.band_key || order?.band_key;
@@ -4447,11 +4446,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           key={page}
                           onClick={() => paginate(page)}
                           disabled={isDataLoading}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                            currentPage === page
-                              ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
-                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                          }`}
+                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === page
+                            ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
+                            : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                            }`}
                           aria-current={
                             currentPage === page ? "page" : undefined
                           }
@@ -4508,38 +4506,38 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   선택: <span className="text-orange-600 font-bold">{selectedOrderIds.length}</span>개
                 </span>
                 <div className={`flex gap-3 ${isButtonsReversed ? 'flex-row-reverse' : ''}`}>
-                <button
-                  onClick={() => handleBulkStatusUpdate("주문취소")}
-                  disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
-                >
-                  <XCircleIcon className="w-5 h-5 mr-1.5" />
-                  선택 주문취소
-                </button>
-                <button
-                  onClick={() => handleBulkStatusUpdate("결제완료")}
-                  disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
-                >
-                  <CurrencyDollarIcon className="w-5 h-5 mr-1.5" />
-                  선택 결제완료
-                </button>
-                <button
-                  onClick={() => handleBulkStatusUpdate("주문완료")}
-                  disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
-                >
-                  <ArrowLongLeftIcon className="w-5 h-5 mr-1.5" />
-                  주문완료로 되돌리기
-                </button>
-                <button
-                  onClick={() => handleBulkStatusUpdate("수령완료")}
-                  disabled={selectedOrderIds.length === 0 || isDataLoading}
-                  className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
-                >
-                  <CheckCircleIcon className="w-5 h-5 mr-1.5" />
-                  선택 수령완료
-                </button>
+                  <button
+                    onClick={() => handleBulkStatusUpdate("주문취소")}
+                    disabled={selectedOrderIds.length === 0 || isDataLoading}
+                    className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  >
+                    <XCircleIcon className="w-5 h-5 mr-1.5" />
+                    선택 주문취소
+                  </button>
+                  <button
+                    onClick={() => handleBulkStatusUpdate("결제완료")}
+                    disabled={selectedOrderIds.length === 0 || isDataLoading}
+                    className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  >
+                    <CurrencyDollarIcon className="w-5 h-5 mr-1.5" />
+                    선택 결제완료
+                  </button>
+                  <button
+                    onClick={() => handleBulkStatusUpdate("주문완료")}
+                    disabled={selectedOrderIds.length === 0 || isDataLoading}
+                    className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  >
+                    <ArrowLongLeftIcon className="w-5 h-5 mr-1.5" />
+                    주문완료로 되돌리기
+                  </button>
+                  <button
+                    onClick={() => handleBulkStatusUpdate("수령완료")}
+                    disabled={selectedOrderIds.length === 0 || isDataLoading}
+                    className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  >
+                    <CheckCircleIcon className="w-5 h-5 mr-1.5" />
+                    선택 수령완료
+                  </button>
                 </div>
               </div>
             </div>
@@ -4568,19 +4566,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   return (
                     <div className="flex flex-col">
                       <div
-                        className={`${
-                          isAvailable ? "text-orange-600 font-bold" : ""
-                        }`}
+                        className={`${isAvailable ? "text-orange-600 font-bold" : ""
+                          }`}
                       >
                         {name}
                       </div>
                       {pickupDate && (
                         <div
-                          className={`text-sm mt-1 ${
-                            isAvailable
-                              ? "text-orange-500 font-medium"
-                              : "text-gray-500"
-                          }`}
+                          className={`text-sm mt-1 ${isAvailable
+                            ? "text-orange-500 font-medium"
+                            : "text-gray-500"
+                            }`}
                         >
                           [{formatPickupKSTLabel(pickupDate)}]
                           {isAvailable && (
@@ -4610,33 +4606,30 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   {/* 상태 관리 탭 */}
                   <button
                     onClick={() => handleTabChange("status")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                      activeTab === "status"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
+                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "status"
+                      ? "border-orange-500 text-orange-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
                   >
                     <QrCodeIcon className="w-5 h-5 mr-1.5" /> 상태 관리
                   </button>
                   {/* 주문 정보 탭 (복구) */}
                   <button
                     onClick={() => handleTabChange("info")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                      activeTab === "info"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
+                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "info"
+                      ? "border-orange-500 text-orange-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
                   >
                     <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
                   </button>
                   {/* 주문 처리 탭 */}
                   <button
                     onClick={() => handleTabChange("processing")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${
-                      activeTab === "processing"
-                        ? "border-orange-500 text-orange-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
+                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "processing"
+                      ? "border-orange-500 text-orange-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
                   >
                     <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
                   </button>
@@ -4784,34 +4777,34 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                       <div className="flex items-center">
                                         {selectedOrder.processing_method ===
                                           "ai" && (
-                                          <div
-                                            className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
-                                            title="AI 처리된 주문"
-                                          >
-                                            <SparklesIcon className="w-3 h-3" />
-                                            <span>AI</span>
-                                          </div>
-                                        )}
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
+                                              title="AI 처리된 주문"
+                                            >
+                                              <SparklesIcon className="w-3 h-3" />
+                                              <span>AI</span>
+                                            </div>
+                                          )}
                                         {selectedOrder.processing_method ===
                                           "pattern" && (
-                                          <div
-                                            className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
-                                            title="패턴 처리된 주문"
-                                          >
-                                            <FunnelIcon className="w-3 h-3" />
-                                            <span>패턴</span>
-                                          </div>
-                                        )}
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
+                                              title="패턴 처리된 주문"
+                                            >
+                                              <FunnelIcon className="w-3 h-3" />
+                                              <span>패턴</span>
+                                            </div>
+                                          )}
                                         {selectedOrder.processing_method ===
                                           "manual" && (
-                                          <div
-                                            className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
-                                            title="수동 처리된 주문"
-                                          >
-                                            <PencilIcon className="w-3 h-3" />
-                                            <span>수동</span>
-                                          </div>
-                                        )}
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
+                                              title="수동 처리된 주문"
+                                            >
+                                              <PencilIcon className="w-3 h-3" />
+                                              <span>수동</span>
+                                            </div>
+                                          )}
                                       </div>
                                     )}
                                 </div>
@@ -4843,19 +4836,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           return (
                             <div className="flex flex-col">
                               <div
-                                className={`${
-                                  isAvailable ? "text-orange-600 font-bold" : ""
-                                }`}
+                                className={`${isAvailable ? "text-orange-600 font-bold" : ""
+                                  }`}
                               >
                                 {name}
                               </div>
                               {pickupDate && (
                                 <div
-                                  className={`text-sm mt-1 ${
-                                    isAvailable
-                                      ? "text-orange-500 font-medium"
-                                      : "text-gray-500"
-                                  }`}
+                                  className={`text-sm mt-1 ${isAvailable
+                                    ? "text-orange-500 font-medium"
+                                    : "text-gray-500"
+                                    }`}
                                 >
                                   [{formatPickupKSTLabel(pickupDate)}]
                                   {isAvailable && (
@@ -4983,22 +4974,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         </label>
                         {item.readOnly ? (
                           <div
-                            className={`px-3 py-2 rounded-md border ${
-                              item.highlight
-                                ? "bg-orange-50 border-orange-200 text-orange-700 font-semibold text-lg"
-                                : "bg-gray-100 border-gray-200 text-gray-800"
-                            } ${
-                              item.smallText ? "text-xs break-all" : "text-sm"
-                            } ${
-                              item.preWrap // Apply preWrap style if needed
+                            className={`px-3 py-2 rounded-md border ${item.highlight
+                              ? "bg-orange-50 border-orange-200 text-orange-700 font-semibold text-lg"
+                              : "bg-gray-100 border-gray-200 text-gray-800"
+                              } ${item.smallText ? "text-xs break-all" : "text-sm"
+                              } ${item.preWrap // Apply preWrap style if needed
                                 ? "whitespace-pre-wrap break-words"
                                 : ""
-                            } min-h-[38px] flex items-center`}
+                              } min-h-[38px] flex items-center`}
                           >
                             {/* Display simple value or React node */}
                             {typeof item.value === "string" ||
-                            typeof item.value === "number" ||
-                            React.isValidElement(item.value)
+                              typeof item.value === "number" ||
+                              React.isValidElement(item.value)
                               ? item.value
                               : String(item.value)}
                           </div>
@@ -5205,10 +5193,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             try {
                               const aiResult =
                                 typeof selectedOrder.ai_extraction_result ===
-                                "string"
+                                  "string"
                                   ? JSON.parse(
-                                      selectedOrder.ai_extraction_result
-                                    )
+                                    selectedOrder.ai_extraction_result
+                                  )
                                   : selectedOrder.ai_extraction_result;
 
                               return (
@@ -5392,17 +5380,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           <span className="text-sm text-gray-600">
                             {selectedOrder.ordered_at
                               ? (() => {
-                                  const minutes = getTimeDifferenceInMinutes(
-                                    selectedOrder.ordered_at
-                                  );
-                                  if (minutes < 60) {
-                                    return `${minutes}분 전`;
-                                  } else if (minutes < 1440) {
-                                    return `${Math.floor(minutes / 60)}시간 전`;
-                                  } else {
-                                    return `${Math.floor(minutes / 1440)}일 전`;
-                                  }
-                                })()
+                                const minutes = getTimeDifferenceInMinutes(
+                                  selectedOrder.ordered_at
+                                );
+                                if (minutes < 60) {
+                                  return `${minutes}분 전`;
+                                } else if (minutes < 1440) {
+                                  return `${Math.floor(minutes / 60)}시간 전`;
+                                } else {
+                                  return `${Math.floor(minutes / 1440)}일 전`;
+                                }
+                              })()
                               : "N/A"}
                           </span>
                         </div>
@@ -5582,13 +5570,11 @@ function BarcodeOptionSelector({ order, product, onOptionChange }) {
           {barcodeOptions.map((option, index) => (
             <label
               key={index}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-              } transition-all text-sm ${
-                selectedOption?.barcode === option.barcode
+              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                } transition-all text-sm ${selectedOption?.barcode === option.barcode
                   ? "border-blue-400 bg-blue-100 shadow-sm"
                   : "border-gray-200 bg-white hover:border-gray-300"
-              }`}
+                }`}
             >
               <input
                 type="radio"
