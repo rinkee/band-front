@@ -59,6 +59,7 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
   // 🔍 시간 패턴 추출 - 2단계 접근
   let extractedHour = null;
   let extractedMinute = 0;
+  let extractedTimeHasAmPm = false; // 추출한 시간 주변에 오전/오후 명시 여부
 
   // 1차: 정확한 패턴으로 시도 (띄어쓰기 유무 관계없이)
   const strictTimePatterns = [
@@ -87,11 +88,13 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
       // 오전/오후 체크
       const matchedText = match[0];
       if (matchedText.includes('오후')) {
+        extractedTimeHasAmPm = true;
         // 오후 12시는 그대로, 1-11시는 +12
         if (extractedHour !== 12) {
           extractedHour += 12;
         }
       } else if (matchedText.includes('오전')) {
+        extractedTimeHasAmPm = true;
         // 오전 12시는 0시로
         if (extractedHour === 12) {
           extractedHour = 0;
@@ -120,6 +123,7 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
 
       extractedHour = hour;
       extractedMinute = 0;
+      extractedTimeHasAmPm = context.includes('오전') || context.includes('오후');
 
       // 오전/오후 처리
       if (context.includes('오후')) {
@@ -147,6 +151,7 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
 
         extractedHour = hour;
         extractedMinute = minute;
+        extractedTimeHasAmPm = context.includes('오전') || context.includes('오후');
 
         if (context.includes('오후') && extractedHour < 12) {
           extractedHour += 12;
@@ -325,7 +330,21 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
       if (extractedMonth !== null && extractedDate !== null) {
         // 현재 연도 사용
         const currentYear = baseDate.getFullYear();
-        newPickupDate = new Date(currentYear, extractedMonth - 1, extractedDate); // month는 0-based
+        let targetYear = currentYear;
+        let targetMonth = extractedMonth - 1; // 0-based
+        const baseMonth = baseDate.getMonth() + 1;
+        const baseDay = baseDate.getDate();
+
+        // 요일+일자 패턴(월 정보 없음)에서 기준 월로 잡혔는데 이미 지난 일자라면 다음 달로 이동
+        if (monthDaySource === 'weekdayDate' && extractedMonth === baseMonth && extractedDate < baseDay) {
+          targetMonth += 1;
+          if (targetMonth > 11) {
+            targetMonth = 0;
+            targetYear += 1;
+          }
+        }
+
+        newPickupDate = new Date(targetYear, targetMonth, extractedDate); // month는 0-based
 
         // 게시일보다 과거면 다음 해로 설정
         const dayNames = [
@@ -338,8 +357,6 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
           '토요일'
         ];
         const baseDateStr = `${baseDate.getMonth() + 1}월 ${baseDate.getDate()}일 ${dayNames[baseDate.getDay()]} ${baseDate.getHours()}:${String(baseDate.getMinutes()).padStart(2, '0')}`;
-        const baseMonth = baseDate.getMonth() + 1;
-        const baseDay = baseDate.getDate();
         const isSameCalendarDay = extractedMonth === baseMonth && extractedDate === baseDay;
 
         if (newPickupDate < baseDate && !isSameCalendarDay) {
@@ -413,14 +430,11 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
         // 🔧 시간 조정 로직 개선: 오전/오후 명시 여부 확인
         let finalHour = extractedHour;
 
-        // 오전/오후가 명시되어 있는지 확인 (게시물 전체 컨텍스트)
-        const hasAmPm = /오전|오후/.test(postContent);
-
         // extractedHour가 이미 12 이상이면 오전/오후 처리가 완료된 것
         if (extractedHour >= 12) {
           pickupReason.push(`${extractedHour}시 감지 (24시간 형식)`);
-        } else if (hasAmPm) {
-          // 오전/오후가 명시되어 있으면 이미 처리되었으므로 그대로 사용
+        } else if (extractedTimeHasAmPm) {
+          // 추출한 시간 주변에 오전/오후가 명시되어 있으면 그대로 사용
           pickupReason.push(`${extractedHour}시 감지 (오전/오후 명시)`);
         } else if (extractedHour < 8) {
           // 오전/오후 명시가 없고 8시 미만이면 영업시간 기준으로 오후로 추론
@@ -441,10 +455,10 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
       // pickup_date와 title 모두 업데이트
       return {
         ...product,
-        // 저장 시에는 UTC 기준으로 보정하여 9시간이 더해지는 문제를 방지
-        pickupDate: kstDateToUtcISOString(newPickupDate),
+        // Date를 추가 보정 없이 그대로 직렬화하여 저장
+        pickupDate: newPickupDate.toISOString(),
         pickupDateReason: finalReason,
-        title: updateTitleWithDate(product.title, kstDateToUtcISOString(newPickupDate))
+        title: updateTitleWithDate(product.title, newPickupDate.toISOString())
       };
     });
   }

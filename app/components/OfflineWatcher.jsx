@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-const SUPABASE_REST_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/`
+const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/health`
   : null;
 
 /**
@@ -34,14 +34,12 @@ export default function OfflineWatcher({ redirectPath = "/offline-orders" }) {
         handleOffline();
         return;
       }
-      if (!SUPABASE_REST_URL) return;
+      if (!HEALTH_URL) return;
 
       try {
-        const res = await fetch(SUPABASE_REST_URL, {
-          method: "GET",
-          mode: "no-cors",
-        });
-        const serverError = res.status >= 500 && res.type !== "opaque";
+        const res = await fetch(HEALTH_URL, { method: "GET" });
+        // 401/403/404는 서버가 응답 가능한 상태이므로 정상으로 간주
+        const serverError = res.status >= 500;
         if (serverError) {
           failureCount.current += 1;
         } else {
@@ -56,14 +54,8 @@ export default function OfflineWatcher({ redirectPath = "/offline-orders" }) {
       }
     };
 
-    window.addEventListener("offline", handleOffline);
-    const interval = setInterval(checkHealth, 15000);
-    checkHealth();
-
-    return () => {
-      window.removeEventListener("offline", handleOffline);
-      clearInterval(interval);
-    };
+    // 기능 비활성화: 내일 다시 수정 예정
+    return () => {};
   }, [redirectPath, router, pathname]);
 
   return null;

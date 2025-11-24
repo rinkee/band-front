@@ -3876,16 +3876,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
                       {isSyncing ? "동기화 중..." : "동기화"}
                     </button>
-                    <div className="flex-shrink-0">
-                      <IndexedDBBackupButton />
-                    </div>
-                    <Link
-                      href="/offline-orders"
-                      className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200 font-medium transition-colors whitespace-nowrap"
-                      title="서버 장애 시 로컬 데이터로 주문 관리 페이지 이동"
-                    >
-                      비상 페이지
-                    </Link>
+                    {userData?.role === "admin" && (
+                      <>
+                        <div className="flex-shrink-0">
+                          <IndexedDBBackupButton />
+                        </div>
+                        <Link
+                          href="/offline-orders"
+                          className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200 font-medium transition-colors whitespace-nowrap"
+                          title="서버 장애 시 로컬 데이터로 주문 관리 페이지 이동"
+                        >
+                          비상 페이지
+                        </Link>
+                      </>
+                    )}
                     {isSearchLoading && (
                       <div className="flex items-center gap-1 text-xs text-orange-600 whitespace-nowrap" aria-live="polite">
                         <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -4091,7 +4095,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           >
                             <div className="flex items-center min-h-[60px]">
                               <span
-                                className="text-sm text-gray-700 font-medium hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
+                                className="text-md text-gray-700 font-medium hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
                                 title={order.customer_name}
                               >
                                 {order.customer_name || "-"}
