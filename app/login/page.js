@@ -196,14 +196,13 @@ export default function LoginPage() {
     console.log("Credentials for fetch:", credentials);
 
     try {
-      // Edge Function에서 아이디/비밀번호 및 is_active 검증을 수행
-      const response = await fetch(`${functionsBaseUrl}/auth-login`, {
+      // Next.js API 라우트를 통해 서버에서 Supabase Edge Function 호출
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
-          apikey: supabaseAnonKey, // 필수!
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(credentials), // 요청 본문
+        body: JSON.stringify(credentials),
       });
 
       const result = await response.json(); // 응답 본문을 JSON으로 파싱
