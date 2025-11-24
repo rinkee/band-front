@@ -65,42 +65,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
     }
   };
 
-  // execution_locks 테이블에서 실행 중 상태 확인하는 함수
-  const checkExecutionLock = async (userId) => {
-    try {
-      // baseURL을 사용하지 않고 직접 fetch 사용
-      const response = await fetch(`/api/execution-locks/check?userId=${userId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return data?.is_running || false;
-    } catch (error) {
-      console.error("실행 상태 확인 중 오류:", error);
-      
-      // 네트워크 에러 시 경고만 표시하고 실행 허용
-      if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
-        console.warn("네트워크 연결 문제로 실행 상태 확인 실패. 실행을 허용합니다.");
-        setError("⚠️ 네트워크 연결을 확인해주세요. (실행은 계속됩니다)");
-        
-        // 3초 후 에러 메시지 자동 제거
-        setTimeout(() => {
-          setError("");
-        }, 3000);
-      }
-      
-      // 오류 시 안전하게 false 반환 (실행 허용)
-      return false;
-    }
-  };
-
   // function_number에 따른 Edge Function 이름 결정
   const getEdgeFunctionName = (functionNumber) => {
     
@@ -343,13 +307,6 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       } finally {
         setIsLoading(false);
       }
-      return;
-    }
-
-    // 실행 중 상태 확인
-    const isRunning = await checkExecutionLock(userId);
-    if (isRunning) {
-      setError("⚠️ 이미 처리 중인 작업이 있습니다. 잠시 후 다시 시도해주세요.");
       return;
     }
 
