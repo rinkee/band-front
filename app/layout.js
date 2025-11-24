@@ -8,6 +8,7 @@ import Link from "next/link"; // Next.js의 Link 컴포넌트를 임포트합니
 import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해 추가
 import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< ScrollContext 임포트
 import { UpdateProgressProvider } from "./contexts/UpdateProgressContext"; // UpdateProgressContext 추가
+import OfflineWatcher from "./components/OfflineWatcher";
 
 export default function RootLayoutWrapper({ children }) {
   // Provider를 사용하기 위해 래퍼 컴포넌트
@@ -341,6 +342,7 @@ function LayoutContent({ children }) {
           />
         </head>
         <body className="text-black" suppressHydrationWarning>
+          <OfflineWatcher />
           <main>{children}</main>
         </body>
       </html>
@@ -366,6 +368,7 @@ function LayoutContent({ children }) {
         />
       </head>
       <body suppressHydrationWarning>
+        <OfflineWatcher />
         {/* 비상(정적) 모드 안내 배너 */}
         {process.env.NEXT_PUBLIC_FALLBACK_MODE === "true" && (
           <div className="w-full text-center text-sm text-white bg-orange-500 py-1">

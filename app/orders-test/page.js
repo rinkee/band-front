@@ -26,6 +26,7 @@ import { StatusButton } from "../components/StatusButton"; // StatusButton 다�
 import { useSWRConfig } from "swr";
 import useSWR from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
+import IndexedDBBackupButton from "../components/IndexedDBBackupButton";
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
@@ -3875,6 +3876,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
                       {isSyncing ? "동기화 중..." : "동기화"}
                     </button>
+                    <div className="flex-shrink-0">
+                      <IndexedDBBackupButton />
+                    </div>
+                    <Link
+                      href="/offline-orders"
+                      className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200 font-medium transition-colors whitespace-nowrap"
+                      title="서버 장애 시 로컬 데이터로 주문 관리 페이지 이동"
+                    >
+                      비상 페이지
+                    </Link>
                     {isSearchLoading && (
                       <div className="flex items-center gap-1 text-xs text-orange-600 whitespace-nowrap" aria-live="polite">
                         <ArrowPathIcon className="w-4 h-4 animate-spin" />
