@@ -1353,6 +1353,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           existing_ordered_at: existing?.ordered_at || null,
                           existing_created_at: existing?.created_at || null,
                           existing_commented_at: existing?.commented_at || null,
+                          existing_updated_at: existing?.updated_at || null,
                           existing_customer_name: existing?.customer_name || null,
                           existing_comment_change: existing?.comment_change || null
                         };
@@ -1398,7 +1399,11 @@ export async function processBandPosts(supabase, userId, options = {}) {
                               existing_confirmed_at: extra.existing_confirmed_at ?? null,
                               existing_completed_at: extra.existing_completed_at ?? null,
                               existing_canceled_at: extra.existing_canceled_at ?? null,
-                              existing_paid_at: extra.existing_paid_at ?? null
+                              existing_paid_at: extra.existing_paid_at ?? null,
+                              existing_updated_at: extra.existing_updated_at ?? existing.updated_at ?? null,
+                              existing_ordered_at: extra.existing_ordered_at ?? existing.ordered_at ?? null,
+                              existing_created_at: extra.existing_created_at ?? existing.created_at ?? null,
+                              existing_commented_at: extra.existing_commented_at ?? existing.commented_at ?? null
                             };
                           });
 

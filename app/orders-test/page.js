@@ -916,48 +916,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
     { value: "today", label: "오늘" },
   ];
 
-  // SWR 캐시 비교 함수: 데이터가 실제로 변경되었을 때만 리렌더링
-  const compareOrdersData = useCallback((a, b) => {
-    // 둘 다 없으면 같음
-    if (!a && !b) return true;
-    // 하나만 있으면 다름
-    if (!a || !b) return false;
-
-    // 데이터 배열 비교
-    const aData = a?.data || [];
-    const bData = b?.data || [];
-
-    // 길이가 다르면 다름
-    if (aData.length !== bData.length) return false;
-    // 총 개수가 다르면 다름
-    if (a?.total !== b?.total) return false;
-
-    // 각 주문의 핵심 필드만 비교 (성능 최적화)
-    for (let i = 0; i < Math.min(aData.length, 10); i++) { // 처음 10개만 샘플링
-      const aOrder = aData[i];
-      const bOrder = bData[i];
-
-      if (aOrder?.order_id !== bOrder?.order_id) return false;
-      if (aOrder?.status !== bOrder?.status) return false;
-      if (aOrder?.order_status !== bOrder?.order_status) return false;
-      if (aOrder?.sub_status !== bOrder?.sub_status) return false;
-      if (aOrder?.updated_at !== bOrder?.updated_at) return false;
-      if (aOrder?.product_id !== bOrder?.product_id) return false;
-    }
-
-    // 모든 체크 통과하면 같음 (로그 제거)
-    return true;
-  }, []);
-
   // SWR 옵션 설정 - 완전한 캐시 우선 전략
   const swrOptions = {
-    revalidateOnMount: false, // 마운트 시 재검증 안함 - 캐시 우선
+    revalidateOnMount: true, // 첫 진입 시에는 반드시 서버 검증
     revalidateOnFocus: false, // 창 포커스 시 재검증 안함
     revalidateOnReconnect: false, // 네트워크 재연결 시 재검증 안함
     revalidateIfStale: false, // stale 데이터 재검증 안함
     refreshInterval: 0, // 자동 재검증 완전히 끔
     dedupingInterval: 60000, // 1분 이내 중복 요청 방지
-    compare: compareOrdersData, // 실제 데이터 변경 시에만 리렌더링
     onError: (err) => {
       if (process.env.NODE_ENV === "development") {
         console.error("SWR Error:", err);
@@ -2881,6 +2847,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setIsSyncing(true);
     const start = Date.now();
     try {
+      // 리스트 캐시 무효화 후 재검증
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          (key[0] === "comment_orders" || key[0] === "orders") &&
+          key[1] === userData.userId,
+        undefined,
+        { revalidate: false }
+      );
       // 캐시된 시그니처 무효화해서 재조회 강제
       lastProductSignatureRef.current = null;
       lastImageSignatureRef.current = null;

@@ -219,12 +219,24 @@ export async function generateOrderData(
           0  // variant_index (사용 안 함)
         );
 
-        // 날짜 파싱
-        const orderedAt =
-          safeParseDate(createdAt) ||
+        // 날짜 파싱 (기존 ordered_at이 있으면 최우선 유지)
+        const existingOrderedAt =
           safeParseDate(comment.existing_ordered_at) ||
           safeParseDate(comment.existing_created_at) ||
-          safeParseDate(comment.existing_commented_at);
+          safeParseDate(comment.existing_commented_at) ||
+          null;
+        const orderedAt =
+          existingOrderedAt ||
+          safeParseDate(createdAt);
+        const existingCommentedAt =
+          safeParseDate(comment.existing_commented_at) ||
+          safeParseDate(comment.existing_created_at) ||
+          safeParseDate(comment.existing_ordered_at) ||
+          null;
+        const commentedAt =
+          existingCommentedAt ||
+          orderedAt ||
+          safeParseDate(createdAt);
         let commentChange = comment.comment_change || null;
         let isDeletionFlag = isDeletion === true || commentChange?.status === "deleted";
 
@@ -285,6 +297,36 @@ export async function generateOrderData(
           )}_rev${version}`;
         }
 
+        const isAlreadyDeleted = parsedExistingChange?.status === "deleted";
+        const isStillDeleted = isDeletionFlag && (commentChange?.status === "deleted" || !commentChange);
+
+        // 업데이트 타임스탬프: 실제 변경시에만 now로 갱신 (기존 삭제 재처리 시에는 유지)
+        const existingUpdatedAt =
+          comment.existing_updated_at ||
+          comment.existing_updatedAt ||
+          parsedExistingChange?.updated_at ||
+          parsedExistingChange?.last_seen_at ||
+          parsedExistingChange?.deleted_at ||
+          comment.existing_commented_at ||
+          comment.existing_created_at ||
+          comment.existing_ordered_at ||
+          null;
+        const hasMeaningfulChange =
+          !existing_order_id || // 신규 댓글
+          (!isAlreadyDeleted && isDeletionFlag) || // 처음 삭제로 전환
+          (!isStillDeleted && isDeletionFlag) || // 삭제 상태가 바뀜
+          (!!commentChange && commentChange.status !== "deleted") || // 내용 변경 기록
+          (existing_comment !== undefined && commentContent !== existing_comment); // 본문 차이
+
+        // 이미 삭제된 댓글이고 추가 변화가 없으면 DB 업서트를 건너뛰어 타임스탬프 변조 방지
+        if (isAlreadyDeleted && isStillDeleted && !hasMeaningfulChange) {
+          continue;
+        }
+
+        const resolvedUpdatedAt = hasMeaningfulChange
+          ? new Date().toISOString()
+          : existingUpdatedAt || new Date().toISOString();
+
         // 주문 객체 생성 (댓글 정보만)
         const orderData = {
           // 식별자
@@ -332,12 +374,10 @@ export async function generateOrderData(
           sub_status: comment.existing_sub_status || (isCancellation ? '확인필요' : null),
 
           // 타임스탬프
-          ordered_at: orderedAt || comment.existing_ordered_at || comment.existing_created_at || null,
-          commented_at: orderedAt || comment.existing_commented_at || comment.existing_created_at || null,
+          ordered_at: orderedAt || null,
+          commented_at: commentedAt || null,
           created_at: comment.existing_created_at || new Date().toISOString(),
-          updated_at: isDeletionFlag
-            ? comment.existing_created_at || comment.existing_ordered_at || new Date().toISOString()
-            : new Date().toISOString(),
+          updated_at: resolvedUpdatedAt,
           confirmed_at: comment.existing_confirmed_at || null,
           completed_at: comment.existing_completed_at || null,
           canceled_at: comment.existing_canceled_at || null,
