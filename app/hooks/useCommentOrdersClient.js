@@ -7,9 +7,14 @@ import getAuthedClient from "../lib/authedSupabaseClient";
 // getAuthedClient imported above; kept here for backwards call sites
 
 /**
- * 제외고객 목록 조회
+ * 제외고객 목록 조회 (요청 캐시)
  */
+const excludedCustomersCache = new Map();
 const fetchExcludedCustomers = async (userId) => {
+  if (!userId) return [];
+  if (excludedCustomersCache.has(userId)) {
+    return excludedCustomersCache.get(userId);
+  }
   try {
     const sb = getAuthedClient();
     const { data: userRow, error: userErr } = await sb
@@ -23,11 +28,13 @@ const fetchExcludedCustomers = async (userId) => {
       Array.isArray(userRow.excluded_customers)
     ) {
       const names = userRow.excluded_customers.filter((n) => typeof n === "string" && n.trim().length > 0);
+      excludedCustomersCache.set(userId, names);
       return names;
     }
   } catch (_) {
     // ignore
   }
+  excludedCustomersCache.set(userId, []);
   return [];
 };
 

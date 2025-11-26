@@ -85,7 +85,6 @@ export async function saveOrdersAndCustomersSafely(
         .upsert(normalizedOrders, {
           // DB에 이미 존재하는 유니크 제약(order_id)에 맞춰 진행
           onConflict: "order_id",
-          ignoreDuplicates: true,
         });
       
       if (orderError) {

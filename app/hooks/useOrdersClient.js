@@ -4,9 +4,14 @@ import supabase from "../lib/supabaseClient";
 import getAuthedClient from "../lib/authedSupabaseClient";
 
 /**
- * 제외고객 목록 조회
+ * 제외고객 목록 조회 (요청 캐시)
  */
+const excludedCustomersCache = new Map();
 const fetchExcludedCustomers = async (userId) => {
+  if (!userId) return [];
+  if (excludedCustomersCache.has(userId)) {
+    return excludedCustomersCache.get(userId);
+  }
   try {
     const { data: userData } = await supabase
       .from("users")
@@ -18,11 +23,13 @@ const fetchExcludedCustomers = async (userId) => {
       userData?.excluded_customers &&
       Array.isArray(userData.excluded_customers)
     ) {
+      excludedCustomersCache.set(userId, userData.excluded_customers);
       return userData.excluded_customers;
     }
   } catch (e) {
     // 에러 무시
   }
+  excludedCustomersCache.set(userId, []);
   return [];
 };
 

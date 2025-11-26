@@ -113,7 +113,11 @@ export async function generateOrderData(
           parentAuthorName,
           parentAuthorUserNo,
           content_type,
-          origin_comment_id
+          origin_comment_id,
+          existing_comment,
+          isDeletion,
+          existing_order_id,
+          existing_comment_change
         } = comment;
 
         const isReply =
@@ -181,32 +185,32 @@ export async function generateOrderData(
           commentContent = sanitizedContent;
         }
 
+        // 내용이 비어있을 때만 기존 본문으로 대체 (새 내용이 있으면 그대로 사용)
+        if ((!commentContent || commentContent.trim().length === 0) && existing_comment !== undefined && existing_comment !== null) {
+          commentContent = existing_comment;
+        }
+
         // 필수 필드 검증
-        if (!commentKey || !content) {
-          console.warn('필수 필드 누락', { commentKey, hasContent: !!content });
+        if (!commentKey || (!content && !existing_comment)) {
+          console.warn('필수 필드 누락', { commentKey, hasContent: !!content, hasExisting: !!existing_comment });
           continue;
         }
 
-        // 고객 ID 생성
-        const customerId = generateCustomerUniqueId(userId, authorUserNo || author?.user_no);
-
-        // 고객 정보 추가
-        if (!customers.has(customerId)) {
-          customers.set(customerId, {
-            customer_id: customerId,
-            user_id: userId,
-            band_key: bandKey,
-            band_id: authorUserNo || author?.user_no,
-            name: authorName || author?.name || '이름 없음',
-            profile_image_url: authorProfile || author?.profile_image_url || null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-          processingSummary.generatedCustomers++;
+        // 기존 comment_change 파싱 (삭제 여부 확인)
+        let parsedExistingChange = null;
+        try {
+          parsedExistingChange = typeof existing_comment_change === "string"
+            ? JSON.parse(existing_comment_change)
+            : existing_comment_change;
+        } catch (_) {
+          parsedExistingChange = null;
         }
 
+        // 기존 고객명 (삭제 감지 시 유지)
+        const existingCustomerName = comment.existing_customer_name || null;
+
         // 주문 ID 생성 (item_number는 항상 1)
-        const orderId = generateOrderUniqueId(
+        let orderId = existing_order_id || generateOrderUniqueId(
           userId,
           bandKey,
           postKey,
@@ -216,7 +220,70 @@ export async function generateOrderData(
         );
 
         // 날짜 파싱
-        const orderedAt = safeParseDate(createdAt);
+        const orderedAt =
+          safeParseDate(createdAt) ||
+          safeParseDate(comment.existing_ordered_at) ||
+          safeParseDate(comment.existing_created_at) ||
+          safeParseDate(comment.existing_commented_at);
+        let commentChange = comment.comment_change || null;
+        let isDeletionFlag = isDeletion === true || commentChange?.status === "deleted";
+
+        // 고객 ID/이름 결정 (삭제 시 기존 이름 우선)
+        const customerId = generateCustomerUniqueId(userId, authorUserNo || author?.user_no);
+        const nameCandidate = isReply
+          ? parentName || authorName || author?.name
+          : authorName || author?.name;
+        const resolvedCustomerName =
+          existingCustomerName && (isDeletionFlag || !nameCandidate)
+            ? existingCustomerName
+            : nameCandidate || existingCustomerName || '이름 없음';
+
+        // 삭제 감지인데 comment_change 정보가 없으면 즉석에서 삭제 payload 생성
+        if (isDeletionFlag && (!commentChange || commentChange.status !== "deleted")) {
+          commentChange = buildDeletionChangePayload(existing_comment || content || "", existing_comment_change);
+          isDeletionFlag = true;
+        }
+
+        // 삭제 감지지만 기존 주문이 없으면 스킵 (DB에 새로 만들지 않음)
+        if (isDeletionFlag && !existing_order_id) {
+          continue;
+        }
+
+        // 삭제 시 DB comment를 덮어쓰지 않고 기존 본문 유지
+        if (isDeletionFlag) {
+          commentContent = existing_comment || commentContent || "";
+        }
+
+        // 고객 정보 추가
+        if (!customers.has(customerId)) {
+          customers.set(customerId, {
+            customer_id: customerId,
+            user_id: userId,
+            band_key: bandKey,
+            band_id: authorUserNo || author?.user_no,
+            name: resolvedCustomerName,
+            profile_image_url: authorProfile || author?.profile_image_url || null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+          processingSummary.generatedCustomers++;
+        }
+
+        // 이전에 삭제 처리된 댓글이 새로 달린 경우: 동일 comment_key라도 새로운 order_id 부여
+        const wasDeletedBefore =
+          comment.existing_status === "삭제됨" ||
+          parsedExistingChange?.status === "deleted";
+        if (!isDeletionFlag && existing_order_id && wasDeletedBefore) {
+          const version = commentChange?.version || parsedExistingChange?.version || Date.now();
+          orderId = `${generateOrderUniqueId(
+            userId,
+            bandKey,
+            postKey,
+            commentKey,
+            1,
+            0
+          )}_rev${version}`;
+        }
 
         // 주문 객체 생성 (댓글 정보만)
         const orderData = {
@@ -233,9 +300,7 @@ export async function generateOrderData(
 
           // 고객 정보
           customer_id: customerId,
-          customer_name: isReply
-            ? parentName || authorName || author?.name || '이름 없음'
-            : authorName || author?.name || '이름 없음',
+          customer_name: resolvedCustomerName,
           customer_band_id: isReply
             ? (parentAuthorUserNo ||
               comment.parentAuthorUserNo ||
@@ -249,6 +314,7 @@ export async function generateOrderData(
           comment: commentContent,
           band_comment_id: commentKey,
           band_comment_url: null,
+          comment_change: commentChange,
 
           // 상품 정보 (모두 NULL)
           product_id: null,
@@ -261,19 +327,21 @@ export async function generateOrderData(
           price_option_description: null,
           price_per_unit: null,
 
-          // 상태
-          status: '주문완료',
-          sub_status: isCancellation ? '확인필요' : null,
+          // 상태 (기존 값이 있으면 보존)
+          status: comment.existing_status || '주문완료',
+          sub_status: comment.existing_sub_status || (isCancellation ? '확인필요' : null),
 
           // 타임스탬프
-          ordered_at: orderedAt,
-          commented_at: orderedAt,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          confirmed_at: null,
-          completed_at: null,
-          canceled_at: null,
-          paid_at: null,
+          ordered_at: orderedAt || comment.existing_ordered_at || comment.existing_created_at || null,
+          commented_at: orderedAt || comment.existing_commented_at || comment.existing_created_at || null,
+          created_at: comment.existing_created_at || new Date().toISOString(),
+          updated_at: isDeletionFlag
+            ? comment.existing_created_at || comment.existing_ordered_at || new Date().toISOString()
+            : new Date().toISOString(),
+          confirmed_at: comment.existing_confirmed_at || null,
+          completed_at: comment.existing_completed_at || null,
+          canceled_at: comment.existing_canceled_at || null,
+          paid_at: comment.existing_paid_at || null,
 
           // 메타데이터 (제거)
           processing_method: null,

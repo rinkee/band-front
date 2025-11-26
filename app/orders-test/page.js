@@ -26,7 +26,7 @@ import { StatusButton } from "../components/StatusButton"; // StatusButton 다�
 import { useSWRConfig } from "swr";
 import useSWR from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
-import IndexedDBBackupButton from "../components/IndexedDBBackupButton";
+import ErrorCard from "../components/ErrorCard";
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
@@ -34,6 +34,7 @@ import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
+import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -423,7 +424,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(100);
+  const [itemsPerPage] = useState(30);
   const [products, setProducts] = useState([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -611,6 +612,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       order_id: String(row.comment_order_id ?? row.id ?? row.order_id ?? crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`),
       customer_name: row.commenter_name || row.customer_name || "-",
       comment: row.comment_body || row.comment || "",
+      comment_change: row.comment_change || row.commentChange || null,
       status: row.order_status || row.status || "미수령",
       sub_status: row.sub_status || undefined,
       ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
@@ -972,7 +974,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 서버 사이드 필터링 + 진짜 페이지네이션 (효율적 데이터 로딩)
   const ordersFilters = {
-    limit: itemsPerPage, // 한 페이지에 100개씩
+    limit: 30, // 한 페이지에 30개씩 기본 제한
     sortBy,
     sortOrder,
     // 서버에서 필터링 가능한 항목들
@@ -1059,6 +1061,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
       });
     }
   }, [ordersData]);
+
+  // comment_change 디버깅
+  useEffect(() => {
+    if (ordersData?.data && ordersData.data.length > 0) {
+      const sample = ordersData.data.slice(0, 5).map((o) => ({
+        order_id: o.order_id,
+        comment: o.comment,
+        comment_change: o.comment_change,
+      }));
+      console.log('[comment_change 디버깅] 샘플 5개:', sample);
+    }
+  }, [ordersData?.data]);
 
   // 주문 데이터의 시그니처 (주문 ID 조합) - 실제 내용 기반
   const ordersSignature = useMemo(() => {
@@ -1462,23 +1476,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
       hasLoadedOrdersOnceRef.current = true;
     }
   }, [ordersData?.data]);
-  const showSearchOverlay = isSearchLoading && hasLoadedOrdersOnceRef.current;
+  // 검색 중 오버레이는 제거하고 버튼 내부 스피너만 사용
+  const showSearchOverlay = false;
   const displayedOrderIds = useMemo(
     () => groupedOrders.flatMap((g) => g.orderIds),
     [groupedOrders]
   );
-  const isAllDisplayedSelected = useMemo(
-    () =>
-      displayedOrderIds.length > 0 &&
-      displayedOrderIds.every((id) => selectedOrderIds.includes(id)),
-    [displayedOrderIds, selectedOrderIds]
+  const selectedOrderIdSet = useMemo(
+    () => new Set(selectedOrderIds),
+    [selectedOrderIds]
   );
-  const isSomeDisplayedSelected = useMemo(
-    () =>
-      displayedOrderIds.length > 0 &&
-      displayedOrderIds.some((id) => selectedOrderIds.includes(id)),
-    [displayedOrderIds, selectedOrderIds]
-  );
+
+  const isAllDisplayedSelected =
+    displayedOrderIds.length > 0 &&
+    displayedOrderIds.every((id) => selectedOrderIdSet.has(id));
+  const isSomeDisplayedSelected =
+    displayedOrderIds.length > 0 &&
+    displayedOrderIds.some((id) => selectedOrderIdSet.has(id));
 
   // 선택된 주문들의 총 수량과 총 금액 계산
   const selectedOrderTotals = useMemo(() => {
@@ -1944,23 +1958,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
         console.warn(`⚠️ ${failCount}건 업데이트 실패`);
       }
 
-      // 카운트 SWR 갱신 (미수령/주문완료/결제완료)
-      try {
-        await Promise.all([
-          mutateUnreceivedCount?.(),
-          mutateCompletedCount?.(),
-          mutatePaidCount?.(),
-        ]);
-      } catch (e) {
-        // ignore
-      }
+      // IndexedDB 반영 + 오프라인 페이지 갱신 이벤트
+      const updatedOrdersForLocal = orderIdsToProcess.map((id) => ({
+        ...orders.find((o) => o.order_id === id),
+        status: newStatus,
+        order_status: newStatus,
+        updated_at: new Date().toISOString(),
+      }));
+      await syncOrdersToIndexedDb(updatedOrdersForLocal);
     } catch (err) {
       alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, mutateUnreceivedCount, mutateCompletedCount, mutatePaidCount]);
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -2893,6 +2905,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   }, [userData?.userId, mutateOrders, isSyncing, lastSyncAt]);
 
+  const handleOrdersErrorRetry = useCallback(() => {
+    setError(null);
+    mutateOrders(undefined, { revalidate: true });
+  }, [mutateOrders]);
+
   // 페이지 진입 시 1회 자동 동기화
   const initialSyncDoneRef = useRef(false);
   useEffect(() => {
@@ -2984,6 +3001,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
 
       mutateOrders();
+      await syncOrdersToIndexedDb([{ ...data }]);
     } catch (error) {
       console.error('메모 저장 오류:', error);
       setMemoSavingStates(prev => ({ ...prev, [orderId]: 'error' }));
@@ -2996,7 +3014,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         });
       }, 3000);
     }
-  }, [userData, globalMutate, mutateOrders]);
+  }, [userData, globalMutate, mutateOrders, syncOrdersToIndexedDb]);
 
   // --- 메모 취소 핸들러 ---
   const handleMemoCancel = useCallback((orderId) => {
@@ -3385,38 +3403,26 @@ function OrdersTestPageContent({ mode = "raw" }) {
       </div>
     );
   }
-  if (error)
+  // 오류가 발생하면 즉시 표시 (로그아웃 대신 새로고침/백업 페이지 이동)
+  const forceErrorCard =
+    (typeof window !== "undefined" &&
+      window?.location?.search?.includes("debugErrorCard=1")) ||
+    false;
+
+  if (error || forceErrorCard) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-5">
-        <LightCard className="max-w-md w-full text-center border-red-300">
-          <XCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-5" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
-            오류 발생
-          </h2>
-          <p className="text-sm text-gray-600 mb-6">
-            {error === "Auth Error"
-              ? "인증 정보가 유효하지 않습니다. 다시 로그인해주세요."
-              : "데이터 처리 중 문제가 발생했습니다."}
-          </p>
-          <div className="flex gap-3 justify-center">
-            {error !== "Auth Error" && (
-              <button
-                onClick={() => window.location.reload()}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg shadow-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-400 transition"
-              >
-                <ArrowPathIcon className="w-4 h-4" /> 새로고침
-              </button>
-            )}
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition"
-            >
-              <ArrowUturnLeftIcon className="w-4 h-4" /> 로그아웃
-            </button>
-          </div>
-        </LightCard>
+        <ErrorCard
+          title="서버와 연결이 불안정합니다."
+          message="새로고침하거나 비상 모드로 이동해 계속 작업하세요."
+          onRetry={handleOrdersErrorRetry}
+          offlineHref="/offline-orders"
+          retryLabel="새로고침"
+          className="max-w-md w-full"
+        />
       </div>
     );
+  }
 
   // --- 메인 UI ---
   return (
@@ -3561,21 +3567,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       {/* 우측 메인 컨텐츠 영역 - 페이지 스크롤 */}
       <main className="flex-1">
-        {showSearchOverlay && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-            <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 max-w-md w-[92%] border border-orange-200">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-orange-50">
-                  <ArrowPathIcon className="w-7 h-7 text-orange-500 animate-spin" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-lg font-semibold text-gray-900">검색 중...</span>
-                  <span className="text-sm text-gray-600">주문과 상품을 불러오고 있습니다</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
         {/* 스크롤 최상단 앵커 */}
         <div ref={mainTopRef} className="h-0"></div>
         {/* 필터 섹션 - 임시로 숨김 */}
@@ -3703,10 +3694,36 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     {/* order-2, sm:w-auto */}
                     <button
                       onClick={handleSearch}
-                      className="flex-1 sm:flex-none px-8 py-2 md:py-3 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" // flex-1 sm:flex-none
+                      className="flex-1 sm:flex-none px-8 py-2 md:py-3 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2" // flex-1 sm:flex-none
                       disabled={isDataLoading}
                     >
-                      검색
+                      {isDataLoading ? (
+                        <>
+                          <svg
+                            className="animate-spin h-4 w-4 md:h-5 md:w-5 text-white"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          <span>검색 중...</span>
+                        </>
+                      ) : (
+                        "검색"
+                      )}
                     </button>
                     <button
                       onClick={handleClearSearch}
@@ -3874,22 +3891,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       title="서버에서 최신 데이터 다시 불러오기"
                     >
                       <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
-                      {isSyncing ? "동기화 중..." : "동기화"}
+                      {isSyncing ? "동기화 중..." : "다른 기기와 동기화"}
                     </button>
-                    {userData?.role === "admin" && (
-                      <>
-                        <div className="flex-shrink-0">
-                          <IndexedDBBackupButton />
-                        </div>
-                        <Link
-                          href="/offline-orders"
-                          className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200 font-medium transition-colors whitespace-nowrap"
-                          title="서버 장애 시 로컬 데이터로 주문 관리 페이지 이동"
-                        >
-                          비상 페이지
-                        </Link>
-                      </>
-                    )}
                     {isSearchLoading && (
                       <div className="flex items-center gap-1 text-xs text-orange-600 whitespace-nowrap" aria-live="polite">
                         <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -3973,7 +3976,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     </th>
                     <th
                       className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-20 xl:w-32 bg-gray-50 transition-colors ${isDataLoading
-                        ? "cursor-not-allowed opacity-50"
+                        ? "cursor-not-allowed"
                         : "cursor-pointer select-none hover:bg-gray-100"
                         }`}
                       onClick={isDataLoading ? undefined : togglePickupViewMode}
@@ -3987,7 +3990,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       tabIndex={isDataLoading ? -1 : 0}
                       title={isDataLoading ? "로딩 중..." : "수령일 보기 모드 전환"}
                     >
-                      <span className={isDataLoading ? "text-gray-500" : "text-gray-800 hover:text-orange-600"}>수령일</span>
+                      <span className="text-gray-800 hover:text-orange-600">수령일</span>
                     </th>
                     <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
                       댓글
@@ -3997,7 +4000,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     </th>
                     <th
                       className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-40 bg-gray-50 transition-colors ${isDataLoading
-                        ? "cursor-not-allowed opacity-50"
+                        ? "cursor-not-allowed"
                         : "cursor-pointer select-none hover:bg-gray-100"
                         }`}
                       onClick={isDataLoading ? undefined : toggleBarcodeViewMode}
@@ -4011,7 +4014,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       tabIndex={isDataLoading ? -1 : 0}
                       title={isDataLoading ? "로딩 중..." : "바코드 크기 전환"}
                     >
-                      <div className={`inline-flex items-center justify-center gap-1.5 ${isDataLoading ? "text-gray-500" : "text-gray-800 hover:text-orange-600"}`}>
+                      <div className="inline-flex items-center justify-center gap-1.5 text-gray-800 hover:text-orange-600">
                         <span>바코드</span>
                         {barcodeViewMode === "small" ? (
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4055,7 +4058,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   )}
                   {groupedOrders.map((group) => {
                     const order = group.rep;
-                    const isSelected = group.orderIds.every((id) => selectedOrderIds.includes(id));
+                    const isSelected = group.orderIds.every((id) => selectedOrderIdSet.has(id));
                     const product = getProductById(order.product_id);
                     const hasMultipleBarcodeOptions =
                       product?.barcode_options?.options?.length > 1;
@@ -4080,7 +4083,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 type="checkbox"
                                 className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
                                 value={group.groupId}
-                                checked={isSelected}
+                                checked={selectedOrderIdSet.has(order.order_id)}
                                 onChange={(e) => handleCheckboxChange(e, group.groupId)}
                               />
                             </div>
@@ -4136,7 +4139,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                     const parsed = typeof order.comment_change === 'string'
                                       ? JSON.parse(order.comment_change)
                                       : order.comment_change;
-                                    if (parsed && parsed.status === 'updated' && Array.isArray(parsed.history) && parsed.history.length > 0) {
+                                    if (
+                                      parsed &&
+                                      (parsed.status === 'updated' || parsed.status === 'deleted') &&
+                                      Array.isArray(parsed.history) &&
+                                      parsed.history.length > 0
+                                    ) {
                                       commentChangeData = parsed;
                                     }
                                   }
@@ -4144,7 +4152,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                   // JSON 파싱 실패 시 무시
                                 }
 
-                                // 수정되지 않은 댓글
+                                // 수정/삭제 되지 않은 댓글
                                 if (!commentChangeData) {
                                   return (
                                     <div className="break-words leading-tight font-semibold" title={currentComment}>
@@ -4156,15 +4164,30 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                   );
                                 }
 
-                                // 수정된 댓글: 기존 댓글과 현재 댓글 모두 표시
-                                const history = commentChangeData.history;
-                                const previousComment = history.length > 0
-                                  ? history[history.length - 1].replace(/^version:\d+\s*/, '')
-                                  : '';
+                                // 수정/삭제된 댓글: 이전/현재 모두 표시
+                                const history = commentChangeData.history || [];
+                                const pickPrevious = () => {
+                                  // 직전 버전(마지막 항목 제외)에서 삭제 아닌 내용 찾기
+                                  for (let i = history.length - 2; i >= 0; i -= 1) {
+                                    const entry = history[i] || '';
+                                    if (entry.includes('[deleted]')) continue;
+                                    return entry.replace(/^version:\d+\s*/, '');
+                                  }
+                                  return '';
+                                };
+                                const previousComment = pickPrevious();
+                                const latestCommentRaw = commentChangeData.current || currentComment || '';
+                                const latestComment = commentChangeData.status === 'deleted'
+                                  ? (previousComment || currentComment || '')
+                                  : processBandTags(latestCommentRaw);
+                                const showPrevious =
+                                  commentChangeData.status !== 'deleted' &&
+                                  previousComment &&
+                                  previousComment.trim() !== latestComment.trim();
 
                                 return (
                                   <div className="space-y-1">
-                                    {previousComment && (
+                                    {showPrevious && (
                                       <div className="text-gray-500 line-through text-sm">
                                         <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
                                         <span className="break-words leading-tight font-semibold">{previousComment}</span>
@@ -4174,8 +4197,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                       {order.sub_status === "확인필요" && (
                                         <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
                                       )}
-                                      <span className="text-sm font-semibold text-orange-600 mr-1">[수정됨]</span>
-                                      <span className="font-semibold">{currentComment}</span>
+                                      <span className="text-sm font-semibold text-orange-600 mr-1">
+                                        {commentChangeData.status === 'deleted' ? '[유저에 의해 삭제된 댓글]' : '[수정됨]'}
+                                      </span>
+                                      <span className="font-semibold">{latestComment}</span>
                                     </div>
                                   </div>
                                 );
@@ -4327,6 +4352,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                             <img
                                               src={getProxiedImageUrl(imgUrl)}
                                               alt={title}
+                                              loading="lazy"
+                                              width="56"
+                                              height="56"
                                               className="w-full h-full object-cover"
                                               referrerPolicy="no-referrer"
                                               onError={(e) => { e.currentTarget.style.display = 'none'; }}

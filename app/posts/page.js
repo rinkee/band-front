@@ -1,17 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import ProductBarcodeModal from "../components/ProductBarcodeModal";
 import ProductManagementModal from "../components/ProductManagementModal";
 import PostDetailModal from "../components/PostDetailModal";
+import ErrorCard from "../components/ErrorCard";
 import CommentsModal from "../components/Comments";
 import ToastContainer from "../components/ToastContainer";
 import OrdersInfoCard from "../components/OrdersInfoCard";
 import BarcodeDisplay from "../components/BarcodeDisplay";
+import ProductEditRow from "../components/ProductEditRow";
+import ProductAddRow from "../components/ProductAddRow";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
+import { syncProductsToIndexedDb } from "../lib/indexedDbSync";
 import { useScroll } from "../context/ScrollContext";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
@@ -60,6 +64,7 @@ export default function PostsPage() {
   const [limit] = useState(10); // 페이지당 10개씩 표시
 
   // 검색 관련 상태 - sessionStorage에서 복원
+  const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(() => {
     if (typeof window !== 'undefined') {
       const savedSearchTerm = sessionStorage.getItem('postsSearchTerm');
@@ -117,6 +122,9 @@ export default function PostsPage() {
   const [isTestUpdating, setIsTestUpdating] = useState(false);
   const [testUpdateResult, setTestUpdateResult] = useState(null);
 
+  // 타임아웃 상태
+  const [loadTimeout, setLoadTimeout] = useState(false);
+
   // 사용자 데이터 가져오기
   useEffect(() => {
     const sessionData = sessionStorage.getItem("userData");
@@ -148,13 +156,13 @@ export default function PostsPage() {
     }
   }, [page]);
 
-  // 검색어가 변경될 때마다 sessionStorage에 저장
+  // 검색 실행 시에만 sessionStorage에 저장 (searchQuery 변경 시)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('postsSearchTerm', searchTerm);
+    if (typeof window !== 'undefined' && searchQuery !== undefined) {
       sessionStorage.setItem('postsSearchQuery', searchQuery);
+      sessionStorage.setItem('postsSearchTerm', searchQuery);
     }
-  }, [searchTerm, searchQuery]);
+  }, [searchQuery]);
 
   // 스크롤 위치 실시간 저장
   useEffect(() => {
@@ -192,6 +200,12 @@ export default function PostsPage() {
 
   // Supabase에서 직접 posts 데이터 가져오기
   const fetchPosts = async () => {
+    // AbortController 생성 및 10초 타임아웃 설정
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 10000);
+
     try {
       // 검색어가 있을 때 상품명으로 검색하여 post_key 찾기
       let productPostKeys = [];
@@ -200,7 +214,8 @@ export default function PostsPage() {
           .from('products')
           .select('post_key')
           .eq('user_id', userData.userId)
-          .ilike('title', `%${searchQuery}%`);
+          .ilike('title', `%${searchQuery}%`)
+          .abortSignal(controller.signal);
 
         if (productsWithSearch && productsWithSearch.length > 0) {
           productPostKeys = [...new Set(productsWithSearch.map(p => p.post_key))];
@@ -219,17 +234,20 @@ export default function PostsPage() {
       const countPosts = supabase
         .from("posts")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userData.userId);
+        .eq("user_id", userData.userId)
+        .abortSignal(controller.signal);
       const countProductPosts = supabase
         .from("posts")
         .select("*", { count: "exact", head: true })
         .eq("user_id", userData.userId)
-        .eq("is_product", true);
+        .eq("is_product", true)
+        .abortSignal(controller.signal);
       const countCompletedPosts = supabase
         .from("posts")
         .select("*", { count: "exact", head: true })
         .eq("user_id", userData.userId)
-        .eq("comment_sync_status", "success");
+        .eq("comment_sync_status", "success")
+        .abortSignal(controller.signal);
 
       // 검색어 필터를 각 카운트 쿼리에 적용
       if (statsFilters) {
@@ -255,7 +273,8 @@ export default function PostsPage() {
         .from("posts")
         .select(`*`)
         .eq("user_id", userData.userId)
-        .order("posted_at", { ascending: false });
+        .order("posted_at", { ascending: false })
+        .abortSignal(controller.signal);
 
       // 검색어가 있으면 적용
       if (searchQuery) {
@@ -288,7 +307,8 @@ export default function PostsPage() {
           .select('*')
           .eq('user_id', userData.userId)
           .in('post_key', postKeys)
-          .order('item_number', { ascending: true });
+          .order('item_number', { ascending: true })
+          .abortSignal(controller.signal);
 
         if (!productsError && productsResult) {
           productsData = productsResult;
@@ -309,6 +329,9 @@ export default function PostsPage() {
       // order_needs_ai가 true인 게시물 확인
       const aiPosts = formattedData.filter(post => post.order_needs_ai);
 
+      // 성공 시 타임아웃 클리어
+      clearTimeout(timeoutId);
+
       return {
         posts: formattedData,
         totalCount: totalCount || 0,
@@ -316,6 +339,17 @@ export default function PostsPage() {
         totalStats
       };
     } catch (error) {
+      // 타임아웃 클리어 (메모리 누수 방지)
+      clearTimeout(timeoutId);
+
+      // AbortError를 타임아웃 에러로 변환
+      if (error.name === 'AbortError') {
+        const timeoutError = new Error('데이터 로딩 시간이 초과되었습니다.');
+        timeoutError.isTimeout = true;
+        console.error("Posts fetch timeout:", timeoutError);
+        throw timeoutError;
+      }
+
       console.error("Posts fetch error:", error);
       throw error;
     }
@@ -331,9 +365,22 @@ export default function PostsPage() {
     fetchPosts,
     {
       revalidateOnFocus: false,
-      revalidateOnReconnect: false
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000, // 1분간 중복 요청 방지
+      onLoadingSlow: () => {
+        // 10초 후에도 로딩 중이면 타임아웃 상태 설정
+        setLoadTimeout(true);
+      },
+      loadingTimeout: 10000 // 10초
     }
   );
+
+  // 데이터가 로드되면 타임아웃 상태 해제
+  useEffect(() => {
+    if (postsData || error) {
+      setLoadTimeout(false);
+    }
+  }, [postsData, error]);
 
   // 데이터 로딩 완료 후 스크롤 위치 복원
   useEffect(() => {
@@ -408,13 +455,11 @@ export default function PostsPage() {
     router.push(`/posts?page=${newPage}`);
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setSearchQuery(searchTerm);
-    handlePageChange(1); // 검색 시 첫 페이지로 이동
-  };
-
   const handleClearSearch = () => {
+    // input ref 초기화
+    if (searchInputRef.current) {
+      searchInputRef.current.value = '';
+    }
     setSearchTerm("");
     setSearchQuery("");
     handlePageChange(1);
@@ -647,7 +692,8 @@ export default function PostsPage() {
 
       const newItemNumber = maxItemNumber + 1;
       const postKey = post.post_key;
-      const newProductId = `prod_${userId}_${postKey}_item${newItemNumber}`;
+      const bandKey = post.band_key;
+      const newProductId = `prod_${userId}_${bandKey}_${postKey}_item${newItemNumber}`;
 
       console.log('생성할 product_id:', newProductId);
 
@@ -717,11 +763,15 @@ export default function PostsPage() {
         }
       };
 
-      const { error } = await supabase
+      const { data: insertedProduct, error } = await supabase
         .from('products')
-        .insert(newProductData);
+        .insert(newProductData)
+        .select()
+        .single();
 
       if (error) throw error;
+
+      await syncProductsToIndexedDb(insertedProduct || newProductData);
 
       showSuccess('상품이 추가되었습니다.');
 
@@ -746,21 +796,25 @@ export default function PostsPage() {
     }
   };
 
-  // 상품 수정 함수
-  const handleUpdateProduct = async (productId, originalProduct) => {
-    if (!editingProductData.title || !editingProductData.base_price) {
+  // 상품 수정 함수 (editData를 ProductEditRow에서 전달받음)
+  const handleUpdateProduct = useCallback(async (productId, originalProduct, editData) => {
+    // editData가 전달되지 않으면 기존 editingProductData 사용 (호환성 유지)
+    const productData = editData || editingProductData;
+
+    if (!productData.title || !productData.base_price) {
       showError('상품명과 가격은 필수입니다.');
       return;
     }
 
-    if (!editingProductData.item_number || editingProductData.item_number.toString().trim() === '') {
+    if (!productData.item_number || productData.item_number.toString().trim() === '') {
       showError('상품 번호는 필수입니다.');
       return;
     }
 
     setSavingEditProduct(productId);
     try {
-      const newItemNumber = editingProductData.item_number.toString().trim();
+      const nowIso = new Date().toISOString();
+      const newItemNumber = productData.item_number.toString().trim();
       const originalItemNumber = originalProduct.item_number?.toString();
 
       // item_number가 변경되었는지 확인
@@ -803,17 +857,19 @@ export default function PostsPage() {
         });
 
         // 새 product_id로 레코드 생성
-        const { error: insertError } = await supabase
+        const { data: insertedProduct, error: insertError } = await supabase
           .from('products')
           .insert({
             ...originalProduct,
             product_id: newProductId,
             item_number: newItemNumber,
-            title: editingProductData.title,
-            base_price: parseFloat(editingProductData.base_price) || 0,
-            barcode: editingProductData.barcode || '',
-            updated_at: new Date().toISOString()
-          });
+            title: productData.title,
+            base_price: parseFloat(productData.base_price) || 0,
+            barcode: productData.barcode || '',
+            updated_at: nowIso
+          })
+          .select()
+          .single();
 
         if (insertError) throw insertError;
 
@@ -839,20 +895,40 @@ export default function PostsPage() {
         if (deleteError) throw deleteError;
 
         console.log('상품 번호 변경 완료');
+
+        await syncProductsToIndexedDb(insertedProduct || {
+          ...originalProduct,
+          product_id: newProductId,
+          item_number: newItemNumber,
+          title: productData.title,
+          base_price: parseFloat(productData.base_price) || 0,
+          barcode: productData.barcode || '',
+          updated_at: nowIso
+        });
       } else {
         // item_number가 변경되지 않았으면 일반 업데이트
-        const { error } = await supabase
+        const { data: updatedProduct, error } = await supabase
           .from('products')
           .update({
-            title: editingProductData.title,
-            base_price: parseFloat(editingProductData.base_price) || 0,
-            barcode: editingProductData.barcode || '',
-            updated_at: new Date().toISOString()
+            title: productData.title,
+            base_price: parseFloat(productData.base_price) || 0,
+            barcode: productData.barcode || '',
+            updated_at: nowIso
           })
           .eq('product_id', productId)
-          .eq('user_id', userData.userId);
+          .eq('user_id', userData.userId)
+          .select()
+          .single();
 
         if (error) throw error;
+
+        await syncProductsToIndexedDb(updatedProduct || {
+          ...originalProduct,
+          title: productData.title,
+          base_price: parseFloat(productData.base_price) || 0,
+          barcode: productData.barcode || '',
+          updated_at: nowIso
+        });
       }
 
       showSuccess('상품이 수정되었습니다.');
@@ -873,7 +949,24 @@ export default function PostsPage() {
     } finally {
       setSavingEditProduct(null);
     }
-  };
+  }, [editingProductData, userData?.userId, showError, showSuccess, mutate]);
+
+  // 상품 수정 취소 핸들러 (ProductEditRow용)
+  const handleCancelEdit = useCallback(() => {
+    setEditingProduct(null);
+    setEditingProductData({});
+  }, []);
+
+  // 검색 실행 핸들러 (Enter 또는 버튼 클릭 시)
+  const handleSearch = useCallback((e) => {
+    e?.preventDefault?.();
+    const value = searchInputRef.current?.value?.trim() || '';
+    if (value !== searchQuery) {
+      setSearchQuery(value);
+      setSearchTerm(value);
+      setPage(1);
+    }
+  }, [searchQuery]);
 
   // 상품 삭제 함수
   const handleDeleteProduct = async (product) => {
@@ -1100,14 +1193,16 @@ export default function PostsPage() {
 
     setSavingBarcode(productId);
     try {
-      const { error } = await supabase
+      const { data: updatedProduct, error } = await supabase
         .from('products')
         .update({
           barcode: barcodeValue.trim(),
           updated_at: new Date().toISOString()
         })
         .eq('product_id', productId)
-        .eq('user_id', userData.userId);
+        .eq('user_id', userData.userId)
+        .select()
+        .single();
 
       if (error) throw error;
 
@@ -1120,6 +1215,12 @@ export default function PostsPage() {
 
       // 데이터 즉시 새로고침 (바코드 이미지 바로 표시)
       mutate();
+
+      await syncProductsToIndexedDb(updatedProduct || {
+        product_id: productId,
+        barcode: barcodeValue.trim(),
+        updated_at: new Date().toISOString()
+      });
 
       // 성공 배경색 표시
       setSavedBarcode(productId);
@@ -1273,17 +1374,51 @@ export default function PostsPage() {
   }
 
   if (error) {
+    // 타임아웃 에러와 일반 에러 구분
+    const isTimeoutError = error.isTimeout ||
+      error.name === 'AbortError' ||
+      error.message?.includes('시간이 초과') ||
+      error.message?.includes('AbortError') ||
+      error.message?.includes('aborted');
+
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <h3 className="text-red-800 font-medium">오류가 발생했습니다</h3>
-          <p className="text-red-600 text-base mt-1">{error.message}</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+        <ErrorCard
+          title="서버와 연결이 불안정합니다."
+          message="다시 시도하거나 백업 페이지를 이용해주세요."
+          onRetry={() => {
+            setLoadTimeout(false);
+            mutate();
+          }}
+          offlineHref="/offline-orders"
+          retryLabel="다시 시도"
+          className="max-w-md w-full"
+        />
       </div>
     );
   }
 
   if (!postsData) {
+    // 타임아웃이 발생한 경우 ErrorCard 표시
+    if (loadTimeout) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+          <ErrorCard
+            title="서버와 연결이 불안정합니다."
+            message="잠시 후 다시 시도해주세요."
+            onRetry={() => {
+              setLoadTimeout(false);
+              mutate();
+            }}
+            offlineHref="/offline-orders"
+            retryLabel="다시 시도"
+            className="max-w-md w-full"
+          />
+        </div>
+      );
+    }
+
+    // 정상 로딩 중
     return (
       <div className="flex justify-center items-center h-64">
         <div className="text-lg">데이터를 불러오는 중...</div>
@@ -1301,15 +1436,6 @@ export default function PostsPage() {
       totalCompletedPosts: 0,
     },
   } = postsData;
-
-  // 디버깅: posts 데이터 확인
-  console.log('[DEBUG] postsData:', postsData);
-  console.log('[DEBUG] posts count:', posts.length);
-  if (posts.length > 0) {
-    console.log('[DEBUG] First post:', posts[0]);
-    console.log('[DEBUG] First post products:', posts[0]?.products);
-    console.log('[DEBUG] First post products count:', posts[0]?.products?.length);
-  }
 
   // 바코드 모달에서 "상품 추가"를 눌렀을 때, 해당 게시물에 대한 상품 관리 모달을 열어주는 핸들러
   const openProductManagementForSelected = () => {
@@ -1350,9 +1476,15 @@ export default function PostsPage() {
                   </svg>
                 </div>
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  defaultValue={searchTerm}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearch();
+                    }
+                  }}
                   placeholder="게시물 제목, 내용, 작성자로 검색..."
                   className="block w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
                 />
@@ -1817,95 +1949,15 @@ export default function PostsPage() {
 
                               if (isEditing) {
                                 return (
-                                  <tr key={product.product_id || index} className="bg-amber-50 border-b border-gray-200">
-                                    <td className="px-1 py-1.5 text-center border-r border-gray-200">
-                                      <input
-                                        type="number"
-                                        value={editingProductData.item_number ?? ''}
-                                        onChange={(e) => setEditingProductData(prev => ({ ...prev, item_number: e.target.value }))}
-                                        placeholder="번호 *"
-                                        className="w-full px-1.5 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs text-center"
-                                        min="1"
-                                      />
-                                    </td>
-                                    <td className="px-2 py-1.5 border-r border-gray-200">
-                                      <input
-                                        type="text"
-                                        value={editingProductData.title || ''}
-                                        onChange={(e) => setEditingProductData(prev => ({ ...prev, title: e.target.value }))}
-                                        placeholder="상품명 *"
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
-                                      />
-                                    </td>
-                                    <td className="px-2 py-1.5 border-r border-gray-200">
-                                      <input
-                                        type="number"
-                                        value={editingProductData.base_price ?? ''}
-                                        onChange={(e) => setEditingProductData(prev => ({ ...prev, base_price: e.target.value }))}
-                                        placeholder="가격 *"
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
-                                      />
-                                    </td>
-                                    <td className="px-2 py-1.5 border-r border-gray-200">
-                                      <div className="flex flex-col gap-2">
-                                        {/* 바코드 이미지 (입력값이 있을 때만 표시) */}
-                                        {editingProductData.barcode && (
-                                          <BarcodeDisplay
-                                            value={editingProductData.barcode}
-                                            height={40}
-                                            width={1.5}
-                                            displayValue={true}
-                                            fontSize={10}
-                                            margin={5}
-                                            productName={editingProductData.title || ''}
-                                            price={editingProductData.base_price}
-                                          />
-                                        )}
-                                        <input
-                                          type="text"
-                                          value={editingProductData.barcode || ''}
-                                          onFocus={(e) => {
-                                            // 다른 상품에 저장되지 않은 바코드가 있는지 확인
-                                            const unsavedBarcodes = Object.entries(pendingBarcodes).filter(([pid, value]) => {
-                                              if (pid === product.product_id) return false; // 현재 상품은 제외
-                                              const prod = products.find(p => p.product_id === pid);
-                                              const originalBarcode = prod?.barcode || prod?.productBarcode || '';
-                                              return value !== originalBarcode;
-                                            });
-
-                                            if (unsavedBarcodes.length > 0) {
-                                              e.target.blur(); // 포커스 해제
-                                              alert('저장하지 않은 바코드가 있습니다. 먼저 저장해주세요.');
-                                              return;
-                                            }
-                                          }}
-                                          onChange={(e) => setEditingProductData(prev => ({ ...prev, barcode: e.target.value }))}
-                                          placeholder="바코드"
-                                          className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                                        />
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <div className="flex gap-1">
-                                        <button
-                                          onClick={() => handleUpdateProduct(product.product_id, product)}
-                                          disabled={savingEditProduct === product.product_id}
-                                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-xs rounded transition-colors"
-                                        >
-                                          {savingEditProduct === product.product_id ? '저장 중...' : '저장'}
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setEditingProduct(null);
-                                            setEditingProductData({});
-                                          }}
-                                          className="px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded transition-colors"
-                                        >
-                                          취소
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
+                                  <ProductEditRow
+                                    key={product.product_id || index}
+                                    product={product}
+                                    index={index}
+                                    initialData={editingProductData}
+                                    onSave={handleUpdateProduct}
+                                    onCancel={handleCancelEdit}
+                                    isSaving={savingEditProduct === product.product_id}
+                                  />
                                 );
                               }
 
@@ -2094,89 +2146,23 @@ export default function PostsPage() {
 
                             {/* 상품 추가 행 */}
                             {isAddingNewProduct ? (
-                              <tr className="bg-blue-50 border-b border-gray-200">
-                                <td className="px-1 py-1.5 text-center text-xs font-medium text-gray-500 border-r border-gray-200">
-                                  {(() => {
-                                    const maxItemNumber = products.reduce((max, p) => {
-                                      const itemNum = parseInt(p.item_number) || 0;
-                                      return itemNum > max ? itemNum : max;
-                                    }, 0);
-                                    return maxItemNumber + 1;
-                                  })()}
-                                </td>
-                                <td className="px-2 py-1.5 border-r border-gray-200">
-                                  <input
-                                    type="text"
-                                    placeholder="상품명 *"
-                                    value={isAddingNewProduct.title || ''}
-                                    onChange={(e) => setAddingProduct(prev => ({
-                                      ...prev,
-                                      [post.post_key]: { ...prev[post.post_key], title: e.target.value }
-                                    }))}
-                                    className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
-                                  />
-                                </td>
-                                <td className="px-2 py-1.5 border-r border-gray-200">
-                                  <input
-                                    type="number"
-                                    placeholder="가격 *"
-                                    value={isAddingNewProduct.base_price || ''}
-                                    onChange={(e) => setAddingProduct(prev => ({
-                                      ...prev,
-                                      [post.post_key]: { ...prev[post.post_key], base_price: e.target.value }
-                                    }))}
-                                    className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
-                                  />
-                                </td>
-                                <td className="px-2 py-1.5 border-r border-gray-200">
-                                  <div className="flex flex-col gap-2">
-                                    {/* 바코드 이미지 (입력값이 있을 때만 표시) */}
-                                    {isAddingNewProduct.barcode && (
-                                      <BarcodeDisplay
-                                        value={isAddingNewProduct.barcode}
-                                        height={40}
-                                        width={1.5}
-                                        displayValue={true}
-                                        fontSize={10}
-                                        margin={5}
-                                        productName={isAddingNewProduct.title || '신규 상품'}
-                                        price={isAddingNewProduct.base_price}
-                                      />
-                                    )}
-                                    <input
-                                      type="text"
-                                      placeholder="바코드"
-                                      value={isAddingNewProduct.barcode || ''}
-                                      onChange={(e) => setAddingProduct(prev => ({
-                                        ...prev,
-                                        [post.post_key]: { ...prev[post.post_key], barcode: e.target.value }
-                                      }))}
-                                      className="w-full px-2 py-1 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs"
-                                    />
-                                  </div>
-                                </td>
-                                <td className="px-2 py-1.5">
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={() => handleAddNewProduct(post, isAddingNewProduct)}
-                                      disabled={savingNewProduct === post.post_key}
-                                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-xs rounded transition-colors"
-                                    >
-                                      {savingNewProduct === post.post_key ? '저장 중...' : '저장'}
-                                    </button>
-                                    <button
-                                      onClick={() => setAddingProduct(prev => {
-                                        const newState = { ...prev };
-                                        delete newState[post.post_key];
-                                        return newState;
-                                      })}
-                                      className="px-3 py-1.5 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded transition-colors"
-                                    >
-                                      취소
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
+                              <ProductAddRow
+                                post={post}
+                                nextItemNumber={(() => {
+                                  const maxItemNumber = products.reduce((max, p) => {
+                                    const itemNum = parseInt(p.item_number) || 0;
+                                    return itemNum > max ? itemNum : max;
+                                  }, 0);
+                                  return maxItemNumber + 1;
+                                })()}
+                                onSave={handleAddNewProduct}
+                                onCancel={() => setAddingProduct(prev => {
+                                  const newState = { ...prev };
+                                  delete newState[post.post_key];
+                                  return newState;
+                                })}
+                                isSaving={savingNewProduct === post.post_key}
+                              />
                             ) : (
                               <tr>
                                 <td colSpan="5" className="px-4 py-3">
