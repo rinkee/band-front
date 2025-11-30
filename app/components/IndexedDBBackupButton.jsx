@@ -17,7 +17,7 @@ const PRODUCT_COLUMNS =
 const ORDER_COLUMNS =
   "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
 
-const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+const TWO_WEEKS_MS = 30 * 24 * 60 * 60 * 1000;
 
 const escapeIlike = (value) =>
   value
