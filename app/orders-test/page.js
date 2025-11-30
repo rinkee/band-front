@@ -35,6 +35,7 @@ import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
+import { fetchExcludedCustomers } from "../lib/excludedCustomersCache";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -1340,6 +1341,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
         query = query.lte(dateColumn, dateFilterParams.endDate);
       }
 
+      // 제외고객 필터 추가
+      const excludedCustomers = await fetchExcludedCustomers(userData.userId);
+      if (excludedCustomers.length > 0) {
+        const customerField = mode === "raw" ? "commenter_name" : "customer_name";
+        const escaped = excludedCustomers.map(n => `"${n.replace(/"/g, '""')}"`).join(",");
+        query = query.not(customerField, "in", `(${escaped})`);
+      }
+
       const { count, error } = await query;
 
       if (error) {
@@ -1383,6 +1392,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
         query = query.lte(dateColumn, dateFilterParams.endDate);
       }
 
+      // 제외고객 필터 추가
+      const excludedCustomers = await fetchExcludedCustomers(userData.userId);
+      if (excludedCustomers.length > 0) {
+        const customerField = mode === "raw" ? "commenter_name" : "customer_name";
+        const escaped = excludedCustomers.map(n => `"${n.replace(/"/g, '""')}"`).join(",");
+        query = query.not(customerField, "in", `(${escaped})`);
+      }
+
       const { count, error } = await query;
       if (error) {
         console.error("[주문완료 카운트] error:", error);
@@ -1423,6 +1440,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
       if (dateFilterParams.endDate) {
         query = query.lte(dateColumn, dateFilterParams.endDate);
+      }
+
+      // 제외고객 필터 추가
+      const excludedCustomers = await fetchExcludedCustomers(userData.userId);
+      if (excludedCustomers.length > 0) {
+        const customerField = mode === "raw" ? "commenter_name" : "customer_name";
+        const escaped = excludedCustomers.map(n => `"${n.replace(/"/g, '""')}"`).join(",");
+        query = query.not(customerField, "in", `(${escaped})`);
       }
 
       const { count, error } = await query;
@@ -2054,10 +2079,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
 
       // IndexedDB 반영 + 오프라인 페이지 갱신 이벤트
-      const updatedOrdersForLocal = orderIdsToProcess.map((id) => ({
-        ...orders.find((o) => o.order_id === id),
+      // ordersToUpdateFilter 재사용 (orders.find가 못 찾는 경우 방지)
+      // 한국시간 ISO 문자열 생성 (기존 데이터와 일관성 유지)
+      const now = new Date();
+      const kstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const koreanISOString = kstDate.toISOString().replace('Z', '+09:00');
+      const updatedOrdersForLocal = ordersToUpdateFilter.map((order) => ({
+        ...order,
+        user_id: userData?.userId || order.user_id,
         status: newStatus,
-        updated_at: new Date().toISOString(),
+        updated_at: koreanISOString,
       }));
       await syncOrdersToIndexedDb(updatedOrdersForLocal);
     } catch (err) {
