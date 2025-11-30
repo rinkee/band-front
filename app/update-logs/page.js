@@ -4,6 +4,15 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 5,
+      date: '2025년 12월 1일',
+      updates: [
+        '백업 DB 적용 기본 30일로 변경',
+        '주문페이지 필터 수량 오류 수정',
+        '서버 9번에서 댓글 수정, 삭제 감지 적용'
+      ]
+    },
+    {
       id: 4,
       date: '2025년 11월 25일',
       updates: [
