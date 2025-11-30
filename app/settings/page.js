@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useUserClient, useUserClientMutations } from "../hooks";
 import { useSWRConfig } from "swr";
 import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴포넌트 import
+import ErrorCard from "../components/ErrorCard";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 추가
 import BandApiKeyManager from "../components/BandApiKeyManager";
 import BandApiUsageStats from "../components/BandApiUsageStats";
@@ -1690,6 +1691,26 @@ export default function SettingsPage() {
             로그인 페이지로 이동
           </button>
         </LightCard>
+      </div>
+    );
+  if (!combinedLoading && combinedError)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+        <ErrorCard
+          title="설정 정보를 불러오지 못했습니다."
+          message={
+            userSWRError
+              ? userSWRError.message || String(userSWRError)
+              : String(error || "네트워크 상태를 확인한 뒤 다시 시도해주세요.")
+          }
+          onRetry={() => {
+            setError(null);
+            userMutate();
+          }}
+          offlineHref="/offline-orders"
+          retryLabel="다시 시도"
+          className="max-w-md w-full"
+        />
       </div>
     );
 

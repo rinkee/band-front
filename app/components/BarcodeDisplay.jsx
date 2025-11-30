@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import JsBarcode from "jsbarcode";
 
 /**
@@ -13,7 +13,7 @@ import JsBarcode from "jsbarcode";
  * @param {string} productName - 상품명 (모달에 표시)
  * @param {number} price - 가격 (모달에 표시)
  */
-export default function BarcodeDisplay({
+const BarcodeDisplay = memo(function BarcodeDisplay({
   value,
   format = "CODE128",
   width = 2,
@@ -113,4 +113,6 @@ export default function BarcodeDisplay({
       )}
     </>
   );
-}
+});
+
+export default BarcodeDisplay;

@@ -1,16 +1,60 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import { processBandPosts } from "../lib/updateButton/fuc/processBandPosts";
+import {
+  isIndexedDBAvailable,
+  bulkPut,
+  saveSnapshot,
+  setMeta,
+  getAllFromStore,
+  getDb,
+} from "../lib/indexedDbClient";
 
 export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [keyStatus, setKeyStatus] = useState("main"); // main | backup
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [backupSummary, setBackupSummary] = useState(null);
+  const backupTimerRef = useRef(null);
   const { mutate } = useSWRConfig();
+
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const BACKUP_RANGE_MS = 30 * 24 * 60 * 60 * 1000; // 최근 30일
+  const POST_COLUMNS =
+    "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at";
+  const PRODUCT_COLUMNS =
+    "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
+  const ORDER_COLUMNS =
+    "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
+
+  const escapeIlike = (value) =>
+    value
+      .replace(/\\/g, "\\\\")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
+
+  const resolveExcludedCustomers = () => {
+    try {
+      const sessionData = sessionStorage.getItem("userData");
+      if (!sessionData) return [];
+      const parsed = JSON.parse(sessionData);
+      const raw = parsed?.excludedCustomers ?? parsed?.excluded_customers;
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === "string") {
+        return raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  };
 
   const fetchKeyStatus = useCallback(async () => {
     try {
@@ -69,6 +113,138 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   React.useEffect(() => {
     fetchKeyStatus();
   }, [fetchKeyStatus]);
+
+  const fetchLastWeek = async (table, columns, userId, dateColumn) => {
+    const since = new Date(Date.now() - ONE_WEEK_MS).toISOString();
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .eq("user_id", userId)
+      .gte(dateColumn, since)
+      .order(dateColumn, { ascending: false });
+
+    if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
+    return data || [];
+  };
+
+  const formatBackupSummary = (counts) => {
+    const parts = [];
+    if (counts.posts) parts.push(`게시물 ${counts.posts}`);
+    if (counts.products) parts.push(`상품 ${counts.products}`);
+    if (counts.orders) parts.push(`댓글 ${counts.orders}`);
+    if (parts.length === 0) return "백업 완료";
+    return `${parts.join(", ")} 백업 완료`;
+  };
+
+  const showBackupSummary = (message) => {
+    if (backupTimerRef.current) {
+      clearTimeout(backupTimerRef.current);
+      backupTimerRef.current = null;
+    }
+    setBackupSummary(message);
+    backupTimerRef.current = setTimeout(() => {
+      setBackupSummary(null);
+      backupTimerRef.current = null;
+    }, 3000);
+  };
+
+  const backupToIndexedDB = async (userId) => {
+    if (!isIndexedDBAvailable()) return;
+    try {
+      // posts/products/orders만 초기화 (syncQueue, snapshots, meta는 유지)
+      const clearStores = async (stores) => {
+        const db = await getDb();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(stores, "readwrite");
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => reject(tx.error);
+          stores.forEach((name) => {
+            tx.objectStore(name).clear();
+          });
+        });
+      };
+
+      await clearStores(["posts", "products", "orders"]);
+
+      const excludedCustomers = resolveExcludedCustomers();
+      const excludedNormalized = excludedCustomers.map((c) => (c || "").toString().trim().toLowerCase());
+      const backupSince = new Date(Date.now() - BACKUP_RANGE_MS).toISOString();
+
+      const fetchSince = async (table, columns, dateColumn) => {
+        let query = supabase
+          .from(table)
+          .select(columns)
+          .eq("user_id", userId);
+
+        // orders는 ordered_at이 과거일 수 있어 updated_at 기준으로 증분 백업
+        const effectiveDateColumn = table === "orders" ? "updated_at" : dateColumn;
+        query = query
+          .gte(effectiveDateColumn, backupSince)
+          .order(effectiveDateColumn, { ascending: false });
+
+        // 제외 고객 서버 필터
+        if (table === "orders" && excludedCustomers.length > 0) {
+          const exactNames = excludedCustomers
+            .map((n) => (n || "").toString().trim())
+            .filter(Boolean);
+          if (exactNames.length > 0) {
+            const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
+            query = query.not("customer_name", "in", `(${sanitized.join(",")})`);
+            exactNames.forEach((name) => {
+              const escaped = escapeIlike(name);
+              query = query.not("customer_name", "ilike", `%${escaped}%`);
+            });
+          }
+        }
+
+        const { data, error } = await query;
+        if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
+        return data || [];
+      };
+
+      const [posts, products, orders] = await Promise.all([
+        fetchSince("posts", POST_COLUMNS, "posted_at"),
+        fetchSince("products", PRODUCT_COLUMNS, "updated_at"),
+        fetchSince("orders", ORDER_COLUMNS, "updated_at"),
+      ]);
+
+      const filteredOrders = orders.filter((o) => {
+        const name = (o.customer_name || "").toString().trim().toLowerCase();
+        return (
+          !excludedNormalized.includes(name) &&
+          !excludedNormalized.some((ex) => ex && name.includes(ex))
+        );
+      });
+
+      await bulkPut("posts", posts);
+      await bulkPut("products", products);
+      await bulkPut("orders", filteredOrders);
+
+      const snapshot = await saveSnapshot({
+        counts: {
+          posts: posts.length,
+          products: products.length,
+          orders: filteredOrders.length,
+        },
+        notes: `test-update user:${userId}`,
+      });
+      await setMeta("lastBackupAt", snapshot.createdAt);
+      showBackupSummary(formatBackupSummary(snapshot.counts || {}));
+    } catch (e) {
+      showBackupSummary(e.message || "백업 실패");
+    }
+  };
+
+  // IndexedDB 비어있는지 확인
+  const isIndexedDBEmpty = async () => {
+    if (!isIndexedDBAvailable()) return true;
+    try {
+      const orders = await getAllFromStore("orders");
+      return !orders || orders.length === 0;
+    } catch {
+      return true;
+    }
+  };
 
   // SWR 캐시 갱신 함수
   const refreshSWRCache = useCallback(async (userId) => {
@@ -130,6 +306,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
       if (onProcessingChange) onProcessingChange(true, null);
       setResult(null);
       setError(null);
+      setBackupSummary(null);
 
       // 사용자 정보 가져오기
       const sessionData = sessionStorage.getItem("userData");
@@ -145,6 +322,12 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
       }
 
       console.log(`TestUpdateButton: processBandPosts 호출 시작 (userId: ${userId})`);
+
+      // IndexedDB가 비어있으면 초기 백업 실행
+      if (await isIndexedDBEmpty()) {
+        console.log("[TestUpdateButton] IndexedDB 비어있음 - 초기 백업 실행");
+        await backupToIndexedDB(userId);
+      }
 
       // processBandPosts 함수 호출
       const response = await processBandPosts(supabase, userId, {
@@ -163,6 +346,12 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
         // SWR 캐시 갱신
         await refreshSWRCache(userId);
         await fetchKeyStatus();
+        // IndexedDB에 최근 7일치 최소 필드 백업
+        backupToIndexedDB(userId);
+        // 다른 페이지에서도 즉시 반영하도록 이벤트 브로드캐스트
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("indexeddb-sync"));
+        }
 
         // 부모에게 완료 결과 전달
         if (onProcessingChange) onProcessingChange(false, response);
@@ -181,53 +370,62 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   };
 
   const showKeyStatus = true;
-  const keyStatusLabel = keyStatus === "backup" ? "백업키 사용중" : "기본키 사용중";
-  const keyStatusClass =
-    keyStatus === "backup" ? "text-amber-500" : "text-emerald-600";
+  const keyStatusLabel = backupSummary
+    ? backupSummary
+    : keyStatus === "backup"
+    ? "백업키 사용중"
+    : "기본키 사용중";
+  const keyStatusClass = backupSummary
+    ? "text-gray-800"
+    : keyStatus === "backup"
+    ? "text-amber-500"
+    : "text-emerald-600";
 
   return (
-    <div className="flex items-center gap-3">
-      {showKeyStatus && (
-        <span className={`text-xs font-semibold ${keyStatusClass}`}>
-          {keyStatusLabel}
-        </span>
-      )}
-      <button
-        onClick={handleTestUpdate}
-        disabled={isProcessing}
-        className={`
-          px-4 py-2 rounded-lg font-medium text-white transition-colors
-          ${
-            isProcessing
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-green-600 hover:bg-green-700"
-          }
-        `}
-      >
-        {isProcessing ? (
-          <div className="flex items-center gap-2">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            <span>처리 중...</span>
-          </div>
-        ) : (
-          "업데이트"
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        {showKeyStatus && (
+          <span className={`text-xs font-semibold ${keyStatusClass}`}>
+            {keyStatusLabel}
+          </span>
         )}
-      </button>
+        <button
+          onClick={handleTestUpdate}
+          disabled={isProcessing}
+          className={`
+            px-4 py-2 rounded-lg font-medium text-white transition-colors
+            ${
+              isProcessing
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-green-600 hover:bg-green-700"
+            }
+          `}
+        >
+          {isProcessing ? (
+            <div className="flex items-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <span>처리 중...</span>
+            </div>
+          ) : (
+            "업데이트"
+          )}
+        </button>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { useSWRConfig } from "swr"; // <-- SWR의 mutate 함수 사용을 위해
 import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< ScrollContext 임포트
 import { UpdateProgressProvider } from "./contexts/UpdateProgressContext"; // UpdateProgressContext 추가
 import OfflineWatcher from "./components/OfflineWatcher";
+import IndexedDBBackupButton from "./components/IndexedDBBackupButton";
 
 export default function RootLayoutWrapper({ children }) {
   // Provider를 사용하기 위해 래퍼 컴포넌트
@@ -475,7 +476,10 @@ function LayoutContent({ children }) {
                   </nav>
                 </div>
                 {/* 헤더 우측 영역 */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="hidden md:block">
+                    <IndexedDBBackupButton variant="text" />
+                  </div>
                   {/* 사용자 정보 드롭다운 */}
                   <div className="hidden md:block relative" ref={userDropdownRef}>
                     <button
@@ -541,6 +545,16 @@ function LayoutContent({ children }) {
                           )}
                         </div>
                         <div className="border-t border-gray-100 mt-1">
+                          <Link
+                            href="/offline-orders"
+                            className="w-full px-4 py-2.5 flex items-center gap-2 text-amber-700 hover:bg-amber-50 transition-colors"
+                            onClick={() => setUserDropdownOpen(false)}
+                          >
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <span className="text-sm font-medium">백업 페이지</span>
+                          </Link>
                           <button
                             onClick={handleLogout}
                             className="w-full px-4 py-3 flex items-center gap-2 text-red-600 hover:bg-red-50 transition-colors rounded-b-lg"

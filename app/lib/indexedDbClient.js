@@ -233,3 +233,23 @@ export async function getPendingQueue() {
     request.onsuccess = () => resolve(request.result || []);
   });
 }
+
+export async function deleteQueueItems(ids = []) {
+  if (!ids.length) return;
+  await runTransaction(["syncQueue"], "readwrite", (store) => {
+    ids.forEach((id) => store.delete(id));
+  });
+}
+
+export async function clearAllStores() {
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const storeNames = Array.from(db.objectStoreNames);
+    const tx = db.transaction(storeNames, "readwrite");
+    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => resolve(true);
+    storeNames.forEach((name) => {
+      tx.objectStore(name).clear();
+    });
+  });
+}

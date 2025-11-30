@@ -2,34 +2,7 @@
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import getAuthedClient from "../lib/authedSupabaseClient";
-
-// 토큰이 있으면 Authorization 헤더를 포함한 클라이언트를 생성
-// getAuthedClient imported above; kept here for backwards call sites
-
-/**
- * 제외고객 목록 조회
- */
-const fetchExcludedCustomers = async (userId) => {
-  try {
-    const sb = getAuthedClient();
-    const { data: userRow, error: userErr } = await sb
-      .from("users")
-      .select("excluded_customers")
-      .eq("user_id", userId)
-      .single();
-    if (
-      !userErr &&
-      userRow?.excluded_customers &&
-      Array.isArray(userRow.excluded_customers)
-    ) {
-      const names = userRow.excluded_customers.filter((n) => typeof n === "string" && n.trim().length > 0);
-      return names;
-    }
-  } catch (_) {
-    // ignore
-  }
-  return [];
-};
+import { fetchExcludedCustomers } from "../lib/excludedCustomersCache";
 
 /**
  * 상품명으로 게시물 검색
@@ -58,7 +31,10 @@ const searchProductsByName = async (userId, tokens) => {
 // 쿼리 빌드 함수 (재사용 가능하도록 분리)
 // 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
 const buildQuery = (userId, filters, excludedCustomers = [], productSearchResults = null) => {
-  const status = filters.status || "미수령";
+  // DB 스키마 변경: order_status 삭제됨, status(메인상태), sub_status(보조상태) 사용
+  // status: 주문완료, 수령완료, 주문취소, 결제완료
+  // sub_status: 미수령, 확인필요, 수령가능, null
+  const statusFilter = filters.status || undefined;
   const subStatus = filters.subStatus || undefined;
   const search = (filters.search || "").trim();
   const searchType = filters.searchType || "combined"; // "customer" | "product" | "combined"
@@ -75,15 +51,20 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
     .select("*", { count: "exact" })
     .eq("user_id", userId);
 
-  if (status && status !== "all") {
-    query = query.eq("order_status", status);
+  // 메인 상태 필터 (status 컬럼)
+  if (statusFilter && statusFilter !== "all") {
+    query = query.eq("status", statusFilter);
   }
 
+  // 보조 상태 필터 (sub_status 컬럼)
   if (subStatus) {
-    // 미수령 필터는 특별 처리: sub_status='미수령' AND order_status NOT IN ('수령완료', '주문취소')
     if (subStatus === "미수령") {
+      // 미수령 필터: sub_status='미수령' AND status NOT IN ('수령완료', '주문취소')
       query = query.eq("sub_status", "미수령");
-      query = query.not("order_status", "in", '("수령완료","주문취소")');
+      query = query.not("status", "in", '("수령완료","주문취소")');
+    } else if (subStatus === "none") {
+      // none: sub_status가 null인 경우
+      query = query.is("sub_status", null);
     } else {
       query = query.eq("sub_status", subStatus);
     }
@@ -192,7 +173,9 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
 
 // 목록 조회 (comment_orders)
 const fetchCommentOrders = async (key) => {
-  const [, userId, page, filters] = key;
+  const [, userId, page, filtersKey] = key;
+  // SWR 키에서 직렬화된 filters를 파싱
+  const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
 
   if (!userId) throw new Error("User ID is required");
 
@@ -301,7 +284,10 @@ const fetchCommentOrders = async (key) => {
 };
 
 export function useCommentOrdersClient(userId, page = 1, filters = {}, options = {}) {
-  const getKey = () => (userId ? ["comment_orders", userId, page, filters] : null);
+  // SWR 키를 문자열로 직렬화하여 객체 참조 비교 문제 방지
+  const filtersKey = JSON.stringify(filters);
+
+  const getKey = () => (userId ? ["comment_orders", userId, page, filtersKey] : null);
   const swrOptions = {
     revalidateIfStale: false,
     revalidateOnFocus: true,

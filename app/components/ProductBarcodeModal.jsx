@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useProductClientMutations } from "../hooks/useProductsClient.js";
+import { isIndexedDBAvailable, bulkPut } from "../lib/indexedDbClient";
 
 // 바코드 컴포넌트
 const Barcode = ({ value, width = 1.5, height = 40 }) => {
@@ -823,6 +824,14 @@ export default function ProductBarcodeModal({
     if (onProductUpdate) {
       onProductUpdate(updatedProduct);
     }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("indexeddb-sync"));
+    }
+    try {
+      if (isIndexedDBAvailable()) {
+        bulkPut("products", [updatedProduct]);
+      }
+    } catch (_) {}
   };
 
   // ref callback 함수를 컴포넌트 최상위에서 정의

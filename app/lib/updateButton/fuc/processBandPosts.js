@@ -28,6 +28,136 @@ import { processCancellationRequests } from './cancellation/cancellationProcesso
 import { contentHasPriceIndicator } from './utils/textUtils';
 import { enhancePickupDateFromContent } from './utils/pickupDateEnhancer.js';
 
+// 댓글 수정 추적용 간단 해시 생성기
+const hashCommentText = (text = "") => {
+  const str = String(text);
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(16).slice(0, 8);
+};
+
+const convertBandTags = (text = "") =>
+  text.replace(/<band:refer [^>]*>(.*?)<\/band:refer>/gi, (_m, p1) => `@${p1}`);
+
+const normalizeLatestComments = (list) => {
+  if (!Array.isArray(list)) return [];
+  return list.map((c) => {
+    const body = (c.body || c.content || "").trim();
+    const ts = c.created_at || c.createdAt || "";
+    const author = c.author?.name || "";
+    return `${ts}|${author}|${body}`;
+  });
+};
+
+const latestCommentsHash = (list) => {
+  const norm = normalizeLatestComments(list);
+  return norm.length > 0 ? hashCommentText(norm.join("||")) : null;
+};
+
+const safeParseJson = (value) => {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value;
+};
+
+const buildFormattedCommentForDiff = (comment) => {
+  const baseContent = convertBandTags(comment?.content || "").trim();
+  const isReply =
+    comment?.isReply === true ||
+    comment?.content_type === "post_comment_comment" ||
+    Boolean(comment?.origin_comment_id) ||
+    (comment?.commentKey?.includes("_") && (comment?.parentAuthorName || comment?.parentAuthorUserNo));
+
+  if (!isReply) return baseContent;
+
+  const replierName =
+    comment?.author?.name ||
+    comment?.authorName ||
+    comment?.author_name ||
+    "댓글작성자";
+
+  // 작성자 이름이 이미 앞에 붙어 있으면 제거
+  const escaped = replierName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const body = baseContent.replace(new RegExp(`^@?${escaped}\\s*`), "").trim();
+  const separator = body.length > 0 ? " " : "";
+  return `[대댓글] ${replierName}:${separator}${body}`.trim();
+};
+
+// 기존 comment_change를 이어받아 새로운 버전을 생성
+const buildCommentChangePayload = (previousComment, existingChange, nextComment) => {
+  let parsed = null;
+  try {
+    parsed = typeof existingChange === "string" ? JSON.parse(existingChange) : existingChange;
+  } catch (_) {
+    parsed = null;
+  }
+
+  const history = Array.isArray(parsed?.history) ? [...parsed.history] : [];
+  const existingVersion = parsed?.version || history.length || 0;
+  const existingCurrent = parsed?.current ?? parsed?.latest ?? previousComment ?? "";
+
+  // 최초 이력 보강: 기존 history가 없으면 현재 저장된 댓글을 version:1로 기록
+  if (history.length === 0 && existingCurrent !== undefined) {
+    history.push(`version:1 ${existingCurrent || ""}`);
+  }
+
+  // 새 버전 추가 (변경된 본문)
+  const nextVersion = Math.max(existingVersion, history.length) + 1;
+  history.push(`version:${nextVersion} ${nextComment || ""}`);
+
+  const now = new Date().toISOString();
+  return {
+    hash: hashCommentText(nextComment || ""),
+    status: "updated",
+    history,
+    version: nextVersion,
+    deleted_at: null,
+    updated_at: now,
+    last_seen_at: now,
+    current: nextComment || ""
+  };
+};
+
+const buildDeletionChangePayload = (existingComment, existingChange) => {
+  let parsed = null;
+  try {
+    parsed = typeof existingChange === "string" ? JSON.parse(existingChange) : existingChange;
+  } catch (_) {
+    parsed = null;
+  }
+
+  const history = Array.isArray(parsed?.history) ? [...parsed.history] : [];
+  const existingVersion = parsed?.version || history.length || 0;
+  const existingCurrent = parsed?.current ?? existingComment ?? "";
+
+  if (history.length === 0 && existingCurrent !== undefined) {
+    history.push(`version:1 ${existingCurrent || ""}`);
+  }
+
+  const nextVersion = Math.max(existingVersion, history.length) + 1;
+  history.push(`version:${nextVersion} [deleted]`);
+
+  const now = new Date().toISOString();
+  return {
+    hash: hashCommentText(existingCurrent || ""),
+    status: "deleted",
+    history,
+    version: nextVersion,
+    deleted_at: now,
+    updated_at: now,
+    last_seen_at: now,
+    current: ""
+  };
+};
+
 /**
  * 함수명: processBandPosts
  * 목적: Band 게시물 및 댓글을 가져와 AI로 분석하고 주문 데이터 생성
@@ -251,7 +381,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           const { data: dbPosts, error: dbError } = await supabase
             .from("posts")
             .select(
-              "post_id, post_key, comment_count, last_checked_comment_at, is_product, ai_extraction_status, order_needs_ai, comment_sync_status"
+              "post_id, post_key, comment_count, last_checked_comment_at, is_product, ai_extraction_status, order_needs_ai, comment_sync_status, latest_comments"
             )
             .eq("user_id", userId)
             .in("post_key", postKeys);
@@ -259,6 +389,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           if (dbError) throw dbError;
 
           dbPosts.forEach((dbPost) => {
+            const latestParsed = safeParseJson(dbPost.latest_comments) || [];
             dbPostsMap.set(dbPost.post_key, {
               post_id: dbPost.post_id,
               comment_count: dbPost.comment_count,
@@ -268,7 +399,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
               ai_extraction_status: dbPost.ai_extraction_status,
               is_product: dbPost.is_product,
               order_needs_ai: dbPost.order_needs_ai === true,
-              comment_sync_status: dbPost.comment_sync_status
+              comment_sync_status: dbPost.comment_sync_status,
+              latest_comments: latestParsed,
+              latest_comments_hash: latestCommentsHash(latestParsed)
             });
           });
           console.log(`[2단계] ${dbPostsMap.size}개의 기존 게시물을 찾았습니다.`);
@@ -967,17 +1100,25 @@ export async function processBandPosts(supabase, userId, options = {}) {
               }
 
               // 댓글 업데이트 체크
-              const needsCommentUpdate =
-                (apiPost.commentCount || 0) > (dbPostData?.comment_count || 0);
+              const apiCount = apiPost.commentCount || 0;
+              const dbCount = dbPostData?.comment_count || 0;
+              const countDiffers = apiCount !== dbCount; // 감소도 감지
+              const needsCommentUpdate = apiCount > dbCount || countDiffers;
               const isPendingOrFailedPost =
                 pendingPosts?.some((p) => p.post_key === postKey);
+              const apiLatestHash = latestCommentsHash(apiPost.latest_comments || []);
+              const latestChanged =
+                !!apiLatestHash &&
+                !!dbPostData?.latest_comments_hash &&
+                apiLatestHash !== dbPostData.latest_comments_hash;
 
               // 댓글이 같고 pending도 아니면 completed로 처리
               if (
                 !needsCommentUpdate &&
-                (apiPost.commentCount || 0) === (dbPostData?.comment_count || 0) &&
+                apiCount === dbCount &&
                 !testMode &&
-                !isPendingOrFailedPost
+                !isPendingOrFailedPost &&
+                !latestChanged
               ) {
                 const canMarkCompleted =
                   dbPostData?.ai_extraction_status === "success" ||
@@ -990,7 +1131,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   postsToUpdateCommentInfo.push({
                     post_id: dbPostData.post_id,
                     comment_count: apiPost.commentCount || 0,
-                    comment_sync_status: newSyncStatus
+                    comment_sync_status: newSyncStatus,
+                    latest_comments: apiPost.latest_comments || null
                   });
                 }
               } else if (
@@ -998,7 +1140,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                 testMode ||
                 isPendingOrFailedPost ||
                 forceProcessAllComments ||
-                isOrderNeedsAi
+                isOrderNeedsAi ||
+                latestChanged
               ) {
                 if (
                   dbPostData?.is_product === false &&
@@ -1014,6 +1157,14 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   let newChecked = null;
 
                   try {
+                    const normalizeTimestamp = (value) => {
+                      if (!value) return 0;
+                      if (typeof value === "number") return value;
+                      const ts = new Date(value).getTime();
+                      return Number.isFinite(ts) ? ts : 0;
+                    };
+                    const lastCheckedTs = normalizeTimestamp(dbPostData.last_checked_comment_at);
+
                     // 댓글 가져오기
                     const fetchResult = await fetchBandCommentsWithFailover(
                       bandApiFailover,
@@ -1022,31 +1173,212 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       bandKey,
                       supabase
                     );
-                    const fullComments = fetchResult.comments;
+                    const fullComments = (fetchResult.comments || []).map((c) => ({
+                      ...c,
+                      createdAt: normalizeTimestamp(c.createdAt),
+                      _isDeletedFlag:
+                        c.isDeleted === true ||
+                        c.status === "deleted" ||
+                        c.status === "삭제됨" ||
+                        (typeof c.content === "string" && c.content.trim().length === 0)
+                    }));
                     comments = fullComments;
 
+                    // 이번에 가져온 댓글 + 기존 전체를 조회하여 수정/삭제 여부 판단
+                    const commentKeys = fullComments.map((c) => c.commentKey).filter(Boolean);
+                    let existingOrdersByKey = new Map();
+                    let allOrdersByKey = new Map();
+
+                    const { data: existingOrdersAll, error: existingOrdersError } = await supabase
+                      .from("orders")
+                      .select(
+                        "order_id, comment_key, comment, comment_change, status, sub_status, confirmed_at, completed_at, canceled_at, paid_at, ordered_at, created_at, updated_at, customer_name, customer_id"
+                      )
+                      .eq("user_id", userId)
+                      .eq("post_key", postKey);
+
+                    if (existingOrdersError) {
+                      console.warn("기존 댓글 조회 실패:", existingOrdersError.message);
+                    } else if (Array.isArray(existingOrdersAll)) {
+                      allOrdersByKey = new Map(existingOrdersAll.map((o) => [o.comment_key, o]));
+                      if (commentKeys.length > 0) {
+                        existingOrdersByKey = new Map(
+                          existingOrdersAll
+                            .filter((o) => commentKeys.includes(o.comment_key))
+                            .map((o) => [o.comment_key, o])
+                        );
+                      }
+                    }
+
+                    const changedCommentKeys = new Set();
+                    fullComments.forEach((c) => {
+                      const existing = existingOrdersByKey.get(c.commentKey);
+                      if (!existing) return;
+
+                      // API가 삭제 플래그를 주는 경우 강제로 변경 대상에 포함
+                      if (c._isDeletedFlag) {
+                        changedCommentKeys.add(c.commentKey);
+                        c._formattedForDiff = buildFormattedCommentForDiff(c);
+                        return;
+                      }
+
+                      const formattedIncoming = buildFormattedCommentForDiff(c);
+                      const existingComment = (existing.comment || "").trim();
+                      const incomingHash = hashCommentText(formattedIncoming);
+
+                      // 기존 hash와 동일하면 변경 없음
+                      let existingHash = null;
+                      try {
+                        const parsed = typeof existing.comment_change === "string"
+                          ? JSON.parse(existing.comment_change)
+                          : existing.comment_change;
+                        existingHash = parsed?.hash || null;
+                      } catch (_) {
+                        existingHash = null;
+                      }
+
+                      if (existingHash && existingHash === incomingHash) {
+                        return;
+                      }
+
+                      // 본문 동일하면 변경 아님
+                      if (existingComment === formattedIncoming) {
+                        return;
+                      }
+
+                      changedCommentKeys.add(c.commentKey);
+                      c._formattedForDiff = formattedIncoming;
+                    });
+
+                    // 삭제된 댓글 감지 (최근 댓글 범위 내에서, API 응답에 없으면 삭제로 간주)
+                    const deletedEntries = [];
+                    if (allOrdersByKey.size > 0) {
+                      const fetchedSet = new Set(fullComments.map((c) => c.commentKey));
+                      const recentCandidates = Array.from(allOrdersByKey.values()).sort((a, b) => {
+                        const ta = new Date(a.ordered_at || a.created_at || a.updated_at || 0).getTime();
+                        const tb = new Date(b.ordered_at || b.created_at || b.updated_at || 0).getTime();
+                        return tb - ta;
+                      });
+                      const deletionCheckLimit = fullComments.length > 0 ? fullComments.length : 50; // 여유 버퍼
+
+                      // 1) API 응답에서 사라진 키
+                      recentCandidates.slice(0, deletionCheckLimit).forEach((orderRow) => {
+                        const key = orderRow.comment_key;
+                        if (!key) return;
+                        if (!fetchedSet.has(key)) {
+                          const deletionChange = buildDeletionChangePayload(
+                            orderRow.comment,
+                            orderRow.comment_change
+                          );
+                          deletedEntries.push({
+                            commentKey: key,
+                            content: orderRow.comment || "",
+                            post_key: postKey,
+                            band_key: bandKey,
+                            comment_change: deletionChange,
+                            existing_order_id: orderRow.order_id || null,
+                            isDeletion: true,
+                            existing_comment: orderRow.comment || null,
+                            existing_status: orderRow.status || null,
+                            existing_sub_status: orderRow.sub_status || null,
+                            existing_confirmed_at: orderRow.confirmed_at || null,
+                            existing_completed_at: orderRow.completed_at || null,
+                            existing_canceled_at: orderRow.canceled_at || null,
+                            existing_paid_at: orderRow.paid_at || null,
+                            existing_ordered_at: orderRow.ordered_at || null,
+                            existing_created_at: orderRow.created_at || null,
+                            existing_commented_at: orderRow.commented_at || null,
+                            existing_customer_name: orderRow.customer_name || null,
+                            existing_comment_change: orderRow.comment_change || null
+                          });
+                        }
+                      });
+
+                      // 2) API 응답에 있지만 삭제 플래그/빈 본문인 경우 강제 삭제 처리
+                      fullComments
+                        .filter((c) => c._isDeletedFlag === true)
+                        .forEach((c) => {
+                          const existing = allOrdersByKey.get(c.commentKey);
+                          if (!existing) return;
+                          const deletionChange = buildDeletionChangePayload(
+                            existing.comment,
+                            existing.comment_change
+                          );
+                          deletedEntries.push({
+                            commentKey: c.commentKey,
+                            content: existing.comment || "",
+                            post_key: postKey,
+                            band_key: bandKey,
+                            comment_change: deletionChange,
+                            existing_order_id: existing.order_id || null,
+                            isDeletion: true,
+                            existing_comment: existing.comment || null,
+                            existing_status: existing.status || null,
+                            existing_sub_status: existing.sub_status || null,
+                            existing_confirmed_at: existing.confirmed_at || null,
+                            existing_completed_at: existing.completed_at || null,
+                            existing_canceled_at: existing.canceled_at || null,
+                            existing_paid_at: existing.paid_at || null,
+                            existing_ordered_at: existing.ordered_at || null,
+                            existing_created_at: existing.created_at || null,
+                            existing_commented_at: existing.commented_at || null,
+                            existing_customer_name: existing.customer_name || null,
+                            existing_comment_change: existing.comment_change || null
+                          });
+                        });
+                    }
+
                     // 마지막 체크 이후 댓글만 필터
-                    const lastCheckedTs = dbPostData.last_checked_comment_at || 0;
                     const newComments = fullComments
-                      .filter((c) => c.createdAt > lastCheckedTs)
-                      .map((c) => ({
-                        ...c,
-                        post_key: postKey,
-                        band_key: bandKey
-                      }));
+                      .filter((c) => c.createdAt > lastCheckedTs || changedCommentKeys.has(c.commentKey))
+                      .map((c) => {
+                        const existing = existingOrdersByKey.get(c.commentKey);
+                        const nextContentForDiff = c._formattedForDiff || buildFormattedCommentForDiff(c);
+                        const comment_change = changedCommentKeys.has(c.commentKey)
+                          ? buildCommentChangePayload(existing?.comment, existing?.comment_change, nextContentForDiff)
+                          : null;
+                        return {
+                          ...c,
+                          post_key: postKey,
+                          band_key: bandKey,
+                          comment_change,
+                          existing_order_id: existing?.order_id || null,
+                          existing_comment: existing?.comment || null,
+                          existing_status: existing?.status || null,
+                          existing_sub_status: existing?.sub_status || null,
+                          existing_confirmed_at: existing?.confirmed_at || null,
+                          existing_completed_at: existing?.completed_at || null,
+                          existing_canceled_at: existing?.canceled_at || null,
+                          existing_paid_at: existing?.paid_at || null,
+                          existing_ordered_at: existing?.ordered_at || null,
+                          existing_created_at: existing?.created_at || null,
+                          existing_commented_at: existing?.commented_at || null,
+                          existing_updated_at: existing?.updated_at || null,
+                          existing_customer_name: existing?.customer_name || null,
+                          existing_comment_change: existing?.comment_change || null
+                        };
+                      });
+
+                    const commentsToProcess = [...newComments, ...deletedEntries];
+                    const hasDeletedOnly = newComments.length === 0 && deletedEntries.length > 0;
 
                     // 새 댓글이 있으면 주문/고객 생성 (댓글 전용 모드)
-                    if (newComments.length > 0 || isPendingOrFailedPost) {
-                      if (newComments.length === 0 && !isPendingOrFailedPost) {
-                        console.log(`게시물 ${postKey}: 새 댓글 없음 및 pending/failed 아님`);
-                        shouldUpdateCommentInfo = true;
-                        newCount = apiPost.commentCount || 0;
-                        newChecked = new Date().toISOString();
-                      } else {
+                    if (newComments.length > 0 || hasDeletedOnly || isPendingOrFailedPost) {
+                      {
                         const processAll =
                           isPendingOrFailedPost || forceProcessAllComments || isOrderNeedsAi;
-                        const commentsToProcess = processAll
-                          ? fullComments.map((c) => ({
+                        const finalCommentsToProcess = (() => {
+                          if (!processAll) return commentsToProcess; // 이미 newComments + deletedEntries 포함
+
+                          // processAll 시에도 변경/삭제 정보를 보존하기 위해 extra 필드 맵 생성
+                          const extrasByKey = new Map();
+                          commentsToProcess.forEach((c) => {
+                            if (c?.commentKey) extrasByKey.set(c.commentKey, c);
+                          });
+
+                          const mappedFull = fullComments.map((c) => {
+                            const extra = extrasByKey.get(c.commentKey) || {};
+                            return {
                               ...c,
                               post_key: postKey,
                               band_key: bandKey,
@@ -1058,14 +1390,36 @@ export async function processBandPosts(supabase, userId, options = {}) {
                                 null,
                               content_type: c.content_type || null,
                               origin_comment_id: c.origin_comment_id || null,
-                            }))
-                          : newComments;
+                              comment_change: extra.comment_change || null,
+                              existing_customer_name: extra.existing_customer_name || c.existing_customer_name || null,
+                              existing_order_id: extra.existing_order_id ?? null,
+                              existing_comment: extra.existing_comment ?? null,
+                              existing_status: extra.existing_status ?? null,
+                              existing_sub_status: extra.existing_sub_status ?? null,
+                              existing_confirmed_at: extra.existing_confirmed_at ?? null,
+                              existing_completed_at: extra.existing_completed_at ?? null,
+                              existing_canceled_at: extra.existing_canceled_at ?? null,
+                              existing_paid_at: extra.existing_paid_at ?? null,
+                              existing_updated_at: extra.existing_updated_at ?? existing.updated_at ?? null,
+                              existing_ordered_at: extra.existing_ordered_at ?? existing.ordered_at ?? null,
+                              existing_created_at: extra.existing_created_at ?? existing.created_at ?? null,
+                              existing_commented_at: extra.existing_commented_at ?? existing.commented_at ?? null
+                            };
+                          });
 
-                        if (commentsToProcess.length === 0) {
-                          console.log(`게시물 ${postKey}: 처리할 댓글 없음`);
-                        } else {
+                          // 삭제 항목은 fullComments에 없을 수 있으므로 추가
+                          const deletedOnly = deletedEntries.filter(
+                            (d) => !fullComments.some((c) => c.commentKey === d.commentKey)
+                          );
+
+                          return [...mappedFull, ...deletedOnly];
+                        })();
+
+                          if (finalCommentsToProcess.length === 0) {
+                            console.log(`게시물 ${postKey}: 처리할 댓글 없음`);
+                          } else {
                           console.log(
-                            `게시물 ${postKey}: ${commentsToProcess.length}개 댓글 처리`
+                            `게시물 ${postKey}: ${finalCommentsToProcess.length}개 댓글 처리`
                           );
 
                           // DB에서 order_needs_ai 플래그 가져오기
@@ -1078,21 +1432,21 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           const orderNeedsAi = postData?.order_needs_ai || false;
                           const orderNeedsAiReason = postData?.order_needs_ai_reason || null;
 
-                          const result = await generateOrderData(
-                            supabase,
-                            userId,
-                            commentsToProcess,
-                            postKey,
-                            bandKey,
-                            bandNumber,
-                            null, // productMap (댓글 전용 모드에서는 사용 안 함)
-                            {
-                              ...apiPost,
-                              order_needs_ai: orderNeedsAi,
-                              order_needs_ai_reason: orderNeedsAiReason
-                            },
-                            userSettings
-                          );
+                        const result = await generateOrderData(
+                          supabase,
+                          userId,
+                          finalCommentsToProcess,
+                          postKey,
+                          bandKey,
+                          bandNumber,
+                          null, // productMap (댓글 전용 모드에서는 사용 안 함)
+                          {
+                            ...apiPost,
+                            order_needs_ai: orderNeedsAi,
+                            order_needs_ai_reason: orderNeedsAiReason
+                          },
+                          userSettings
+                        );
 
                           if (!result.success) {
                             throw new Error(result.error || "Unknown error in generateOrderData");
@@ -1135,7 +1489,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           } else {
                             console.log(`${commentsToProcess.length}개의 댓글 처리 완료`);
                             // 통계를 위해 실제 처리한 댓글만 저장
-                            comments = commentsToProcess;
+                        comments = commentsToProcess;
                             shouldUpdateCommentInfo = true;
                           }
                         }
@@ -1163,15 +1517,16 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     console.log(`post_id=${savedPostId} 댓글 처리 실패`);
                   } else {
                     postsToUpdateCommentInfo.push({
-                      post_id: savedPostId,
-                      comment_count: newCount,
-                      last_checked_comment_at: newChecked,
-                      comment_sync_status: "completed"
-                    });
-                    console.log(`post_id=${savedPostId} 댓글 처리 성공`);
-                  }
-                }
-              }
+                            post_id: savedPostId,
+                            comment_count: newCount,
+                            last_checked_comment_at: newChecked,
+                            comment_sync_status: "completed",
+                            latest_comments: apiPost.latest_comments || null
+                          });
+                          console.log(`post_id=${savedPostId} 댓글 처리 성공`);
+                        }
+                      }
+                    }
             }
 
             // 성공적으로 처리된 게시물 정보 반환
@@ -1236,6 +1591,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
             if (updateInfo.comment_sync_status) {
               fieldsToUpdate.comment_sync_status = updateInfo.comment_sync_status;
+            }
+
+            if (updateInfo.latest_comments !== undefined) {
+              fieldsToUpdate.latest_comments = updateInfo.latest_comments;
             }
 
             console.log(`  - [업데이트 시도] Post ${updateInfo.post_id}:`, JSON.stringify(fieldsToUpdate, null, 2));
