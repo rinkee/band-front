@@ -61,6 +61,28 @@ const Barcode = ({ value, width = 1.2, height = 32, fontSize = 12 }) => {
   return <svg ref={barcodeRef}></svg>;
 };
 
+// 밴드 태그 처리 (orders-test와 동일한 표시)
+const processBandTags = (text) => {
+  if (!text) return text;
+
+  let processedText = text;
+  processedText = processedText.replace(
+    /<band:refer\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:refer>/g,
+    "@$1"
+  );
+  processedText = processedText.replace(
+    /<band:mention\s+user_key="[^"]*"[^>]*>([^<]+)<\/band:mention>/g,
+    "@$1"
+  );
+  processedText = processedText.replace(
+    /<band:[^>]*>([^<]+)<\/band:[^>]*>/g,
+    "$1"
+  );
+  processedText = processedText.replace(/<band:[^>]*\/>/g, "");
+
+  return processedText;
+};
+
 export default function OfflineOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -77,7 +99,7 @@ export default function OfflineOrdersPage() {
   const [incrementalSyncing, setIncrementalSyncing] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [storageInfo, setStorageInfo] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("주문완료"); // 기본값: 주문완료
+  const [statusFilter, setStatusFilter] = useState("all"); // 기본값: 전체
   const [currentPage, setCurrentPage] = useState(1);
   const listTopRef = useRef(null);
   // 서버 상태: 'checking' | 'healthy' | 'offline'
@@ -171,7 +193,7 @@ export default function OfflineOrdersPage() {
   const filterByUserId = (items = []) => {
     const uid = resolveUserId();
     if (!uid) return [];
-    return items.filter((item) => item?.user_id === uid);
+    return items.filter((item) => !item?.user_id || item.user_id === uid);
   };
 
   // 주문에 해당하는 상품 목록 가져오기 (orders-test와 동일한 로직)
@@ -389,9 +411,8 @@ export default function OfflineOrdersPage() {
       const allOrders = await getAllFromStore("orders");
       console.log("[offline-orders] 로드된 주문 수:", allOrders.length);
       const filteredOrders = filterByUserId(allOrders);
-      const recent = [...filteredOrders]
-        .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a))
-        .slice(0, 100); // 최신 주문 100개만 노출 (ordered_at 기준)
+      console.log("[offline-orders] 필터링 후 주문 수:", filteredOrders.length);
+      const recent = [...filteredOrders].sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
       if (recent.length > 0) {
         const sample = recent[0];
         console.log("[offline-orders] 주문 샘플:", sample);
@@ -403,13 +424,7 @@ export default function OfflineOrdersPage() {
           product_id: sample.product_id,
         });
       }
-      // 새로운 결과가 비어 있고 기존 목록이 있으면 덮어쓰지 않음
-      setOrders((prev) => {
-        if (recent.length === 0 && prev.length > 0) {
-          return prev;
-        }
-        return recent;
-      });
+      setOrders(recent);
     } catch (err) {
       setToast({
         message: err.message || "IndexedDB에서 주문을 불러오지 못했습니다.",
@@ -532,7 +547,11 @@ export default function OfflineOrdersPage() {
 
   // 다른 페이지/컴포넌트에서 window.dispatchEvent(new Event("indexeddb-sync")) 호출 시 증분 동기화 실행
   useEffect(() => {
-    const handler = () => syncIncremental();
+    const handler = async () => {
+      // IndexedDB에 새로운 스냅샷이 들어왔을 때 목록 갱신
+      await syncIncremental();
+      await loadRecentOrders();
+    };
     if (typeof window !== "undefined") {
       window.addEventListener("indexeddb-sync", handler);
     }
@@ -550,7 +569,8 @@ export default function OfflineOrdersPage() {
       return;
     }
     const results = await searchOrders(term, 200);
-    setOrders(results);
+    const filtered = filterByUserId(results);
+    setOrders(filtered);
   };
 
   const toggleSelect = (orderId) => {
@@ -563,6 +583,86 @@ export default function OfflineOrdersPage() {
 
   const isSupabaseHealthy = supabaseHealth === "healthy";
 
+  // 상태 변경 시 필요한 타임스탬프 필드 추가
+  const applyStatusTimestamps = (order, nextStatus, nowIso) => {
+    const patch = { updated_at: nowIso };
+    switch (nextStatus) {
+      case "수령완료":
+        // 완료 시점 기록
+        patch.completed_at = order.completed_at || nowIso;
+        break;
+      case "결제완료":
+        patch.paid_at = order.paid_at || nowIso;
+        break;
+      case "주문취소":
+        patch.canceled_at = order.canceled_at || nowIso;
+        break;
+      case "주문완료":
+        patch.confirmed_at = order.confirmed_at || nowIso;
+        break;
+      default:
+        break;
+    }
+    return patch;
+  };
+
+  // Supabase 스키마에 맞춰 주문 payload를 필터링
+  const ORDER_SYNC_KEYS = new Set([
+    "order_id",
+    "user_id",
+    "product_id",
+    "post_number",
+    "band_number",
+    "customer_name",
+    "customer_band_id",
+    "customer_profile",
+    "quantity",
+    "price",
+    "total_amount",
+    "comment",
+    "status",
+    "ordered_at",
+    "confirmed_at",
+    "completed_at",
+    "band_comment_id",
+    "band_comment_url",
+    "admin_note",
+    "updated_at",
+    "history",
+    "canceled_at",
+    "price_option_used",
+    "content",
+    "customer_id",
+    "price_option_description",
+    "created_at",
+    "price_per_unit",
+    "item_number",
+    "commented_at",
+    "product_name",
+    "paid_at",
+    "sub_status",
+    "post_key",
+    "band_key",
+    "comment_key",
+    "selected_barcode_option",
+    "ai_extraction_result",
+    "processing_method",
+    "ai_process_reason",
+    "pattern_details",
+    "matching_metadata",
+    "memo",
+    "comment_change",
+  ]);
+
+  const sanitizeOrderPayload = (order) => {
+    if (!order) return order;
+    const safe = {};
+    ORDER_SYNC_KEYS.forEach((key) => {
+      if (order[key] !== undefined) safe[key] = order[key];
+    });
+    return safe;
+  };
+
   const handleBulkStatusUpdate = async (nextStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkLoading(true);
@@ -573,7 +673,7 @@ export default function OfflineOrdersPage() {
         .map((o) => ({
           ...o,
           status: nextStatus,
-          updated_at: now,
+          ...applyStatusTimestamps(o, nextStatus, now),
         }));
 
       for (const updated of updates) {
@@ -582,7 +682,7 @@ export default function OfflineOrdersPage() {
           table: "orders",
           op: "upsert",
           pkValue: updated.order_id,
-          payload: updated,
+          payload: sanitizeOrderPayload(updated),
           updatedAt: updated.updated_at,
         });
       }
@@ -591,7 +691,7 @@ export default function OfflineOrdersPage() {
       setOrders((prev) =>
         prev.map((o) =>
           selectedOrderIds.includes(o.order_id)
-            ? { ...o, status: nextStatus, updated_at: now }
+            ? { ...o, status: nextStatus, ...applyStatusTimestamps(o, nextStatus, now) }
             : o
         )
       );
@@ -660,7 +760,13 @@ export default function OfflineOrdersPage() {
       const response = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: filteredQueue }),
+        body: JSON.stringify({
+          items: filteredQueue.map((q) =>
+            q.table === "orders"
+              ? { ...q, payload: sanitizeOrderPayload(q.payload) }
+              : q
+          ),
+        }),
       });
 
       if (!response.ok) {
@@ -670,9 +776,24 @@ export default function OfflineOrdersPage() {
       const data = await response.json();
 
       // 성공 처리: 응답에 ok 필드가 있으면 ok만 제거, 없으면 전체 제거
-      const okIds = Array.isArray(data?.results)
-        ? data.results.filter((r) => r?.ok).map((r) => r.id)
-        : filteredQueue.map((q) => q.id);
+    const okIds = Array.isArray(data?.results)
+      ? data.results.filter((r) => r?.ok).map((r) => r.id)
+      : filteredQueue.map((q) => q.id);
+
+    if (Array.isArray(data?.results)) {
+      const failed = data.results.filter((r) => !r?.ok);
+      if (failed.length > 0) {
+        const reasons = failed
+          .map((r) => `${r.id ?? "?"}: ${r.reason ?? "알 수 없는 오류"}`)
+          .join(", ");
+        // 큐를 지우기 전에 사용자에게 이유를 알려주고 리턴
+        setToast({
+          type: "error",
+          message: `동기화 실패(${failed.length}건): ${reasons}`,
+        });
+        return;
+      }
+    }
 
       await deleteQueueItems(okIds);
       await loadQueueSize();
@@ -724,8 +845,12 @@ export default function OfflineOrdersPage() {
   // pickup_date 기반 수령가능 판정 (주문완료 + 수령일이 오늘/미래)
   const isPickupAvailable = (order) => {
     const KST_OFFSET = 9 * 60 * 60 * 1000;
-    const now = new Date(Date.now() + KST_OFFSET);
-    const todayYmd = now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate();
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + KST_OFFSET);
+    const todayYmd =
+      kstNow.getUTCFullYear() * 10000 +
+      (kstNow.getUTCMonth() + 1) * 100 +
+      kstNow.getUTCDate();
     let pickupDate = null;
 
     // 주문에 pickup_date가 있으면 우선 사용
@@ -744,8 +869,12 @@ export default function OfflineOrdersPage() {
     try {
       const dt = new Date(pickupDate);
       const kst = new Date(dt.getTime() + KST_OFFSET);
-      const ymd = kst.getUTCFullYear() * 10000 + (kst.getUTCMonth() + 1) * 100 + kst.getUTCDate();
-      return ymd >= todayYmd;
+      const ymd =
+        kst.getUTCFullYear() * 10000 +
+        (kst.getUTCMonth() + 1) * 100 +
+        kst.getUTCDate();
+      // 수령일이 오늘 또는 이미 지난 경우 수령 가능으로 처리
+      return ymd <= todayYmd;
     } catch {
       return false;
     }
@@ -754,16 +883,8 @@ export default function OfflineOrdersPage() {
   const displayedOrdersResult = useMemo(() => {
     if (!orders || orders.length === 0) return { list: [], total: 0 };
 
-    // 제외 고객 필터링
+    // 제외 고객 필터링은 오프라인 뷰에서는 적용하지 않음 (전체 데이터 확인 목적)
     let filtered = orders;
-    if (excludedCustomers.length > 0) {
-      filtered = orders.filter((order) => {
-        const customerName = order.customer_name || "";
-        return !excludedCustomers.some((excluded) =>
-          customerName.includes(excluded) || excluded.includes(customerName)
-        );
-      });
-    }
 
     if (exactCustomerFilter) {
       filtered = filtered.filter(
@@ -861,10 +982,48 @@ export default function OfflineOrdersPage() {
     if (!value) return "-";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "-";
-    return d.toLocaleDateString("ko-KR", {
-      month: "2-digit",
-      day: "2-digit",
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
+    const kst = new Date(d.getTime() + KST_OFFSET);
+    const month = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(kst.getUTCDate()).padStart(2, "0");
+    return `${month}.${day}`;
+  };
+
+  const formatPickupRelative = (value) => {
+    if (!value) return "-";
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return "-";
+    const now = new Date();
+
+    // 올바른 일수 계산: 날짜만 비교 (시간 제외)
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const pickupStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    const dayDiff = Math.round((pickupStart - todayStart) / (1000 * 60 * 60 * 24));
+
+    let dayLabel = "";
+    let colorClass = "";
+
+    if (dayDiff === 0) {
+      dayLabel = "오늘";
+      colorClass = "text-green-600";  // 오늘: 초록색
+    } else if (dayDiff === 1) {
+      dayLabel = "내일";
+      colorClass = "text-gray-400";   // 미래: 연한 회색
+    } else if (dayDiff > 1) {
+      dayLabel = `${dayDiff}일 후`;
+      colorClass = "text-gray-400";   // 미래: 연한 회색
+    } else {
+      dayLabel = `${Math.abs(dayDiff)}일 지남`;
+      colorClass = "text-red-600";    // 과거: 빨간색
+    }
+
+    const timePart = dt.toLocaleTimeString("ko-KR", {
+      hour: "numeric",
+      hour12: true,
+      timeZone: "Asia/Seoul",
     });
+
+    return { dayLabel, dateText: formatDate(value), timeText: timePart, colorClass };
   };
 
 
@@ -1193,7 +1352,7 @@ export default function OfflineOrdersPage() {
                             ? "bg-blue-100 text-blue-800"
                             : order.status === "수령완료"
                               ? "bg-green-100 text-green-800"
-                              : order.status === "취소"
+                              : order.status === "취소" || order.status === "주문취소"
                                 ? "bg-red-100 text-red-800"
                                 : "bg-gray-100 text-gray-800"
                             }`}
@@ -1203,16 +1362,99 @@ export default function OfflineOrdersPage() {
                       </td>
                       {/* 수령일 */}
                       <td className="py-2 xl:py-3 px-1 md:px-3 lg:px-4 xl:px-6 text-center w-20 md:w-24 xl:w-32">
-                        <div className="text-sm md:text-base font-medium text-gray-900">
-                          {formatDate(pickupDate)}
-                        </div>
+                        {(() => {
+                          const formatted = formatPickupRelative(pickupDate);
+                          if (formatted === "-") {
+                            return <div className="text-sm md:text-base font-medium text-gray-400">-</div>;
+                          }
+                          return (
+                            <div className="flex flex-col items-center leading-tight">
+                              <span className={`text-xs md:text-sm font-semibold ${formatted.colorClass}`}>
+                                {formatted.dayLabel}
+                              </span>
+                              <span className="text-sm md:text-base font-medium text-gray-900">
+                                {formatted.dateText}
+                              </span>
+                              <span className="text-sm md:text-base text-gray-700">
+                                {formatted.timeText}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       {/* 댓글 */}
                       <td className="py-2 xl:py-3 px-2 md:px-3 lg:px-4 xl:px-6 w-60 md:w-72 xl:w-80">
                         <div>
-                          <div className="break-words leading-tight font-semibold" title={order.comment}>
-                            {order.comment || "-"}
-                          </div>
+                          {(() => {
+                            const rawCommentChange = order.comment_change || order.commentChange || null;
+                            const currentComment = processBandTags(order.comment || "");
+                            let commentChangeData = null;
+
+                            try {
+                              if (rawCommentChange) {
+                                const parsed = typeof rawCommentChange === "string"
+                                  ? JSON.parse(rawCommentChange)
+                                  : rawCommentChange;
+                                if (
+                                  parsed &&
+                                  (parsed.status === "updated" || parsed.status === "deleted")
+                                ) {
+                                  commentChangeData = parsed;
+                                }
+                              }
+                            } catch (_) {
+                              // ignore parse errors
+                            }
+
+                            if (!commentChangeData) {
+                              return (
+                                <div className="break-words leading-tight font-semibold" title={currentComment}>
+                                  {currentComment || "-"}
+                                </div>
+                              );
+                            }
+
+                            const history = Array.isArray(commentChangeData.history)
+                              ? commentChangeData.history
+                              : [];
+                            const pickPrevious = () => {
+                              for (let i = history.length - 2; i >= 0; i -= 1) {
+                                const entry = history[i] || "";
+                                if (entry.includes("[deleted]")) continue;
+                                return entry.replace(/^version:\d+\s*/, "");
+                              }
+                              return "";
+                            };
+                            const previousComment = pickPrevious();
+                            const latestCommentRaw = commentChangeData.current || currentComment || "";
+                            const latestComment = commentChangeData.status === "deleted"
+                              ? (previousComment || currentComment || "")
+                              : processBandTags(latestCommentRaw);
+                            const showPrevious =
+                              commentChangeData.status !== "deleted" &&
+                              previousComment &&
+                              previousComment.trim() !== latestComment.trim();
+
+                            return (
+                              <div className="space-y-1">
+                                {showPrevious && (
+                                  <div className="text-gray-500 line-through text-sm">
+                                    <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                                    <span className="break-words leading-tight font-semibold">{previousComment}</span>
+                                  </div>
+                                )}
+                                <div className="break-words leading-tight">
+                                  <span className="text-sm font-semibold text-orange-600 mr-1">
+                                    {commentChangeData.status === "deleted" ? "[유저에 의해 삭제된 댓글]" : "[수정됨]"}
+                                  </span>
+                                  {order.sub_status === "확인필요" && (
+                                    <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
+                                  )}
+                                  <span className="font-semibold">{latestComment}</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {/* 주문일시 */}
                           <div className="text-xs xl:text-sm text-gray-400 mt-1">
                             {orderedAt

@@ -7,6 +7,7 @@ import {
   bulkPut,
   saveSnapshot,
   setMeta,
+  clearAllStores,
 } from "../lib/indexedDbClient";
 
 const POST_COLUMNS =
@@ -127,6 +128,9 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
           !excludedCustomers.some((ex) => ex && name.includes(ex))
         );
       });
+
+      setDetail("IndexedDB 초기화 중...");
+      await clearAllStores();
 
       setDetail("IndexedDB에 저장 중...");
       await bulkPut("posts", posts);

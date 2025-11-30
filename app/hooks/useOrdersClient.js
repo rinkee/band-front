@@ -2,36 +2,7 @@
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import getAuthedClient from "../lib/authedSupabaseClient";
-
-/**
- * 제외고객 목록 조회 (요청 캐시)
- */
-const excludedCustomersCache = new Map();
-const fetchExcludedCustomers = async (userId) => {
-  if (!userId) return [];
-  if (excludedCustomersCache.has(userId)) {
-    return excludedCustomersCache.get(userId);
-  }
-  try {
-    const { data: userData } = await supabase
-      .from("users")
-      .select("excluded_customers")
-      .eq("user_id", userId)
-      .single();
-
-    if (
-      userData?.excluded_customers &&
-      Array.isArray(userData.excluded_customers)
-    ) {
-      excludedCustomersCache.set(userId, userData.excluded_customers);
-      return userData.excluded_customers;
-    }
-  } catch (e) {
-    // 에러 무시
-  }
-  excludedCustomersCache.set(userId, []);
-  return [];
-};
+import { fetchExcludedCustomers } from "../lib/excludedCustomersCache";
 
 // 상품명 검색: products.title에서 post_key/band_number/post_number 추출
 const searchProductsByName = async (userId, tokens) => {
@@ -294,7 +265,9 @@ const buildOrdersQuery = (userId, filters, excludedCustomers = [], productSearch
  * 클라이언트 사이드 주문 목록 fetcher
  */
 const fetchOrders = async (key) => {
-  const [, userId, page, filters] = key;
+  const [, userId, page, filtersKey] = key;
+  // SWR 키에서 직렬화된 filters를 파싱
+  const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
 
   if (!userId) {
     throw new Error("User ID is required");
@@ -725,21 +698,9 @@ const fetchOrder = async (key) => {
 };
 
 /**
- * 클라이언트 사이드 주문 통계 fetcher
+ * 필터 조건을 쿼리에 적용하는 헬퍼 함수
  */
-const fetchOrderStats = async (key) => {
-  const [, userId, filterOptions] = key;
-
-  if (!userId) {
-    throw new Error("User ID is required");
-  }
-
-  // 기본 통계 쿼리 - orders 테이블을 사용하여 모든 데이터 가져오기
-  let query = supabase
-    .from("orders")
-    .select("*", { count: "exact" })
-    .eq("user_id", userId);
-
+const applyStatsFilters = (query, filterOptions, excludedCustomers = []) => {
   // 상태 필터링 (status)
   if (filterOptions.status && filterOptions.status !== "all") {
     query = query.eq("status", filterOptions.status);
@@ -753,21 +714,16 @@ const fetchOrderStats = async (key) => {
   // 검색어 필터링 (상품명, 고객명 등) - 한글 안전 처리
   if (filterOptions.search) {
     const searchTerm = filterOptions.search;
-    
-    // 검색을 위한 텍스트 정규화 함수
+
     const normalizeForSearch = (str) => {
-      // 괄호와 그 안의 내용을 공백으로 치환
       let normalized = str.replace(/\([^)]*\)/g, ' ');
-      // 여러 공백을 하나로 정리
       normalized = normalized.replace(/\s+/g, ' ').trim();
       return normalized;
     };
-    
-    // 한글 문자열 처리를 위해 URL 인코딩하지 않고 직접 처리
+
     try {
-      // 괄호가 포함된 경우 정규화된 버전으로 검색
       const normalizedTerm = normalizeForSearch(searchTerm);
-      
+
       if (searchTerm.includes('(') || searchTerm.includes(')')) {
         query = query.or(
           `customer_name.ilike.%${normalizedTerm}%,product_name.ilike.%${normalizedTerm}%`
@@ -779,7 +735,6 @@ const fetchOrderStats = async (key) => {
       }
     } catch (error) {
       console.warn('Stats search filter error:', error);
-      // 에러 발생시 정규화된 검색어로 고객명만 필터링
       const normalizedTerm = normalizeForSearch(searchTerm);
       query = query.ilike("customer_name", `%${normalizedTerm}%`);
     }
@@ -788,142 +743,103 @@ const fetchOrderStats = async (key) => {
   // 날짜 범위 필터링
   if (filterOptions.startDate && filterOptions.endDate) {
     try {
-      // dateType 확인 (기본값: ordered)
       const dateColumn = filterOptions.dateType === "updated" ? "updated_at" : "ordered_at";
-      
-      // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
       query = query
         .gte(dateColumn, filterOptions.startDate)
         .lte(dateColumn, filterOptions.endDate);
     } catch (dateError) {
-      // console.error("Date filter error:", dateError);
+      // ignore
     }
   }
 
   // 제외 고객 필터링
-  try {
-    const { data: userData } = await supabase
-      .from("users")
-      .select("excluded_customers")
-      .eq("user_id", userId)
-      .single();
-
-    if (
-      userData?.excluded_customers &&
-      Array.isArray(userData.excluded_customers)
-    ) {
-      const excludedCustomers = userData.excluded_customers;
-      if (excludedCustomers.length > 0) {
-        query = query.not(
-          "customer_name",
-          "in",
-          `(${excludedCustomers
-            .map((name) => `"${name.replace(/"/g, '""')}"`)
-            .join(",")})`
-        );
-      }
-    }
-  } catch (e) {
-    // console.error("Error fetching excluded customers for stats:", e);
+  if (excludedCustomers && excludedCustomers.length > 0) {
+    query = query.not(
+      "customer_name",
+      "in",
+      `(${excludedCustomers
+        .map((name) => `"${name.replace(/"/g, '""')}"`)
+        .join(",")})`
+    );
   }
 
-  // 먼저 전체 개수를 가져오기
-  const { count, error: countError } = await query
-    .select("*", { count: "exact", head: true });
+  return query;
+};
 
-  if (countError) {
-    console.error("Supabase count error:", countError);
-    throw new Error("Failed to get count");
+/**
+ * 클라이언트 사이드 주문 통계 fetcher (DB 집계 최적화)
+ */
+const fetchOrderStats = async (key) => {
+  const [, userId, filterOptions] = key;
+
+  if (!userId) {
+    throw new Error("User ID is required");
   }
 
-  // 페이징을 통해 모든 데이터 가져오기
-  let allData = [];
-  const pageSize = 1000;
-  const totalPages = Math.ceil((count || 0) / pageSize);
-  
-  for (let page = 0; page < totalPages; page++) {
-    const start = page * pageSize;
-    const end = start + pageSize - 1;
-    
-    const { data: pageData, error: pageError } = await query
-      .range(start, end);
-    
-    if (pageError) {
-      console.error("Supabase page error:", pageError);
-      throw new Error(`Failed to fetch page ${page + 1}`);
-    }
-    
-    allData = allData.concat(pageData || []);
+  // 제외 고객 목록 먼저 조회
+  const excludedCustomers = await fetchExcludedCustomers(userId);
+
+  // 병렬로 여러 쿼리 실행 (필요한 필드만 선택)
+  const [
+    statsResult,
+    recentOrdersResult
+  ] = await Promise.all([
+    // 1. 통계 계산용 경량 데이터 (status, sub_status만)
+    (async () => {
+      let query = supabase
+        .from("orders")
+        .select("status, sub_status", { count: "exact" })
+        .eq("user_id", userId);
+      query = applyStatsFilters(query, filterOptions, excludedCustomers);
+      return query;
+    })(),
+
+    // 2. 최근 주문 10개만 가져오기
+    (async () => {
+      let query = supabase
+        .from("orders")
+        .select("*")
+        .eq("user_id", userId)
+        .order("ordered_at", { ascending: false })
+        .limit(10);
+      query = applyStatsFilters(query, filterOptions, excludedCustomers);
+      return query;
+    })()
+  ]);
+
+  // 에러 체크
+  if (statsResult.error) {
+    console.error("Stats error:", statsResult.error);
+    throw new Error("Failed to get stats");
   }
 
-  const data = allData;
-  const error = null;
+  const statsData = statsResult.data || [];
+  const totalOrders = statsResult.count || 0;
 
+  // 상태별 카운트 계산
+  const statusCounts = {};
+  const subStatusCounts = {};
 
-  // 통계 계산 - count를 사용하여 전체 개수 정확히 계산
-  const totalOrders = count || data.length;  // count가 있으면 count 사용, 없으면 data.length
-  const totalRevenue = data.reduce(
-    (sum, order) => sum + (order.total_amount || 0),
-    0
-  );
+  for (const row of statsData) {
+    // 상태별 카운트
+    statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
 
-  // 상태별 카운트 (status 기준)
-  const statusCounts = data.reduce((acc, order) => {
-    acc[order.status] = (acc[order.status] || 0) + 1;
-    return acc;
-  }, {});
-
-  // 부가 상태별 카운트 (sub_status 기준)
-  // 수령완료 상태가 아닌 주문만 카운트
-  const subStatusCounts = data.reduce((acc, order) => {
-    if (order.sub_status && order.status !== "수령완료") {
-      acc[order.sub_status] = (acc[order.sub_status] || 0) + 1;
+    // 부가 상태별 카운트 (수령완료 제외)
+    if (row.sub_status && row.status !== "수령완료") {
+      subStatusCounts[row.sub_status] = (subStatusCounts[row.sub_status] || 0) + 1;
     }
-    return acc;
-  }, {});
+  }
 
-  // 상품별 통계 (검색된 결과에서)
-  const productStats = data.reduce((acc, order) => {
-    const productTitle = order.product_name || "상품명 없음";
-    if (!acc[productTitle]) {
-      acc[productTitle] = {
-        totalOrders: 0,
-        totalQuantity: 0,
-        totalAmount: 0,
-        completedOrders: 0,
-        pendingOrders: 0,
-      };
-    }
-    acc[productTitle].totalOrders += 1;
-    acc[productTitle].totalQuantity += order.quantity || 0;
-    acc[productTitle].totalAmount += order.total_amount || 0;
-
-    if (order.status === "수령완료") {
-      acc[productTitle].completedOrders += 1;
-    } else if (order.status === "주문완료" || order.sub_status === "미수령") {
-      acc[productTitle].pendingOrders += 1;
-    }
-
-    return acc;
-  }, {});
-
-  // 총 수량 계산
-  const totalQuantity = data.reduce(
-    (sum, order) => sum + (order.quantity || 0),
-    0
-  );
+  // 최근 주문
+  const recentOrders = recentOrdersResult.data || [];
 
   return {
     success: true,
     data: {
       totalOrders,
-      totalRevenue,
-      totalQuantity,
       statusCounts,
       subStatusCounts,
-      productStats,
-      recentOrders: data.slice(0, 10), // 최근 10개 주문
-      filteredData: data, // 필터링된 전체 데이터
+      recentOrders,
     },
   };
 };
@@ -932,9 +848,12 @@ const fetchOrderStats = async (key) => {
  * 클라이언트 사이드 주문 목록 훅
  */
 export function useOrdersClient(userId, page = 1, filters = {}, options = {}) {
+  // SWR 키를 문자열로 직렬화하여 객체 참조 비교 문제 방지
+  const filtersKey = JSON.stringify(filters);
+
   const getKey = () => {
     if (!userId) return null;
-    return ["orders", userId, page, filters];
+    return ["orders", userId, page, filtersKey];
   };
 
   const swrOptions = {
@@ -1117,7 +1036,12 @@ export function useOrderClientMutations() {
   /**
    * 대량 주문 상태 업데이트
    */
-  const bulkUpdateOrderStatus = async (orderIds, newStatus, userId, subStatus = undefined) => {
+  const bulkUpdateOrderStatus = async (
+    orderIds,
+    newStatus,
+    userId,
+    subStatus = undefined
+  ) => {
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       throw new Error("Order IDs array is required");
     }

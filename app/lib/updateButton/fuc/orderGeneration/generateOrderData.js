@@ -63,6 +63,13 @@ export async function generateOrderData(
     return { orders, customers, cancellationUsers, success: true };
   }
 
+  // 날짜가 실제로 주어졌을 때만 파싱하고, 없거나 잘못된 값이면 null 유지
+  const parseIfPresent = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = safeParseDate(value);
+    return parsed instanceof Date && !isNaN(parsed.getTime()) ? parsed : null;
+  };
+
   console.log('[대댓글 디버그 - generateOrderData] 입력 댓글:', {
     total: comments.length,
     has_underscore_keys: comments.filter(c => c.commentKey?.includes('_')).length,
@@ -221,22 +228,22 @@ export async function generateOrderData(
 
         // 날짜 파싱 (기존 ordered_at이 있으면 최우선 유지)
         const existingOrderedAt =
-          safeParseDate(comment.existing_ordered_at) ||
-          safeParseDate(comment.existing_created_at) ||
-          safeParseDate(comment.existing_commented_at) ||
+          parseIfPresent(comment.existing_ordered_at) ||
+          parseIfPresent(comment.existing_created_at) ||
+          parseIfPresent(comment.existing_commented_at) ||
           null;
         const orderedAt =
           existingOrderedAt ||
-          safeParseDate(createdAt);
+          parseIfPresent(createdAt);
         const existingCommentedAt =
-          safeParseDate(comment.existing_commented_at) ||
-          safeParseDate(comment.existing_created_at) ||
-          safeParseDate(comment.existing_ordered_at) ||
+          parseIfPresent(comment.existing_commented_at) ||
+          parseIfPresent(comment.existing_created_at) ||
+          parseIfPresent(comment.existing_ordered_at) ||
           null;
         const commentedAt =
           existingCommentedAt ||
           orderedAt ||
-          safeParseDate(createdAt);
+          parseIfPresent(createdAt);
         let commentChange = comment.comment_change || null;
         let isDeletionFlag = isDeletion === true || commentChange?.status === "deleted";
 

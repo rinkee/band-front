@@ -255,7 +255,7 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 }
 
 // --- 상태 배지 ---
-function StatusBadge({ status, processingMethod }) {
+function StatusBadge({ status, processingMethod, completedAt }) {
   let bgColor, textColor;
   switch (status) {
     case "수령완료":
@@ -305,13 +305,30 @@ function StatusBadge({ status, processingMethod }) {
     }
   };
 
+  const formatCompletedAt = (dateStr) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hour = date.getHours();
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hour}:${minute}`;
+  };
+
   return (
-    <span
-      className={`inline-flex items-center rounded-md px-1.5 xl:px-2 py-0.5 xl:py-1 text-xs xl:text-sm font-medium ${bgColor} ${textColor}`}
-    >
-      {getProcessingIcon()}
-      {status}
-    </span>
+    <div className="flex flex-col items-center">
+      <span
+        className={`inline-flex items-center rounded-md px-1.5 xl:px-2 py-0.5 xl:py-1 text-xs xl:text-sm font-medium ${bgColor} ${textColor}`}
+      >
+        {getProcessingIcon()}
+        {status}
+      </span>
+      {status === "수령완료" && completedAt && (
+        <span className="text-[10px] text-gray-500 mt-0.5">
+          {formatCompletedAt(completedAt)}
+        </span>
+      )}
+    </div>
   );
 }
 // --- 바코드 컴포넌트 ---
@@ -613,7 +630,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       customer_name: row.commenter_name || row.customer_name || "-",
       comment: row.comment_body || row.comment || "",
       comment_change: row.comment_change || row.commentChange || null,
-      status: row.order_status || row.status || "미수령",
+      status: row.status || "주문완료",
       sub_status: row.sub_status || undefined,
       ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
       updated_at: row.updated_at || row.modified_at || row.updatedAt || row.updated_at || null,
@@ -750,7 +767,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const subStatusCounts = {};
 
     orders.forEach(order => {
-      const status = order.status || order.order_status || '';
+      const status = order.status || '';
       const subStatus = order.sub_status || '';
 
       // 상태별 카운트
@@ -785,7 +802,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const subStatusCounts = {};
 
     displayOrders.forEach(order => {
-      const status = order.status || order.order_status || '';
+      const status = order.status || '';
       const subStatus = order.sub_status || '';
 
       // 상태별 카운트
@@ -919,11 +936,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // SWR 옵션 설정 - 완전한 캐시 우선 전략
   const swrOptions = {
     revalidateOnMount: true, // 첫 진입 시에는 반드시 서버 검증
-    revalidateOnFocus: false, // 창 포커스 시 재검증 안함
-    revalidateOnReconnect: false, // 네트워크 재연결 시 재검증 안함
-    revalidateIfStale: false, // stale 데이터 재검증 안함
-    refreshInterval: 0, // 자동 재검증 완전히 끔
-    dedupingInterval: 60000, // 1분 이내 중복 요청 방지
+    revalidateOnFocus: true, // 포커스 시 최신화
+    revalidateOnReconnect: true, // 네트워크 재연결 시 재검증
+    revalidateIfStale: true, // 캐시가 오래됐으면 검증
+    refreshInterval: 0, // 자동 주기 새로고침은 유지하지 않음
+    dedupingInterval: 5000, // 중복 요청 방지 간격 5초
     onError: (err) => {
       if (process.env.NODE_ENV === "development") {
         console.error("SWR Error:", err);
@@ -939,53 +956,59 @@ function OrdersTestPageContent({ mode = "raw" }) {
   } = useUser(userData?.userId, swrOptions);
 
   // 서버 사이드 필터링 + 진짜 페이지네이션 (효율적 데이터 로딩)
-  const ordersFilters = {
-    limit: 30, // 한 페이지에 30개씩 기본 제한
-    sortBy,
-    sortOrder,
-    // 서버에서 필터링 가능한 항목들
-    status: (() => {
-      // '주문완료+수령가능'은 주문완료로 필터링
-      if (filterSelection === "주문완료+수령가능") return "주문완료";
-      // 미수령, 확인필요, none은 subStatus로 필터링하므로 status는 undefined
-      if (filterSelection === "미수령" || filterSelection === "확인필요" || filterSelection === "none") {
+  const ordersFilters = useMemo(() => {
+    const dateParams = calculateDateFilterParams(
+      filterDateRange,
+      customStartDate,
+      customEndDate
+    );
+
+    // post_key 형식인지 감지 (예: "95098260:12545" 또는 "95098260:12546")
+    // band_number:post_number 형식 - 둘 다 숫자이고 콜론으로 구분
+    const isPostKeyFormat = (term) => {
+      if (!term) return false;
+      const match = term.match(/^(\d+):(\d+)$/);
+      return !!match;
+    };
+
+    const detectedPostKey = mode === "raw" && isPostKeyFormat(searchTerm) ? searchTerm : undefined;
+
+    return {
+      limit: 30, // 한 페이지에 30개씩 기본 제한
+      sortBy,
+      sortOrder,
+      // 서버에서 필터링 가능한 항목들
+      status: (() => {
+        // '주문완료+수령가능'은 주문완료로 필터링
+        if (filterSelection === "주문완료+수령가능") return "주문완료";
+        // 미수령, 확인필요, none은 subStatus로 필터링하므로 status는 undefined
+        if (filterSelection === "미수령" || filterSelection === "확인필요" || filterSelection === "none") {
+          return undefined;
+        }
+        // all이면 전체
+        if (filterSelection === "all") return undefined;
+        // 그 외는 해당 상태로 필터링
+        return filterSelection;
+      })(),
+      subStatus: (() => {
+        if (filterSelection === "미수령") return "미수령";
+        if (filterSelection === "확인필요") return "확인필요";
+        if (filterSelection === "none") return "none";
         return undefined;
-      }
-      // all이면 전체
-      if (filterSelection === "all") return undefined;
-      // 그 외는 해당 상태로 필터링
-      return filterSelection;
-    })(),
-    subStatus: (() => {
-      if (filterSelection === "미수령") return "미수령";
-      if (filterSelection === "확인필요") return "확인필요";
-      if (filterSelection === "none") return "none";
-      return undefined;
-    })(),
-    // 검색어는 서버에서 처리
-    search: searchTerm || undefined,
-    searchType: searchType, // "customer" 또는 "product"
-    commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined,
-    exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined,
-    // 날짜 필터
-    startDate: (() => {
-      const p = calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      );
-      return p.startDate;
-    })(),
-    endDate: (() => {
-      const p = calculateDateFilterParams(
-        filterDateRange,
-        customStartDate,
-        customEndDate
-      );
-      return p.endDate;
-    })(),
-    dateType: "created", // 항상 주문일시 기준
-  };
+      })(),
+      // raw 모드에서 post_key 형식이면 postKey로 직접 필터링, 아니면 일반 검색
+      postKey: detectedPostKey,
+      // post_key 형식이 아닐 때만 일반 검색어로 처리
+      search: detectedPostKey ? undefined : (searchTerm || undefined),
+      searchType: searchType, // "customer" 또는 "product"
+      commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined,
+      exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined,
+      // 날짜 필터
+      startDate: dateParams.startDate,
+      endDate: dateParams.endDate,
+      dateType: "created", // 항상 주문일시 기준
+    };
+  }, [sortBy, sortOrder, filterSelection, searchTerm, searchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate]);
 
   // 실제 페이지 사용
   const effectivePage = currentPage;
@@ -1285,6 +1308,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     // ordersData를 mutate하면 ordersSignature가 변경되어 fetchBatchProducts가 자동 재실행됨
     await mutateOrders();
   }, [mutateOrders]);
+
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
   const { data: unreceivedCountData, mutate: mutateUnreceivedCount } = useSWR(
     userData?.userId
@@ -1300,14 +1324,22 @@ function OrdersTestPageContent({ mode = "raw" }) {
     async () => {
       const sb = getAuthedClient();
       const tableName = mode === "raw" ? "comment_orders" : "orders";
+      const unreceivedField = "sub_status"; // raw/legacy 모두 sub_status 사용
       const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
-      const { count, error } = await sb
+      let query = sb
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq("sub_status", "미수령")
-        .gte(dateColumn, dateFilterParams.startDate)
-        .lte(dateColumn, dateFilterParams.endDate);
+        .eq(unreceivedField, "미수령");
+
+      if (dateFilterParams.startDate) {
+        query = query.gte(dateColumn, dateFilterParams.startDate);
+      }
+      if (dateFilterParams.endDate) {
+        query = query.lte(dateColumn, dateFilterParams.endDate);
+      }
+
+      const { count, error } = await query;
 
       if (error) {
         console.error("[미수령 카운트] error:", error);
@@ -1335,15 +1367,22 @@ function OrdersTestPageContent({ mode = "raw" }) {
     async () => {
       const sb = getAuthedClient();
       const tableName = mode === "raw" ? "comment_orders" : "orders";
-      const statusField = mode === "raw" ? "order_status" : "status";
+      const statusField = "status"; // raw/legacy 모두 status 사용
       const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
-      const { count, error } = await sb
+      let query = sb
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq(statusField, "주문완료")
-        .gte(dateColumn, dateFilterParams.startDate)
-        .lte(dateColumn, dateFilterParams.endDate);
+        .eq(statusField, "수령완료");
+
+      if (dateFilterParams.startDate) {
+        query = query.gte(dateColumn, dateFilterParams.startDate);
+      }
+      if (dateFilterParams.endDate) {
+        query = query.lte(dateColumn, dateFilterParams.endDate);
+      }
+
+      const { count, error } = await query;
       if (error) {
         console.error("[주문완료 카운트] error:", error);
         return 0;
@@ -1370,15 +1409,22 @@ function OrdersTestPageContent({ mode = "raw" }) {
     async () => {
       const sb = getAuthedClient();
       const tableName = mode === "raw" ? "comment_orders" : "orders";
-      const statusField = mode === "raw" ? "order_status" : "status";
+      const statusField = "status"; // raw/legacy 모두 status 사용
       const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
-      const { count, error } = await sb
+      let query = sb
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq(statusField, "결제완료")
-        .gte(dateColumn, dateFilterParams.startDate)
-        .lte(dateColumn, dateFilterParams.endDate);
+        .eq(statusField, "결제완료");
+
+      if (dateFilterParams.startDate) {
+        query = query.gte(dateColumn, dateFilterParams.startDate);
+      }
+      if (dateFilterParams.endDate) {
+        query = query.lte(dateColumn, dateFilterParams.endDate);
+      }
+
+      const { count, error } = await query;
       if (error) {
         console.error("[결제완료 카운트] error:", error);
         return 0;
@@ -1389,6 +1435,51 @@ function OrdersTestPageContent({ mode = "raw" }) {
       revalidateOnFocus: true,
       dedupingInterval: 60000,
     }
+  );
+
+  // 상태 변경 시 배지 카운트를 낙관적으로 맞춰주는 헬퍼 (증가/감소 모두 처리)
+  const adjustBadgeCountsOptimistically = useCallback(
+    (changedOrders, nextStatus, nextSubStatus) => {
+      if (!Array.isArray(changedOrders) || changedOrders.length === 0) return;
+
+      let completedDelta = 0;
+      let unreceivedDelta = 0;
+      let paidDelta = 0;
+
+      changedOrders.forEach((o) => {
+        const prevStatus = o.status;
+        const prevSub = o.sub_status || null;
+        const nextSt = nextStatus ?? prevStatus;
+        const nextSub =
+          nextSubStatus !== undefined ? nextSubStatus : prevSub;
+
+        if (prevStatus === "주문완료") completedDelta -= 1;
+        if (nextSt === "주문완료") completedDelta += 1;
+
+        if (prevStatus === "결제완료") paidDelta -= 1;
+        if (nextSt === "결제완료") paidDelta += 1;
+
+        if (prevSub === "미수령") unreceivedDelta -= 1;
+        if (nextSub === "미수령") unreceivedDelta += 1;
+      });
+
+      if (completedDelta !== 0) {
+        mutateCompletedCount(
+          (prev) => Math.max(0, (prev ?? 0) + completedDelta),
+          false
+        );
+      }
+      if (unreceivedDelta !== 0) {
+        mutateUnreceivedCount(
+          (prev) => Math.max(0, (prev ?? 0) + unreceivedDelta),
+          false
+        );
+      }
+      if (paidDelta !== 0) {
+        mutatePaidCount((prev) => Math.max(0, (prev ?? 0) + paidDelta), false);
+      }
+    },
+    [mutateCompletedCount, mutatePaidCount, mutateUnreceivedCount]
   );
 
   const isSearchCountingActive = Boolean((searchTerm || "").trim());
@@ -1430,7 +1521,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (mode === "raw") {
       return await rawMutations.updateCommentOrder(orderId, updateData, userId);
     } else {
-      return await legacyMutations.updateOrder(orderId, updateData, userId);
+      // legacy 테이블은 status/sub_status 필드 사용. 재검증은 여기서 건너뛰고 낙관적 상태 사용.
+      const payload = {
+        status: updateData.status,
+      };
+      if (updateData.sub_status !== undefined) {
+        payload.sub_status = updateData.sub_status;
+      }
+      if (updateData.received_at !== undefined) {
+        payload.completed_at = updateData.received_at;
+      }
+      if (updateData.canceled_at !== undefined) {
+        payload.canceled_at = updateData.canceled_at;
+      }
+      return await legacyMutations.updateOrderStatus(orderId, payload, userId);
     }
   };
 
@@ -1590,7 +1694,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // Supabase에서 직접 업데이트
         const tableName = mode === 'raw' ? 'comment_orders' : 'orders';
-        const statusField = mode === 'raw' ? 'order_status' : 'status';
+        const statusField = 'status'; // raw/legacy 모두 status 사용
 
         console.log('[자동 미수령] 쿼리 조건:', {
           tableName,
@@ -1863,27 +1967,34 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     let successCount = 0;
     let failCount = 0;
+    let successfulOrderIds = [];
 
     try {
       if (mode === "raw") {
         // Raw 모드: 각 주문을 개별적으로 업데이트
         const nowISO = new Date().toISOString();
         const buildUpdate = (st) => {
-          const base = { order_status: st };
+          // DB 스키마: status(메인상태), sub_status(보조상태)
+          const base = { status: st };
+          // 수령완료, 주문취소는 메인 상태, 미수령/확인필요/수령가능은 sub_status
           if (st === "수령완료") {
             base.received_at = nowISO;
             base.canceled_at = null;
+            base.sub_status = null;
           } else if (st === "주문취소") {
             base.canceled_at = nowISO;
             base.received_at = null;
+            base.sub_status = null;
           } else if (st === "주문완료") {
-            base.ordered_at = nowISO;
             base.canceled_at = null;
             base.received_at = null;
-          } else if (st === "확인필요") {
+          } else if (st === "결제완료") {
             base.canceled_at = null;
             base.received_at = null;
-          } else if (st === "미수령") {
+          } else if (st === "미수령" || st === "확인필요" || st === "수령가능") {
+            // 보조 상태로 변경
+            base.status = "주문완료"; // 메인 상태는 주문완료 유지
+            base.sub_status = st;
             base.received_at = null;
             base.canceled_at = null;
           }
@@ -1894,6 +2005,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           try {
             await rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
             successCount += 1;
+            successfulOrderIds.push(id);
           } catch (e) {
             failCount += 1;
           }
@@ -1906,16 +2018,32 @@ function OrdersTestPageContent({ mode = "raw" }) {
           userData.userId
         );
         successCount = orderIdsToProcess.length;
+        successfulOrderIds = [...orderIdsToProcess];
       }
 
       // 일괄 상태 변경 후 로컬 상태만 optimistic update (서버 재검증 없음)
       setOrders(prevOrders =>
         prevOrders.map(order =>
           orderIdsToProcess.includes(order.order_id)
-            ? { ...order, status: newStatus, order_status: newStatus }
+            ? {
+              ...order,
+              status: newStatus,
+              sub_status: newStatus === "수령완료" || newStatus === "주문취소" ? null : order.sub_status,
+            }
             : order
         )
       );
+
+      if (successfulOrderIds.length > 0) {
+        const successfulOrders = orders.filter((o) =>
+          successfulOrderIds.includes(o.order_id)
+        );
+        const nextSub =
+          newStatus === "수령완료" || newStatus === "주문취소" || newStatus === "주문완료"
+            ? null
+            : undefined;
+        adjustBadgeCountsOptimistically(successfulOrders, newStatus, nextSub);
+      }
 
       if (successCount > 0) {
         console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
@@ -1928,7 +2056,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const updatedOrdersForLocal = orderIdsToProcess.map((id) => ({
         ...orders.find((o) => o.order_id === id),
         status: newStatus,
-        order_status: newStatus,
         updated_at: new Date().toISOString(),
       }));
       await syncOrdersToIndexedDb(updatedOrdersForLocal);
@@ -1938,7 +2065,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb]);
+    // 서버 데이터 재검증: 항상 최신화
+    await mutateOrders(undefined, { revalidate: true });
+    const cacheKey = mode === "raw" ? "comment_orders" : "orders";
+    globalMutate(
+      (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
+      undefined,
+      { revalidate: true }
+    );
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, globalMutate]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -1973,6 +2108,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(23, 59, 59, 999);
         break;
+      case "60days":
+        startDate.setDate(now.getDate() - 60);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
       case "30days":
         startDate.setMonth(now.getMonth() - 1);
         startDate.setHours(0, 0, 0, 0);
@@ -1983,6 +2123,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
         startDate.setHours(0, 0, 0, 0);
         endDate.setHours(23, 59, 59, 999);
         break;
+      case "180days":
+        startDate.setDate(now.getDate() - 180);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case "all":
+        return { startDate: undefined, endDate: undefined };
       default:
         return { startDate: undefined, endDate: undefined };
     }
@@ -2443,7 +2590,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const { days, isPast, relativeText } = calculateDaysUntilPickup(value);
 
       // 3. 색상 결정
-      let textColorClass = "text-gray-700"; // 기본값
+      let textColorClass = "text-gray-400"; // 기본값 (미래: 연한 회색)
       if (isPast) {
         textColorClass = "text-red-500"; // 지난 날짜 - 빨간색
       } else if (days === 0) {
@@ -2485,7 +2632,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const { days, isPast, relativeText } = calculateDaysUntilPickup(pickupDate);
 
       // 색상 결정
-      let textColorClass = "text-gray-700"; // 기본값
+      let textColorClass = "text-gray-400"; // 기본값 (미래: 연한 회색)
       if (isPast) {
         textColorClass = "text-red-500"; // 지난 날짜 - 빨간색
       } else if (days === 0) {
@@ -2633,45 +2780,83 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const handleStatusChange = async (orderId, newStatus) => {
     if (!orderId || !userData?.userId) return;
     try {
-      const allowed = ["주문완료", "주문취소", "수령완료", "확인필요", "미수령"];
+      // 메인 상태: 주문완료, 수령완료, 주문취소, 결제완료
+      // 보조 상태(sub_status): 미수령, 확인필요, 수령가능
+      const mainStatuses = ["주문완료", "수령완료", "주문취소", "결제완료"];
+      const subStatuses = ["미수령", "확인필요", "수령가능"];
+      const allowed = [...mainStatuses, ...subStatuses];
       if (!allowed.includes(newStatus)) return;
 
       const nowISO = new Date().toISOString();
-      const updateData = { order_status: newStatus };
+      const updateData = {};
 
-      // 상태별 추가 필드 설정 (comment_orders 컬럼 기준)
-      if (newStatus === "수령완료") {
-        updateData.received_at = nowISO;
-        updateData.canceled_at = null;
-      } else if (newStatus === "주문취소") {
-        updateData.canceled_at = nowISO;
-        updateData.received_at = null;
-      } else if (newStatus === "주문완료") {
-        updateData.ordered_at = nowISO;
-        updateData.canceled_at = null;
-        updateData.received_at = null;
-      } else if (newStatus === "확인필요") {
-        updateData.canceled_at = null;
-        updateData.received_at = null;
-      } else if (newStatus === "미수령") {
+      // 메인 상태 변경
+      if (mainStatuses.includes(newStatus)) {
+        updateData.status = newStatus;
+        if (newStatus === "수령완료") {
+          updateData.received_at = nowISO;
+          updateData.canceled_at = null;
+          updateData.sub_status = null;
+        } else if (newStatus === "주문취소") {
+          updateData.canceled_at = nowISO;
+          updateData.received_at = null;
+          updateData.sub_status = null;
+        } else if (newStatus === "주문완료" || newStatus === "결제완료") {
+          updateData.canceled_at = null;
+          updateData.received_at = null;
+        }
+      } else {
+        // 보조 상태 변경 (메인 상태는 주문완료 유지)
+        updateData.status = "주문완료";
+        updateData.sub_status = newStatus;
         updateData.received_at = null;
         updateData.canceled_at = null;
       }
 
       await updateCommentOrder(orderId, updateData, userData.userId);
 
-      // 리스트/통계 새로고침
-      await mutateOrders(undefined, { revalidate: true });
+      const targetOrder =
+        orders.find((o) => o.order_id === orderId) || selectedOrder || null;
+      if (targetOrder) {
+        adjustBadgeCountsOptimistically([targetOrder], updateData.status || newStatus, updateData.sub_status);
+        // 로컬 목록에도 즉시 반영
+        setOrders((prev) => {
+          const exists = prev.some((o) => o.order_id === orderId);
+          const updater = (o) =>
+            o.order_id === orderId
+              ? {
+                ...o,
+                status: updateData.status || newStatus,
+                sub_status: updateData.sub_status ?? o.sub_status ?? null,
+              }
+              : o;
+          if (exists) {
+            return prev.map(updater);
+          }
+          // 현재 리스트에 없었더라도, 필터가 주문완료/결제완료/미수령과 맞다면 낙관적으로 추가
+          const candidate = {
+            ...targetOrder,
+            status: updateData.status || newStatus,
+            sub_status: updateData.sub_status ?? targetOrder.sub_status ?? null,
+          };
+          const shouldShow =
+            (filterSelection === "주문완료" && candidate.status === "주문완료") ||
+            (filterSelection === "결제완료" && candidate.status === "결제완료") ||
+            (filterSelection === "미수령" && candidate.sub_status === "미수령") ||
+            filterSelection === "all";
+          return shouldShow ? [...prev, candidate] : prev;
+        });
+      }
 
-      // 글로벌 캐시 무효화
+      setIsDetailModalOpen(false); // 모달 닫기
+      // 서버 데이터 재검증: 항상 최신화
+      await mutateOrders(undefined, { revalidate: true });
       const cacheKey = mode === "raw" ? "comment_orders" : "orders";
       globalMutate(
         (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
         undefined,
         { revalidate: true }
       );
-
-      setIsDetailModalOpen(false); // 모달 닫기
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("Status Change Error (client-side):", err);
@@ -2847,7 +3032,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setIsSyncing(true);
     const start = Date.now();
     try {
-      // 리스트 캐시 무효화 후 재검증
+      // 리스트/통계 캐시 완전 무효화
       globalMutate(
         (key) =>
           Array.isArray(key) &&
@@ -2856,6 +3041,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
         undefined,
         { revalidate: false }
       );
+      globalMutate(
+        (key) =>
+          Array.isArray(key) &&
+          ["unreceived-count", "completed-count", "paid-count"].includes(key[0]) &&
+          key[2] === userData.userId,
+        undefined,
+        { revalidate: false }
+      );
+
       // 캐시된 시그니처 무효화해서 재조회 강제
       lastProductSignatureRef.current = null;
       lastImageSignatureRef.current = null;
@@ -2868,7 +3062,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
         sessionStorage.removeItem('ordersProductsByBandPost');
       } catch (_) { }
       setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
-      await mutateOrders(undefined, { revalidate: true });
+
+      // 주문/배지/상품 모두 강제 재검증 (dedupe 비활성화)
+      await Promise.all([
+        mutateOrders(undefined, { revalidate: true, dedupe: false }),
+        mutateCompletedCount(undefined, { revalidate: true, dedupe: false }),
+        mutateUnreceivedCount(undefined, { revalidate: true, dedupe: false }),
+        mutatePaidCount(undefined, { revalidate: true, dedupe: false }),
+        mutateProducts(undefined, { revalidate: true }),
+      ]);
     } finally {
       const elapsed = Date.now() - start;
       const minDuration = 1000; // 최소 1초는 로딩 표시 유지
@@ -2878,7 +3080,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setLastSyncAt(Date.now());
       setIsSyncing(false);
     }
-  }, [userData?.userId, mutateOrders, isSyncing, lastSyncAt]);
+  }, [userData?.userId, mutateOrders, mutateCompletedCount, mutateUnreceivedCount, mutatePaidCount, mutateProducts, isSyncing, lastSyncAt, globalMutate]);
 
   const handleOrdersErrorRetry = useCallback(() => {
     setError(null);
@@ -3862,11 +4064,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       onClick={handleSyncNow}
                       disabled={isDataLoading || isSyncing}
                       className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      aria-label="데이터 동기화"
+                      aria-label="데이터 새로고침"
                       title="서버에서 최신 데이터 다시 불러오기"
                     >
                       <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
-                      {isSyncing ? "동기화 중..." : "다른 기기와 동기화"}
+                      {isSyncing ? "데이터 가져오는 중..." : "새로고침"}
                     </button>
                     {isSearchLoading && (
                       <div className="flex items-center gap-1 text-xs text-orange-600 whitespace-nowrap" aria-live="polite">
@@ -4082,7 +4284,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 상태 */}
                           <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center whitespace-nowrap w-24">
-                            <StatusBadge status={order.status} processingMethod={order.processing_method} />
+                            <StatusBadge status={order.status} processingMethod={order.processing_method} completedAt={order.completed_at} />
                           </td>
                           {/* 수령일시 */}
                           <td className="py-2 xl:py-3 px-1 md:px-3 lg:px-4 xl:px-6 text-center w-20 md:w-24 xl:w-32">
@@ -4766,6 +4968,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           <StatusBadge
                             status={selectedOrder.status}
                             processingMethod={selectedOrder.processing_method}
+                            completedAt={selectedOrder.completed_at}
                           />
                         </div>
                         <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">

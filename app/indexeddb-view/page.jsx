@@ -19,6 +19,7 @@ const STORE_CONFIG = {
       "band_number",
       "customer_name",
       "comment",
+      "comment_change",
       "status",
       "ordered_at",
       "updated_at",
