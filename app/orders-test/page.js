@@ -1330,7 +1330,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq(unreceivedField, "미수령");
+        .eq(unreceivedField, "미수령")
+        .not("status", "in", '("수령완료","주문취소")'); // 실제 필터와 동일한 조건 적용
 
       if (dateFilterParams.startDate) {
         query = query.gte(dateColumn, dateFilterParams.startDate);
@@ -1373,7 +1374,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         .from(tableName)
         .select("*", { head: true, count: "exact" })
         .eq("user_id", userData.userId)
-        .eq(statusField, "수령완료");
+        .eq(statusField, "주문완료"); // 수령완료 → 주문완료로 수정
 
       if (dateFilterParams.startDate) {
         query = query.gte(dateColumn, dateFilterParams.startDate);

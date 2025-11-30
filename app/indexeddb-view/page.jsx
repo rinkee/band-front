@@ -129,6 +129,13 @@ export default function IndexedDBViewPage() {
           return bTime - aTime;
         });
       }
+      if (storeName === "posts" && rows.length > 0) {
+        return [...rows].sort((a, b) => {
+          const aTime = a.posted_at ? new Date(a.posted_at).getTime() : 0;
+          const bTime = b.posted_at ? new Date(b.posted_at).getTime() : 0;
+          return bTime - aTime;
+        });
+      }
       return rows;
     })();
 

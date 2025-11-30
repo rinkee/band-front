@@ -104,6 +104,7 @@ export default function OfflineOrdersPage() {
   const listTopRef = useRef(null);
   // 서버 상태: 'checking' | 'healthy' | 'offline'
   const [supabaseHealth, setSupabaseHealth] = useState("checking");
+  const ordersLoadIdRef = useRef(0);
   const syncingRef = useRef(false);
   const syncDebounceRef = useRef(null);
   const [userData, setUserData] = useState(null);
@@ -406,6 +407,7 @@ export default function OfflineOrdersPage() {
   };
 
   const loadRecentOrders = async () => {
+    const loadId = ++ordersLoadIdRef.current;
     setLoading(true);
     try {
       const allOrders = await getAllFromStore("orders");
@@ -424,14 +426,18 @@ export default function OfflineOrdersPage() {
           product_id: sample.product_id,
         });
       }
-      setOrders(recent);
+      if (loadId === ordersLoadIdRef.current) {
+        setOrders(recent);
+      }
     } catch (err) {
       setToast({
         message: err.message || "IndexedDB에서 주문을 불러오지 못했습니다.",
         type: "error",
       });
     } finally {
-      setLoading(false);
+      if (loadId === ordersLoadIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -668,13 +674,33 @@ export default function OfflineOrdersPage() {
     setBulkLoading(true);
     try {
       const now = new Date().toISOString();
-      const updates = orders
+      let updates = orders
         .filter((o) => selectedOrderIds.includes(o.order_id))
         .map((o) => ({
           ...o,
           status: nextStatus,
           ...applyStatusTimestamps(o, nextStatus, now),
         }));
+
+      if (updates.length === 0) {
+        setToast({
+          type: "warning",
+          message: "선택된 주문을 찾을 수 없습니다. 데이터를 다시 불러옵니다.",
+        });
+        await loadRecentOrders();
+        const refreshedOrders = filterByUserId(await getAllFromStore("orders"));
+        updates = refreshedOrders
+          .filter((o) => selectedOrderIds.includes(o.order_id))
+          .map((o) => ({
+            ...o,
+            status: nextStatus,
+            ...applyStatusTimestamps(o, nextStatus, now),
+          }));
+        if (updates.length === 0) {
+          setBulkLoading(false); // 조기 종료 시 로딩 상태 해제
+          return;
+        }
+      }
 
       for (const updated of updates) {
         await upsertOrderLocal(updated);
@@ -699,11 +725,8 @@ export default function OfflineOrdersPage() {
       const canSyncNow = isSupabaseHealthy && (typeof navigator === "undefined" || navigator.onLine);
       if (canSyncNow) {
         scheduleSyncQueue(2000);
-        await syncIncremental();
-        // 검색 결과 화면이 사라지지 않도록 검색어가 있으면 재검색 수행
-        if (searchTerm) {
-          await handleSearch(searchTerm);
-        }
+        // 큐가 서버로 반영되기 전에 증분 동기화를 호출하면
+        // 서버의 이전 상태로 덮어써지는 문제가 있어 큐 동기화 이후에만 동기화
         setToast({
           type: "success",
           message: `선택한 ${updates.length}건을 '${nextStatus}'로 변경했습니다.`,

@@ -138,7 +138,7 @@ export async function generateOrderData(
         const convertBandTags = (text = "") =>
           text.replace(/<band:refer [^>]*>(.*?)<\/band:refer>/gi, (_m, p1) => `@${p1}`);
 
-        const sanitizedContent = convertBandTags(content || "");
+        const sanitizedContent = decodeHtmlEntities(convertBandTags(content || ""));
         const parentName =
           comment.parentAuthorName ||
           comment.parentAuthor ||
@@ -461,7 +461,27 @@ export async function generateOrderData(
       cancellationUsers,
       success: false,
       error: error.message,
-      processingSummary
-    };
-  }
+    processingSummary
+  };
+}
+
+// 단순 HTML 엔티티 디코더 (필요한 것만 최소 적용)
+const decodeHtmlEntities = (text = "") => {
+  if (!text) return text;
+  const map = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'"
+  };
+  let decoded = text;
+  Object.entries(map).forEach(([entity, char]) => {
+    decoded = decoded.replace(new RegExp(entity, "g"), char);
+  });
+  decoded = decoded.replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec));
+  decoded = decoded.replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  return decoded;
+};
 }
