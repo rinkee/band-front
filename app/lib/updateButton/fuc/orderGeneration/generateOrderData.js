@@ -19,6 +19,73 @@ import { generateOrderUniqueId, generateCustomerUniqueId } from '../../../band-p
 import { safeParseDate } from '../../../band-processor/shared/utils/dateUtils.js';
 import { filterCancellationComments } from '../cancellation/cancellationFilter.js';
 
+// band:refer 태그를 @닉네임 형태로 치환
+const convertBandTags = (text = "") =>
+  text.replace(/<band:refer [^>]*>(.*?)<\/band:refer>/gi, (_m, p1) => `@${p1}`);
+
+// 단순 HTML 엔티티 디코더 (필요한 것만 최소 적용)
+const decodeHtmlEntities = (text = "") => {
+  if (!text) return text;
+  const map = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'"
+  };
+  let decoded = text;
+  Object.entries(map).forEach(([entity, char]) => {
+    decoded = decoded.replace(new RegExp(entity, "g"), char);
+  });
+  decoded = decoded.replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec));
+  decoded = decoded.replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  return decoded;
+};
+
+// 댓글 수정 추적용 간단 해시 생성기
+const hashCommentText = (text = "") => {
+  const str = String(text);
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(16).slice(0, 8);
+};
+
+// 삭제 감지 시 comment_change payload 생성
+const buildDeletionChangePayload = (existingComment, existingChange) => {
+  let parsed = null;
+  try {
+    parsed = typeof existingChange === "string" ? JSON.parse(existingChange) : existingChange;
+  } catch (_) {
+    parsed = null;
+  }
+
+  const history = Array.isArray(parsed?.history) ? [...parsed.history] : [];
+  const existingVersion = parsed?.version || history.length || 0;
+  const existingCurrent = parsed?.current ?? existingComment ?? "";
+
+  if (history.length === 0 && existingCurrent !== undefined) {
+    history.push(`version:1 ${existingCurrent || ""}`);
+  }
+
+  const nextVersion = Math.max(existingVersion, history.length) + 1;
+  history.push(`version:${nextVersion} [deleted]`);
+
+  const now = new Date().toISOString();
+  return {
+    hash: hashCommentText(existingCurrent || ""),
+    status: "deleted",
+    history,
+    version: nextVersion,
+    deleted_at: now,
+    updated_at: now,
+    last_seen_at: now,
+    current: ""
+  };
+};
+
 /**
  * 댓글에서 주문 데이터를 생성하는 메인 함수
  *
@@ -461,27 +528,7 @@ export async function generateOrderData(
       cancellationUsers,
       success: false,
       error: error.message,
-    processingSummary
-  };
-}
-
-// 단순 HTML 엔티티 디코더 (필요한 것만 최소 적용)
-const decodeHtmlEntities = (text = "") => {
-  if (!text) return text;
-  const map = {
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#39;": "'",
-    "&apos;": "'"
-  };
-  let decoded = text;
-  Object.entries(map).forEach(([entity, char]) => {
-    decoded = decoded.replace(new RegExp(entity, "g"), char);
-  });
-  decoded = decoded.replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec));
-  decoded = decoded.replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-  return decoded;
-};
+      processingSummary
+    };
+  }
 }
