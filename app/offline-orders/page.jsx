@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import { ArrowPathIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
@@ -273,7 +273,7 @@ export default function OfflineOrdersPage() {
     return getPostImage(order);
   };
 
-  const syncIncremental = async () => {
+  const syncIncremental = useCallback(async () => {
     if (incrementalSyncing) return;
     const userId = resolveUserId();
     if (!userId) return;
@@ -314,13 +314,15 @@ export default function OfflineOrdersPage() {
         message: err.message || "증분 동기화 중 오류가 발생했습니다.",
       });
     } finally {
-      await loadRecentOrders();
-      await loadProducts();
-      await loadPosts();
-      await loadDbCounts();
+      await Promise.all([
+        loadRecentOrders(),
+        loadProducts(),
+        loadPosts(),
+        loadDbCounts(),
+      ]);
       setIncrementalSyncing(false);
     }
-  };
+  }, [incrementalSyncing]);
 
   // 상품 번호 추출
   const getItemNumber = (p, idx) => {
@@ -507,6 +509,9 @@ export default function OfflineOrdersPage() {
     // Supabase health check (polling)
     let healthTimer;
     const checkHealth = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       if (!HEALTH_URL || !navigator.onLine) {
         setSupabaseHealth("offline");
         return;
@@ -937,7 +942,7 @@ export default function OfflineOrdersPage() {
     const start = (currentPage - 1) * PAGE_SIZE;
     const list = sorted.slice(start, start + PAGE_SIZE);
     return { list, total };
-  }, [orders, excludedCustomers, exactCustomerFilter, statusFilter, productsByPostKey, currentPage]);
+  }, [orders, exactCustomerFilter, statusFilter, productsByPostKey, currentPage]);
 
   const displayedOrders = displayedOrdersResult.list;
   const totalFilteredOrders = displayedOrdersResult.total;
@@ -1532,6 +1537,8 @@ export default function OfflineOrdersPage() {
                                       <img
                                         src={imgUrl}
                                         alt={title}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-full h-full object-cover"
                                         referrerPolicy="no-referrer"
                                         onError={(e) => { e.currentTarget.style.display = "none"; }}
