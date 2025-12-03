@@ -20,7 +20,7 @@ import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import getAuthedClient from "../lib/authedSupabaseClient";
 import JsBarcode from "jsbarcode";
-import { useUser, useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
+import { useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
 import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
@@ -950,12 +950,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     keepPreviousData: true, // 깜빡임 방지
     fallbackData: undefined, // fallback 없음 (캐시 우선)
   };
-  const {
-    data: userDataFromHook,
-    error: userError,
-    isLoading: isUserLoading,
-  } = useUser(userData?.userId, swrOptions);
-
   // 서버 사이드 필터링 + 진짜 페이지네이션 (효율적 데이터 로딩)
   const ordersFilters = useMemo(() => {
     const dateParams = calculateDateFilterParams(
@@ -1564,7 +1558,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   };
 
-  const isDataLoading = isUserLoading || isOrdersLoading;
+  const isDataLoading = isOrdersLoading;
   const isSearchLoading = isOrdersLoading;
   const hasLoadedOrdersOnceRef = useRef(false);
   useEffect(() => {
@@ -1615,12 +1609,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     return { totalQuantity, totalAmount };
   }, [displayOrders, selectedOrderIds]);
-
-  useEffect(() => {
-    if (!isUserLoading) {
-      // User data loaded
-    }
-  }, [isUserLoading, userDataFromHook]);
 
   useEffect(() => {
     if (checkbox.current)
@@ -2027,15 +2015,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
           return base;
         };
 
-        for (const id of orderIdsToProcess) {
-          try {
-            await rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
+        const results = await Promise.allSettled(
+          orderIdsToProcess.map(id =>
+            rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId)
+          )
+        );
+
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
             successCount += 1;
-            successfulOrderIds.push(id);
-          } catch (e) {
+            successfulOrderIds.push(orderIdsToProcess[index]);
+          } else {
             failCount += 1;
           }
-        }
+        });
       } else {
         // Legacy 모드: bulkUpdateOrderStatus 사용 (orders 페이지와 동일)
         await legacyMutations.bulkUpdateOrderStatus(

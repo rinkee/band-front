@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSWRConfig } from "swr";
-import { useUser, useProducts, useOrders, useOrderStats } from "../hooks"; // Assuming these hooks fetch data correctly
+import { useProducts, useOrders, useOrderStats } from "../hooks"; // Assuming these hooks fetch data correctly
 
 // --- 아이콘 ---
 import {
@@ -199,12 +199,6 @@ export default function DashboardPage() {
 
   // SWR Hooks for fetching data
   const {
-    data: user, // User info (e.g., last_crawl_at)
-    isLoading: isUserLoading,
-    error: userError,
-  } = useUser(userId, swrOptions); // Fetch only when userId is available
-
-  const {
     data: productsData, // API response shape: { data: [], pagination: {} }
     isLoading: isProductsLoading,
     error: productsError,
@@ -237,12 +231,11 @@ export default function DashboardPage() {
   // Combined loading/error state
   const isDataLoading =
     initialLoading ||
-    isUserLoading ||
     isProductsLoading ||
     isOrdersLoading ||
     isOrderStatsLoading;
   const combinedError =
-    error || userError || productsError || ordersError || orderStatsError; // Combine SWR errors
+    error || productsError || ordersError || orderStatsError; // Combine SWR errors
 
   // Update local 'stats' state when 'orderStatsData' from SWR changes
   useEffect(() => {
@@ -768,28 +761,6 @@ export default function DashboardPage() {
               <dd className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">
                 {stats.completedOrders}
                 <span className="text-sm text-gray-500 ml-1">건</span>
-              </dd>
-            </LightCard>
-            {/* Last Update Time */}
-            <LightCard padding="p-5 sm:p-6">
-              <div className="flex items-center justify-between">
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  최근 업데이트
-                </dt>
-                <ClockIcon className="w-5 h-5 text-gray-400" />
-              </div>
-              <dd
-                className="mt-1 text-xl font-medium tracking-tight text-gray-700" // Adjusted font weight/size
-                title={
-                  user?.last_crawl_at
-                    ? formatFullDateTime(user.last_crawl_at)
-                    : "정보 없음"
-                }
-              >
-                {user?.last_crawl_at ? timeAgo(user.last_crawl_at) : "-"}
-                {isUserLoading && (
-                  <LoadingSpinner className="inline-block ml-2 h-4 w-4" />
-                )}
               </dd>
             </LightCard>
           </div>

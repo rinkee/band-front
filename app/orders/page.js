@@ -12,7 +12,7 @@ import { ko } from "date-fns/locale"; // 한국어 로케일
 import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import JsBarcode from "jsbarcode";
-import { useUser, useProducts } from "../hooks";
+import { useProducts } from "../hooks";
 import {
   useOrdersClient,
   useOrderClientMutations,
@@ -609,11 +609,6 @@ function LegacyOrdersPage() {
     },
     keepPreviousData: true, // 이전 데이터 유지 (기존 유지)
   };
-  const {
-    data: userDataFromHook,
-    error: userError,
-    isLoading: isUserLoading,
-  } = useUser(userData?.userId, swrOptions);
   // useOrdersClient 훅 호출 부분 수정
 
   // 날짜 필터 파라미터 계산
@@ -729,7 +724,7 @@ function LegacyOrdersPage() {
   const { updateOrderStatus, updateOrderDetails, bulkUpdateOrderStatus } =
     useOrderClientMutations();
 
-  const isDataLoading = isUserLoading || isOrdersLoading;
+  const isDataLoading = isOrdersLoading;
   const displayedOrderIds = useMemo(() => displayOrders.map((o) => o.order_id), [displayOrders]);
   const isAllDisplayedSelected = useMemo(
     () =>
@@ -769,11 +764,6 @@ function LegacyOrdersPage() {
 
     return { totalQuantity, totalAmount };
   }, [displayOrders, selectedOrderIds]);
-
-  useEffect(() => {
-    if (!isUserLoading) {
-    }
-  }, [isUserLoading, userDataFromHook]);
 
   useEffect(() => {
     if (checkbox.current)
@@ -2249,33 +2239,6 @@ function LegacyOrdersPage() {
                 등록된 주문을 관리하고 주문 상태를 변경할 수 있습니다.
               </p>
               <UpdateButton pageType="orders" />
-              {/* <p className="text-sm md:text-base text-gray-600">
-              최근 업데이트:
-              {userDataFromHook?.last_crawl_at
-                ? getTimeDifferenceInMinutes(userDataFromHook.last_crawl_at)
-                : "알 수 없음"}
-              {isUserLoading && (
-                <LoadingSpinner
-                  className="inline-block ml-2 h-4 w-4"
-                  color="text-gray-400"
-                />
-              )}
-            </p> */}
-
-              <p className="text-xs md:text-sm text-gray-600">
-                최근 업데이트 :
-                {userDataFromHook?.data?.last_crawl_at // Change this line! Access via .data
-                  ? getTimeDifferenceInMinutes(
-                    userDataFromHook.data.last_crawl_at
-                  ) // Also change here
-                  : "알 수 없음"}
-                {isUserLoading && (
-                  <LoadingSpinner
-                    className="inline-block ml-2 h-4 w-4"
-                    color="text-gray-400"
-                  />
-                )}
-              </p>
             </div>
           </div>
           <div className="w-full md:w-auto relative ">

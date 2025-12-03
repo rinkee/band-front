@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, forwardRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useUser } from "../hooks"; // 훅 경로 확인 필요
 import {
   useProductsClient,
   useProductClient,
@@ -691,13 +690,6 @@ export default function ProductsPage() {
     keepPreviousData: true,
   };
 
-  // 사용자 정보 훅
-  const {
-    data: userDataFromHook,
-    error: userError,
-    isLoading: isUserLoading,
-  } = useUser(userData?.userId, swrOptions);
-
   // 상품 목록 데이터 훅 (클라이언트 사이드)
   const {
     data: productsData,
@@ -759,7 +751,7 @@ export default function ProductsPage() {
   );
 
   // 통합 로딩 상태
-  const isDataLoading = initialLoading || isUserLoading || isProductsLoading;
+  const isDataLoading = initialLoading || isProductsLoading;
 
   // 사용자 인증 확인 useEffect
   const handleLogout = useCallback(() => {

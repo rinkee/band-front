@@ -30,6 +30,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
     "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
   const ORDER_COLUMNS =
     "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
+  const COMMENT_ORDER_COLUMNS = "*";
 
   const escapeIlike = (value) =>
     value
@@ -54,6 +55,49 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
     } catch (_) {
       return [];
     }
+  };
+
+  const detectRawMode = () => {
+    try {
+      const s = sessionStorage.getItem("userData");
+      if (!s) return false;
+      const u = JSON.parse(s);
+      const mode =
+        u?.orderProcessingMode ||
+        u?.order_processing_mode ||
+        u?.user?.orderProcessingMode ||
+        u?.user?.order_processing_mode ||
+        "legacy";
+      return String(mode).toLowerCase() === "raw";
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const ensureCommentOrderId = (row) => {
+    if (!row) return row;
+    const fallback =
+      row.comment_order_id ??
+      row.commentOrderId ??
+      row.order_id ??
+      row.id ??
+      null;
+    if (!fallback) return row;
+    const normalized = typeof fallback === "string" ? fallback : String(fallback);
+    if (row.comment_order_id === normalized) return row;
+    return { ...row, comment_order_id: normalized };
+  };
+
+  const getOrderBackupConfig = () => {
+    const isRawMode = detectRawMode();
+    return {
+      isRawMode,
+      table: isRawMode ? "comment_orders" : "orders",
+      store: isRawMode ? "comment_orders" : "orders",
+      dateColumn: isRawMode ? "comment_created_at" : "ordered_at",
+      effectiveDateColumn: "updated_at",
+      nameColumn: isRawMode ? "commenter_name" : "customer_name",
+    };
   };
 
   const fetchKeyStatus = useCallback(async () => {
@@ -131,7 +175,8 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
     const parts = [];
     if (counts.posts) parts.push(`게시물 ${counts.posts}`);
     if (counts.products) parts.push(`상품 ${counts.products}`);
-    if (counts.orders) parts.push(`댓글 ${counts.orders}`);
+    const orderCount = counts.comment_orders ?? counts.orders;
+    if (orderCount) parts.push(`댓글 ${orderCount}`);
     if (parts.length === 0) return "백업 완료";
     return `${parts.join(", ")} 백업 완료`;
   };
@@ -151,7 +196,10 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const backupToIndexedDB = async (userId) => {
     if (!isIndexedDBAvailable()) return;
     try {
-      // posts/products/orders만 초기화 (syncQueue, snapshots, meta는 유지)
+      const orderConfig = getOrderBackupConfig();
+      const orderColumns = orderConfig.isRawMode ? COMMENT_ORDER_COLUMNS : ORDER_COLUMNS;
+
+      // posts/products + 현재 모드 주문 스토어만 초기화 (syncQueue, snapshots, meta는 유지)
       const clearStores = async (stores) => {
         const db = await getDb();
         await new Promise((resolve, reject) => {
@@ -164,35 +212,39 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
         });
       };
 
-      await clearStores(["posts", "products", "orders"]);
+      const storesToClear = ["posts", "products", orderConfig.store];
+      if (orderConfig.store !== "orders") storesToClear.push("orders");
+      await clearStores([...new Set(storesToClear)]);
 
       const excludedCustomers = resolveExcludedCustomers();
       const excludedNormalized = excludedCustomers.map((c) => (c || "").toString().trim().toLowerCase());
       const backupSince = new Date(Date.now() - BACKUP_RANGE_MS).toISOString();
 
-      const fetchSince = async (table, columns, dateColumn) => {
+      const fetchSince = async (table, columns, dateColumn, options = {}) => {
+        const { nameColumn = null, effectiveDateColumn = null } = options;
         let query = supabase
           .from(table)
           .select(columns)
           .eq("user_id", userId);
 
-        // orders는 ordered_at이 과거일 수 있어 updated_at 기준으로 증분 백업
-        const effectiveDateColumn = table === "orders" ? "updated_at" : dateColumn;
-        query = query
-          .gte(effectiveDateColumn, backupSince)
-          .order(effectiveDateColumn, { ascending: false });
+        const rangeColumn = effectiveDateColumn || dateColumn;
+        if (rangeColumn) {
+          query = query
+            .gte(rangeColumn, backupSince)
+            .order(rangeColumn, { ascending: false });
+        }
 
         // 제외 고객 서버 필터
-        if (table === "orders" && excludedCustomers.length > 0) {
+        if ((table === "orders" || table === "comment_orders") && nameColumn && excludedCustomers.length > 0) {
           const exactNames = excludedCustomers
             .map((n) => (n || "").toString().trim())
             .filter(Boolean);
           if (exactNames.length > 0) {
             const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
-            query = query.not("customer_name", "in", `(${sanitized.join(",")})`);
+            query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
             exactNames.forEach((name) => {
               const escaped = escapeIlike(name);
-              query = query.not("customer_name", "ilike", `%${escaped}%`);
+              query = query.not(nameColumn, "ilike", `%${escaped}%`);
             });
           }
         }
@@ -205,11 +257,14 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
       const [posts, products, orders] = await Promise.all([
         fetchSince("posts", POST_COLUMNS, "posted_at"),
         fetchSince("products", PRODUCT_COLUMNS, "updated_at"),
-        fetchSince("orders", ORDER_COLUMNS, "updated_at"),
+        fetchSince(orderConfig.table, orderColumns, orderConfig.dateColumn, {
+          effectiveDateColumn: orderConfig.effectiveDateColumn,
+          nameColumn: orderConfig.nameColumn,
+        }),
       ]);
 
       const filteredOrders = orders.filter((o) => {
-        const name = (o.customer_name || "").toString().trim().toLowerCase();
+        const name = (o[orderConfig.nameColumn] || "").toString().trim().toLowerCase();
         return (
           !excludedNormalized.includes(name) &&
           !excludedNormalized.some((ex) => ex && name.includes(ex))
@@ -218,18 +273,23 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
       await bulkPut("posts", posts);
       await bulkPut("products", products);
-      await bulkPut("orders", filteredOrders);
+      const normalizedOrders = orderConfig.isRawMode
+        ? filteredOrders.map(ensureCommentOrderId)
+        : filteredOrders;
+      await bulkPut(orderConfig.store, normalizedOrders);
 
       const snapshot = await saveSnapshot({
         counts: {
           posts: posts.length,
           products: products.length,
-          orders: filteredOrders.length,
+          [orderConfig.store]: filteredOrders.length,
+          ...(orderConfig.store !== "orders" ? { orders: filteredOrders.length } : {}),
         },
         notes: `test-update user:${userId}`,
       });
       await setMeta("lastBackupAt", snapshot.createdAt);
-      showBackupSummary(formatBackupSummary(snapshot.counts || {}));
+      const counts = snapshot.counts || {};
+      showBackupSummary(formatBackupSummary(counts));
     } catch (e) {
       showBackupSummary(e.message || "백업 실패");
     }
@@ -239,7 +299,8 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const isIndexedDBEmpty = async () => {
     if (!isIndexedDBAvailable()) return true;
     try {
-      const orders = await getAllFromStore("orders");
+      const { store } = getOrderBackupConfig();
+      const orders = await getAllFromStore(store);
       return !orders || orders.length === 0;
     } catch {
       return true;
