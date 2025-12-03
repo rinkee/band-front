@@ -3130,17 +3130,20 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <div className={`text-gray-700 text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-5'}`}>
             {content || '내용 없음'}
           </div>
-          {content && content.length > 200 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded(!isExpanded);
-              }}
-              className="text-blue-600 hover:text-blue-700 text-xs mt-1 font-medium"
-            >
-              {isExpanded ? '접기' : '더보기'}
-            </button>
-          )}
+          <div className="flex items-center gap-3 mt-1">
+            {content && content.length > 200 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExpanded(!isExpanded);
+                }}
+                className="text-blue-600 hover:text-blue-700 text-xs font-medium"
+              >
+                {isExpanded ? '접기' : '더보기'}
+              </button>
+            )}
+            <span className="text-xs text-gray-600">댓글 {post.comment_count || 0}</span>
+          </div>
         </div>
 
         {/* 오른쪽: 이미지 & 개수 */}
@@ -3163,12 +3166,6 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            {/* 이미지 개수 배지 */}
-            {imageUrls.length > 1 && (
-              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full font-medium">
-                {imageUrls.length}
-              </div>
-            )}
           </div>
         )}
       </div>

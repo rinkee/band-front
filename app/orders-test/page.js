@@ -20,7 +20,7 @@ import { api } from "../lib/fetcher";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 import 추가
 import getAuthedClient from "../lib/authedSupabaseClient";
 import JsBarcode from "jsbarcode";
-import { useUser, useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
+import { useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
 import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
 import { useSWRConfig } from "swr";
@@ -754,9 +754,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return arr;
   }, [orders, showPickupAvailableOnly, filterSelection, postProductsByPostKey, postProductsByBandPost]);
 
-  // 전체 통계 계산 (필터 무관, 원본 orders 데이터 기반)
-  const allStats = useMemo(() => {
-    if (!orders || orders.length === 0) {
+  const calculateStats = useCallback((dataArray) => {
+    if (!dataArray || dataArray.length === 0) {
       return {
         totalOrders: 0,
         statusCounts: {},
@@ -767,7 +766,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const statusCounts = {};
     const subStatusCounts = {};
 
-    orders.forEach(order => {
+    dataArray.forEach(order => {
       const status = order.status || '';
       const subStatus = order.sub_status || '';
 
@@ -783,46 +782,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
     });
 
     return {
-      totalOrders: orders.length,
+      totalOrders: dataArray.length,
       statusCounts,
       subStatusCounts,
     };
-  }, [orders]);
+  }, []);
+
+  // 전체 통계 계산 (필터 무관, 원본 orders 데이터 기반)
+  const allStats = useMemo(
+    () => calculateStats(orders),
+    [calculateStats, orders]
+  );
 
   // 필터링된 통계 계산 (현재 필터 적용된 displayOrders 기반)
-  const clientStats = useMemo(() => {
-    if (!displayOrders || displayOrders.length === 0) {
-      return {
-        totalOrders: 0,
-        statusCounts: {},
-        subStatusCounts: {},
-      };
-    }
-
-    const statusCounts = {};
-    const subStatusCounts = {};
-
-    displayOrders.forEach(order => {
-      const status = order.status || '';
-      const subStatus = order.sub_status || '';
-
-      // 상태별 카운트
-      if (status) {
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-      }
-
-      // 서브상태별 카운트
-      if (subStatus) {
-        subStatusCounts[subStatus] = (subStatusCounts[subStatus] || 0) + 1;
-      }
-    });
-
-    return {
-      totalOrders: displayOrders.length,
-      statusCounts,
-      subStatusCounts,
-    };
-  }, [displayOrders]);
+  const clientStats = useMemo(
+    () => calculateStats(displayOrders),
+    [calculateStats, displayOrders]
+  );
 
   const unreceivedCount =
     clientStats.subStatusCounts?.["미수령"] ||
@@ -847,13 +823,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
       map.get(key).push(o);
     }
     const groups = [];
+    const getOrderedAtTime = (order) =>
+      order?.ordered_at ? new Date(order.ordered_at).getTime() : 0;
     for (const [key, rows] of map.entries()) {
-      // 대표행 선택: ordered_at 오름차순, 그 외는 첫 번째
-      const rep = [...rows].sort((a, b) => {
-        const ta = a.ordered_at ? new Date(a.ordered_at).getTime() : 0;
-        const tb = b.ordered_at ? new Date(b.ordered_at).getTime() : 0;
-        return ta - tb;
-      })[0];
+      // 대표행 선택: ordered_at 최소값 기준 (정렬 없이 O(n))
+      let rep = rows[0];
+      let minTime = rep ? getOrderedAtTime(rep) : Infinity;
+      for (let i = 1; i < rows.length; i++) {
+        const candidate = rows[i];
+        const t = getOrderedAtTime(candidate);
+        if (t < minTime) {
+          minTime = t;
+          rep = candidate;
+        }
+      }
       groups.push({ groupId: key, rows, rep, orderIds: rows.map(r => r.order_id) });
     }
     // 정렬이 비활성화되면 원본 순서 유지
@@ -950,12 +933,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     keepPreviousData: true, // 깜빡임 방지
     fallbackData: undefined, // fallback 없음 (캐시 우선)
   };
-  const {
-    data: userDataFromHook,
-    error: userError,
-    isLoading: isUserLoading,
-  } = useUser(userData?.userId, swrOptions);
-
   // 서버 사이드 필터링 + 진짜 페이지네이션 (효율적 데이터 로딩)
   const ordersFilters = useMemo(() => {
     const dateParams = calculateDateFilterParams(
@@ -1564,7 +1541,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   };
 
-  const isDataLoading = isUserLoading || isOrdersLoading;
+  const isDataLoading = isOrdersLoading;
   const isSearchLoading = isOrdersLoading;
   const hasLoadedOrdersOnceRef = useRef(false);
   useEffect(() => {
@@ -1615,12 +1592,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     return { totalQuantity, totalAmount };
   }, [displayOrders, selectedOrderIds]);
-
-  useEffect(() => {
-    if (!isUserLoading) {
-      // User data loaded
-    }
-  }, [isUserLoading, userDataFromHook]);
 
   useEffect(() => {
     if (checkbox.current)
@@ -2027,15 +1998,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
           return base;
         };
 
-        for (const id of orderIdsToProcess) {
-          try {
-            await rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId);
+        const results = await Promise.allSettled(
+          orderIdsToProcess.map(id =>
+            rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId)
+          )
+        );
+
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
             successCount += 1;
-            successfulOrderIds.push(id);
-          } catch (e) {
+            successfulOrderIds.push(orderIdsToProcess[index]);
+          } else {
             failCount += 1;
           }
-        }
+        });
       } else {
         // Legacy 모드: bulkUpdateOrderStatus 사용 (orders 페이지와 동일)
         await legacyMutations.bulkUpdateOrderStatus(
@@ -2352,6 +2328,30 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // currentPage 변경 감지하여 스크롤하는 useEffect 추가
 
+  const productTitleById = useMemo(() => {
+    const map = new Map();
+    (products || []).forEach((p) => {
+      if (p?.product_id == null) return;
+      if (p.title) map.set(p.product_id, p.title);
+    });
+    return map;
+  }, [products]);
+
+  const orderProductNameById = useMemo(() => {
+    const map = new Map();
+    (orders || []).forEach((o) => {
+      if (o?.product_id == null) return;
+      if (o.product_name && o.product_name !== "상품명 없음") {
+        if (!map.has(o.product_id)) map.set(o.product_id, o.product_name);
+        return;
+      }
+      if (o.product_title && !map.has(o.product_id)) {
+        map.set(o.product_id, o.product_title);
+      }
+    });
+    return map;
+  }, [orders]);
+
   const getTimeDifferenceInMinutes = (ds) => {
     if (!ds) return "알 수 없음";
     const dt = new Date(ds),
@@ -2363,26 +2363,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (hrs < 24) return `${hrs}시간 전`;
     return `${Math.floor(mins / 1440)}일 전`;
   };
-  const getProductNameById = (id) => {
-    // products 배열에서 product_id로 찾기
-    const product = products.find((p) => p.product_id === id);
-    if (product?.title) {
-      return product.title;
-    }
+  const getProductNameById = useCallback(
+    (id) => {
+      if (id == null) return "상품명 없음";
 
-    // orders 데이터에서 product_name 필드 사용 (폴백)
-    const order = orders.find((o) => o.product_id === id);
-    if (order?.product_name && order.product_name !== "상품명 없음") {
-      return order.product_name;
-    }
+      const title = productTitleById.get(id);
+      if (title) return title;
 
-    // product_title 필드도 확인 (orders_with_products 뷰에서)
-    if (order?.product_title) {
-      return order.product_title;
-    }
+      const fromOrder = orderProductNameById.get(id);
+      if (fromOrder) return fromOrder;
 
-    return "상품명 없음";
-  };
+      return "상품명 없음";
+    },
+    [orderProductNameById, productTitleById]
+  );
 
   // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
   const parseProductName = (productName) => {

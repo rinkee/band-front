@@ -2,11 +2,11 @@
 
 /**
  * Minimal IndexedDB helper for offline snapshots & queueing.
- * Stores: posts, products, orders, syncQueue, snapshots, meta.
+ * Stores: posts, products, orders, comment_orders, syncQueue, snapshots, meta.
  */
 
 const DB_NAME = "band-offline-cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -45,6 +45,14 @@ function openDatabase() {
         store.createIndex("updated_at", "updated_at", { unique: false });
         store.createIndex("customer_name", "customer_name", { unique: false });
         store.createIndex("customer_phone", "customer_phone", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains("comment_orders")) {
+        const store = db.createObjectStore("comment_orders", { keyPath: "comment_order_id" });
+        store.createIndex("post_key", "post_key", { unique: false });
+        store.createIndex("status", "status", { unique: false });
+        store.createIndex("comment_created_at", "comment_created_at", { unique: false });
+        store.createIndex("commenter_name", "commenter_name", { unique: false });
       }
 
       if (!db.objectStoreNames.contains("syncQueue")) {
