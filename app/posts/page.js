@@ -22,8 +22,11 @@ import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업�
 import { EllipsisVerticalIcon, TrashIcon } from "@heroicons/react/24/outline";
 
 // 네이버 이미지 프록시 헬퍼 함수
-const getProxiedImageUrl = (url) => {
+// thumbnail 옵션: 's150' (150px 정사각형), 'w300' (너비 300px), 'w580' 등
+const getProxiedImageUrl = (url, options = {}) => {
   if (!url) return url;
+
+  const { thumbnail } = options;
 
   // 네이버 도메인인지 확인
   const isNaverHost = (urlString) => {
@@ -43,7 +46,22 @@ const getProxiedImageUrl = (url) => {
 
   // 네이버 도메인이면 프록시 사용
   if (isNaverHost(url)) {
-    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    let targetUrl = url;
+
+    // 썸네일 옵션이 있으면 type 파라미터 추가
+    if (thumbnail) {
+      try {
+        const u = new URL(url);
+        u.searchParams.delete('type');
+        u.searchParams.set('type', thumbnail);
+        targetUrl = u.toString();
+      } catch {
+        // URL 파싱 실패 시 단순히 쿼리 추가
+        targetUrl = url.includes('?') ? `${url}&type=${thumbnail}` : `${url}?type=${thumbnail}`;
+      }
+    }
+
+    return `/api/image-proxy?url=${encodeURIComponent(targetUrl)}`;
   }
 
   return url;
@@ -678,12 +696,19 @@ export default function PostsPage() {
         existingProducts
       });
 
-      const maxItemNumber = (existingProducts || []).reduce((max, p) => {
+      // item_number 기반 최대값 계산
+      const maxByItemNumber = (existingProducts || []).reduce((max, p) => {
         const itemNum = parseInt(p.item_number) || 0;
         return itemNum > max ? itemNum : max;
       }, 0);
 
-      console.log('계산된 maxItemNumber:', maxItemNumber);
+      // 기존 상품 개수 (item_number가 null인 경우 대비)
+      const existingCount = (existingProducts || []).length;
+
+      // 둘 중 큰 값을 사용하여 중복 방지
+      const maxItemNumber = Math.max(maxByItemNumber, existingCount);
+
+      console.log('계산된 maxItemNumber:', maxItemNumber, '(byItemNumber:', maxByItemNumber, ', existingCount:', existingCount, ')');
 
       // 기존 상품이 있으면 첫 번째 상품의 pickup_date 사용
       const existingPickupDate = existingProducts.length > 0 && existingProducts[0].pickup_date
@@ -2149,11 +2174,12 @@ export default function PostsPage() {
                               <ProductAddRow
                                 post={post}
                                 nextItemNumber={(() => {
-                                  const maxItemNumber = products.reduce((max, p) => {
+                                  const maxByItemNumber = products.reduce((max, p) => {
                                     const itemNum = parseInt(p.item_number) || 0;
                                     return itemNum > max ? itemNum : max;
                                   }, 0);
-                                  return maxItemNumber + 1;
+                                  const existingCount = products.length;
+                                  return Math.max(maxByItemNumber, existingCount) + 1;
                                 })()}
                                 onSave={handleAddNewProduct}
                                 onCancel={() => setAddingProduct(prev => {
@@ -2596,7 +2622,7 @@ export default function PostsPage() {
                     {(Array.isArray(selectedPostForDetail.image_urls) ? selectedPostForDetail.image_urls : JSON.parse(selectedPostForDetail.image_urls || '[]')).slice(0, 4).map((url, index) => (
                       <div key={index} className="relative w-full h-40 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
                         <img
-                          src={getProxiedImageUrl(url)}
+                          src={getProxiedImageUrl(url, { thumbnail: 's150' })}
                           alt={`이미지 ${index + 1}`}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -3066,7 +3092,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
           <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
             {(post.profile_image || post.author_profile) ? (
               <img
-                src={getProxiedImageUrl(post.profile_image || post.author_profile)}
+                src={getProxiedImageUrl(post.profile_image || post.author_profile, { thumbnail: 's150' })}
                 alt={`${post.author_name || '익명'} 프로필`}
                 className="w-full h-full object-cover"
                 onError={(e) => {
@@ -3150,7 +3176,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
         {hasImages && (
           <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
             <img
-              src={getProxiedImageUrl(mainImage)}
+              src={getProxiedImageUrl(mainImage, { thumbnail: 's150' })}
               alt={cleanTitle || "게시물 이미지"}
               className="w-full h-full object-cover rounded-lg"
               onError={(e) => {

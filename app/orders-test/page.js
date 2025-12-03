@@ -103,8 +103,11 @@ const processBandTags = (text) => {
 };
 
 // 네이버 이미지 프록시 헬퍼 함수
-const getProxiedImageUrl = (url) => {
+// thumbnail 옵션: 's150' (150px 정사각형), 'w300' (너비 300px), 'w580' 등
+const getProxiedImageUrl = (url, options = {}) => {
   if (!url) return url;
+
+  const { thumbnail } = options;
 
   // 네이버 도메인인지 확인
   const isNaverHost = (urlString) => {
@@ -124,7 +127,22 @@ const getProxiedImageUrl = (url) => {
 
   // 네이버 도메인이면 프록시 사용
   if (isNaverHost(url)) {
-    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    let targetUrl = url;
+
+    // 썸네일 옵션이 있으면 type 파라미터 추가
+    if (thumbnail) {
+      try {
+        const u = new URL(url);
+        u.searchParams.delete('type');
+        u.searchParams.set('type', thumbnail);
+        targetUrl = u.toString();
+      } catch {
+        // URL 파싱 실패 시 단순히 쿼리 추가
+        targetUrl = url.includes('?') ? `${url}&type=${thumbnail}` : `${url}?type=${thumbnail}`;
+      }
+    }
+
+    return `/api/image-proxy?url=${encodeURIComponent(targetUrl)}`;
   }
 
   return url;
@@ -4553,7 +4571,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                         <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0 border border-gray-200">
                                           {imgUrl ? (
                                             <img
-                                              src={getProxiedImageUrl(imgUrl)}
+                                              src={getProxiedImageUrl(imgUrl, { thumbnail: 's150' })}
                                               alt={title}
                                               loading="lazy"
                                               width="56"
