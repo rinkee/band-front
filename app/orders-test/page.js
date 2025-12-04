@@ -823,13 +823,33 @@ function OrdersTestPageContent({ mode = "raw" }) {
     allStats.subStatusCounts?.["미수령"] ||
     0;
 
-  // 그룹 키: band + (comment_key 없으면 post_key) + ordered_at + updated_at
+  // 그룹 키: 주문 단위로만 선택되도록 order_id를 1차 키로 사용
   const getGroupKey = useCallback((o) => {
+    const orderId = o.order_id || o.comment_order_id || o.id;
+    if (orderId) return String(orderId);
+
+    // 안전장치: order_id가 없을 경우 충돌을 최대한 피하기 위해 여러 필드를 결합
     const band = o.band_key ?? (o.band_number != null ? String(o.band_number) : "");
-    const baseKey = o.comment_key || o.commentKey || o.post_key || o.postKey || "";
-    const ord = o.ordered_at || "";
-    // updated_at은 미세 차이가 있을 수 있어 제외하고 ordered_at만 비교
-    return [String(band), String(baseKey), String(ord)].join("|");
+    const post =
+      o.post_key ||
+      o.postKey ||
+      (o.post_number != null ? String(o.post_number) : "") ||
+      (o.postNumber != null ? String(o.postNumber) : "");
+    const commentKey = o.comment_key || o.commentKey || "";
+    const commenter = o.commenter_name || o.customer_name || "";
+    const comment = o.comment_body || o.comment || "";
+    const orderedAt = o.ordered_at || o.comment_created_at || o.created_at || "";
+    const updatedAt = o.updated_at || o.modified_at || o.updatedAt || "";
+
+    return JSON.stringify({
+      band,
+      post,
+      commentKey,
+      commenter,
+      comment,
+      orderedAt,
+      updatedAt,
+    });
   }, []);
 
   // 대표행 그룹 목록 계산
@@ -1947,6 +1967,33 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   const handleBulkStatusUpdate = useCallback(async (newStatus) => {
+    const summarizeOrders = (list) =>
+      list.map((o) => {
+        // 테이블에서 보여주는 상품명을 최대한 동일하게 재구성
+        const candidates = getCandidateProductsForOrder
+          ? getCandidateProductsForOrder(o)
+          : [];
+        const selected =
+          Array.isArray(candidates) && o.product_id
+            ? candidates.find((p) => p?.product_id === o.product_id)
+            : null;
+        const fallbackProd =
+          selected ||
+          (Array.isArray(candidates) && candidates.length > 0
+            ? candidates[0]
+            : null);
+        const rawTitle =
+          o.product_title ||
+          o.product_name ||
+          fallbackProd?.title ||
+          fallbackProd?.name ||
+          fallbackProd?.product_name ||
+          "-";
+        const productName = cleanProductName ? cleanProductName(rawTitle) : rawTitle;
+        const customer = o.customer_name || o.commenter_name || "-";
+        return `${customer} / ${productName}`;
+      });
+
     if (selectedOrderIds.length === 0) return;
     setBulkUpdateLoading(true);
 
@@ -1968,14 +2015,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
       return;
     }
 
-    if (
-      !window.confirm(
-        `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
-        (skippedCount > 0
-          ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
-          : "")
-      )
-    ) {
+    const updateList = summarizeOrders(ordersToUpdateFilter);
+    const confirmMessage =
+      (updateList.length
+        ? `선택된 주문:\n${updateList
+          .map((s, idx) => `${idx + 1}. ${s}`)
+          .join("\n")}\n\n`
+        : "") +
+      `${orderIdsToProcess.length}개의 주문을 '${newStatus}' 상태로 변경하시겠습니까?` +
+      (skippedCount > 0
+        ? `\n(${skippedCount}개는 이미 해당 상태이거나 제외되어 건너뜁니다.)`
+        : "");
+
+    if (!window.confirm(confirmMessage)) {
       setBulkUpdateLoading(false);
       return;
     }
@@ -2099,7 +2151,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       undefined,
       { revalidate: true }
     );
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, globalMutate]);
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, globalMutate, getCandidateProductsForOrder, cleanProductName]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
