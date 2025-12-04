@@ -373,6 +373,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // 2. DB 기존 게시물 조회
     console.log(`DB에서 기존 게시물 정보 가져오기`);
     const dbPostsMap = new Map();
+    let productPresenceSet = null;
 
     if (posts.length > 0) {
       try {
@@ -410,6 +411,48 @@ export async function processBandPosts(supabase, userId, options = {}) {
         }
       } catch (error) {
         console.error(`[2단계] DB post fetch error: ${error.message}`);
+      }
+
+      // 상품 존재 여부를 사전 로드해 per-post 조회를 줄임
+      try {
+        const productProbeKeys = Array.from(dbPostsMap.entries())
+          .filter(([, info]) => info?.is_product === true)
+          .map(([postKey]) => postKey);
+
+        if (productProbeKeys.length > 0) {
+          const PRODUCT_PROBE_BATCH = 50; // in() 쿼리 길이 제한을 피하기 위한 배치 크기
+          productPresenceSet = new Set();
+
+          for (let i = 0; i < productProbeKeys.length; i += PRODUCT_PROBE_BATCH) {
+            const batchKeys = productProbeKeys.slice(i, i + PRODUCT_PROBE_BATCH);
+            const { data: productRows, error: productProbeError } = await supabase
+              .from("products")
+              .select("post_key")
+              .eq("user_id", userId)
+              .in("post_key", batchKeys);
+
+            if (productProbeError) {
+              console.error(`[products 사전조회 실패] ${productProbeError.message}`);
+              productPresenceSet = null;
+              break;
+            }
+
+            if (Array.isArray(productRows)) {
+              productRows.forEach((row) => {
+                if (row?.post_key) productPresenceSet.add(row.post_key);
+              });
+            }
+          }
+
+          if (productPresenceSet) {
+            console.log(
+              `[products 사전조회] ${productPresenceSet.size}/${productProbeKeys.length}개 게시물에 상품 존재`
+            );
+          }
+        }
+      } catch (probeError) {
+        console.error(`[products 사전조회 예외] ${probeError.message}`);
+        productPresenceSet = null;
       }
 
       // 4. 게시물 순회 및 처리
@@ -984,11 +1027,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
                 // 강제 추출 경로
                 try {
                   let hasProductsInDb = false;
-                  try {
-                    const productMapProbe = await fetchProductMapForPost(supabase, userId, postKey);
-                    hasProductsInDb = productMapProbe && productMapProbe.size > 0;
-                  } catch (_) {
-                    // probe 실패 시 강제 시도는 계속함
+                  if (productPresenceSet) {
+                    hasProductsInDb = productPresenceSet.has(postKey);
+                  } else {
+                    try {
+                      const productMapProbe = await fetchProductMapForPost(supabase, userId, postKey);
+                      hasProductsInDb = productMapProbe && productMapProbe.size > 0;
+                    } catch (_) {
+                      // probe 실패 시 강제 시도는 계속함
+                    }
                   }
 
                   if (!hasProductsInDb) {
