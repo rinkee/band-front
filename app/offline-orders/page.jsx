@@ -600,7 +600,7 @@ export default function OfflineOrdersPage() {
       }
     };
     checkHealth();
-    healthTimer = setInterval(checkHealth, 30000);
+    healthTimer = setInterval(checkHealth, 15000);
 
     return () => {
       clearInterval(healthTimer);
@@ -1432,6 +1432,26 @@ export default function OfflineOrdersPage() {
         </div>
       )}
 
+      {isSupabaseHealthy && (
+        <div className="fixed bottom-4 right-4 z-40">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-gray-900/95 border border-gray-800 shadow-2xl rounded-xl px-4 py-3 text-white backdrop-blur">
+            <div className="flex items-center gap-2 text-sm text-white">
+              <span className="inline-flex w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
+              <div className="flex flex-col leading-tight">
+                <span className="font-semibold text-white">서버 연결 정상</span>
+                <span className="text-xs text-gray-300">원래 페이지로 돌아가 온라인 작업을 이어가세요.</span>
+              </div>
+            </div>
+            <Link
+              href="/orders-test"
+              className="inline-flex items-center justify-center px-3 py-2 text-sm font-semibold rounded-lg bg-white text-gray-900 hover:bg-gray-100 shadow-sm"
+            >
+              주문 페이지로 이동
+            </Link>
+          </div>
+        </div>
+      )}
+
       <div className="mb-[80px]">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden" ref={listTopRef}>
           {/* 상태 필터 */}
@@ -1951,7 +1971,7 @@ export default function OfflineOrdersPage() {
                       onClick={() => handlePageChange(page)}
                       className={`min-w-[36px] px-2 py-1.5 rounded-md border text-sm font-medium transition-colors ${
                         isActive
-                          ? "bg-orange-500 text-white border-orange-500"
+                          ? "bg-gray-200 text-gray-900 border-gray-300"
                           : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
                       }`}
                     >
