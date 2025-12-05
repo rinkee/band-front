@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import supabase from '../lib/supabaseClient';
 
 const UpdateProgressContext = createContext();
+const EXECUTION_LOCKS_ENABLED = false; // execution_locks 테이블 접근 비활성화
 
 export const useUpdateProgress = () => {
   const context = useContext(UpdateProgressContext);
@@ -90,6 +91,7 @@ export const UpdateProgressProvider = ({ children }) => {
 
   // Realtime 업데이트 처리 (execution_locks 테이블 구조)
   const handleRealtimeUpdate = (payload) => {
+    if (!EXECUTION_LOCKS_ENABLED) return;
     console.log('🔄 handleRealtimeUpdate 시작:', payload);
     const { eventType, new: newRecord, old: oldRecord } = payload;
     
@@ -157,6 +159,7 @@ export const UpdateProgressProvider = ({ children }) => {
 
   // 진행 중인 작업 복원
   const restoreActiveUpdates = async () => {
+    if (!EXECUTION_LOCKS_ENABLED) return;
     if (typeof window === 'undefined') return;
     
     try {
@@ -282,6 +285,7 @@ export const UpdateProgressProvider = ({ children }) => {
 
   // 오래된 진행 상태 정리
   const checkAndCompleteStaleUpdate = async (progressId) => {
+    if (!EXECUTION_LOCKS_ENABLED) return;
     try {
       const { data: lock, error } = await supabase
         .from('execution_locks')
@@ -327,6 +331,7 @@ export const UpdateProgressProvider = ({ children }) => {
 
   // 강제 상태 초기화 함수 (DB + 로컬 상태 모두 정리)
   const forceResetState = async (pageType) => {
+    if (!EXECUTION_LOCKS_ENABLED) return;
     console.log('🔥 강제 상태 초기화 시작:', pageType);
     
     try {

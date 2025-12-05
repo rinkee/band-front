@@ -183,7 +183,6 @@ export async function processBandPosts(supabase, userId, options = {}) {
     onFailover = null
   } = options;
 
-  let executionKey = null;
   let bandApiFailover = null;
 
   try {
@@ -197,25 +196,6 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // 🧪 테스트 모드 로깅
     if (testMode) {
       console.log(`🧪 테스트 모드 실행: userId=${userId} - 데이터베이스에 저장하지 않음`);
-    }
-
-    // 실행 시작 기록
-    executionKey = `band_update_${userId}`;
-    const { error: lockError } = await supabase
-      .from("execution_locks")
-      .upsert(
-        {
-          key: executionKey,
-          user_id: userId,
-          is_running: true,
-          started_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "key" }
-      );
-
-    if (lockError) {
-      console.error(`[실행 잠금 실패] ${lockError.message}`);
     }
 
     // 사용자 설정 조회
@@ -1729,41 +1709,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // 세션 종료 (성공)
     await bandApiFailover.endSession(true);
 
-    // 🔓 실행 잠금 해제
-    const { error: unlockError } = await supabase
-      .from("execution_locks")
-      .update({
-        is_running: false,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq("key", executionKey);
-
-    if (unlockError) {
-      console.error(`[실행 잠금 해제 실패] ${unlockError.message}`);
-    }
-
     return responseData;
   } catch (error) {
     // 함수 전체의 최상위 오류 처리
     console.error("Unhandled error in processBandPosts:", error);
-
-    // 🔓 에러 시에도 실행 잠금 해제
-    if (executionKey) {
-      const { error: unlockError } = await supabase
-        .from("execution_locks")
-        .update({
-          is_running: false,
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          error_message: error.message
-        })
-        .eq("key", executionKey);
-
-      if (unlockError) {
-        console.error(`[실행 잠금 해제 실패] ${unlockError.message}`);
-      }
-    }
 
     // 세션 종료 (실패)
     try {
