@@ -20,7 +20,69 @@ const REMEMBERED_LOGIN_ID_KEY = "rememberedLoginId";
 const REMEMBER_ID_CHECKBOX_KEY = "rememberIdCheckboxState";
 const REMEMBER_PASSWORD_CHECKBOX_KEY = "rememberPasswordCheckboxState";
 const REMEMBERED_PASSWORD_KEY = "rememberedPassword";
+const OFFLINE_USER_KEY = "offlineUserId";
+const OFFLINE_ACCOUNTS_KEY = "offlineAccounts";
+const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/health`
+  : null;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 // --- 👆 상수 정의 위치를 여기로 변경 👆 ---
+
+async function detectPrivateMode() {
+  if (typeof window === "undefined") return false;
+  const QUOTA_THRESHOLD = 150 * 1024 * 1024; // 150MB 이하면 프라이빗 가능성
+  // 1) Chromium: quota 확인
+  try {
+    if (navigator.storage?.estimate) {
+      const { quota } = await navigator.storage.estimate();
+      if (quota && quota < QUOTA_THRESHOLD) {
+        return true;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  // 1-1) webkitTemporaryStorage (Chrome 계열)
+  try {
+    const quota = await new Promise((resolve, reject) => {
+      if (!navigator.webkitTemporaryStorage?.queryUsageAndQuota) return resolve(null);
+      navigator.webkitTemporaryStorage.queryUsageAndQuota(
+        (_u, q) => resolve(q),
+        (err) => reject(err)
+      );
+    });
+    if (quota && quota < QUOTA_THRESHOLD) return true;
+  } catch {
+    // ignore
+  }
+  // 2) Safari 등: localStorage 제한
+  const lsBlocked = (() => {
+    try {
+      const key = "__pm_test__";
+      localStorage.setItem(key, "1");
+      localStorage.removeItem(key);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
+  if (lsBlocked) return true;
+  // 3) IndexedDB 접근 가능 여부
+  const idbBlocked = await new Promise((resolve) => {
+    try {
+      const request = indexedDB.open("pm-detect");
+      request.onerror = () => resolve(true);
+      request.onsuccess = () => {
+        request.result.close();
+        indexedDB.deleteDatabase("pm-detect");
+        resolve(false);
+      };
+    } catch {
+      resolve(true);
+    }
+  });
+  return idbBlocked;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,12 +94,37 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [rememberId, setRememberId] = useState(false); // '아이디 저장' 체크박스 상태
   const [rememberPassword, setRememberPassword] = useState(false); // '비밀번호 저장' 체크박스 상태
+  const [isPrivateMode, setIsPrivateMode] = useState(false);
+  const [checkingPrivate, setCheckingPrivate] = useState(true);
+  const [supabaseHealth, setSupabaseHealth] = useState("checking"); // checking | healthy | offline
+  const [redirectedForHealth, setRedirectedForHealth] = useState(false);
+
+  const rememberOfflineAccount = (userId, storeName) => {
+    if (!userId || typeof window === "undefined") return;
+    const entry = { userId, storeName: storeName || "" };
+    try {
+      const raw = localStorage.getItem(OFFLINE_ACCOUNTS_KEY);
+      let list = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          list = parsed;
+        }
+      }
+      const deduped = list.filter((item) => item?.userId !== userId);
+      const next = [entry, ...deduped];
+      localStorage.setItem(OFFLINE_ACCOUNTS_KEY, JSON.stringify(next));
+      localStorage.setItem(OFFLINE_USER_KEY, userId);
+    } catch (err) {
+      console.warn("오프라인 계정 저장 실패:", err);
+    }
+  };
 
   useEffect(() => {
     // 0. 자동 로그인 확인 (Admin에서 접근한 경우)
     const urlParams = new URLSearchParams(window.location.search);
     const autoLoginParam = urlParams.get('autoLogin');
-    
+
     if (autoLoginParam === 'true') {
       const autoLoginData = sessionStorage.getItem('autoLogin');
       if (autoLoginData) {
@@ -45,10 +132,10 @@ export default function LoginPage() {
           const { loginId: autoLoginId, password: autoPassword } = JSON.parse(autoLoginData);
           setLoginId(autoLoginId);
           setLoginPassword(autoPassword);
-          
+
           // 자동 로그인 데이터 제거
           sessionStorage.removeItem('autoLogin');
-          
+
           // 약간 지연 후 자동 로그인 실행
           setTimeout(() => {
             const form = document.querySelector('form');
@@ -56,7 +143,7 @@ export default function LoginPage() {
               form.requestSubmit();
             }
           }, 500);
-          
+
           return; // 자동 로그인 처리 중이므로 다른 로직 실행 안 함
         } catch (e) {
           console.error('자동 로그인 데이터 파싱 오류:', e);
@@ -99,6 +186,65 @@ export default function LoginPage() {
     setRememberId(savedCheckboxState);
     setRememberPassword(savedPasswordState);
   }, [router]);
+
+  useEffect(() => {
+    let mounted = true;
+    detectPrivateMode()
+      .then((res) => {
+        if (mounted) {
+          setIsPrivateMode(res);
+          setCheckingPrivate(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setIsPrivateMode(false);
+          setCheckingPrivate(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Supabase health check
+  useEffect(() => {
+    let timer;
+    const checkHealth = async () => {
+      if (!HEALTH_URL || (typeof navigator !== "undefined" && !navigator.onLine)) {
+        setSupabaseHealth("offline");
+        return;
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(HEALTH_URL, {
+          method: "GET",
+          signal: controller.signal,
+          headers: SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {},
+        });
+        clearTimeout(timeoutId);
+        setSupabaseHealth(res.status === 200 ? "healthy" : "offline");
+      } catch {
+        setSupabaseHealth("offline");
+      }
+    };
+    checkHealth();
+    timer = setInterval(checkHealth, 30000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  const isSupabaseHealthy = supabaseHealth === "healthy";
+
+  // 서버 불안정 시 자동으로 백업 페이지로 이동
+  useEffect(() => {
+    if (supabaseHealth === "offline" && !redirectedForHealth) {
+      setRedirectedForHealth(true);
+      router.replace("/offline-orders");
+    }
+  }, [supabaseHealth, redirectedForHealth, router]);
 
   // const handleSubmit = async (e) => {
   //   e.preventDefault();
@@ -251,7 +397,7 @@ export default function LoginPage() {
       if (result.success && result.token && result.user) {
         const userDetails = result.user;
         const token = result.token;
-        
+
         // 🎯 function_number 확인 및 로깅
         const functionNumber = userDetails.function_number ?? userDetails.functionNumber ?? 0;
         console.log(`🎯 User function_number from server: ${functionNumber}`);
@@ -335,10 +481,17 @@ export default function LoginPage() {
 
         // localStorage에도 userId 저장 (다른 페이지와 일관성)
         localStorage.setItem("userId", userDetails.userId);
+        const storeLabel =
+          userDetails.storeName ||
+          userDetails.store_name ||
+          userDetails.storeAddress ||
+          userDetails.store_address ||
+          userDetails.loginId ||
+          "";
+        rememberOfflineAccount(userDetails.userId, storeLabel);
 
         setSuccess(
-          `${userDetails.storeName || userDetails.store_name || "고객님"} ${
-            userDetails.ownerName || userDetails.owner_name || ""
+          `${userDetails.storeName || userDetails.store_name || "고객님"} ${userDetails.ownerName || userDetails.owner_name || ""
           }님, 환영합니다!`
         );
 
@@ -440,6 +593,15 @@ export default function LoginPage() {
         // --- !!! 여기가 핵심 수정 !!! ---
         // 통합된 객체를 "userData" 키로 저장
         sessionStorage.setItem("userData", JSON.stringify(userDataToStore));
+        const storeLabel =
+          userDetails.storeName ||
+          userDetails.store_name ||
+          userDetails.storeAddress ||
+          userDetails.store_address ||
+          userDetails.loginId ||
+          "";
+        rememberOfflineAccount(userDetails.userId, storeLabel);
+        localStorage.setItem("userId", userDetails.userId);
         // sessionStorage.setItem("token", data.token); // <-- 이 줄은 이제 삭제 (중복 저장 불필요)
         // --- 핵심 수정 끝 ---
         // 성공 메시지 표시
@@ -464,7 +626,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="relative min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <Link
+        href="/offline-orders"
+        className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-md border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50"
+      >
+        백업 주문 페이지
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12l-7.5 7.5m-9-15L12 12l-7.5 7.5" />
+        </svg>
+      </Link>
+      {!isSupabaseHealthy && (
+        <div className="absolute right-4 top-16 text-sm sm:text-base text-red-600 font-bold text-right bg-white/90 border border-red-200 rounded-md px-3 py-2 shadow-sm">
+          서버 불안정: 우측 상단의 백업 주문 페이지에서 작업해주세요.
+        </div>
+      )}
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -488,6 +664,9 @@ export default function LoginPage() {
         <Suspense fallback={null}>
           <SearchParamsHandler setSuccess={setSuccess} setError={setError} />
         </Suspense>
+        <div className="relative rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          시크릿 모드에선 자동백업이 작동하지 않습니다. 일반 크롬 브라우저로 로그인해주세요.
+        </div>
         <form className="mt-8 space-y-6" onSubmit={loginUserWithFetch}>
           {success && (
             <div className="rounded-md bg-green-50 p-4 mb-4">
