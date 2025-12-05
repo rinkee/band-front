@@ -23,7 +23,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const { mutate } = useSWRConfig();
 
   const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-  const BACKUP_RANGE_MS = 30 * 24 * 60 * 60 * 1000; // 최근 30일
+  const BACKUP_RANGE_MS = 20 * 24 * 60 * 60 * 1000; // 최근 20일
   const POST_COLUMNS =
     "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at";
   const PRODUCT_COLUMNS =

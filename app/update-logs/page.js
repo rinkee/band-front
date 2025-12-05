@@ -4,6 +4,14 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 6,
+      date: '2025년 12월 6일',
+      updates: [
+        '로그인화면에서 로그인 하지 않아도 백업페이지 접근 가능하게 수정',
+        '기본 백업일자를 20일로 수정'
+      ]
+    },
+    {
       id: 5,
       date: '2025년 12월 1일',
       updates: [
