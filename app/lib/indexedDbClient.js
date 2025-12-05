@@ -261,3 +261,40 @@ export async function clearAllStores() {
     });
   });
 }
+
+export async function clearStoresByUserId(userId, storeNames = []) {
+  if (!userId) return;
+  const db = await getDb();
+  const targets =
+    storeNames.length > 0
+      ? storeNames
+      : ["posts", "products", "orders", "comment_orders", "syncQueue"];
+  const existing = targets.filter((name) => db.objectStoreNames.contains(name));
+  if (existing.length === 0) return;
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(existing, "readwrite");
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+    tx.oncomplete = () => resolve(true);
+
+    existing.forEach((name) => {
+      const store = tx.objectStore(name);
+      const request = store.openCursor();
+      request.onerror = () => {
+        tx.abort();
+      };
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        const value = cursor.value || {};
+        const uid = value.user_id || value.userId;
+        const payloadUid = value.payload?.user_id || value.payload?.userId;
+        if (uid === userId || payloadUid === userId) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+    });
+  });
+}

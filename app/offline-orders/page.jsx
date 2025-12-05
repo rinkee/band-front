@@ -32,6 +32,8 @@ const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =
   "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
+const OFFLINE_USER_KEY = "offlineUserId";
+const OFFLINE_ACCOUNTS_KEY = "offlineAccounts";
 
 // 바코드 컴포넌트
 const Barcode = ({ value, width = 1.2, height = 32, fontSize = 12 }) => {
@@ -104,6 +106,12 @@ export default function OfflineOrdersPage() {
   const listTopRef = useRef(null);
   // 서버 상태: 'checking' | 'healthy' | 'offline'
   const [supabaseHealth, setSupabaseHealth] = useState("checking");
+  const [offlineAccounts, setOfflineAccounts] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [accountGateOpen, setAccountGateOpen] = useState(false);
+  const [pendingUserId, setPendingUserId] = useState(null);
+  const [hasConfirmedAccount, setHasConfirmedAccount] = useState(false);
+  const [showOnlineModal, setShowOnlineModal] = useState(false);
   const ordersLoadIdRef = useRef(0);
   const syncingRef = useRef(false);
   const syncDebounceRef = useRef(null);
@@ -180,15 +188,67 @@ export default function OfflineOrdersPage() {
     return products.find((p) => p.product_id === productId) || null;
   };
 
+  const loadOfflineAccountsFromStorage = () => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(OFFLINE_ACCOUNTS_KEY);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((item) => ({
+          userId: item?.userId || item?.user_id,
+          storeName: item?.storeName || item?.store_name || item?.label || "",
+        }))
+        .filter((item) => item.userId);
+    } catch {
+      return [];
+    }
+  };
+
+  const rememberOfflineAccount = (userId, storeName) => {
+    if (!userId || typeof window === "undefined") return;
+    const entry = {
+      userId,
+      storeName: storeName || "",
+    };
+    try {
+      const existing = loadOfflineAccountsFromStorage();
+      const deduped = existing.filter((item) => item.userId !== userId);
+      const next = [entry, ...deduped];
+      localStorage.setItem(OFFLINE_ACCOUNTS_KEY, JSON.stringify(next));
+      localStorage.setItem(OFFLINE_USER_KEY, userId);
+      setOfflineAccounts(next);
+      setCurrentUserId(userId);
+      setPendingUserId((prev) => prev || userId);
+    } catch (err) {
+      console.warn("오프라인 계정 저장 실패:", err);
+    }
+  };
+
   const resolveUserId = () => {
+    if (currentUserId) return currentUserId;
+    if (typeof window === "undefined") return null;
     try {
       const sessionData = sessionStorage.getItem("userData");
-      if (!sessionData) return null;
-      const parsed = JSON.parse(sessionData);
-      return parsed?.userId || null;
+      if (sessionData) {
+        const parsed = JSON.parse(sessionData);
+        if (parsed?.userId) return parsed.userId;
+      }
     } catch {
-      return null;
+      // ignore
     }
+    try {
+      const cached = localStorage.getItem(OFFLINE_USER_KEY);
+      if (cached) return cached;
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  const rememberUserId = (userId, storeName) => {
+    if (!userId || typeof window === "undefined") return;
+    rememberOfflineAccount(userId, storeName);
   };
 
   const filterByUserId = (items = []) => {
@@ -491,6 +551,14 @@ export default function OfflineOrdersPage() {
       if (sessionData) {
         const parsedUserData = JSON.parse(sessionData);
         setUserData(parsedUserData);
+        const storeLabel =
+          parsedUserData?.store_name ||
+          parsedUserData?.storeName ||
+          parsedUserData?.store_address ||
+          parsedUserData?.storeAddress ||
+          parsedUserData?.loginId ||
+          "";
+        rememberUserId(parsedUserData?.userId, storeLabel);
         if (Array.isArray(parsedUserData.excluded_customers)) {
           setExcludedCustomers(parsedUserData.excluded_customers);
         }
@@ -539,6 +607,47 @@ export default function OfflineOrdersPage() {
     };
   }, []);
 
+  // 저장된 오프라인 계정 불러오기
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = loadOfflineAccountsFromStorage();
+    setOfflineAccounts(stored);
+    if (!currentUserId) {
+      const last = (() => {
+        try {
+          return localStorage.getItem(OFFLINE_USER_KEY);
+        } catch {
+          return null;
+        }
+      })();
+      const nextUserId = last || (stored.length > 0 ? stored[0].userId : null);
+      if (nextUserId) {
+        setCurrentUserId(nextUserId);
+        setPendingUserId(nextUserId);
+      }
+    }
+  }, []); // 최초 1회만
+
+  // 계정 선택 게이트 표시 제어
+  useEffect(() => {
+    if (offlineAccounts.length > 0 && !hasConfirmedAccount) {
+      setAccountGateOpen(true);
+      if (!pendingUserId) {
+        const fallback = currentUserId || offlineAccounts[0]?.userId;
+        if (fallback) setPendingUserId(fallback);
+      }
+    }
+  }, [offlineAccounts, hasConfirmedAccount, currentUserId, pendingUserId]);
+
+  // 계정 변경 시 데이터 새로 불러오기
+  useEffect(() => {
+    if (!currentUserId) return;
+    loadRecentOrders();
+    loadProducts();
+    loadPosts();
+    loadDbCounts();
+  }, [currentUserId]);
+
   // 사용자 드롭다운 외부 클릭 감지
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -584,6 +693,20 @@ export default function OfflineOrdersPage() {
     setOrders(filtered);
   };
 
+  const handleAccountChange = (userId) => {
+    if (!userId) return;
+    const selected = offlineAccounts.find((item) => item.userId === userId);
+    setPendingUserId(userId);
+    rememberUserId(userId, selected?.storeName);
+  };
+
+  const handleAccountGateConfirm = () => {
+    if (!pendingUserId) return;
+    setHasConfirmedAccount(true);
+    handleAccountChange(pendingUserId);
+    setAccountGateOpen(false);
+  };
+
   const toggleSelect = (orderId) => {
     setSelectedOrderIds((prev) =>
       prev.includes(orderId)
@@ -593,6 +716,7 @@ export default function OfflineOrdersPage() {
   };
 
   const isSupabaseHealthy = supabaseHealth === "healthy";
+  const prevHealthRef = useRef("checking");
 
   // 상태 변경 시 필요한 타임스탬프 필드 추가
   const applyStatusTimestamps = (order, nextStatus, nowIso) => {
@@ -774,10 +898,10 @@ export default function OfflineOrdersPage() {
     setSyncing(true);
     syncingRef.current = true;
     try {
-      const currentUserId = resolveUserId();
+      const userId = resolveUserId();
       const queueItems = await getPendingQueue();
-      const filteredQueue = currentUserId
-        ? queueItems.filter((q) => !q.user_id || q.user_id === currentUserId)
+      const filteredQueue = userId
+        ? queueItems.filter((q) => !q.user_id || q.user_id === userId)
         : queueItems;
 
       if (!filteredQueue.length) {
@@ -989,6 +1113,14 @@ export default function OfflineOrdersPage() {
     return undefined;
   }, [isSupabaseHealthy]);
 
+  // 건강 상태 변화 감지 (offline -> healthy) 시 모달 표시
+  useEffect(() => {
+    if (prevHealthRef.current !== "healthy" && isSupabaseHealthy) {
+      setShowOnlineModal(true);
+    }
+    prevHealthRef.current = supabaseHealth;
+  }, [supabaseHealth, isSupabaseHealthy]);
+
   // 페이지 이탈 경고 (대기열 있을 때)
   useEffect(() => {
     const handler = (e) => {
@@ -1096,6 +1228,15 @@ export default function OfflineOrdersPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">선택 계정</span>
+              <span className="px-2 py-1 rounded-md bg-gray-100 text-gray-700 border border-gray-200">
+                {(() => {
+                  const current = offlineAccounts.find((a) => a.userId === currentUserId);
+                  return current?.storeName || "미선택";
+                })()}
+              </span>
+            </div>
             {/* 동기화 버튼 */}
             <button
               onClick={handleSyncQueue}
@@ -1120,15 +1261,123 @@ export default function OfflineOrdersPage() {
           </div>
         </div>
         {/* 안내 문구 */}
-        <p className="mt-2 text-sm text-gray-700">
-          서버 연결이 불안정할 때 로컬 저장소(IndexedDB)의 백업 데이터를 사용합니다.
-          변경사항은 서버 복구 시 자동으로 동기화됩니다.
-        </p>
+        <div className="mt-2 text-sm text-gray-700 space-y-1">
+          <p>서버와 연결이 불안정할 때 백업 데이터로 주문을 처리할 수 있는 페이지입니다.</p>
+          <p className="text-gray-500">
+            이 페이지에서 변경한 내용은 서버가 복구되면 자동으로 동기화됩니다.
+          </p>
+        </div>
       </div>
+
+      {accountGateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-gray-500">오프라인 계정 선택</p>
+                <p className="text-base font-semibold text-gray-900">사용할 매장을 골라주세요</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  저장된 계정의 백업 데이터를 불러옵니다. 선택 후 계속을 눌러주세요.
+                </p>
+              </div>
+              <span className="px-2 py-1 text-[11px] rounded-md bg-amber-100 text-amber-700 border border-amber-200">
+                백업 모드
+              </span>
+            </div>
+
+            {offlineAccounts.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                저장된 오프라인 계정이 없습니다. 로그인 후 다시 시도해주세요.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {offlineAccounts.map((item) => (
+                  <label
+                    key={item.userId}
+                    className={`flex items-center justify-between rounded-lg border px-4 py-3 cursor-pointer transition ${
+                      pendingUserId === item.userId
+                        ? "border-indigo-500 bg-indigo-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    >
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {item.storeName || "이름 없음"}
+                      </span>
+                    </div>
+                    <input
+                      type="radio"
+                      name="offline-account"
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                      checked={pendingUserId === item.userId}
+                      onChange={() => setPendingUserId(item.userId)}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-2 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => setAccountGateOpen(false)}
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                disabled={!pendingUserId}
+                className="px-4 py-2 rounded-md bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleAccountGateConfirm}
+              >
+                선택하고 계속
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!supported && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 text-sm">
           IndexedDB를 지원하지 않는 환경입니다.
+        </div>
+      )}
+
+      {showOnlineModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-1">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-600">서버 연결 정상</p>
+                <p className="text-base font-semibold text-gray-900">이제 온라인으로 작업을 이어갈 수 있습니다.</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  백업 페이지에서 진행한 변경 사항은 자동으로 동기화됩니다. 기존 화면으로 이동하세요.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-2 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => setShowOnlineModal(false)}
+              >
+                닫기
+              </button>
+              <Link
+                href="/orders-test"
+                className="px-4 py-2 rounded-md bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700"
+                onClick={() => setShowOnlineModal(false)}
+              >
+                주문 페이지로 이동
+              </Link>
+            </div>
+          </div>
         </div>
       )}
 

@@ -558,6 +558,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [productReloadToken, setProductReloadToken] = useState(0); // 강제 상품 재조회 트리거
   const [initialSyncing, setInitialSyncing] = useState(true); // 첫 진입 동기화 진행 여부
   const [lastSyncAt, setLastSyncAt] = useState(0); // 마지막 동기화 시각 (ms)
+  const syncTimeoutRef = useRef(null);
 
   // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
@@ -637,6 +638,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }, 500);
     }
   }, [searchParams, initialSyncing]);
+
+  // 동기화 타임아웃 (10초 무응답 시 오류 카드 표출)
+  useEffect(() => {
+    if (!(isSyncing || initialSyncing)) {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      setError("동기화 응답이 없습니다. 새로고침하거나 백업 페이지에서 계속 작업해주세요.");
+      setIsSyncing(false);
+      setInitialSyncing(false);
+    }, 10_000);
+    syncTimeoutRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (syncTimeoutRef.current === timer) {
+        syncTimeoutRef.current = null;
+      }
+    };
+  }, [isSyncing, initialSyncing]);
 
   // comment_orders -> legacy orders shape 매핑
   const mapCommentOrderToLegacy = useCallback((row) => {
