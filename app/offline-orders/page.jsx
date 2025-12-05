@@ -1071,6 +1071,57 @@ export default function OfflineOrdersPage() {
   const displayedOrders = displayedOrdersResult.list;
   const totalFilteredOrders = displayedOrdersResult.total;
   const totalPages = Math.max(1, Math.ceil(totalFilteredOrders / PAGE_SIZE));
+  const paginationItems = useMemo(() => {
+    const items = [];
+    const maxNumbers = 7;
+
+    if (!totalPages) return items;
+
+    if (totalPages <= maxNumbers) {
+      for (let i = 1; i <= totalPages; i += 1) {
+        items.push({ type: "page", value: i });
+      }
+      return items;
+    }
+
+    const middleCount = 5;
+    let start = Math.max(2, currentPage - Math.floor(middleCount / 2));
+    let end = start + middleCount - 1;
+
+    if (end >= totalPages) {
+      end = totalPages - 1;
+      start = Math.max(2, end - middleCount + 1);
+    }
+
+    start = Math.max(2, Math.min(start, totalPages - 1));
+    end = Math.max(start, Math.min(totalPages - 1, end));
+
+    items.push({ type: "page", value: 1 });
+
+    if (start > 2) {
+      items.push({ type: "ellipsis", value: "left" });
+    }
+
+    for (let i = start; i <= end; i += 1) {
+      items.push({ type: "page", value: i });
+    }
+
+    if (end < totalPages - 1) {
+      items.push({ type: "ellipsis", value: "right" });
+    }
+
+    items.push({ type: "page", value: totalPages });
+
+    return items;
+  }, [currentPage, totalPages]);
+
+  const handlePageChange = useCallback(
+    (page) => {
+      const nextPage = Math.max(1, Math.min(totalPages, page));
+      setCurrentPage(nextPage);
+    },
+    [totalPages]
+  );
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -1870,21 +1921,58 @@ export default function OfflineOrdersPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 bg-white disabled:opacity-50"
+              >
+                처음
+              </button>
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 bg-white disabled:opacity-50"
               >
                 이전
               </button>
-              <span className="text-sm text-gray-700">
-                {currentPage} / {totalPages || 1}
-              </span>
+              <div className="flex items-center gap-1">
+                {paginationItems.map((item) => {
+                  if (item.type === "ellipsis") {
+                    return (
+                      <span key={`ellipsis-${item.value}`} className="px-2 text-gray-400 select-none">
+                        ...
+                      </span>
+                    );
+                  }
+                  const page = item.value;
+                  const isActive = page === currentPage;
+                  return (
+                    <button
+                      key={`page-${page}`}
+                      onClick={() => handlePageChange(page)}
+                      className={`min-w-[36px] px-2 py-1.5 rounded-md border text-sm font-medium transition-colors ${
+                        isActive
+                          ? "bg-orange-500 text-white border-orange-500"
+                          : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+              </div>
               <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage >= totalPages}
                 className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 bg-white disabled:opacity-50"
               >
                 다음
+              </button>
+              <button
+                onClick={() => handlePageChange(totalPages)}
+                disabled={currentPage >= totalPages}
+                className="px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 bg-white disabled:opacity-50"
+              >
+                끝
               </button>
             </div>
           </div>

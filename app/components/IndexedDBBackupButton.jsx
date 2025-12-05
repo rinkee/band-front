@@ -18,7 +18,7 @@ const ORDER_COLUMNS =
   "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
 const COMMENT_ORDER_COLUMNS = "*";
 
-const TWO_WEEKS_MS = 30 * 24 * 60 * 60 * 1000;
+const RANGE_20_DAYS_MS = 20 * 24 * 60 * 60 * 1000;
 
 const escapeIlike = (value) =>
   value
@@ -26,9 +26,9 @@ const escapeIlike = (value) =>
     .replace(/%/g, "\\%")
     .replace(/_/g, "\\_");
 
-async function fetchLastTwoWeeks(table, columns, userId, dateColumn, excludeNames = []) {
+async function fetchWithRange(table, columns, userId, dateColumn, rangeMs, excludeNames = []) {
   const nameColumn = table === "comment_orders" ? "commenter_name" : "customer_name";
-  const since = new Date(Date.now() - TWO_WEEKS_MS).toISOString();
+  const since = new Date(Date.now() - rangeMs).toISOString();
   let query = supabase
     .from(table)
     .select(columns)
@@ -136,7 +136,7 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
     }
 
     setStatus("loading");
-    setDetail("최근 14일치 데이터를 불러오는 중...");
+    setDetail("최근 20일치 데이터를 불러오는 중...");
 
     try {
       const mode = resolveOrderProcessingMode();
@@ -147,13 +147,22 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
       const orderNameColumn = isRawMode ? "commenter_name" : "customer_name";
       const orderColumns = isRawMode ? COMMENT_ORDER_COLUMNS : ORDER_COLUMNS;
 
+      const rangeMs = RANGE_20_DAYS_MS;
+
       const excludedCustomers = resolveExcludedCustomers().map((c) =>
         (c || "").toString().trim().toLowerCase()
       );
       const [posts, products, orders] = await Promise.all([
-        fetchLastTwoWeeks("posts", POST_COLUMNS, userId, "posted_at"),
-        fetchLastTwoWeeks("products", PRODUCT_COLUMNS, userId, "updated_at"),
-        fetchLastTwoWeeks(orderTable, orderColumns, userId, orderDateColumn, excludedCustomers),
+        fetchWithRange("posts", POST_COLUMNS, userId, "posted_at", rangeMs),
+        fetchWithRange("products", PRODUCT_COLUMNS, userId, "updated_at", rangeMs),
+        fetchWithRange(
+          orderTable,
+          orderColumns,
+          userId,
+          orderDateColumn,
+          rangeMs,
+          excludedCustomers
+        ),
       ]);
 
       // 안전을 위해 클라이언트에서도 최종 필터링
