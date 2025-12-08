@@ -4,6 +4,15 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 7,
+      date: '2025년 12월 8일',
+      updates: [
+        '주문, 주문 통계 호출 방식을 변경하여 속도 개선',
+        '수령가능만 보기 필터 클릭시 주문 정보가 제대로 표시되지 않던 문제 해결',
+        '미수령 처리가 자동으로 안되던 문제를 해결'
+      ]
+    },
+    {
       id: 6,
       date: '2025년 12월 6일',
       updates: [
