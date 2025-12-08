@@ -1568,7 +1568,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 수령일시 지난 주문 자동 미수령 처리 (전체 주문 대상)
   const autoUpdateProcessedRef = useRef(false);
+  // Supabase cron에서 수령일 지난 주문을 미수령으로 전환하므로 프론트 자동처리는 비활성화
+  const AUTO_MISSED_STATUS_UPDATE_ENABLED = false;
   useEffect(() => {
+    if (!AUTO_MISSED_STATUS_UPDATE_ENABLED) return;
     console.log('[자동 미수령] useEffect 실행됨');
 
     // 한 번만 실행
