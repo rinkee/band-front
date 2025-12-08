@@ -1,188 +1,21 @@
 // hooks/useCommentOrdersClient.js - comment_orders 전용 클라이언트 훅
 import useSWR, { useSWRConfig } from "swr";
-import supabase from "../lib/supabaseClient";
 import getAuthedClient from "../lib/authedSupabaseClient";
-import { fetchExcludedCustomers } from "../lib/excludedCustomersCache";
 
-/**
- * 상품명으로 게시물 검색
- */
-const searchProductsByName = async (userId, tokens) => {
-  const sb2 = getAuthedClient();
-  try {
-    let pQuery = sb2
-      .from("products")
-      .select("post_key, band_number, post_number")
-      .eq("user_id", userId);
+// 통합 RPC 함수로 목록 조회 (comment_orders)
+const fetchCommentOrders = async (key) => {
+  const [, userId, page, filtersKey] = key;
+  const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
 
-    if (tokens.length > 0) {
-      const safe = (s) => s.replace(/[%,]/g, "");
-      const titleOr = tokens.map((t) => `title.ilike.%${safe(t)}%`).join(",");
-      if (titleOr) pQuery = pQuery.or(titleOr);
-    }
+  if (!userId) throw new Error("User ID is required");
 
-    const { data: pData, error: pErr } = await pQuery;
-    return { data: pData, error: pErr };
-  } catch (err) {
-    return { data: null, error: err };
-  }
-};
-
-// 쿼리 빌드 함수 (재사용 가능하도록 분리)
-// 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
-const buildQuery = (userId, filters, excludedCustomers = [], productSearchResults = null) => {
-  // DB 스키마 변경: order_status 삭제됨, status(메인상태), sub_status(보조상태) 사용
-  // status: 주문완료, 수령완료, 주문취소, 결제완료
-  // sub_status: 미수령, 확인필요, 수령가능, null
-  const statusFilter = filters.status || undefined;
-  const subStatus = filters.subStatus || undefined;
-  const search = (filters.search || "").trim();
-  const searchType = filters.searchType || "combined"; // "customer" | "product" | "combined"
-  const postKeyFilter = filters.postKey || undefined;
-  const postNumberFilter = filters.postNumber || undefined;
-  const bandNumberFilter = filters.bandNumber || undefined;
-  const searchMode = searchType.toLowerCase();
-  const shouldSearchCustomers = searchMode === "customer" || searchMode === "combined";
-  const shouldSearchProducts = searchMode === "product" || searchMode === "combined";
-
-  const sb = getAuthedClient();
-  let query = sb
-    .from("comment_orders")
-    .select("*", { count: "exact" })
-    .eq("user_id", userId);
-
-  // 메인 상태 필터 (status 컬럼)
-  if (statusFilter && statusFilter !== "all") {
-    query = query.eq("status", statusFilter);
-  }
-
-  // 보조 상태 필터 (sub_status 컬럼)
-  if (subStatus) {
-    if (subStatus === "미수령") {
-      // 미수령 필터: sub_status='미수령' AND status NOT IN ('수령완료', '주문취소')
-      query = query.eq("sub_status", "미수령");
-      query = query.not("status", "in", '("수령완료","주문취소")');
-    } else if (subStatus === "none") {
-      // none: sub_status가 null인 경우
-      query = query.is("sub_status", null);
-    } else {
-      query = query.eq("sub_status", subStatus);
-    }
-  }
-
-  // Direct post filters take precedence over text search
-  if (postKeyFilter) {
-    query = query.eq("post_key", postKeyFilter);
-  } else if (postNumberFilter) {
-    query = query.eq("post_number", String(postNumberFilter));
-    if (bandNumberFilter !== undefined && bandNumberFilter !== null) {
-      query = query.eq("band_number", bandNumberFilter);
-    }
-  } else if (search) {
-    const tokens = search
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-
-    const safe = (s) => s.replace(/[%,]/g, "");
-
-    const orConditions = [];
-
-    if (shouldSearchCustomers) {
-      const textConds = tokens.flatMap((t) => [
-        `commenter_name.ilike.%${safe(t)}%`,
-        `comment_body.ilike.%${safe(t)}%`,
-      ]);
-      const postNumConds = tokens
-        .filter((t) => /^\d+$/.test(t))
-        .map((n) => `post_number.eq.${n}`);
-      orConditions.push(...textConds, ...postNumConds);
-    }
-
-    if (shouldSearchProducts) {
-      const pData = productSearchResults?.data;
-      const pErr = productSearchResults?.error;
-
-      if (!pErr && Array.isArray(pData) && pData.length > 0) {
-        const pkSet = new Set();
-        const bandMap = new Map(); // band -> Set(post_number)
-        for (const p of pData) {
-          if (p?.post_key) {
-            pkSet.add(String(p.post_key));
-          } else if (
-            (p?.band_number !== undefined && p?.band_number !== null) &&
-            (p?.post_number !== undefined && p?.post_number !== null)
-          ) {
-            const b = String(p.band_number);
-            const n = String(p.post_number);
-            if (!bandMap.has(b)) bandMap.set(b, new Set());
-            bandMap.get(b).add(n);
-          }
-        }
-
-        if (pkSet.size > 0) {
-          const quoted = Array.from(pkSet)
-            .map((v) => `"${String(v).replace(/\"/g, '""')}"`)
-            .join(",");
-          orConditions.push(`post_key.in.(${quoted})`);
-        }
-        for (const [band, numsSet] of bandMap.entries()) {
-          const values = Array.from(numsSet)
-            .map((v) => (/^\d+$/.test(v) ? v : `"${v.replace(/\"/g, '""')}"`))
-            .join(",");
-          const bandVal = /^\d+$/.test(band) ? band : `"${band.replace(/\"/g, '""')}"`;
-          orConditions.push(`and(band_number.eq.${bandVal},post_number.in.(${values}))`);
-        }
-      } else if (searchMode === "product") {
-        // 상품 검색 모드에서 매칭이 없으면 빈 결과 반환
-        query = query.eq("commenter_name", "__no_match__");
-      }
-    }
-
-    if (orConditions.length > 0) {
-      query = query.or(orConditions.join(","));
-    }
-  }
-
-  // 특정 고객명만 보기 (정확 일치)
-  if (filters.commenterExact) {
-    query = query.eq("commenter_name", filters.commenterExact);
-  }
-
-  // 기간 필터 (선택)
-  if (filters.startDate && filters.endDate) {
-    query = query
-      .gte("comment_created_at", filters.startDate)
-      .lte("comment_created_at", filters.endDate);
-  }
-
-  // 제외고객 필터링: excludedCustomers 파라미터 사용
-  if (excludedCustomers && excludedCustomers.length > 0) {
-    const names = excludedCustomers.filter((n) => typeof n === "string" && n.trim().length > 0);
-    if (names.length > 0) {
-      const escaped = names.map((name) => `"${String(name).replace(/"/g, '""')}"`).join(",");
-      query = query.not("commenter_name", "in", `(${escaped})`);
-    }
-  }
-
-  // 최종 정렬: 주문일시(댓글 작성 시각) 최근순
-  query = query.order("comment_created_at", { ascending: false });
-
-  return query;
-};
-
-// 수령가능 주문 조회 (RPC 함수 사용)
-const fetchPickupAvailableOrders = async (userId, page, filters) => {
   const sb = getAuthedClient();
   const limit = filters.limit || 30;
   const offset = (Math.max(1, page || 1) - 1) * limit;
 
-  // 제외고객 목록 조회
-  const excludedCustomers = await fetchExcludedCustomers(userId);
+  console.log(`🔍 [댓글 조회] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, pickupAvailable=${!!filters.pickupAvailable}`);
 
-  console.log(`🔍 [수령가능 조회] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, offset=${offset}, 제외고객=${excludedCustomers?.length || 0}명`);
-
-  const { data, error } = await sb.rpc('get_pickup_available_orders', {
+  const { data, error } = await sb.rpc('get_comment_orders', {
     p_user_id: userId,
     p_status: filters.status || null,
     p_sub_status: filters.subStatus || null,
@@ -192,10 +25,11 @@ const fetchPickupAvailableOrders = async (userId, page, filters) => {
     p_offset: offset,
     p_start_date: filters.startDate || null,
     p_end_date: filters.endDate || null,
-    p_excluded_customers: excludedCustomers?.length > 0 ? excludedCustomers : null,
-    p_sort_by: filters.sortBy || 'ordered_at',
+    p_sort_by: filters.sortBy || 'comment_created_at',
     p_sort_order: filters.sortOrder || 'desc',
     p_commenter_exact: filters.commenterExact || null,
+    p_post_key: filters.postKey || null,
+    p_pickup_available: !!filters.pickupAvailable,
   });
 
   if (error) {
@@ -207,7 +41,7 @@ const fetchPickupAvailableOrders = async (userId, page, filters) => {
   const totalItems = data?.[0]?.total_count || 0;
   const totalPages = Math.ceil(totalItems / limit);
 
-  console.log(`📊 [수령가능 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
+  console.log(`📊 [댓글 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
 
   return {
     success: true,
@@ -219,123 +53,6 @@ const fetchPickupAvailableOrders = async (userId, page, filters) => {
       limit,
     },
   };
-};
-
-// 목록 조회 (comment_orders)
-const fetchCommentOrders = async (key) => {
-  const [, userId, page, filtersKey] = key;
-  // SWR 키에서 직렬화된 filters를 파싱
-  const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
-
-  if (!userId) throw new Error("User ID is required");
-
-  // 수령가능 필터가 활성화되면 RPC 함수 사용
-  if (filters.pickupAvailable) {
-    return fetchPickupAvailableOrders(userId, page, filters);
-  }
-
-  const limit = filters.limit || 50;
-  const startIndex = (Math.max(1, page || 1) - 1) * limit;
-
-  console.log(`🔍 [댓글 조회] userId=${userId}, page=${page}, limit=${limit}, filters=`, filters);
-  console.log(`🔍 [댓글 조회] limit > 1000? ${limit > 1000}`);
-
-  // 제외고객 목록 미리 조회
-  const excludedCustomers = await fetchExcludedCustomers(userId);
-
-  // 상품명 검색 결과 미리 조회 (searchType이 "product"이고 search가 있는 경우)
-  let productSearchResults = null;
-  const search = (filters.search || "").trim();
-  const searchType = filters.searchType || "combined";
-  const searchMode = searchType.toLowerCase();
-  const shouldSearchProducts = searchMode === "product" || searchMode === "combined";
-
-  if (shouldSearchProducts && search && !filters.postKey && !filters.postNumber) {
-    const tokens = search
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-    if (tokens.length > 0) {
-      productSearchResults = await searchProductsByName(userId, tokens);
-    }
-  }
-
-  // limit이 1000보다 크면 페이징으로 모든 데이터 가져오기
-  if (limit > 1000) {
-    console.log(`🔄 [댓글 페이징] limit=${limit}으로 페이징 모드 시작...`);
-
-    // 첫 페이지를 먼저 가져와서 전체 개수 확인
-    const firstPageQuery = buildQuery(userId, filters, excludedCustomers, productSearchResults);
-    const { data: firstPageData, error: firstPageError, count } = await firstPageQuery.range(0, 999);
-
-    if (firstPageError) {
-      console.error("첫 페이지 조회 실패:", firstPageError);
-      throw firstPageError;
-    }
-
-    const totalItems = count || 0;
-    console.log(`📊 [댓글 페이징] 총 ${totalItems}개 데이터 발견`);
-
-    // 첫 페이지 데이터로 시작
-    let allData = firstPageData || [];
-
-    // 나머지 페이지들 가져오기
-    const pageSize = 1000;
-    const totalPageCount = Math.ceil(totalItems / pageSize);
-
-    console.log(`🔄 [댓글 페이징] 총 ${totalPageCount}페이지 중 나머지 ${totalPageCount - 1}페이지 가져오기...`);
-
-    for (let pageIndex = 1; pageIndex < totalPageCount; pageIndex++) {
-      const start = pageIndex * pageSize;
-      const end = start + pageSize - 1;
-
-      // 각 페이지마다 새로운 쿼리 생성
-      const pageQuery = buildQuery(userId, filters, excludedCustomers, productSearchResults);
-      const { data: pageData, error: pageError } = await pageQuery.range(start, end);
-
-      if (pageError) {
-        console.error("Supabase page error:", pageError);
-        throw new Error(`Failed to fetch page ${pageIndex + 1}`);
-      }
-
-      console.log(`✅ [댓글 페이징] ${pageIndex + 1}/${totalPageCount} 페이지: ${pageData?.length || 0}개 가져옴`);
-      allData = allData.concat(pageData || []);
-    }
-
-    console.log(`✅ [댓글 페이징] 완료! 총 ${allData.length}개 데이터 로드됨`);
-
-    return {
-      success: true,
-      data: allData,
-      pagination: {
-        totalItems,
-        totalPages: 1, // 전체 데이터를 한 번에 반환
-        currentPage: 1,
-        limit: totalItems,
-      },
-    };
-  } else {
-    // 일반적인 경우: 한 번에 가져오기 (페이징 적용)
-    console.log(`📄 [댓글 단일 조회] limit=${limit}, startIndex=${startIndex}, endIndex=${startIndex + limit - 1}`);
-    const query = buildQuery(userId, filters, excludedCustomers, productSearchResults);
-    const { data, error, count } = await query.range(startIndex, startIndex + limit - 1);
-    if (error) throw error;
-
-    const totalItems = count || 0;
-    const totalPages = Math.ceil(totalItems / limit);
-    console.log(`📊 [댓글 단일 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
-
-    return {
-      success: true,
-      data: data || [],
-      pagination: {
-        totalItems,
-        totalPages,
-        currentPage: Math.max(1, page || 1),
-        limit,
-      },
-    };
-  }
 };
 
 export function useCommentOrdersClient(userId, page = 1, filters = {}, options = {}) {

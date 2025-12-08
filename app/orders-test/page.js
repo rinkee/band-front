@@ -972,14 +972,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
     { value: "today", label: "오늘" },
   ];
 
-  // SWR 옵션 설정 - 완전한 캐시 우선 전략
-  const swrOptions = {
+  // SWR 옵션 설정 - 데이터 최신화 우선
+  const swrOptions = useMemo(() => ({
     revalidateOnMount: true, // 첫 진입 시에는 반드시 서버 검증
-    revalidateOnFocus: true, // 포커스 시 최신화
+    revalidateOnFocus: true, // 포커스 시 최신화 (다른 탭 갔다가 돌아올 때)
     revalidateOnReconnect: true, // 네트워크 재연결 시 재검증
     revalidateIfStale: true, // 캐시가 오래됐으면 검증
     refreshInterval: 0, // 자동 주기 새로고침은 유지하지 않음
-    dedupingInterval: 5000, // 중복 요청 방지 간격 5초
+    dedupingInterval: 2000, // 중복 요청 방지 간격 2초 (너무 길면 최신화 지연)
     onError: (err) => {
       if (process.env.NODE_ENV === "development") {
         console.error("SWR Error:", err);
@@ -987,7 +987,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     },
     keepPreviousData: true, // 깜빡임 방지
     fallbackData: undefined, // fallback 없음 (캐시 우선)
-  };
+  }), []);
   // 서버 사이드 필터링 + 진짜 페이지네이션 (효율적 데이터 로딩)
   const ordersFilters = useMemo(() => {
     const dateParams = calculateDateFilterParams(
@@ -3010,6 +3010,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       searchInputRef.current.focus();
     }
     setSearchTerm(""); // 검색어 상태도 초기화
+    setExactCustomerFilter(null); // 고객명 필터도 초기화
+    setCurrentPage(1); // 페이지 1로 리셋
+    setSelectedOrderIds([]); // 선택된 주문 초기화
 
     // URL 파라미터 제거
     if (typeof window !== 'undefined') {

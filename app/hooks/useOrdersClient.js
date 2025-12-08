@@ -2,277 +2,25 @@
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import getAuthedClient from "../lib/authedSupabaseClient";
-import { fetchExcludedCustomers } from "../lib/excludedCustomersCache";
-
-// 상품명 검색: products.title에서 post_key/band_number/post_number 추출
-const searchProductsByName = async (userId, tokens) => {
-  const sb = getAuthedClient();
-  try {
-    let pQuery = sb
-      .from("products")
-      .select("post_key, band_number, post_number")
-      .eq("user_id", userId);
-
-    if (tokens.length > 0) {
-      const safe = (s) => s.replace(/[%,]/g, "");
-      const titleOr = tokens.map((t) => `title.ilike.%${safe(t)}%`).join(",");
-      if (titleOr) pQuery = pQuery.or(titleOr);
-    }
-
-    const { data: pData, error: pErr } = await pQuery;
-    return { data: pData, error: pErr };
-  } catch (err) {
-    return { data: null, error: err };
-  }
-};
 
 /**
- * 쿼리 빌드 함수 (재사용 가능하도록 분리)
- * 동기 함수 - Supabase 쿼리 빌더는 thenable이므로 async로 만들면 안됨
+ * 통합 RPC 함수로 주문 목록 조회
  */
-const buildOrdersQuery = (userId, filters, excludedCustomers = [], productSearchResults = null) => {
-  // pickup_date 정렬은 불안정하므로 주문일시 정렬로 대체
-  const sortBy = filters.sortBy === "pickup_date" ? "ordered_at" : (filters.sortBy || "ordered_at");
-  const ascending = filters.sortOrder === "asc";
+const fetchOrders = async (key) => {
+  const [, userId, page, filtersKey] = key;
+  const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
 
-  // 수령가능 필터인 경우 products 테이블과 조인 필요
-  const needsPickupDateFilter = filters.subStatus === "수령가능";
-  // pickup_date 정렬은 강제로 ordered_at으로 대체하므로 정렬 목적의 조인이 필요 없음
-  const needsPickupDateSorting = false;
-  const needsProductJoin = needsPickupDateFilter || needsPickupDateSorting;
-  
-  // Map sortBy to actual column names based on query mode
-  let actualSortBy = sortBy;
-  if (needsProductJoin) {
-    // When joining with products table, map column names
-    if (sortBy === 'product_name' || sortBy === 'product_title') {
-      actualSortBy = 'products.title';
-    } else if (sortBy === 'pickup_date') {
-      actualSortBy = 'products.pickup_date';
-    }
-    // Other columns remain the same as they're on the orders table
-  } else {
-    // For orders_with_products view, map column names
-    if (sortBy === 'product_name') {
-      actualSortBy = 'product_title';
-    }
-  }
-  
-  let query;
-  if (needsProductJoin) {
-    // 제품 정보가 필요한 경우 products 테이블 조인
-    // 수령가능 필터는 inner join, 정렬만 필요한 경우에는 left join
-    const joinType = needsPickupDateFilter ? "inner" : "left";
-    query = supabase
-      .from("orders")
-      .select(`
-        *,
-        products!${joinType}(pickup_date, title, barcode, price_options, band_key)
-      `, { count: "exact" })
-      .eq("user_id", userId);
-  } else {
-    // 일반적인 경우: orders 테이블 직접 사용 (memo 필드 포함)
-    query = supabase
-      .from("orders")
-      .select("*", { count: "exact" })
-      .eq("user_id", userId);
+  if (!userId) {
+    throw new Error("User ID is required");
   }
 
-  // 상태 필터링
-  if (
-    filters.status &&
-    filters.status !== "all" &&
-    filters.status !== "undefined"
-  ) {
-    const statusValues = filters.status
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s);
-    if (statusValues.length > 0) {
-      query = query.in("status", statusValues);
-    }
-  }
-
-  // 서브 상태 필터링
-  if (
-    filters.subStatus &&
-    filters.subStatus !== "all" &&
-    filters.subStatus !== "undefined"
-  ) {
-    if (
-      filters.subStatus.toLowerCase() === "none" ||
-      filters.subStatus.toLowerCase() === "null"
-    ) {
-      query = query.is("sub_status", null);
-    } else if (filters.subStatus === "수령가능") {
-      // '주문완료+수령가능'은 클라이언트(KST 기준)에서 판정하도록 하고,
-      // 서버 쿼리에서는 pickup_date 존재 여부만 제한한다.
-      if (needsPickupDateFilter) {
-        // pickup_date가 비어있는 상품도 제목의 [날짜]로 판정할 수 있도록 서버에서 제외하지 않음
-      }
-    } else {
-      const subStatusValues = filters.subStatus
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s);
-      if (subStatusValues.length > 0) {
-        query = query.in("sub_status", subStatusValues);
-        
-        // 미수령 필터가 포함되어 있으면 수령완료 상태 제외
-        if (subStatusValues.includes("미수령")) {
-          query = query.neq("status", "수령완료");
-        }
-      }
-    }
-  }
-
-  // 검색 필터링 - post_key 우선 처리
-  if (filters.search && filters.search !== "undefined") {
-    const searchTerm = filters.search;
-    const searchType = (filters.searchType || "combined").toLowerCase(); // customer | product | combined
-    const shouldSearchCustomers = searchType === "customer" || searchType === "combined";
-    const shouldSearchProducts = searchType === "product" || searchType === "combined";
-
-    // post_key 검색인지 확인 (길이가 20자 이상이고 공백이 없는 문자열)
-    const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
-
-    // 검색을 위한 텍스트 정규화 함수
-    // 괄호와 특수문자를 제거하여 검색 성공률 향상
-    const normalizeForSearch = (str) => {
-      // 괄호와 그 안의 내용을 공백으로 치환
-      let normalized = str.replace(/\([^)]*\)/g, ' ');
-      // 대괄호와 그 안의 내용도 유지 (날짜 정보)
-      // 여러 공백을 하나로 정리
-      normalized = normalized.replace(/\s+/g, ' ').trim();
-      return normalized;
-    };
-
-    if (isPostKeySearch) {
-      // post_key 정확 매칭
-      query = query.eq("post_key", searchTerm);
-    } else if (!needsPickupDateFilter) {
-      try {
-        const normalizedTerm = normalizeForSearch(searchTerm);
-        const searchPattern = searchTerm.includes('(') || searchTerm.includes(')') ? normalizedTerm : searchTerm;
-        const orConditions = [];
-
-        if (shouldSearchCustomers) {
-          orConditions.push(
-            `customer_name.ilike.%${searchPattern}%`,
-            `product_name.ilike.%${searchPattern}%`,
-            `post_key.ilike.%${searchPattern}%`
-          );
-        }
-
-        if (shouldSearchProducts) {
-          const pData = productSearchResults?.data;
-          const pErr = productSearchResults?.error;
-
-          if (!pErr && Array.isArray(pData) && pData.length > 0) {
-            const pkSet = new Set();
-            const bandMap = new Map(); // band -> Set(post_number)
-            for (const p of pData) {
-              if (p?.post_key) {
-                pkSet.add(String(p.post_key));
-              } else if (
-                (p?.band_number !== undefined && p?.band_number !== null) &&
-                (p?.post_number !== undefined && p?.post_number !== null)
-              ) {
-                const b = String(p.band_number);
-                const n = String(p.post_number);
-                if (!bandMap.has(b)) bandMap.set(b, new Set());
-                bandMap.get(b).add(n);
-              }
-            }
-
-            if (pkSet.size > 0) {
-              const quoted = Array.from(pkSet)
-                .map((v) => `"${String(v).replace(/\"/g, '""')}"`)
-                .join(",");
-              orConditions.push(`post_key.in.(${quoted})`);
-            }
-            for (const [band, numsSet] of bandMap.entries()) {
-              const values = Array.from(numsSet)
-                .map((v) => (/^\d+$/.test(v) ? v : `"${v.replace(/\"/g, '""')}"`))
-                .join(",");
-              const bandVal = /^\d+$/.test(band) ? band : `"${band.replace(/\"/g, '""')}"`;
-              orConditions.push(`and(band_number.eq.${bandVal},post_number.in.(${values}))`);
-            }
-          } else if (searchType === "product") {
-            // 상품 검색만 요청했는데 매칭이 없으면 결과가 비어야 하므로 강제 무매칭 조건
-            query = query.eq("customer_name", "__no_match__");
-          }
-        }
-
-        if (orConditions.length > 0) {
-          query = query.or(orConditions.join(","));
-        }
-      } catch (error) {
-        console.warn('Search filter error:', error);
-        // 에러 발생시 고객명만 필터링
-        const normalizedTerm = normalizeForSearch(searchTerm);
-        query = query.ilike("customer_name", `%${normalizedTerm}%`);
-      }
-    }
-    // 조인 모드에서 일반 검색어는 아래 클라이언트 사이드 필터링으로 처리됨
-  }
-
-  // 정확한 고객명 필터링
-  if (filters.exactCustomerName && filters.exactCustomerName !== "undefined") {
-    query = query.eq("customer_name", filters.exactCustomerName);
-  }
-
-  // 날짜 범위 필터링
-  if (filters.startDate && filters.endDate) {
-    try {
-      // dateType 확인 (기본값: ordered)
-      const dateColumn = filters.dateType === "updated" ? "updated_at" : "ordered_at";
-      
-      
-      // startDate와 endDate는 이미 ISO 문자열로 전달되므로 그대로 사용
-      query = query
-        .gte(dateColumn, filters.startDate)
-        .lte(dateColumn, filters.endDate);
-    } catch (dateError) {
-      console.error("Date filter error:", dateError);
-    }
-  }
-
-  // 제외고객 필터링 (파라미터로 전달받음)
-  if (excludedCustomers && excludedCustomers.length > 0) {
-    query = query.not(
-      "customer_name",
-      "in",
-      `(${excludedCustomers
-        .map((name) => `"${name.replace(/"/g, '""')}"`)
-        .join(",")})`
-    );
-  }
-
-  // 정렬만 적용 (range는 나중에)
-  if (needsProductJoin && actualSortBy.startsWith("products.")) {
-    // Supabase는 조인 테이블 정렬 시 foreignTable 옵션 필요
-    const column = actualSortBy.split(".")[1] || actualSortBy;
-    query = query.order(column, { ascending, foreignTable: "products" });
-  } else {
-    query = query.order(actualSortBy, { ascending });
-  }
-
-  return query;
-};
-
-// 수령가능 주문 조회 (RPC 함수 사용) - legacy orders용
-const fetchPickupAvailableLegacyOrders = async (userId, page, filters) => {
   const sb = getAuthedClient();
   const limit = filters.limit || 30;
   const offset = (Math.max(1, page || 1) - 1) * limit;
 
-  // 제외고객 목록 조회
-  const excludedCustomers = await fetchExcludedCustomers(userId);
+  console.log(`🔍 [주문 조회] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, pickupAvailable=${!!filters.pickupAvailable}`);
 
-  console.log(`🔍 [수령가능 조회 - legacy] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, offset=${offset}, 제외고객=${excludedCustomers?.length || 0}명`);
-
-  const { data, error } = await sb.rpc('get_pickup_available_legacy_orders', {
+  const { data, error } = await sb.rpc('get_orders', {
     p_user_id: userId,
     p_status: filters.status || null,
     p_sub_status: filters.subStatus || null,
@@ -282,14 +30,16 @@ const fetchPickupAvailableLegacyOrders = async (userId, page, filters) => {
     p_offset: offset,
     p_start_date: filters.startDate || null,
     p_end_date: filters.endDate || null,
-    p_excluded_customers: excludedCustomers?.length > 0 ? excludedCustomers : null,
     p_sort_by: filters.sortBy || 'ordered_at',
     p_sort_order: filters.sortOrder || 'desc',
     p_customer_exact: filters.exactCustomerName || null,
+    p_post_key: filters.postKey || null,
+    p_pickup_available: !!filters.pickupAvailable,
+    p_date_type: filters.dateType || 'ordered',
   });
 
   if (error) {
-    console.error('RPC 조회 실패 (legacy):', error);
+    console.error('RPC 조회 실패:', error);
     throw error;
   }
 
@@ -297,7 +47,7 @@ const fetchPickupAvailableLegacyOrders = async (userId, page, filters) => {
   const totalItems = data?.[0]?.total_count || 0;
   const totalPages = Math.ceil(totalItems / limit);
 
-  console.log(`📊 [수령가능 조회 - legacy] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
+  console.log(`📊 [주문 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
 
   return {
     success: true,
@@ -306,412 +56,6 @@ const fetchPickupAvailableLegacyOrders = async (userId, page, filters) => {
       totalItems: Number(totalItems),
       totalPages,
       currentPage: Math.max(1, page || 1),
-      limit,
-    },
-  };
-};
-
-/**
- * 클라이언트 사이드 주문 목록 fetcher
- */
-const fetchOrders = async (key) => {
-  const [, userId, page, filtersKey] = key;
-  // SWR 키에서 직렬화된 filters를 파싱
-  const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
-
-  if (!userId) {
-    throw new Error("User ID is required");
-  }
-
-  // 수령가능 필터가 활성화되면 RPC 함수 사용
-  if (filters.pickupAvailable) {
-    return fetchPickupAvailableLegacyOrders(userId, page, filters);
-  }
-
-  const search = (filters.search || "").trim();
-  const searchType = filters.searchType || "combined";
-  const searchMode = searchType.toLowerCase();
-  const shouldSearchProducts = searchMode === "product" || searchMode === "combined";
-
-  let productSearchResults = null;
-  if (shouldSearchProducts && search) {
-    const tokens = search
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-    if (tokens.length > 0) {
-      productSearchResults = await searchProductsByName(userId, tokens);
-    }
-  }
-
-  const limit = filters.limit || 30;
-  const startIndex = (page - 1) * limit;
-
-  console.log(`🔍 [주문 조회] userId=${userId}, page=${page}, limit=${limit}`);
-  console.log(`🔍 [주문 조회] limit > 1000? ${limit > 1000}`);
-
-  const needsPickupDateFilter = filters.subStatus === "수령가능";
-  const needsPickupDateSorting = false;
-  const needsProductJoin = needsPickupDateFilter || needsPickupDateSorting;
-
-  // 제외고객 목록 먼저 조회
-  const excludedCustomers = await fetchExcludedCustomers(userId);
-
-  // limit이 1000보다 크면 페이징으로 모든 데이터 가져오기
-  if (limit > 1000) {
-    console.log(`🔄 [주문 페이징] limit=${limit}으로 페이징 모드 시작...`);
-
-    // 첫 페이지를 먼저 가져와서 전체 개수 확인
-    const firstPageQuery = buildOrdersQuery(userId, filters, excludedCustomers, productSearchResults);
-    const { data: firstPageData, error: firstPageError, count } = await firstPageQuery.range(0, 999);
-
-    if (firstPageError) {
-      console.error("첫 페이지 조회 실패:", firstPageError);
-      throw firstPageError;
-    }
-
-    const totalItems = count || 0;
-    console.log(`📊 [주문 페이징] 총 ${totalItems}개 데이터 발견`);
-
-    // 첫 페이지 데이터로 시작
-    let allData = firstPageData || [];
-
-    // 나머지 페이지들 가져오기
-    const pageSize = 1000;
-    const totalPageCount = Math.ceil(totalItems / pageSize);
-
-    console.log(`🔄 [주문 페이징] 총 ${totalPageCount}페이지 중 나머지 ${totalPageCount - 1}페이지 가져오기...`);
-
-    for (let pageIndex = 1; pageIndex < totalPageCount; pageIndex++) {
-      const start = pageIndex * pageSize;
-      const end = start + pageSize - 1;
-
-      // 각 페이지마다 새로운 쿼리 생성
-      const pageQuery = buildOrdersQuery(userId, filters, excludedCustomers, productSearchResults);
-      const { data: pageData, error: pageError } = await pageQuery.range(start, end);
-
-      if (pageError) {
-        console.error("Supabase page error:", pageError);
-        throw new Error(`Failed to fetch page ${pageIndex + 1}`);
-      }
-
-      console.log(`✅ [주문 페이징] ${pageIndex + 1}/${totalPageCount} 페이지: ${pageData?.length || 0}개 가져옴`);
-      allData = allData.concat(pageData || []);
-    }
-
-    console.log(`✅ [주문 페이징] 완료! 총 ${allData.length}개 데이터 로드됨`);
-
-    // 데이터 후처리
-    let processedData = allData;
-
-    if (needsProductJoin && allData.length > 0) {
-      // processedData 처리 로직은 아래에서 재사용
-      processedData = allData.map(order => ({
-        ...order,
-        product_title: order.products?.title,
-        product_barcode: order.products?.barcode,
-        product_price_options: order.products?.price_options,
-        product_pickup_date: order.products?.pickup_date,
-        band_key: order.products?.band_key || order.band_key
-      }));
-    }
-
-    return {
-      success: true,
-      data: processedData,
-      pagination: {
-        totalItems,
-        totalPages: 1,
-        currentPage: 1,
-        limit: totalItems,
-      },
-    };
-  }
-
-  // 일반적인 경우: 한 번에 가져오기
-  console.log(`📄 [주문 단일 조회] limit=${limit}, startIndex=${startIndex}`);
-  const query = buildOrdersQuery(userId, filters, excludedCustomers, productSearchResults);
-  const { data, error, count } = await query.range(startIndex, startIndex + limit - 1);
-
-  if (error) {
-    console.error("Supabase query error:", error);
-    // Supabase 에러를 제대로 된 Error 객체로 변환
-    const errorMessage = error?.message || error?.details || "Failed to fetch orders";
-    const customError = new Error(errorMessage);
-    customError.status = error?.status || 500;
-    customError.code = error?.code;
-    throw customError;
-  }
-  
-
-  const totalItems = count || 0;
-  const totalPages = Math.ceil(totalItems / limit);
-  console.log(`📊 [주문 단일 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}`);
-
-  // 주문완료+수령가능 필터인 경우 데이터 형식을 orders_with_products와 일치하도록 변환
-  let processedData = data || [];
-  if (needsProductJoin && data) {
-    processedData = data.map(order => ({
-      ...order,
-      product_title: order.products?.title,
-      product_barcode: order.products?.barcode,
-      product_price_options: order.products?.price_options,
-      product_pickup_date: order.products?.pickup_date,
-      band_key: order.products?.band_key || order.band_key
-    }));
-  }
-  
-  if (needsPickupDateFilter && processedData) {
-    // Debug flag via localStorage('debugPickup') === 'true'
-    const isDebug = false;
-
-    const countByBand = (arr) => {
-      const m = new Map();
-      for (const o of arr) {
-        const k = o.band_key || 'unknown';
-        m.set(k, (m.get(k) || 0) + 1);
-      }
-      return Object.fromEntries(m.entries());
-    };
-
-    // --- 클라이언트(KST) 기준 수령가능 필터 적용 ---
-    const isPickupAvailableKST = (dateInput) => {
-      if (!dateInput) return false;
-
-      const KST_OFFSET = 9 * 60 * 60 * 1000; // +09:00
-
-      // now in KST as YMD
-      const nowUtc = new Date();
-      const nowKst = new Date(nowUtc.getTime() + KST_OFFSET);
-      const nowY = nowKst.getUTCFullYear();
-      const nowM = nowKst.getUTCMonth();
-      const nowD = nowKst.getUTCDate();
-      const nowYmd = nowY * 10000 + (nowM + 1) * 100 + nowD;
-
-      // parse input as YMD in KST
-      let y, m, d;
-      try {
-        if (typeof dateInput === 'string' && dateInput.includes('T')) {
-          // ISO (UTC) -> shift to KST then take YMD
-          const dt = new Date(dateInput);
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear();
-          m = k.getUTCMonth() + 1;
-          d = k.getUTCDate();
-        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-          // 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
-          const [datePart] = dateInput.split(' ');
-          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
-          y = yy; m = mm; d = dd;
-        } else if (typeof dateInput === 'string') {
-          // '10월17일' 같은 한국어 표기 케이스 (안전 처리)
-          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-          if (md) {
-            const now = new Date(nowUtc.getTime() + KST_OFFSET);
-            y = now.getUTCFullYear();
-            m = parseInt(md[1], 10);
-            d = parseInt(md[2], 10);
-          } else {
-            const dt = new Date(dateInput);
-            const k = new Date(dt.getTime() + KST_OFFSET);
-            y = k.getUTCFullYear();
-            m = k.getUTCMonth() + 1;
-            d = k.getUTCDate();
-          }
-        } else if (dateInput instanceof Date) {
-          const k = new Date(dateInput.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear();
-          m = k.getUTCMonth() + 1;
-          d = k.getUTCDate();
-        } else {
-          return false;
-        }
-      } catch (_) {
-        return false;
-      }
-
-      const inputYmd = y * 10000 + m * 100 + d;
-      return nowYmd >= inputYmd; // 오늘(KST) 날짜 이상이면 수령가능
-    };
-
-    const extractBracketDate = (title) => {
-      if (!title || typeof title !== 'string') return null;
-      // [ ... ] 안의 내용을 추출
-      const m = title.match(/^\s*\[([^\]]+)\]/);
-      return m ? m[1] : null;
-    };
-
-    // KST YMD 숫자 변환기
-    const toKstYmd = (dateInput) => {
-      if (!dateInput) return null;
-      const KST_OFFSET = 9 * 60 * 60 * 1000;
-      try {
-        let y, m, d;
-        if (typeof dateInput === 'string' && dateInput.includes('T')) {
-          const dt = new Date(dateInput);
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-          const [datePart] = dateInput.split(' ');
-          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
-          y = yy; m = mm; d = dd;
-        } else if (typeof dateInput === 'string') {
-          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-          if (md) {
-            const now = new Date(new Date().getTime() + KST_OFFSET);
-            y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
-          } else {
-            const dt = new Date(dateInput);
-            const k = new Date(dt.getTime() + KST_OFFSET);
-            y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-          }
-        } else if (dateInput instanceof Date) {
-          const k = new Date(dateInput.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else {
-          return null;
-        }
-        return y * 10000 + m * 100 + d;
-      } catch {
-        return null;
-      }
-    };
-
-    const beforeFilter = processedData.slice();
-    processedData = processedData.filter((o) => {
-      const titleDate = extractBracketDate(o.product_title);
-      const y1 = toKstYmd(o.product_pickup_date);
-      const y2 = toKstYmd(titleDate);
-      const effectiveYmd = y1 && y2 ? Math.min(y1, y2) : (y1 || y2);
-      if (!effectiveYmd) return false;
-      // 오늘 KST YMD
-      const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-      const nowYmd = nowKst.getUTCFullYear() * 10000 + (nowKst.getUTCMonth() + 1) * 100 + nowKst.getUTCDate();
-      return nowYmd >= effectiveYmd;
-    });
-
-    if (isDebug) {
-      try {
-        const filteredOut = [];
-        for (const o of beforeFilter) {
-          const titleDate = extractBracketDate(o.product_title);
-          const y1 = toKstYmd(o.product_pickup_date);
-          const y2 = toKstYmd(titleDate);
-          const effectiveYmd = y1 && y2 ? Math.min(y1, y2) : (y1 || y2);
-          const usedSource = (y1 && y2) ? (y1 <= y2 ? o.product_pickup_date : titleDate) : (o.product_pickup_date || titleDate);
-          const nowKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-          const nowYmd = nowKst.getUTCFullYear() * 10000 + (nowKst.getUTCMonth() + 1) * 100 + nowKst.getUTCDate();
-          const isAvail = effectiveYmd ? nowYmd >= effectiveYmd : false;
-          if (!isAvail) {
-            filteredOut.push({
-              order_id: o.order_id,
-              band_key: o.band_key,
-              product_title: o.product_title,
-              product_pickup_date: o.product_pickup_date,
-              titleDate,
-              usedSource,
-              effectiveYmd,
-              reason: !effectiveYmd ? 'no_date' : 'future_date'
-            });
-          }
-        }
-        const sample = filteredOut.slice(0, 30);
-        console.groupCollapsed('[Pickup Debug] useOrdersClient join-mode');
-        console.log('filters', { status: filters.status, subStatus: filters.subStatus, sortBy, ascending, page, limit });
-        console.log('counts', {
-          before: beforeFilter.length,
-          after: processedData.length,
-          beforeByBand: countByBand(beforeFilter),
-          afterByBand: countByBand(processedData)
-        });
-        if (sample.length) {
-          console.table(sample);
-          if (filteredOut.length > sample.length) {
-            console.log(`... and ${filteredOut.length - sample.length} more filtered items`);
-          }
-        } else {
-          console.log('No filtered out items.');
-        }
-        console.groupEnd();
-      } catch (e) {
-        console.warn('Debug logging failed:', e);
-      }
-    }
-
-    // 조인 모드에서 클라이언트 사이드 필터링
-    // 포스트키 검색은 이미 서버사이드에서 처리되므로 일반 검색어만 처리
-    if (filters.search && filters.search !== "undefined") {
-      const searchTerm = filters.search;
-      const isPostKeySearch = searchTerm.length > 20 && !searchTerm.includes(" ");
-      
-      // 포스트키 검색이 아닌 경우에만 클라이언트 사이드 필터링 수행
-      if (!isPostKeySearch) {
-        const normalizeForSearch = (str) => {
-          let normalized = str.replace(/\([^)]*\)/g, ' ');
-          // 대괄호와 그 안의 내용도 공백으로 치환 (검색 성공률 향상)
-          normalized = normalized.replace(/\[[^\]]*\]/g, ' ');
-          normalized = normalized.replace(/\s+/g, ' ').trim();
-          return normalized;
-        };
-        
-        const normalizedTerm = normalizeForSearch(searchTerm);
-        
-        // 원본 검색어와 정규화된 검색어 모두 시도
-        const searchPatterns = [searchTerm.trim()];
-        if (normalizedTerm !== searchTerm.trim()) {
-          searchPatterns.push(normalizedTerm);
-        }
-        
-        // 상품명이나 바코드에서 검색어가 포함된 항목만 필터링
-        console.log('Client-side filtering (join mode):', {
-          searchTerm,
-          searchPatterns,
-          originalDataLength: processedData.length
-        });
-        
-        processedData = processedData.filter(order => {
-          const productTitle = order.product_title || '';
-          const productBarcode = order.product_barcode || '';
-          const customerName = order.customer_name || '';
-          const postKey = order.post_key || '';
-          
-          // 여러 검색 패턴 중 하나라도 매칭되면 통과
-          return searchPatterns.some(pattern => {
-            const titleMatch = productTitle.toLowerCase().includes(pattern.toLowerCase());
-            const barcodeMatch = productBarcode.toLowerCase().includes(pattern.toLowerCase());
-            const customerMatch = customerName.toLowerCase().includes(pattern.toLowerCase());
-            const postMatch = postKey.toLowerCase().includes(pattern.toLowerCase());
-            
-            const matches = titleMatch || barcodeMatch || customerMatch || postMatch;
-            
-            if (matches) {
-              console.log('Match found:', {
-                productTitle,
-                pattern,
-                titleMatch,
-                barcodeMatch,
-                customerMatch,
-                postMatch
-              });
-            }
-            
-            return matches;
-          });
-        });
-        
-        console.log('Filtered data length:', processedData.length);
-      }
-      // 포스트키 검색인 경우는 이미 서버사이드에서 필터링됨
-    }
-  }
-
-  return {
-    success: true,
-    data: processedData,
-    pagination: {
-      totalItems,
-      totalPages,
-      currentPage: page,
       limit,
     },
   };
@@ -753,76 +97,7 @@ const fetchOrder = async (key) => {
 };
 
 /**
- * 필터 조건을 쿼리에 적용하는 헬퍼 함수
- */
-const applyStatsFilters = (query, filterOptions, excludedCustomers = []) => {
-  // 상태 필터링 (status)
-  if (filterOptions.status && filterOptions.status !== "all") {
-    query = query.eq("status", filterOptions.status);
-  }
-
-  // 부가 상태 필터링 (sub_status)
-  if (filterOptions.subStatus && filterOptions.subStatus !== "all") {
-    query = query.eq("sub_status", filterOptions.subStatus);
-  }
-
-  // 검색어 필터링 (상품명, 고객명 등) - 한글 안전 처리
-  if (filterOptions.search) {
-    const searchTerm = filterOptions.search;
-
-    const normalizeForSearch = (str) => {
-      let normalized = str.replace(/\([^)]*\)/g, ' ');
-      normalized = normalized.replace(/\s+/g, ' ').trim();
-      return normalized;
-    };
-
-    try {
-      const normalizedTerm = normalizeForSearch(searchTerm);
-
-      if (searchTerm.includes('(') || searchTerm.includes(')')) {
-        query = query.or(
-          `customer_name.ilike.%${normalizedTerm}%,product_name.ilike.%${normalizedTerm}%`
-        );
-      } else {
-        query = query.or(
-          `customer_name.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`
-        );
-      }
-    } catch (error) {
-      console.warn('Stats search filter error:', error);
-      const normalizedTerm = normalizeForSearch(searchTerm);
-      query = query.ilike("customer_name", `%${normalizedTerm}%`);
-    }
-  }
-
-  // 날짜 범위 필터링
-  if (filterOptions.startDate && filterOptions.endDate) {
-    try {
-      const dateColumn = filterOptions.dateType === "updated" ? "updated_at" : "ordered_at";
-      query = query
-        .gte(dateColumn, filterOptions.startDate)
-        .lte(dateColumn, filterOptions.endDate);
-    } catch (dateError) {
-      // ignore
-    }
-  }
-
-  // 제외 고객 필터링
-  if (excludedCustomers && excludedCustomers.length > 0) {
-    query = query.not(
-      "customer_name",
-      "in",
-      `(${excludedCustomers
-        .map((name) => `"${name.replace(/"/g, '""')}"`)
-        .join(",")})`
-    );
-  }
-
-  return query;
-};
-
-/**
- * 클라이언트 사이드 주문 통계 fetcher (DB 집계 최적화)
+ * 통합 RPC 함수로 주문 통계 조회
  */
 const fetchOrderStats = async (key) => {
   const [, userId, filterOptions] = key;
@@ -831,70 +106,33 @@ const fetchOrderStats = async (key) => {
     throw new Error("User ID is required");
   }
 
-  // 제외 고객 목록 먼저 조회
-  const excludedCustomers = await fetchExcludedCustomers(userId);
+  const sb = getAuthedClient();
 
-  // 병렬로 여러 쿼리 실행 (필요한 필드만 선택)
-  const [
-    statsResult,
-    recentOrdersResult
-  ] = await Promise.all([
-    // 1. 통계 계산용 경량 데이터 (status, sub_status만)
-    (async () => {
-      let query = supabase
-        .from("orders")
-        .select("status, sub_status", { count: "exact" })
-        .eq("user_id", userId);
-      query = applyStatsFilters(query, filterOptions, excludedCustomers);
-      return query;
-    })(),
+  console.log(`📊 [주문 통계] RPC 호출: userId=${userId}`);
 
-    // 2. 최근 주문 10개만 가져오기
-    (async () => {
-      let query = supabase
-        .from("orders")
-        .select("*")
-        .eq("user_id", userId)
-        .order("ordered_at", { ascending: false })
-        .limit(10);
-      query = applyStatsFilters(query, filterOptions, excludedCustomers);
-      return query;
-    })()
-  ]);
+  const { data, error } = await sb.rpc('get_order_stats', {
+    p_user_id: userId,
+    p_status: filterOptions.status || null,
+    p_sub_status: filterOptions.subStatus || null,
+    p_search: filterOptions.search || null,
+    p_start_date: filterOptions.startDate || null,
+    p_end_date: filterOptions.endDate || null,
+    p_date_type: filterOptions.dateType || 'ordered',
+  });
 
-  // 에러 체크
-  if (statsResult.error) {
-    console.error("Stats error:", statsResult.error);
-    throw new Error("Failed to get stats");
+  if (error) {
+    console.error('RPC 통계 조회 실패:', error);
+    throw error;
   }
 
-  const statsData = statsResult.data || [];
-  const totalOrders = statsResult.count || 0;
-
-  // 상태별 카운트 계산
-  const statusCounts = {};
-  const subStatusCounts = {};
-
-  for (const row of statsData) {
-    // 상태별 카운트
-    statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
-
-    // 부가 상태별 카운트 (수령완료 제외)
-    if (row.sub_status && row.status !== "수령완료") {
-      subStatusCounts[row.sub_status] = (subStatusCounts[row.sub_status] || 0) + 1;
-    }
-  }
-
-  // 최근 주문
-  const recentOrders = recentOrdersResult.data || [];
+  console.log(`📊 [주문 통계] 결과:`, data);
 
   return {
     success: true,
     data: {
-      totalOrders,
-      statusCounts,
-      subStatusCounts,
-      recentOrders,
+      totalOrders: data?.totalOrders || 0,
+      statusCounts: data?.statusCounts || {},
+      subStatusCounts: data?.subStatusCounts || {},
     },
   };
 };
