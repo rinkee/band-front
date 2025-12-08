@@ -35,7 +35,6 @@ import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
-import { fetchExcludedCustomers } from "../lib/excludedCustomersCache";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -1069,6 +1068,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     data: ordersData,
     error: ordersError,
     isLoading: isOrdersLoading,
+    isValidating: isOrdersValidating,
     mutate: mutateOrders,
   } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
 
@@ -1265,7 +1265,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (newPostKeys.length > 0) {
           const { data: byPk, error: e1 } = await sb
             .from("products")
-            .select("*")
+            .select("product_id,title,base_price,barcode,pickup_date,image_urls,post_key,band_key,band_number,post_number,item_number")
             .eq("user_id", uid)
             .in("post_key", newPostKeys)
             .order("item_number", { ascending: true })
@@ -1283,7 +1283,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           if (postNums.length === 0) continue;
           const { data: byPair, error: e2 } = await sb
             .from("products")
-            .select("*")
+            .select("product_id,title,base_price,barcode,pickup_date,image_urls,post_key,band_key,band_number,post_number,item_number")
             .eq("user_id", uid)
             .eq("band_number", band)
             .in("post_number", postNums)
@@ -1348,10 +1348,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [mutateOrders]);
 
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
-  const { data: unreceivedCountData, mutate: mutateUnreceivedCount } = useSWR(
+  // RPC 함수로 통합: 미수령/주문완료/결제완료 카운트를 한 번에 조회
+  const {
+    data: globalStatsData,
+    mutate: mutateGlobalStats,
+    isLoading: isGlobalStatsLoading,
+    isValidating: isGlobalStatsValidating,
+  } = useSWR(
     userData?.userId
       ? [
-        "unreceived-count",
+        "global-stats",
         mode,
         userData.userId,
         filterDateRange,
@@ -1361,144 +1367,45 @@ function OrdersTestPageContent({ mode = "raw" }) {
       : null,
     async () => {
       const sb = getAuthedClient();
-      const tableName = mode === "raw" ? "comment_orders" : "orders";
-      const unreceivedField = "sub_status"; // raw/legacy 모두 sub_status 사용
-      const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
-      let query = sb
-        .from(tableName)
-        .select("*", { head: true, count: "exact" })
-        .eq("user_id", userData.userId)
-        .eq(unreceivedField, "미수령")
-        .not("status", "in", '("수령완료","주문취소")'); // 실제 필터와 동일한 조건 적용
+      const rpcName = mode === "raw" ? "get_comment_order_stats" : "get_order_stats";
 
-      if (dateFilterParams.startDate) {
-        query = query.gte(dateColumn, dateFilterParams.startDate);
-      }
-      if (dateFilterParams.endDate) {
-        query = query.lte(dateColumn, dateFilterParams.endDate);
-      }
+      console.log(`📊 [글로벌 통계] RPC 호출: ${rpcName}`);
 
-      // 제외고객 필터 추가
-      const excludedCustomers = await fetchExcludedCustomers(userData.userId);
-      if (excludedCustomers.length > 0) {
-        const customerField = mode === "raw" ? "commenter_name" : "customer_name";
-        const escaped = excludedCustomers.map(n => `"${n.replace(/"/g, '""')}"`).join(",");
-        query = query.not(customerField, "in", `(${escaped})`);
-      }
-
-      const { count, error } = await query;
+      const { data, error } = await sb.rpc(rpcName, {
+        p_user_id: userData.userId,
+        p_status: null,
+        p_sub_status: null,
+        p_search: null,
+        p_start_date: dateFilterParams.startDate || null,
+        p_end_date: dateFilterParams.endDate || null,
+        p_date_type: 'ordered',
+      });
 
       if (error) {
-        console.error("[미수령 카운트] error:", error);
-        return 0;
+        console.error("[글로벌 통계] RPC error:", error);
+        return { statusCounts: {}, subStatusCounts: {} };
       }
-      return count || 0;
+
+      console.log(`📊 [글로벌 통계] 결과:`, data);
+      return data || { statusCounts: {}, subStatusCounts: {} };
     },
     {
-      revalidateOnFocus: true,
-      dedupingInterval: 60000,
+      revalidateOnFocus: false, // 포커스 시 중복 호출 방지
+      revalidateOnReconnect: true,
+      revalidateIfStale: true,
+      dedupingInterval: 30000,
     }
   );
 
-  const { data: completedCountData, mutate: mutateCompletedCount } = useSWR(
-    userData?.userId
-      ? [
-        "completed-count",
-        mode,
-        userData.userId,
-        filterDateRange,
-        dateFilterParams.startDate,
-        dateFilterParams.endDate,
-      ]
-      : null,
-    async () => {
-      const sb = getAuthedClient();
-      const tableName = mode === "raw" ? "comment_orders" : "orders";
-      const statusField = "status"; // raw/legacy 모두 status 사용
-      const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
-      let query = sb
-        .from(tableName)
-        .select("*", { head: true, count: "exact" })
-        .eq("user_id", userData.userId)
-        .eq(statusField, "주문완료"); // 수령완료 → 주문완료로 수정
+  // RPC 결과에서 개별 카운트 추출
+  const unreceivedCountData = globalStatsData?.subStatusCounts?.["미수령"] || 0;
+  const completedCountData = globalStatsData?.statusCounts?.["주문완료"] || 0;
+  const paidCountData = globalStatsData?.statusCounts?.["결제완료"] || 0;
 
-      if (dateFilterParams.startDate) {
-        query = query.gte(dateColumn, dateFilterParams.startDate);
-      }
-      if (dateFilterParams.endDate) {
-        query = query.lte(dateColumn, dateFilterParams.endDate);
-      }
-
-      // 제외고객 필터 추가
-      const excludedCustomers = await fetchExcludedCustomers(userData.userId);
-      if (excludedCustomers.length > 0) {
-        const customerField = mode === "raw" ? "commenter_name" : "customer_name";
-        const escaped = excludedCustomers.map(n => `"${n.replace(/"/g, '""')}"`).join(",");
-        query = query.not(customerField, "in", `(${escaped})`);
-      }
-
-      const { count, error } = await query;
-      if (error) {
-        console.error("[주문완료 카운트] error:", error);
-        return 0;
-      }
-      return count || 0;
-    },
-    {
-      revalidateOnFocus: true,
-      dedupingInterval: 60000,
-    }
-  );
-
-  const { data: paidCountData, mutate: mutatePaidCount } = useSWR(
-    userData?.userId
-      ? [
-        "paid-count",
-        mode,
-        userData.userId,
-        filterDateRange,
-        dateFilterParams.startDate,
-        dateFilterParams.endDate,
-      ]
-      : null,
-    async () => {
-      const sb = getAuthedClient();
-      const tableName = mode === "raw" ? "comment_orders" : "orders";
-      const statusField = "status"; // raw/legacy 모두 status 사용
-      const dateColumn = mode === "raw" ? "comment_created_at" : "ordered_at";
-      let query = sb
-        .from(tableName)
-        .select("*", { head: true, count: "exact" })
-        .eq("user_id", userData.userId)
-        .eq(statusField, "결제완료");
-
-      if (dateFilterParams.startDate) {
-        query = query.gte(dateColumn, dateFilterParams.startDate);
-      }
-      if (dateFilterParams.endDate) {
-        query = query.lte(dateColumn, dateFilterParams.endDate);
-      }
-
-      // 제외고객 필터 추가
-      const excludedCustomers = await fetchExcludedCustomers(userData.userId);
-      if (excludedCustomers.length > 0) {
-        const customerField = mode === "raw" ? "commenter_name" : "customer_name";
-        const escaped = excludedCustomers.map(n => `"${n.replace(/"/g, '""')}"`).join(",");
-        query = query.not(customerField, "in", `(${escaped})`);
-      }
-
-      const { count, error } = await query;
-      if (error) {
-        console.error("[결제완료 카운트] error:", error);
-        return 0;
-      }
-      return count || 0;
-    },
-    {
-      revalidateOnFocus: true,
-      dedupingInterval: 60000,
-    }
-  );
+  // mutate 함수들을 통합 mutate로 대체
+  const mutateUnreceivedCount = mutateGlobalStats;
+  const mutateCompletedCount = mutateGlobalStats;
+  const mutatePaidCount = mutateGlobalStats;
 
   // 상태 변경 시 배지 카운트를 낙관적으로 맞춰주는 헬퍼 (증가/감소 모두 처리)
   const adjustBadgeCountsOptimistically = useCallback(
@@ -3142,9 +3049,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   // 서버와 강제 동기화 버튼
-  const handleSyncNow = useCallback(async () => {
+  const handleSyncNow = useCallback(async ({ skipIfInFlight = false } = {}) => {
     const now = Date.now();
     if (!userData?.userId || isSyncing) return;
+    if (skipIfInFlight && (
+      isOrdersLoading || isOrdersValidating || isGlobalStatsLoading || isGlobalStatsValidating
+    )) {
+      return;
+    }
     // 10초 쿨다운
     if (lastSyncAt && now - lastSyncAt < 10_000) {
       showError("너무 빠르게 요청했습니다. 잠시 후 다시 시도하세요.");
@@ -3184,12 +3096,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
       } catch (_) { }
       setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
 
-      // 주문/배지/상품 모두 강제 재검증 (dedupe 비활성화)
+      // 주문/배지/상품 모두 강제 재검증 (동일 키는 dedupe로 병합)
       await Promise.all([
-        mutateOrders(undefined, { revalidate: true, dedupe: false }),
-        mutateCompletedCount(undefined, { revalidate: true, dedupe: false }),
-        mutateUnreceivedCount(undefined, { revalidate: true, dedupe: false }),
-        mutatePaidCount(undefined, { revalidate: true, dedupe: false }),
+        mutateOrders(undefined, { revalidate: true, dedupe: true }),
+        mutateCompletedCount(undefined, { revalidate: true, dedupe: true }),
+        mutateUnreceivedCount(undefined, { revalidate: true, dedupe: true }),
+        mutatePaidCount(undefined, { revalidate: true, dedupe: true }),
         mutateProducts(undefined, { revalidate: true }),
       ]);
     } finally {
@@ -3201,7 +3113,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setLastSyncAt(Date.now());
       setIsSyncing(false);
     }
-  }, [userData?.userId, mutateOrders, mutateCompletedCount, mutateUnreceivedCount, mutatePaidCount, mutateProducts, isSyncing, lastSyncAt, globalMutate]);
+  }, [userData?.userId, mutateOrders, mutateCompletedCount, mutateUnreceivedCount, mutatePaidCount, mutateProducts, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating]);
 
   const handleOrdersErrorRetry = useCallback(() => {
     setError(null);
@@ -3216,7 +3128,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const run = async () => {
         setInitialSyncing(true);
         try {
-          await handleSyncNow();
+          await handleSyncNow({ skipIfInFlight: true });
         } finally {
           setInitialSyncing(false);
         }
