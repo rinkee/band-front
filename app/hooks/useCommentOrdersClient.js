@@ -171,6 +171,56 @@ const buildQuery = (userId, filters, excludedCustomers = [], productSearchResult
   return query;
 };
 
+// 수령가능 주문 조회 (RPC 함수 사용)
+const fetchPickupAvailableOrders = async (userId, page, filters) => {
+  const sb = getAuthedClient();
+  const limit = filters.limit || 30;
+  const offset = (Math.max(1, page || 1) - 1) * limit;
+
+  // 제외고객 목록 조회
+  const excludedCustomers = await fetchExcludedCustomers(userId);
+
+  console.log(`🔍 [수령가능 조회] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, offset=${offset}, 제외고객=${excludedCustomers?.length || 0}명`);
+
+  const { data, error } = await sb.rpc('get_pickup_available_orders', {
+    p_user_id: userId,
+    p_status: filters.status || null,
+    p_sub_status: filters.subStatus || null,
+    p_search: filters.search || null,
+    p_search_type: filters.searchType || 'combined',
+    p_limit: limit,
+    p_offset: offset,
+    p_start_date: filters.startDate || null,
+    p_end_date: filters.endDate || null,
+    p_excluded_customers: excludedCustomers?.length > 0 ? excludedCustomers : null,
+    p_sort_by: filters.sortBy || 'ordered_at',
+    p_sort_order: filters.sortOrder || 'desc',
+    p_commenter_exact: filters.commenterExact || null,
+  });
+
+  if (error) {
+    console.error('RPC 조회 실패:', error);
+    throw error;
+  }
+
+  // total_count는 모든 row에 동일하게 들어있음
+  const totalItems = data?.[0]?.total_count || 0;
+  const totalPages = Math.ceil(totalItems / limit);
+
+  console.log(`📊 [수령가능 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
+
+  return {
+    success: true,
+    data: data || [],
+    pagination: {
+      totalItems: Number(totalItems),
+      totalPages,
+      currentPage: Math.max(1, page || 1),
+      limit,
+    },
+  };
+};
+
 // 목록 조회 (comment_orders)
 const fetchCommentOrders = async (key) => {
   const [, userId, page, filtersKey] = key;
@@ -178,6 +228,11 @@ const fetchCommentOrders = async (key) => {
   const filters = typeof filtersKey === "string" ? JSON.parse(filtersKey) : filtersKey;
 
   if (!userId) throw new Error("User ID is required");
+
+  // 수령가능 필터가 활성화되면 RPC 함수 사용
+  if (filters.pickupAvailable) {
+    return fetchPickupAvailableOrders(userId, page, filters);
+  }
 
   const limit = filters.limit || 50;
   const startIndex = (Math.max(1, page || 1) - 1) * limit;

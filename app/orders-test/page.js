@@ -781,20 +781,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
       return displayProd?.pickup_date || null;
     };
 
-    // 클라이언트 필터링: 서버에서 불가능한 것만 (pickup_date 기반 필터)
-
-    // Pickup date 필터링 (주문완료+수령가능)
-    if (showPickupAvailableOnly || filterSelection === "주문완료+수령가능") {
-      arr = arr.filter((o) => {
-        const pickupDate = getOrderPickupDate(o);
-        return isAvailableLocal(pickupDate);
-      });
-    }
+    // 수령가능 필터링은 이제 서버 RPC 함수에서 처리됨 (pickupAvailable 파라미터)
+    // 클라이언트 필터링 불필요
 
     // 미수령, 확인필요는 서버에서 sub_status로 필터링됨 (클라이언트 필터링 불필요)
 
     return arr;
-  }, [orders, showPickupAvailableOnly, filterSelection, postProductsByPostKey, postProductsByBandPost]);
+  }, [orders, postProductsByPostKey, postProductsByBandPost]);
 
   const calculateStats = useCallback((dataArray) => {
     if (!dataArray || dataArray.length === 0) {
@@ -1013,10 +1006,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     const detectedPostKey = mode === "raw" && isPostKeyFormat(searchTerm) ? searchTerm : undefined;
 
+    // 수령가능만 보기 필터 활성화 여부
+    const isPickupAvailable = showPickupAvailableOnly || filterSelection === "주문완료+수령가능";
+
     return {
       limit: 30, // 한 페이지에 30개씩 기본 제한
       sortBy,
       sortOrder,
+      // 수령가능만 보기 필터 (RPC 함수 사용)
+      pickupAvailable: isPickupAvailable,
       // 서버에서 필터링 가능한 항목들
       status: (() => {
         // '주문완료+수령가능'은 주문완료로 필터링
@@ -1048,7 +1046,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       endDate: dateParams.endDate,
       dateType: "created", // 항상 주문일시 기준
     };
-  }, [sortBy, sortOrder, filterSelection, searchTerm, searchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate]);
+  }, [sortBy, sortOrder, filterSelection, searchTerm, searchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate, showPickupAvailableOnly]);
 
   // 실제 페이지 사용
   const effectivePage = currentPage;
