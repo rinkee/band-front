@@ -1,6 +1,6 @@
 # orders-test/page.js 비효율 코드 분석
 
-> 작성일: 2025-12-03
+> 작성일: 2025-12-09
 > 대상 파일: `app/orders-test/page.js`
 
 ---
