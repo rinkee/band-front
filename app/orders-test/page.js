@@ -995,15 +995,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
       customEndDate
     );
 
-    // post_key 형식인지 감지 (예: "95098260:12545" 또는 "95098260:12546")
-    // band_number:post_number 형식 - 둘 다 숫자이고 콜론으로 구분
+    // post_key 형식인지 감지
+    // 1. band_number:post_number 형식 (예: "95098260:12545") - 둘 다 숫자이고 콜론으로 구분
+    // 2. Band API post_key 형식 - 정확히 24자의 영숫자/_/- 조합
     const isPostKeyFormat = (term) => {
       if (!term) return false;
-      const match = term.match(/^(\d+):(\d+)$/);
-      return !!match;
+      // 숫자:숫자 형식
+      if (/^(\d+):(\d+)$/.test(term)) return true;
+      // Band post_key 형식: 정확히 24자, 영숫자와 _- 허용
+      if (/^[A-Za-z0-9_-]{24}$/.test(term)) return true;
+      return false;
     };
 
-    const detectedPostKey = mode === "raw" && isPostKeyFormat(searchTerm) ? searchTerm : undefined;
+    const detectedPostKey = isPostKeyFormat(searchTerm) ? searchTerm : undefined;
+
+    console.log('🔑 [ordersFilters] searchTerm:', searchTerm, '-> detectedPostKey:', detectedPostKey);
 
     // 수령가능만 보기 필터 활성화 여부
     const isPickupAvailable = showPickupAvailableOnly || filterSelection === "주문완료+수령가능";

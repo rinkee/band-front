@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 .commit_message.txt
+
+# Claude/AI instruction files
+*.md
