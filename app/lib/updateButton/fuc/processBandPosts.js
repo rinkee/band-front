@@ -1436,7 +1436,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
                           const mappedFull = fullComments.map((c) => {
                             const extra = extrasByKey.get(c.commentKey) || {};
-                            const existingOrder = allOrdersByKey.get(c.commentKey);
+                            const existingOrder = allOrdersByKey.get(c.commentKey) || {};
                             return {
                               ...c,
                               post_key: postKey,
@@ -1449,20 +1449,61 @@ export async function processBandPosts(supabase, userId, options = {}) {
                                 null,
                               content_type: c.content_type || null,
                               origin_comment_id: c.origin_comment_id || null,
-                              comment_change: extra.comment_change || null,
-                              existing_customer_name: extra.existing_customer_name || c.existing_customer_name || null,
-                              existing_order_id: extra.existing_order_id ?? null,
-                              existing_comment: extra.existing_comment ?? null,
-                              existing_status: extra.existing_status ?? null,
-                              existing_sub_status: extra.existing_sub_status ?? null,
-                              existing_confirmed_at: extra.existing_confirmed_at ?? null,
-                              existing_completed_at: extra.existing_completed_at ?? null,
-                              existing_canceled_at: extra.existing_canceled_at ?? null,
-                              existing_paid_at: extra.existing_paid_at ?? null,
-                              existing_updated_at: extra.existing_updated_at ?? existingOrder?.updated_at ?? null,
-                              existing_ordered_at: extra.existing_ordered_at ?? existingOrder?.ordered_at ?? null,
-                              existing_created_at: extra.existing_created_at ?? existingOrder?.created_at ?? null,
-                              existing_commented_at: extra.existing_commented_at ?? existingOrder?.commented_at ?? null
+                              comment_change: extra.comment_change ?? c.comment_change ?? existingOrder.comment_change ?? null,
+                              existing_customer_name:
+                                extra.existing_customer_name ??
+                                c.existing_customer_name ??
+                                existingOrder.customer_name ??
+                                null,
+                              existing_order_id: extra.existing_order_id ?? c.existing_order_id ?? existingOrder.order_id ?? null,
+                              existing_comment: extra.existing_comment ?? c.existing_comment ?? existingOrder.comment ?? null,
+                              existing_status: extra.existing_status ?? c.existing_status ?? existingOrder.status ?? null,
+                              existing_sub_status: extra.existing_sub_status ?? c.existing_sub_status ?? existingOrder.sub_status ?? null,
+                              existing_confirmed_at:
+                                extra.existing_confirmed_at ??
+                                c.existing_confirmed_at ??
+                                existingOrder.confirmed_at ??
+                                null,
+                              existing_completed_at:
+                                extra.existing_completed_at ??
+                                c.existing_completed_at ??
+                                existingOrder.completed_at ??
+                                null,
+                              existing_canceled_at:
+                                extra.existing_canceled_at ??
+                                c.existing_canceled_at ??
+                                existingOrder.canceled_at ??
+                                null,
+                              existing_paid_at:
+                                extra.existing_paid_at ??
+                                c.existing_paid_at ??
+                                existingOrder.paid_at ??
+                                null,
+                              existing_comment_change:
+                                extra.existing_comment_change ??
+                                c.existing_comment_change ??
+                                existingOrder.comment_change ??
+                                null,
+                              existing_updated_at:
+                                extra.existing_updated_at ??
+                                c.existing_updated_at ??
+                                existingOrder.updated_at ??
+                                null,
+                              existing_ordered_at:
+                                extra.existing_ordered_at ??
+                                c.existing_ordered_at ??
+                                existingOrder.ordered_at ??
+                                null,
+                              existing_created_at:
+                                extra.existing_created_at ??
+                                c.existing_created_at ??
+                                existingOrder.created_at ??
+                                null,
+                              existing_commented_at:
+                                extra.existing_commented_at ??
+                                c.existing_commented_at ??
+                                existingOrder.commented_at ??
+                                null
                             };
                           });
 
