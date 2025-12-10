@@ -510,6 +510,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           let forceProcessAllComments = false;
           const isOrderNeedsAi = dbPostData?.order_needs_ai === true;
           let postProcessingError = null;
+          let syncErrorLog = null; // comment_sync_log용 에러 정보
           let aiExtractionStatus = "not_attempted";
 
           // 변수 초기화
@@ -785,6 +786,13 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   console.error(
                     `Comment fetch error for new post ${postKey}: ${commentError.message}`
                   );
+                  syncErrorLog = {
+                    error: commentError.message,
+                    stage: "comment_fetch",
+                    failed_at: new Date().toISOString(),
+                    post_key: postKey,
+                    comment_count: apiPost.commentCount || 0
+                  };
                 }
 
                 if (newComments.length > 0) {
@@ -842,6 +850,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           // 저장 실패 시 완료 처리하지 않도록 플래그 내림
                           successfullyProcessedNewComments = false;
                           console.error(`❌ 트랜잭션 실패: ${saveResult.error}`);
+                          syncErrorLog = {
+                            error: saveResult.error || "주문/고객 저장 실패",
+                            stage: "order_save",
+                            failed_at: new Date().toISOString(),
+                            post_key: postKey,
+                            comment_count: newComments?.length || 0,
+                            orders_count: orders?.length || 0,
+                            customers_count: customers?.size || 0
+                          };
                         }
                       }
                     } else {
@@ -854,6 +871,13 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       `Order generation error for new post ${postKey}: ${genError.message}`
                     );
                     successfullyProcessedNewComments = false;
+                    syncErrorLog = {
+                      error: genError.message,
+                      stage: "order_generate",
+                      failed_at: new Date().toISOString(),
+                      post_key: postKey,
+                      comment_count: newComments?.length || 0
+                    };
                   }
                 } else {
                   // 댓글이 없는 경우
@@ -875,9 +899,16 @@ export async function processBandPosts(supabase, userId, options = {}) {
                 if (isNewPost && savedPostId) {
                   if (!successfullyProcessedNewComments && processCommentsAndOrders) {
                     updateInfo.comment_sync_status = "failed";
+                    updateInfo.comment_sync_log = syncErrorLog || {
+                      error: "알 수 없는 실패",
+                      stage: "unknown",
+                      failed_at: new Date().toISOString(),
+                      post_key: postKey
+                    };
                     console.log(`[신규] comment_sync_status를 'failed'로 설정`);
                   } else {
                     updateInfo.comment_sync_status = "completed";
+                    updateInfo.comment_sync_log = null; // 성공 시 로그 초기화
                     console.log(`[신규] comment_sync_status를 'completed'로 설정`);
                   }
                 }
@@ -1405,6 +1436,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
                           const mappedFull = fullComments.map((c) => {
                             const extra = extrasByKey.get(c.commentKey) || {};
+                            const existingOrder = allOrdersByKey.get(c.commentKey);
                             return {
                               ...c,
                               post_key: postKey,
@@ -1427,10 +1459,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
                               existing_completed_at: extra.existing_completed_at ?? null,
                               existing_canceled_at: extra.existing_canceled_at ?? null,
                               existing_paid_at: extra.existing_paid_at ?? null,
-                              existing_updated_at: extra.existing_updated_at ?? existing.updated_at ?? null,
-                              existing_ordered_at: extra.existing_ordered_at ?? existing.ordered_at ?? null,
-                              existing_created_at: extra.existing_created_at ?? existing.created_at ?? null,
-                              existing_commented_at: extra.existing_commented_at ?? existing.commented_at ?? null
+                              existing_updated_at: extra.existing_updated_at ?? existingOrder?.updated_at ?? null,
+                              existing_ordered_at: extra.existing_ordered_at ?? existingOrder?.ordered_at ?? null,
+                              existing_created_at: extra.existing_created_at ?? existingOrder?.created_at ?? null,
+                              existing_commented_at: extra.existing_commented_at ?? existingOrder?.commented_at ?? null
                             };
                           });
 
@@ -1444,6 +1476,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
                           if (finalCommentsToProcess.length === 0) {
                             console.log(`게시물 ${postKey}: 처리할 댓글 없음`);
+                            shouldUpdateCommentInfo = true;
+                            newCount = apiPost.commentCount || 0;
+                            newChecked = new Date().toISOString();
                           } else {
                           console.log(
                             `게시물 ${postKey}: ${finalCommentsToProcess.length}개 댓글 처리`
@@ -1502,6 +1537,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
                               }
                             } else {
                               console.error(`❌ 트랜잭션 실패: ${saveResult.error}`);
+                              syncErrorLog = {
+                                error: saveResult.error || "주문/고객 저장 실패",
+                                stage: "order_save",
+                                failed_at: new Date().toISOString(),
+                                post_key: postKey,
+                                comment_count: finalCommentsToProcess?.length || commentsToProcess?.length || comments?.length || 0,
+                                orders_count: orders?.length || 0,
+                                customers_count: customers?.size || 0
+                              };
                             }
                           } else {
                             console.log(
@@ -1518,20 +1562,28 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             // 통계를 위해 실제 처리한 댓글만 저장
                         comments = commentsToProcess;
                             shouldUpdateCommentInfo = true;
+                            newCount = apiPost.commentCount || 0;
+                            newChecked = new Date().toISOString();
                           }
                         }
                       }
                     } else {
                       console.log(`게시물 ${postKey}: 마지막 체크 이후 신규 댓글 없음`);
                       comments = []; // 처리한 댓글 없음
+                      shouldUpdateCommentInfo = true;
+                      newCount = apiPost.commentCount || 0;
+                      newChecked = new Date().toISOString();
                     }
-
-                    shouldUpdateCommentInfo = true;
-                    newCount = apiPost.commentCount || 0;
-                    newChecked = new Date().toISOString();
                   } catch (err) {
                     console.error(`댓글 처리 오류 (post ${postKey}): ${err.message}`);
                     shouldUpdateCommentInfo = false;
+                    syncErrorLog = {
+                      error: err.message,
+                      stage: "comment_process",
+                      failed_at: new Date().toISOString(),
+                      post_key: postKey,
+                      comment_count: comments?.length || dbPostData?.comment_count || 0
+                    };
                   }
 
                   // 실패/성공에 따라 업데이트 정보 추가
@@ -1539,7 +1591,13 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     postsToUpdateCommentInfo.push({
                       post_id: savedPostId,
                       comment_count: dbPostData?.comment_count || 0,
-                      comment_sync_status: "failed"
+                      comment_sync_status: "failed",
+                      comment_sync_log: syncErrorLog || {
+                        error: "알 수 없는 실패",
+                        stage: "unknown",
+                        failed_at: new Date().toISOString(),
+                        post_key: postKey
+                      }
                     });
                     console.log(`post_id=${savedPostId} 댓글 처리 실패`);
                   } else {
@@ -1548,6 +1606,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             comment_count: newCount,
                             last_checked_comment_at: newChecked,
                             comment_sync_status: "completed",
+                            comment_sync_log: null, // 성공 시 로그 초기화
                             latest_comments: apiPost.latest_comments || null
                           });
                           console.log(`post_id=${savedPostId} 댓글 처리 성공`);
@@ -1622,6 +1681,11 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
             if (updateInfo.latest_comments !== undefined) {
               fieldsToUpdate.latest_comments = updateInfo.latest_comments;
+            }
+
+            // comment_sync_log 추가 (실패 로그 또는 성공 시 null)
+            if (updateInfo.comment_sync_log !== undefined) {
+              fieldsToUpdate.comment_sync_log = updateInfo.comment_sync_log;
             }
 
             console.log(`  - [업데이트 시도] Post ${updateInfo.post_id}:`, JSON.stringify(fieldsToUpdate, null, 2));

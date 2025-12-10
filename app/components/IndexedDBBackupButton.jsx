@@ -45,11 +45,6 @@ async function fetchWithRange(table, columns, userId, dateColumn, rangeMs, exclu
     if (exactNames.length > 0) {
       const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
       query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
-      // 추가 부분 일치도 제외 (특수문자 포함)
-      exactNames.forEach((name) => {
-        const escaped = escapeIlike(name);
-        query = query.not(nameColumn, "ilike", `%${escaped}%`);
-      });
     }
   }
 

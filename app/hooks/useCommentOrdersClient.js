@@ -74,8 +74,9 @@ export function useCommentOrderClientMutations() {
   const { mutate: globalMutate } = useSWRConfig();
 
   // 상태 업데이트 (comment_orders PATCH)
-  const updateCommentOrder = async (commentOrderId, updateData, userId) => {
+  const updateCommentOrder = async (commentOrderId, updateData, userId, options = {}) => {
     if (!commentOrderId || !userId) throw new Error("IDs are required");
+    const { revalidate = true } = options;
 
     const sb = getAuthedClient();
     const { data, error } = await sb
@@ -88,11 +89,13 @@ export function useCommentOrderClientMutations() {
     if (error) throw error;
 
     // 리스트 캐시 무효화
-    globalMutate(
-      (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
-      undefined,
-      { revalidate: true }
-    );
+    if (revalidate !== false) {
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
+        undefined,
+        { revalidate: true }
+      );
+    }
     return data;
   };
 

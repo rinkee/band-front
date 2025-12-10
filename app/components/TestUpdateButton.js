@@ -242,10 +242,6 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
           if (exactNames.length > 0) {
             const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
             query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
-            exactNames.forEach((name) => {
-              const escaped = escapeIlike(name);
-              query = query.not(nameColumn, "ilike", `%${escaped}%`);
-            });
           }
         }
 
