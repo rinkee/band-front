@@ -1078,6 +1078,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
     mutate: mutateOrders,
   } = mode === "raw" ? rawOrdersResult : legacyOrdersResult;
 
+  // 주문 리스트 재검증을 단일 채널로 관리 (동시에 여러 번 호출되는 것 방지)
+  const refreshOrdersInFlight = useRef(null);
+  const refreshOrders = useCallback(async () => {
+    if (refreshOrdersInFlight.current) return refreshOrdersInFlight.current;
+    const promise = mutateOrders(undefined, { revalidate: true, dedupe: true }).finally(() => {
+      refreshOrdersInFlight.current = null;
+    });
+    refreshOrdersInFlight.current = promise;
+    return promise;
+  }, [mutateOrders]);
+
   // 서버 페이지네이션 데이터 사용
   const totalItems = ordersData?.pagination?.totalItems ?? 0;
   const totalPages = ordersData?.pagination?.totalPages ?? 1;
@@ -1348,10 +1359,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const productsData = null;
   const productsError = null;
   const mutateProducts = useCallback(async () => {
-    // products가 변경되었을 때 fetchBatchProducts를 다시 실행
-    // ordersData를 mutate하면 ordersSignature가 변경되어 fetchBatchProducts가 자동 재실행됨
-    await mutateOrders();
-  }, [mutateOrders]);
+    // 강제 상품/이미지 재조회 트리거 (주문 RPC 재호출 없이)
+    setProductReloadToken((v) => v + 1);
+  }, []);
 
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
   // RPC 함수로 통합: 미수령/주문완료/결제완료 카운트를 한 번에 조회
@@ -1412,6 +1422,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const mutateUnreceivedCount = mutateGlobalStats;
   const mutateCompletedCount = mutateGlobalStats;
   const mutatePaidCount = mutateGlobalStats;
+  const refreshStats = useCallback(
+    () => mutateGlobalStats(undefined, { revalidate: true, dedupe: true }),
+    [mutateGlobalStats]
+  );
 
   // 상태 변경 시 배지 카운트를 낙관적으로 맞춰주는 헬퍼 (증가/감소 모두 처리)
   const adjustBadgeCountsOptimistically = useCallback(
@@ -1493,9 +1507,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const legacyMutations = useOrderClientMutations();
 
   // 모드에 상관없이 사용할 수 있는 통합 update 함수
-  const updateCommentOrder = async (orderId, updateData, userId) => {
+  const updateCommentOrder = async (orderId, updateData, userId, options = {}) => {
     if (mode === "raw") {
-      return await rawMutations.updateCommentOrder(orderId, updateData, userId);
+      return await rawMutations.updateCommentOrder(orderId, updateData, userId, options);
     } else {
       // legacy 테이블은 status/sub_status 필드 사용. 재검증은 여기서 건너뛰고 낙관적 상태 사용.
       const payload = {
@@ -1510,7 +1524,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (updateData.canceled_at !== undefined) {
         payload.canceled_at = updateData.canceled_at;
       }
-      return await legacyMutations.updateOrderStatus(orderId, payload, userId);
+      return await legacyMutations.updateOrderStatus(orderId, payload, userId, { revalidate: false });
     }
   };
 
@@ -1727,9 +1741,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // 데이터 갱신
         console.log('[자동 미수령] 데이터 갱신 중');
-        await mutateOrders(undefined, { revalidate: true });
-        console.log('[자동 미수령] 데이터 갱신 완료');
-
+        // 네트워크 재호출 대신 로컬 상태 유지, 필요 시 동기화 버튼에서 수동 갱신
         autoUpdateProcessedRef.current = true;
         console.log('[자동 미수령] 처리 완료, 플래그 설정');
       } catch (error) {
@@ -1857,11 +1869,44 @@ function OrdersTestPageContent({ mode = "raw" }) {
           selected_price: selectedPrice,
           product_name: productName,
         },
-        userData.userId
+        userData.userId,
+        { revalidate: false }
       );
 
-      // 성공 시 데이터 새로고침 - DB에서 최신 데이터 가져오기
-      await mutateOrders(undefined, { revalidate: true });
+      // 로컬/SWR 캐시만 업데이트 (네트워크 재호출 없음)
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.order_id === order.order_id
+            ? {
+              ...o,
+              product_id: selectedProductId,
+              product_name: productName,
+              quantity: selectedQty,
+              price: selectedPrice,
+            }
+            : o
+        )
+      );
+      await mutateOrders(
+        (prev) => {
+          if (!prev?.data) return prev;
+          return {
+            ...prev,
+            data: prev.data.map((o) =>
+              o.order_id === order.order_id
+                ? {
+                  ...o,
+                  product_id: selectedProductId,
+                  product_name: productName,
+                  quantity: selectedQty,
+                  price: selectedPrice,
+                }
+                : o
+            ),
+          };
+        },
+        { revalidate: false, rollbackOnError: true }
+      );
 
       setEditingOrderId(null);
       setEditValues({});
@@ -2008,7 +2053,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         const results = await Promise.allSettled(
           orderIdsToProcess.map(id =>
-            rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId)
+            rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId, { revalidate: false })
           )
         );
 
@@ -2025,7 +2070,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
         await legacyMutations.bulkUpdateOrderStatus(
           orderIdsToProcess,
           newStatus,
-          userData.userId
+          userData.userId,
+          undefined,
+          { revalidate: false }
         );
         successCount = orderIdsToProcess.length;
         successfulOrderIds = [...orderIdsToProcess];
@@ -2061,6 +2108,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (failCount > 0) {
         console.warn(`⚠️ ${failCount}건 업데이트 실패`);
       }
+      if (successCount > 0) {
+        refreshStats(); // 배지/필터 수량 최신화 (get_order_stats 한 번만)
+      }
 
       // IndexedDB 반영 + 오프라인 페이지 갱신 이벤트
       // ordersToUpdateFilter 재사용 (orders.find가 못 찾는 경우 방지)
@@ -2081,15 +2131,26 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-    // 서버 데이터 재검증: 항상 최신화
-    await mutateOrders(undefined, { revalidate: true });
-    const cacheKey = mode === "raw" ? "comment_orders" : "orders";
-    globalMutate(
-      (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-      undefined,
-      { revalidate: true }
+    // SWR 캐시만 동기 반영 (네트워크 재호출 없음)
+    await mutateOrders(
+      (prev) => {
+        if (!prev?.data) return prev;
+        return {
+          ...prev,
+          data: prev.data.map((o) =>
+            orderIdsToProcess.includes(o.order_id)
+              ? {
+                ...o,
+                status: newStatus,
+                sub_status: newStatus === "수령완료" || newStatus === "주문취소" ? null : o.sub_status,
+              }
+              : o
+          ),
+        };
+      },
+      { revalidate: false, rollbackOnError: true }
     );
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, globalMutate, getCandidateProductsForOrder, cleanProductName]);
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -2847,7 +2908,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         updateData.canceled_at = null;
       }
 
-      await updateCommentOrder(orderId, updateData, userData.userId);
+      await updateCommentOrder(orderId, updateData, userData.userId, { revalidate: false });
 
       const targetOrder =
         orders.find((o) => o.order_id === orderId) || selectedOrder || null;
@@ -2883,14 +2944,26 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
 
       setIsDetailModalOpen(false); // 모달 닫기
-      // 서버 데이터 재검증: 항상 최신화
-      await mutateOrders(undefined, { revalidate: true });
-      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
-      globalMutate(
-        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
+      // SWR 캐시만 동기 반영 (네트워크 재호출 없음)
+      await mutateOrders(
+        (prev) => {
+          if (!prev?.data) return prev;
+          return {
+            ...prev,
+            data: prev.data.map((o) =>
+              o.order_id === orderId
+                ? {
+                  ...o,
+                  status: updateData.status || newStatus,
+                  sub_status: updateData.sub_status ?? o.sub_status ?? null,
+                }
+                : o
+            ),
+          };
+        },
+        { revalidate: false, rollbackOnError: true }
       );
+      refreshStats();
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("Status Change Error (client-side):", err);
@@ -3107,11 +3180,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       // 주문/배지/상품 모두 강제 재검증 (동일 키는 dedupe로 병합)
       await Promise.all([
-        mutateOrders(undefined, { revalidate: true, dedupe: true }),
+        refreshOrders(),
         mutateCompletedCount(undefined, { revalidate: true, dedupe: true }),
         mutateUnreceivedCount(undefined, { revalidate: true, dedupe: true }),
         mutatePaidCount(undefined, { revalidate: true, dedupe: true }),
-        mutateProducts(undefined, { revalidate: true }),
+        mutateProducts(),
       ]);
     } finally {
       const elapsed = Date.now() - start;
@@ -3122,12 +3195,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setLastSyncAt(Date.now());
       setIsSyncing(false);
     }
-  }, [userData?.userId, mutateOrders, mutateCompletedCount, mutateUnreceivedCount, mutatePaidCount, mutateProducts, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating]);
+  }, [userData?.userId, refreshOrders, mutateCompletedCount, mutateUnreceivedCount, mutatePaidCount, mutateProducts, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating]);
 
   const handleOrdersErrorRetry = useCallback(() => {
     setError(null);
-    mutateOrders(undefined, { revalidate: true });
-  }, [mutateOrders]);
+    refreshOrders();
+  }, [refreshOrders]);
 
   // 페이지 진입 시 1회 자동 동기화
   const initialSyncDoneRef = useRef(false);
@@ -3196,30 +3269,24 @@ function OrdersTestPageContent({ mode = "raw" }) {
         });
       }, 2000);
 
-      // SWR 캐시 전체 갱신
-      if (currentUserId) {
-        const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-
-        // Orders 캐시 갱신
-        globalMutate(
-          (key) => {
-            if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${currentUserId}`)) return true;
-            if (Array.isArray(key) && key[0] === "orders" && key[1] === currentUserId) return true;
-            return false;
-          },
-          undefined,
-          { revalidate: true }
-        );
-
-        // Comment Orders 캐시 갱신
-        globalMutate(
-          (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === currentUserId,
-          undefined,
-          { revalidate: true }
-        );
-      }
-
-      mutateOrders();
+      // 로컬/SWR 캐시만 업데이트 (네트워크 재호출 없음)
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.order_id === orderId ? { ...o, memo: data?.memo ?? null } : o
+        )
+      );
+      await mutateOrders(
+        (prev) => {
+          if (!prev?.data) return prev;
+          return {
+            ...prev,
+            data: prev.data.map((o) =>
+              o.order_id === orderId ? { ...o, memo: data?.memo ?? null } : o
+            ),
+          };
+        },
+        { revalidate: false, rollbackOnError: true }
+      );
       await syncOrdersToIndexedDb([{ ...data }]);
     } catch (error) {
       console.error('메모 저장 오류:', error);
@@ -3233,7 +3300,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         });
       }, 3000);
     }
-  }, [userData, globalMutate, mutateOrders, syncOrdersToIndexedDb]);
+  }, [userData, mutateOrders, syncOrdersToIndexedDb]);
 
   // --- 메모 취소 핸들러 ---
   const handleMemoCancel = useCallback((orderId) => {
@@ -3378,17 +3445,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     try {
       // comment_orders 상세 정보 업데이트
-      await updateCommentOrder(order_id, updateData, userData.userId);
+      await updateCommentOrder(order_id, updateData, userData.userId, { revalidate: false });
 
-      // 즉시 주문 리스트 새로고침
-      await mutateOrders(undefined, { revalidate: true });
-
-      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
-      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
-      globalMutate(
-        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
+      // 로컬/SWR 캐시만 업데이트 (네트워크 재호출 없음)
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.order_id === order_id
+            ? { ...o, ...updateData }
+            : o
+        )
+      );
+      await mutateOrders(
+        (prev) => {
+          if (!prev?.data) return prev;
+          return {
+            ...prev,
+            data: prev.data.map((o) =>
+              o.order_id === order_id ? { ...o, ...updateData } : o
+            ),
+          };
+        },
+        { revalidate: false, rollbackOnError: true }
       );
 
       setIsEditingDetails(false); // 편집 모드 종료
@@ -3417,27 +3494,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
         selected_price: selectedOption.price,
       };
 
-      await updateCommentOrder(orderId, updateData, userData.userId);
+      await updateCommentOrder(orderId, updateData, userData.userId, { revalidate: false });
 
-      // 주문 목록과 상품 목록 새로고침
-      await mutateOrders(undefined, { revalidate: true });
-      await mutateProducts(undefined, { revalidate: true }); // 상품 데이터도 새로고침하여 최신 바코드 옵션 반영
-
-      // 글로벌 캐시도 무효화 (더 확실한 업데이트를 위해)
-      const cacheKey = mode === "raw" ? "comment_orders" : "orders";
-      globalMutate(
-        (key) => Array.isArray(key) && key[0] === cacheKey && key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
+      // 로컬/SWR 캐시 갱신 후 상품 캐시만 새로고침 (네트워크 재호출 최소화)
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.order_id === orderId
+            ? { ...o, ...updateData }
+            : o
+        )
       );
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "products" &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: true }
+      await mutateOrders(
+        (prev) => {
+          if (!prev?.data) return prev;
+          return {
+            ...prev,
+            data: prev.data.map((o) =>
+              o.order_id === orderId ? { ...o, ...updateData } : o
+            ),
+          };
+        },
+        { revalidate: false, rollbackOnError: true }
       );
+      await mutateProducts(); // 상품 데이터만 재조회 트리거
     } catch (error) {
       if (process.env.NODE_ENV === "development") {
         console.error("Failed to update barcode option:", error);
@@ -4135,8 +4214,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         }}
                         onComplete={async (result) => {
                           try {
-                            await mutateOrders(undefined, { revalidate: true });
-                            await mutateProducts(undefined, { revalidate: true });
+                            await refreshOrders();
+                            await mutateProducts();
                           } catch (_) { }
                         }}
                       />
@@ -4146,8 +4225,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         totalItems={totalItems}
                         onSuccess={async () => {
                           try {
-                            await mutateOrders(undefined, { revalidate: true });
-                            await mutateProducts(undefined, { revalidate: true });
+                            await refreshOrders();
+                            await mutateProducts();
                           } catch (_) { }
                         }}
                       />

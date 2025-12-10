@@ -217,10 +217,11 @@ export function useOrderClientMutations() {
   /**
    * 주문 상태 업데이트
    */
-  const updateOrderStatus = async (orderId, updateData, userId) => {
+  const updateOrderStatus = async (orderId, updateData, userId, options = {}) => {
     if (!orderId || !updateData.status) {
       throw new Error("Order ID and status are required");
     }
+    const { revalidate = true } = options;
 
     const updateFields = {
       status: updateData.status,
@@ -259,23 +260,21 @@ export function useOrderClientMutations() {
       throw error;
     }
 
-    // 캐시 갱신
+    // 캐시 갱신 - 중복 호출 방지를 위해 단일 mutate로 통합
     globalMutate(
       ["order", orderId],
       { success: true, data },
       { revalidate: false }
     );
-    globalMutate(
-      (key) => Array.isArray(key) && key[0] === "orders" && key[1] === userId,
-      undefined,
-      { revalidate: true }
-    );
-    globalMutate(
-      (key) =>
-        Array.isArray(key) && key[0] === "orderStats" && key[1] === userId,
-      undefined,
-      { revalidate: true }
-    );
+    if (revalidate !== false) {
+      globalMutate(
+        (key) => Array.isArray(key) &&
+          (key[0] === "orders" || key[0] === "orderStats") &&
+          key[1] === userId,
+        undefined,
+        { revalidate: true }
+      );
+    }
 
     return data;
   };
@@ -283,10 +282,11 @@ export function useOrderClientMutations() {
   /**
    * 주문 상세 정보 업데이트
    */
-  const updateOrderDetails = async (orderId, updateDetails, userId) => {
+  const updateOrderDetails = async (orderId, updateDetails, userId, options = {}) => {
     if (!orderId || !userId) {
       throw new Error("Order ID and User ID are required");
     }
+    const { revalidate = true } = options;
 
     const updateFields = {
       ...updateDetails,
@@ -309,17 +309,19 @@ export function useOrderClientMutations() {
       throw error;
     }
 
-    // 캐시 갱신
+    // 캐시 갱신 - 중복 호출 방지
     globalMutate(
       ["order", orderId],
       { success: true, data },
       { revalidate: false }
     );
-    globalMutate(
-      (key) => Array.isArray(key) && key[0] === "orders" && key[1] === userId,
-      undefined,
-      { revalidate: true }
-    );
+    if (revalidate !== false) {
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === "orders" && key[1] === userId,
+        undefined,
+        { revalidate: true }
+      );
+    }
 
     return data;
   };
@@ -343,7 +345,8 @@ export function useOrderClientMutations() {
   };
 
   /**
-   * 대량 주문 상태 업데이트
+   * 대량 주문 상태 업데이트 (Optimistic Update)
+   * - DB 업데이트 후 캐시를 직접 수정하여 불필요한 get_orders 호출 방지
    */
   const bulkUpdateOrderStatus = async (
     orderIds,
@@ -395,22 +398,32 @@ export function useOrderClientMutations() {
       .select();
 
     if (error) {
-      // console.error("Error bulk updating orders:", error);
       throw error;
     }
 
-    // 캐시 갱신
-    orderIds.forEach((orderId) => {
-      globalMutate(["order", orderId], undefined, { revalidate: true });
-    });
+    // Optimistic Update: 캐시를 직접 수정하여 get_orders 호출 방지
+    const updatedOrdersMap = new Map(data.map(order => [order.order_id, order]));
+
+    // orders 캐시 직접 업데이트 (revalidate 없음)
     globalMutate(
       (key) => Array.isArray(key) && key[0] === "orders" && key[1] === userId,
-      undefined,
-      { revalidate: true }
+      (currentData) => {
+        if (!currentData?.data) return currentData;
+        return {
+          ...currentData,
+          data: currentData.data.map(order =>
+            updatedOrdersMap.has(order.order_id)
+              ? updatedOrdersMap.get(order.order_id)
+              : order
+          )
+        };
+      },
+      { revalidate: false }
     );
+
+    // 통계만 revalidate (상태 카운트가 변경되므로)
     globalMutate(
-      (key) =>
-        Array.isArray(key) && key[0] === "orderStats" && key[1] === userId,
+      (key) => Array.isArray(key) && key[0] === "orderStats" && key[1] === userId,
       undefined,
       { revalidate: true }
     );
