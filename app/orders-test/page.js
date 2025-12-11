@@ -2150,7 +2150,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
       },
       { revalidate: false, rollbackOnError: true }
     );
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName]);
+    await refreshOrders();
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName, refreshOrders]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
