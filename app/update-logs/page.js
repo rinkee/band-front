@@ -4,6 +4,13 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 8,
+      date: '2025년 12월 15일',
+      updates: [
+        '12/18 같은 MM/DD(슬래시) 날짜도 수령일 “명시 날짜”로 인식하도록 개선'
+      ]
+    },
+    {
       id: 7,
       date: '2025년 12월 8일',
       updates: [
