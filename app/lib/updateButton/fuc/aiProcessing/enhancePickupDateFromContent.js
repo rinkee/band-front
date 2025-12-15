@@ -182,53 +182,83 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
       date: extractedDate,
       matched: receiptMatch[0]
     });
-  } else {
-    // 명시적인 날짜 패턴 찾기 (N월 N일)
-    const explicitDateRegex = /(\d{1,2})월\s*(\d{1,2})일/g;
-    let match;
-    let bestCandidate = null;
-    const baseYear = baseDate.getFullYear();
+	  } else {
+	    // 명시적인 날짜 패턴 찾기 (N월 N일)
+	    const explicitDateRegex = /(\d{1,2})월\s*(\d{1,2})일/g;
+	    const slashDateRegex = /(\d{1,2})\s*\/\s*(\d{1,2})/g;
+	    let match;
+	    let bestCandidate = null;
+	    const baseYear = baseDate.getFullYear();
 
-    while ((match = explicitDateRegex.exec(postContent)) !== null) {
-      const startIdx = Math.max(0, match.index - 12);
-      const endIdx = Math.min(postContent.length, match.index + match[0].length + 12);
-      const context = postContent.substring(startIdx, endIdx);
-      if (isExpiryContext(context)) continue;
+	    const considerMonthDayCandidate = ({ month, day, matchText, matchIndex, source }) => {
+	      if (Number.isNaN(month) || Number.isNaN(day)) return;
+	      if (month < 1 || month > 12 || day < 1 || day > 31) return;
 
-      const month = parseInt(match[1], 10);
-      const day = parseInt(match[2], 10);
-      if (Number.isNaN(month) || Number.isNaN(day)) continue;
+	      // 예: 2/30 같은 잘못된 날짜 방지
+	      const rawCandidate = new Date(baseYear, month - 1, day);
+	      if (rawCandidate.getMonth() !== month - 1 || rawCandidate.getDate() !== day) return;
 
-      let candidate = new Date(baseYear, month - 1, day);
-      if (candidate < baseDate) {
-        candidate.setFullYear(baseYear + 1);
-      }
+	      const startIdx = Math.max(0, matchIndex - 12);
+	      const endIdx = Math.min(postContent.length, matchIndex + matchText.length + 12);
+	      const context = postContent.substring(startIdx, endIdx);
+	      if (isExpiryContext(context)) return;
 
-      const diffMs = candidate.getTime() - baseDate.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+	      let candidate = rawCandidate;
+	      if (candidate < baseDate) {
+	        candidate = new Date(baseYear + 1, month - 1, day);
+	      }
 
-      if (!bestCandidate || diffDays < bestCandidate.diffDays) {
-        bestCandidate = {
-          month,
-          day,
-          diffDays,
-          matchText: match[0]
-        };
-      }
-    }
+	      const diffMs = candidate.getTime() - baseDate.getTime();
+	      const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-    if (bestCandidate) {
-      extractedMonth = bestCandidate.month;
-      extractedDate = bestCandidate.day;
-      monthDaySource = 'explicit';
-      logger.info('[PICKUP_DATE 후처리] 게시물 내 명시 날짜 감지', {
-        month: extractedMonth,
-        date: extractedDate,
-        matched: bestCandidate.matchText,
-        diffDays: bestCandidate.diffDays
-      });
-    }
-  }
+	      if (!bestCandidate || diffDays < bestCandidate.diffDays) {
+	        bestCandidate = {
+	          month,
+	          day,
+	          diffDays,
+	          matchText,
+	          source
+	        };
+	      }
+	    };
+
+	    while ((match = explicitDateRegex.exec(postContent)) !== null) {
+	      const month = parseInt(match[1], 10);
+	      const day = parseInt(match[2], 10);
+	      considerMonthDayCandidate({
+	        month,
+	        day,
+	        matchText: match[0],
+	        matchIndex: match.index,
+	        source: 'explicitMonthDay'
+	      });
+	    }
+
+	    while ((match = slashDateRegex.exec(postContent)) !== null) {
+	      const month = parseInt(match[1], 10);
+	      const day = parseInt(match[2], 10);
+	      considerMonthDayCandidate({
+	        month,
+	        day,
+	        matchText: match[0],
+	        matchIndex: match.index,
+	        source: 'slashMonthDay'
+	      });
+	    }
+
+	    if (bestCandidate) {
+	      extractedMonth = bestCandidate.month;
+	      extractedDate = bestCandidate.day;
+	      monthDaySource = 'explicit';
+	      logger.info('[PICKUP_DATE 후처리] 게시물 내 명시 날짜 감지', {
+	        month: extractedMonth,
+	        date: extractedDate,
+	        matched: bestCandidate.matchText,
+	        source: bestCandidate.source,
+	        diffDays: bestCandidate.diffDays
+	      });
+	    }
+	  }
 
   // 🔍 "다음주" 키워드 확인
   const hasNextWeekKeyword = /다음\s*주|다음주/.test(postContent);

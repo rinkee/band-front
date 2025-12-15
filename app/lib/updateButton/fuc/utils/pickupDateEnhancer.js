@@ -173,24 +173,27 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
     });
   } else {
     const explicitDateRegex = /(\d{1,2})월\s*(\d{1,2})일/g;
+    const slashDateRegex = /(\d{1,2})\s*\/\s*(\d{1,2})/g;
     let match;
     let bestCandidate = null;
     const baseYear = baseDate.getFullYear();
 
-    while ((match = explicitDateRegex.exec(postContent)) !== null) {
-      const startIdx = Math.max(0, match.index - 12);
-      const endIdx = Math.min(postContent.length, match.index + match[0].length + 12);
+    const considerMonthDayCandidate = ({ month, day, matchText, matchIndex, source }) => {
+      if (Number.isNaN(month) || Number.isNaN(day)) return;
+      if (month < 1 || month > 12 || day < 1 || day > 31) return;
+
+      // 예: 2/30 같은 잘못된 날짜 방지
+      const rawCandidate = new Date(baseYear, month - 1, day);
+      if (rawCandidate.getMonth() !== month - 1 || rawCandidate.getDate() !== day) return;
+
+      const startIdx = Math.max(0, matchIndex - 12);
+      const endIdx = Math.min(postContent.length, matchIndex + matchText.length + 12);
       const context = postContent.substring(startIdx, endIdx);
-      if (isExpiryContext(context)) continue;
+      if (isExpiryContext(context)) return;
 
-      const month = parseInt(match[1], 10);
-      const day = parseInt(match[2], 10);
-
-      if (Number.isNaN(month) || Number.isNaN(day)) continue;
-
-      let candidate = new Date(baseYear, month - 1, day);
+      let candidate = rawCandidate;
       if (candidate < baseDate) {
-        candidate.setFullYear(baseYear + 1);
+        candidate = new Date(baseYear + 1, month - 1, day);
       }
 
       const diffMs = candidate.getTime() - baseDate.getTime();
@@ -201,9 +204,34 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
           month,
           day,
           diffDays,
-          matchText: match[0]
+          matchText,
+          source
         };
       }
+    };
+
+    while ((match = explicitDateRegex.exec(postContent)) !== null) {
+      const month = parseInt(match[1], 10);
+      const day = parseInt(match[2], 10);
+      considerMonthDayCandidate({
+        month,
+        day,
+        matchText: match[0],
+        matchIndex: match.index,
+        source: 'explicitMonthDay'
+      });
+    }
+
+    while ((match = slashDateRegex.exec(postContent)) !== null) {
+      const month = parseInt(match[1], 10);
+      const day = parseInt(match[2], 10);
+      considerMonthDayCandidate({
+        month,
+        day,
+        matchText: match[0],
+        matchIndex: match.index,
+        source: 'slashMonthDay'
+      });
     }
 
     if (bestCandidate) {
@@ -214,6 +242,7 @@ export function enhancePickupDateFromContent(aiAnalysisResult, postContent, post
         month: extractedMonth,
         date: extractedDate,
         matched: bestCandidate.matchText,
+        source: bestCandidate.source,
         diffDays: bestCandidate.diffDays
       });
     } else {
