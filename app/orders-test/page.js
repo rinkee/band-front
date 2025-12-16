@@ -35,6 +35,12 @@ import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
+import {
+  clearOrdersTestProductsCache,
+  readOrdersTestProductsByBandPostCache,
+  readOrdersTestProductsByPostKeyCache,
+  writeOrdersTestProductsCache,
+} from "../lib/ordersTestProductsCache";
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -516,26 +522,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // raw 상품 조회용 맵 (post_key 또는 band+post 조합) - sessionStorage에서 복원
   const [postProductsByPostKey, setPostProductsByPostKey] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('ordersProductsByPostKey');
-        return cached ? JSON.parse(cached) : {};
-      } catch {
-        return {};
-      }
-    }
-    return {};
+    return readOrdersTestProductsByPostKeyCache();
   });
   const [postProductsByBandPost, setPostProductsByBandPost] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('ordersProductsByBandPost');
-        return cached ? JSON.parse(cached) : {};
-      } catch {
-        return {};
-      }
-    }
-    return {};
+    return readOrdersTestProductsByBandPostCache();
   });
   const [postsImages, setPostsImages] = useState({}); // key: `${band_key}_${post_key}` => [urls]
 
@@ -1080,9 +1070,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 주문 리스트 재검증을 단일 채널로 관리 (동시에 여러 번 호출되는 것 방지)
   const refreshOrdersInFlight = useRef(null);
-  const refreshOrders = useCallback(async () => {
+  const refreshOrders = useCallback(async ({ force = false } = {}) => {
     if (refreshOrdersInFlight.current) return refreshOrdersInFlight.current;
-    const promise = mutateOrders(undefined, { revalidate: true, dedupe: true }).finally(() => {
+    const promise = mutateOrders(undefined, { revalidate: true, dedupe: !force }).finally(() => {
       refreshOrdersInFlight.current = null;
     });
     refreshOrdersInFlight.current = promise;
@@ -1161,6 +1151,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // 마지막으로 로드한 상품/이미지 signature 저장 (중복 fetch 방지)
   const lastProductSignatureRef = useRef(null);
   const lastImageSignatureRef = useRef(null);
+  const forceProductRefetchRef = useRef(false);
 
   // Posts 이미지 조회 - orders에서 직접 post_key 추출 (누적 캐싱)
   useEffect(() => {
@@ -1239,13 +1230,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
           return;
         }
 
+        const forceRefetch = forceProductRefetchRef.current === true;
+        if (forceRefetch) {
+          // 1회성 강제 새로고침 플래그 소진
+          forceProductRefetchRef.current = false;
+        }
+
         // 이미 로드한 signature면 건너뛰기
-        if (lastProductSignatureRef.current === productKeysSignature) {
+        if (!forceRefetch && lastProductSignatureRef.current === productKeysSignature) {
           console.log('✅ [상품] 캐시 사용 - fetch 스킵');
           return;
         }
 
-        console.log('🔄 [상품] fetch 시작...');
+        console.log(`🔄 [상품] fetch 시작...${forceRefetch ? ' (force)' : ''}`);
 
         const uid = userData.userId;
         const sb = getAuthedClient();
@@ -1255,26 +1252,35 @@ function OrdersTestPageContent({ mode = "raw" }) {
         const postKeys = sigData.postKeys || [];
         const bandMap = new Map(sigData.bandMap || []);
 
-        // 캐시에서 이미 있는 것 확인
-        const cachedPostKeys = new Set(Object.keys(postProductsByPostKey));
-        const cachedBandPosts = new Set(Object.keys(postProductsByBandPost));
+        let newPostKeys = [];
+        let newBandMap = new Map();
 
-        // 신규로 가져올 post_key 필터링
-        const newPostKeys = postKeys.filter(pk => !cachedPostKeys.has(pk));
+        if (forceRefetch) {
+          newPostKeys = postKeys;
+          newBandMap = new Map(bandMap);
+          console.log(`📦 [상품] 강제 새로고침: post_key ${newPostKeys.length}개, band/post ${Array.from(newBandMap.values()).reduce((a, b) => a + b.length, 0)}개`);
+        } else {
+          // 캐시에서 이미 있는 것 확인
+          const cachedPostKeys = new Set(Object.keys(postProductsByPostKey));
+          const cachedBandPosts = new Set(Object.keys(postProductsByBandPost));
 
-        // 신규로 가져올 band/post 필터링
-        const newBandMap = new Map();
-        for (const [band, postNums] of bandMap.entries()) {
-          const newNums = postNums.filter(num => {
-            const key = `${band}_${String(num)}`;
-            return !cachedBandPosts.has(key);
-          });
-          if (newNums.length > 0) {
-            newBandMap.set(band, newNums);
+          // 신규로 가져올 post_key 필터링
+          newPostKeys = postKeys.filter(pk => !cachedPostKeys.has(pk));
+
+          // 신규로 가져올 band/post 필터링
+          newBandMap = new Map();
+          for (const [band, postNums] of bandMap.entries()) {
+            const newNums = postNums.filter(num => {
+              const key = `${band}_${String(num)}`;
+              return !cachedBandPosts.has(key);
+            });
+            if (newNums.length > 0) {
+              newBandMap.set(band, newNums);
+            }
           }
-        }
 
-        console.log(`📦 [상품] 캐시: ${cachedPostKeys.size + cachedBandPosts.size}개, 신규: ${newPostKeys.length + Array.from(newBandMap.values()).reduce((a, b) => a + b.length, 0)}개`);
+          console.log(`📦 [상품] 캐시: ${cachedPostKeys.size + cachedBandPosts.size}개, 신규: ${newPostKeys.length + Array.from(newBandMap.values()).reduce((a, b) => a + b.length, 0)}개`);
+        }
 
         const results = [];
 
@@ -1318,6 +1324,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
         const byPostKeyMap = { ...postProductsByPostKey };
         const byBandPostMap = { ...postProductsByBandPost };
 
+        // 강제 새로고침: 요청한 키들의 기존 캐시를 제거 후 갱신 (중복/구버전 잔존 방지)
+        if (forceRefetch) {
+          for (const pk of newPostKeys) {
+            if (pk) delete byPostKeyMap[pk];
+          }
+          for (const [band, postNums] of newBandMap.entries()) {
+            (postNums || []).forEach((num) => {
+              const k = `${band}_${String(num)}`;
+              delete byBandPostMap[k];
+            });
+          }
+        }
+
         results.forEach((p) => {
           if (p.post_key) {
             if (!byPostKeyMap[p.post_key]) byPostKeyMap[p.post_key] = [];
@@ -1334,12 +1353,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         setPostProductsByBandPost(byBandPostMap);
 
         // sessionStorage에 누적 저장
-        try {
-          sessionStorage.setItem('ordersProductsByPostKey', JSON.stringify(byPostKeyMap));
-          sessionStorage.setItem('ordersProductsByBandPost', JSON.stringify(byBandPostMap));
-        } catch (e) {
-          console.warn('sessionStorage 저장 실패:', e);
-        }
+        writeOrdersTestProductsCache({ byPostKeyMap, byBandPostMap });
 
         // 성공적으로 누적 후에만 시그니처 저장 (실패 시 재시도 가능)
         lastProductSignatureRef.current = productKeysSignature;
@@ -3132,22 +3146,27 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
 
   // 서버와 강제 동기화 버튼
-  const handleSyncNow = useCallback(async ({ skipIfInFlight = false } = {}) => {
+  const handleSyncNow = useCallback(async ({ skipIfInFlight = false, force = false } = {}) => {
     const now = Date.now();
     if (!userData?.userId || isSyncing) return;
-    if (skipIfInFlight && (
+    if (!force && skipIfInFlight && (
       isOrdersLoading || isOrdersValidating || isGlobalStatsLoading || isGlobalStatsValidating
     )) {
       return;
     }
     // 10초 쿨다운
-    if (lastSyncAt && now - lastSyncAt < 10_000) {
+    if (!force && lastSyncAt && now - lastSyncAt < 10_000) {
       showError("너무 빠르게 요청했습니다. 잠시 후 다시 시도하세요.");
       return;
     }
     setIsSyncing(true);
     const start = Date.now();
     try {
+      if (force) {
+        // 새로고침 버튼에서 호출 시: 상품 캐시도 무조건 최신으로 당겨오기
+        forceProductRefetchRef.current = true;
+      }
+
       // 리스트/통계 캐시 완전 무효화
       globalMutate(
         (key) =>
@@ -3173,19 +3192,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setPostProductsByPostKey({});
       setPostProductsByBandPost({});
       setPostsImages({});
-      try {
-        sessionStorage.removeItem('ordersProductsByPostKey');
-        sessionStorage.removeItem('ordersProductsByBandPost');
-      } catch (_) { }
+      clearOrdersTestProductsCache();
       setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
 
       // 주문/배지/상품 모두 강제 재검증 (동일 키는 dedupe로 병합)
       await Promise.all([
-        refreshOrders(),
-        mutateCompletedCount(undefined, { revalidate: true, dedupe: true }),
-        mutateUnreceivedCount(undefined, { revalidate: true, dedupe: true }),
-        mutatePaidCount(undefined, { revalidate: true, dedupe: true }),
-        mutateProducts(),
+        refreshOrders({ force }),
+        refreshStats(),
       ]);
     } finally {
       const elapsed = Date.now() - start;
@@ -3196,7 +3209,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setLastSyncAt(Date.now());
       setIsSyncing(false);
     }
-  }, [userData?.userId, refreshOrders, mutateCompletedCount, mutateUnreceivedCount, mutatePaidCount, mutateProducts, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating]);
+  }, [userData?.userId, refreshOrders, refreshStats, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating]);
 
   const handleOrdersErrorRetry = useCallback(() => {
     setError(null);
@@ -4035,7 +4048,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       초기화
                     </button>
                     <button
-                      onClick={handleSyncNow}
+                      onClick={() => handleSyncNow({ force: true })}
                       disabled={isDataLoading || isSyncing}
                       className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 md:py-3 text-sm md:text-base rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                       aria-label="데이터 동기화"
@@ -4183,7 +4196,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       초기화
                     </button>
                     <button
-                      onClick={handleSyncNow}
+                      onClick={() => handleSyncNow({ force: true })}
                       disabled={isDataLoading || isSyncing}
                       className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                       aria-label="데이터 새로고침"
