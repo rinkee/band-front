@@ -16,6 +16,7 @@ import ProductAddRow from "../components/ProductAddRow";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
 import { syncProductsToIndexedDb } from "../lib/indexedDbSync";
+import { ensurePostReadyForReprocess } from "../lib/postProcessing/ensurePostReadyForReprocess";
 import { useScroll } from "../context/ScrollContext";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
@@ -797,6 +798,30 @@ export default function PostsPage() {
       if (error) throw error;
 
       await syncProductsToIndexedDb(insertedProduct || newProductData);
+
+      if (!post?.is_product) {
+        const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
+        const updateResult = await ensurePostReadyForReprocess({
+          supabase,
+          userId,
+          postKey: post.post_key,
+          updates: {
+            is_product: true,
+            comment_sync_status: 'pending',
+            last_sync_attempt: null,
+            sync_retry_count: 0,
+            updated_at: nowMinus9Iso
+          }
+        });
+
+        if (!updateResult.success) {
+          console.error('manual product add post update failed:', updateResult.error);
+        } else if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent('postUpdated', {
+            detail: { postKey: post.post_key, is_product: true }
+          }));
+        }
+      }
 
       showSuccess('상품이 추가되었습니다.');
 
