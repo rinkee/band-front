@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useSWRConfig } from 'swr';
+import { ensurePostReadyForReprocess } from '../lib/postProcessing/ensurePostReadyForReprocess';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -357,39 +358,26 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
           const productName = (newProduct.title || '').trim();
           if (userId && postKey && productName) {
             const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
-            const { error: postUpdateError } = await supabase
-              .from('posts')
-              .update({ title: productName, is_product: true, updated_at: nowMinus9Iso })
-              .eq('post_key', postKey)
-              .eq('user_id', userId);
+            const updatePayload = {
+              title: productName,
+              is_product: true,
+              comment_sync_status: 'pending',
+              last_sync_attempt: null,
+              sync_retry_count: 0,
+              updated_at: nowMinus9Iso
+            };
 
-            if (postUpdateError) {
-              console.error('수동 추가 후 Posts 제목 업데이트 실패(클라이언트):', postUpdateError);
-              // RLS 등으로 실패 시 서버 라우트로 보정
-              try {
-                const resp = await fetch('/api/posts/manual-update', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, postKey, updates: { title: productName, is_product: true } })
-                });
-                const result = await resp.json();
-                if (!resp.ok || !result?.success) {
-                  console.error('서비스 라우트 posts 업데이트 실패:', result);
-                } else {
-                  // 서버 보정 성공 시에도 UI 반영
-                  setCurrentPost(prev => prev ? { ...prev, title: productName } : null);
-                  if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('postUpdated', { 
-                      detail: { postKey, title: productName, is_product: true }
-                    }));
-                  }
-                }
-              } catch (svcErr) {
-                console.error('서비스 라우트 호출 오류:', svcErr);
-              }
+            const updateResult = await ensurePostReadyForReprocess({
+              supabase,
+              userId,
+              postKey,
+              updates: updatePayload
+            });
+
+            if (!updateResult.success) {
+              console.error('수동 추가 후 Posts 업데이트 실패:', updateResult.error);
             } else {
-              // 로컬 상태 및 구독 화면에 즉시 반영
-              setCurrentPost(prev => prev ? { ...prev, title: productName } : null);
+              setCurrentPost(prev => prev ? { ...prev, title: productName, is_product: true } : null);
               if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('postUpdated', { 
                   detail: { postKey, title: productName, is_product: true }
