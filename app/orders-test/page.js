@@ -2037,31 +2037,32 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (mode === "raw") {
         // Raw 모드: 각 주문을 개별적으로 업데이트
         const nowISO = new Date().toISOString();
+        const getAllowedOrderStatus = (st) => {
+          const allowed = ["주문완료", "수령완료", "미수령", "주문취소", "확인필요"];
+          if (allowed.includes(st)) return st;
+          return "주문완료";
+        };
+
         const buildUpdate = (st) => {
-          // DB 스키마: status(메인상태), sub_status(보조상태)
-          const base = { status: st };
-          // 수령완료, 주문취소는 메인 상태, 미수령/확인필요/수령가능은 sub_status
+          const base = {
+            status:
+              st === "미수령" || st === "확인필요" || st === "수령가능"
+                ? "주문완료"
+                : st,
+            order_status: getAllowedOrderStatus(st),
+            canceled_at: null,
+            received_at: null,
+            sub_status: null,
+          };
+
           if (st === "수령완료") {
             base.received_at = nowISO;
-            base.canceled_at = null;
-            base.sub_status = null;
           } else if (st === "주문취소") {
             base.canceled_at = nowISO;
-            base.received_at = null;
-            base.sub_status = null;
-          } else if (st === "주문완료") {
-            base.canceled_at = null;
-            base.received_at = null;
-          } else if (st === "결제완료") {
-            base.canceled_at = null;
-            base.received_at = null;
-          } else if (st === "미수령" || st === "확인필요" || st === "수령가능") {
-            // 보조 상태로 변경
-            base.status = "주문완료"; // 메인 상태는 주문완료 유지
+          } else if (["미수령", "확인필요", "수령가능"].includes(st)) {
             base.sub_status = st;
-            base.received_at = null;
-            base.canceled_at = null;
           }
+
           return base;
         };
 
