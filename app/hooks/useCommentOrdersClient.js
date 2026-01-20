@@ -78,10 +78,16 @@ export function useCommentOrderClientMutations() {
     if (!commentOrderId || !userId) throw new Error("IDs are required");
     const { revalidate = true } = options;
 
+    const payload = { ...(updateData || {}) };
+    if (payload.status !== undefined && payload.order_status === undefined) {
+      payload.order_status = payload.status;
+      delete payload.status;
+    }
+
     const sb = getAuthedClient();
     const { data, error } = await sb
       .from("comment_orders")
-      .update(updateData)
+      .update(payload)
       .eq("comment_order_id", commentOrderId)
       .eq("user_id", userId)
       .select()

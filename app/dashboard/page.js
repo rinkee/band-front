@@ -4,7 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSWRConfig } from "swr";
-import { useProducts, useOrders, useOrderStats } from "../hooks"; // Assuming these hooks fetch data correctly
+import {
+  useProducts,
+  useOrders,
+  useOrderStats,
+  useTopCommentPosts,
+} from "../hooks"; // Assuming these hooks fetch data correctly
+import { getPostPrimaryImageUrl } from "../lib/postImageUtils";
 
 // --- 아이콘 ---
 import {
@@ -12,8 +18,6 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ExclamationCircleIcon,
-  ChartPieIcon,
-  CurrencyDollarIcon,
   ShoppingCartIcon,
   TagIcon,
   ArrowUpRightIcon,
@@ -22,6 +26,7 @@ import {
   CalendarDaysIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 
 // --- 로딩 스피너 (라이트 테마) ---
@@ -228,12 +233,29 @@ export default function DashboardPage() {
     swrOptions
   );
 
+  const topPostsFilters = {
+    dateRange: customDateRange.isActive ? "custom" : dateRange,
+    startDate: customDateRange.isActive ? customDateRange.startDate : undefined,
+    endDate: customDateRange.isActive ? customDateRange.endDate : undefined,
+    limit: 10,
+  };
+
+  const {
+    posts: topCommentPosts,
+    error: topCommentPostsError,
+    isLoading: isTopCommentPostsLoading,
+    isLoadingMore: isTopCommentPostsLoadingMore,
+    isReachingEnd: isTopCommentPostsReachingEnd,
+    loadMore: loadMoreTopCommentPosts,
+  } = useTopCommentPosts(userId, topPostsFilters);
+
   // Combined loading/error state
   const isDataLoading =
     initialLoading ||
     isProductsLoading ||
     isOrdersLoading ||
-    isOrderStatsLoading;
+    isOrderStatsLoading ||
+    isTopCommentPostsLoading;
   const combinedError =
     error || productsError || ordersError || orderStatsError; // Combine SWR errors
 
@@ -384,6 +406,27 @@ export default function DashboardPage() {
       }/${end.getDate()}`;
     }
     return "직접입력";
+  };
+
+  const getTopPostsRangeLabel = () => {
+    if (
+      customDateRange.isActive &&
+      customDateRange.startDate &&
+      customDateRange.endDate
+    ) {
+      const start = new Date(customDateRange.startDate);
+      const end = new Date(customDateRange.endDate);
+      return `${start.getMonth() + 1}/${start.getDate()} ~ ${
+        end.getMonth() + 1
+      }/${end.getDate()}`;
+    }
+    const labels = {
+      today: "오늘",
+      "7days": "최근 7일",
+      "30days": "최근 30일",
+      "90days": "최근 90일",
+    };
+    return labels[dateRange] || "최근";
   };
 
   // 직접 날짜 입력 처리 함수
@@ -670,44 +713,115 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Stats Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 relative">
-          {/* Loading Overlay for Stats Section */}
-          {isOrderStatsLoading && (
-            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center rounded-xl z-10 -m-1">
-              <LoadingSpinner className="h-6 w-6" color="text-gray-500" />
+        {/* Popular Products */}
+        <section className="mb-8">
+          <LightCard className="p-0 overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  인기상품
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {getTopPostsRangeLabel()} 기준 댓글 많은 상품
+                </p>
+              </div>
+              <button
+                onClick={loadMoreTopCommentPosts}
+                disabled={
+                  isTopCommentPostsLoadingMore || isTopCommentPostsReachingEnd
+                }
+                className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isTopCommentPostsLoadingMore
+                  ? "불러오는 중..."
+                  : isTopCommentPostsReachingEnd
+                  ? "모두 불러옴"
+                  : "더보기"}
+              </button>
             </div>
-          )}
-
-          {/* Estimated Revenue */}
-          <LightCard className="md:col-span-1" padding="p-5 sm:p-6">
-            <div className="flex items-center justify-between">
-              <dt className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                예상 매출
-              </dt>
-              <ChartPieIcon className="w-5 h-5 text-gray-400" />
-            </div>
-            <dd className="mt-1 text-3xl font-bold text-blue-600">
-              {formatCurrency(stats.estimatedRevenue)}
-            </dd>
-            {/* 미수령 포함/제외 스위치 */}
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-gray-500">미수령 포함</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeUnreceived}
-                  onChange={(e) => setIncludeUnreceived(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
+            <div className="p-4 sm:p-6">
+              {topCommentPostsError && (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  인기상품 데이터를 불러오지 못했습니다. 잠시 후 다시
+                  시도해주세요.
+                </div>
+              )}
+              {isTopCommentPostsLoading && topCommentPosts.length === 0 ? (
+                <div className="py-12 flex items-center justify-center text-gray-500">
+                  <LoadingSpinner className="h-6 w-6" />
+                </div>
+              ) : topCommentPosts.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                  {topCommentPosts.map((post) => {
+                    const imageUrl = getPostPrimaryImageUrl(post, {
+                      thumbnail: "w300",
+                    });
+                    return (
+                      <div
+                        key={post.post_key || post.post_id}
+                        className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <div className="relative h-36 bg-gray-100">
+                          {imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt={post.title || "인기상품 이미지"}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center text-xs text-gray-400 bg-gradient-to-br from-gray-100 to-gray-200">
+                              이미지 없음
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <p className="text-sm font-semibold text-gray-900 line-clamp-2">
+                            {post.title || "제목 없음"}
+                          </p>
+                          <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                            <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />
+                            댓글 {post.comment_count || 0}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-sm text-gray-500">
+                  인기상품 데이터가 없습니다.
+                </div>
+              )}
             </div>
           </LightCard>
+        </section>
 
-          {/* Sub-grid for Total/Pending */}
-          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {/* Total Orders */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div className="lg:col-span-1 space-y-4 relative">
+            {isOrderStatsLoading && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center rounded-xl z-10">
+                <LoadingSpinner className="h-6 w-6" color="text-gray-500" />
+              </div>
+            )}
+            <div className="flex items-center justify-between px-1">
+              <div className="text-sm font-semibold text-gray-700">
+                주문 현황
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span>미수령 포함</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeUnreceived}
+                    onChange={(e) => setIncludeUnreceived(e.target.checked)}
+                    className="sr-only peer"
+                    disabled={isOrderStatsLoading}
+                  />
+                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                </label>
+              </div>
+            </div>
             <LightCard padding="p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <dt className="text-sm font-medium text-gray-500 truncate">
@@ -720,7 +834,6 @@ export default function DashboardPage() {
                 <span className="text-sm text-gray-500 ml-1">건</span>
               </dd>
             </LightCard>
-            {/* Pending Orders */}
             <LightCard padding="p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <dt className="text-sm font-medium text-gray-500 truncate">
@@ -733,24 +846,6 @@ export default function DashboardPage() {
                 <span className="text-sm text-gray-500 ml-1">건</span>
               </dd>
             </LightCard>
-          </div>
-
-          {/* Confirmed Revenue */}
-          <LightCard className="md:col-span-1" padding="p-5 sm:p-6">
-            <div className="flex items-center justify-between">
-              <dt className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                확정 매출
-              </dt>
-              <CurrencyDollarIcon className="w-5 h-5 text-gray-400" />
-            </div>
-            <dd className="mt-1 text-2xl font-semibold tracking-tight text-green-600">
-              {formatCurrency(stats.confirmedRevenue)}
-            </dd>
-          </LightCard>
-
-          {/* Sub-grid for Completed/Last Update */}
-          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {/* Completed Orders */}
             <LightCard padding="p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <dt className="text-sm font-medium text-gray-500 truncate">
@@ -764,173 +859,167 @@ export default function DashboardPage() {
               </dd>
             </LightCard>
           </div>
-        </div>
 
-        {/* Recent Activity Grids */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-          {/* Recent Orders Table */}
-          <LightCard className="lg:col-span-1" padding="p-0">
-            <div className="p-4 sm:p-5 border-b border-gray-200 flex flex-wrap justify-between items-center gap-2">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <ShoppingCartIcon className="w-5 h-5 text-gray-500" /> 최근 주문
-                {isOrdersLoading && <LoadingSpinner className="h-4 w-4 ml-1" />}
-              </h2>
-              <Link
-                href="/orders"
-                className="text-xs font-medium text-orange-600 hover:text-orange-700 flex items-center gap-1"
-              >
-                전체보기 <ArrowUpRightIcon className="w-3 h-3" />
-              </Link>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th
-                      scope="col"
-                      className="py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider sm:pl-6"
-                    >
-                      고객
-                    </th>
-                    {/* Removed 'Comment' column header */}
-                    <th
-                      scope="col"
-                      className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    >
-                      주문ID
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    >
-                      금액
-                    </th>
-                    <th
-                      scope="col"
-                      className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    >
-                      상태
-                    </th>
-                    <th
-                      scope="col"
-                      className="py-3 pl-3 pr-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider sm:pr-6"
-                    >
-                      주문 시간
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {/* Conditional Rendering for Orders */}
-                  {isOrdersLoading && !ordersData?.data ? (
+          <div className="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <LightCard className="lg:col-span-1" padding="p-0">
+              <div className="p-4 sm:p-5 border-b border-gray-200 flex flex-wrap justify-between items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <ShoppingCartIcon className="w-5 h-5 text-gray-500" /> 최근
+                  주문
+                  {isOrdersLoading && (
+                    <LoadingSpinner className="h-4 w-4 ml-1" />
+                  )}
+                </h2>
+                <Link
+                  href="/orders"
+                  className="text-xs font-medium text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                >
+                  전체보기 <ArrowUpRightIcon className="w-3 h-3" />
+                </Link>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <td
-                        colSpan="5"
-                        className="px-6 py-10 text-center text-gray-500"
+                      <th
+                        scope="col"
+                        className="py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider sm:pl-6"
                       >
-                        <LoadingSpinner className="h-5 w-5 mx-auto" />
-                      </td>
+                        고객
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                      >
+                        주문ID
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                      >
+                        금액
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                      >
+                        상태
+                      </th>
+                      <th
+                        scope="col"
+                        className="py-3 pl-3 pr-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider sm:pr-6"
+                      >
+                        주문 시간
+                      </th>
                     </tr>
-                  ) : ordersData?.data?.length > 0 ? (
-                    ordersData.data.map((order) => (
-                      <tr
-                        key={order.order_id}
-                        className="hover:bg-gray-50 transition-colors text-sm"
-                      >
-                        <td className="whitespace-nowrap py-3 pl-4 pr-3 font-medium text-gray-900 sm:pl-6">
-                          {order.customer_name || "-"}
-                        </td>
-                        {/* Removed 'Comment' cell */}
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {isOrdersLoading && !ordersData?.data ? (
+                      <tr>
                         <td
-                          className="whitespace-nowrap px-3 py-3 text-gray-500 font-mono"
-                          title={order.order_id}
+                          colSpan="5"
+                          className="px-6 py-10 text-center text-gray-500"
                         >
-                          {order.order_id?.substring(0, 8)}...{" "}
-                          {/* Show partial ID */}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-800">
-                          {formatCurrency(order.total_amount)}{" "}
-                          {/* Already handles non-numbers */}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3">
-                          <StatusBadge status={order.status} />
-                        </td>
-                        <td
-                          className="whitespace-nowrap py-3 pl-3 pr-4 text-gray-600 sm:pr-6"
-                          title={formatFullDateTime(
-                            order.ordered_at || order.created_at
-                          )}
-                        >
-                          {timeAgo(order.ordered_at || order.created_at)}{" "}
-                          {/* Use ordered_at first */}
+                          <LoadingSpinner className="h-5 w-5 mx-auto" />
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan="5"
-                        className="px-6 py-10 text-center text-sm text-gray-500 italic"
-                      >
-                        최근 주문 내역이 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </LightCard>
+                    ) : ordersData?.data?.length > 0 ? (
+                      ordersData.data.map((order) => (
+                        <tr
+                          key={order.order_id}
+                          className="hover:bg-gray-50 transition-colors text-sm"
+                        >
+                          <td className="whitespace-nowrap py-3 pl-4 pr-3 font-medium text-gray-900 sm:pl-6">
+                            {order.customer_name || "-"}
+                          </td>
+                          <td
+                            className="whitespace-nowrap px-3 py-3 text-gray-500 font-mono"
+                            title={order.order_id}
+                          >
+                            {order.order_id?.substring(0, 8)}...{" "}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-gray-800">
+                            {formatCurrency(order.total_amount)}{" "}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3">
+                            <StatusBadge status={order.status} />
+                          </td>
+                          <td
+                            className="whitespace-nowrap py-3 pl-3 pr-4 text-gray-600 sm:pr-6"
+                            title={formatFullDateTime(
+                              order.ordered_at || order.created_at
+                            )}
+                          >
+                            {timeAgo(order.ordered_at || order.created_at)}{" "}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan="5"
+                          className="px-6 py-10 text-center text-sm text-gray-500 italic"
+                        >
+                          최근 주문 내역이 없습니다.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </LightCard>
 
-          {/* Selling Products List */}
-          <LightCard className="lg:col-span-1" padding="p-0">
-            <div className="p-4 sm:p-5 border-b border-gray-200 flex justify-between items-center gap-2">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <TagIcon className="w-5 h-5 text-gray-500" /> 판매중 상품 현황
-                {isProductsLoading && (
-                  <LoadingSpinner className="h-4 w-4 ml-1" />
-                )}
-              </h2>
-              <Link
-                href="/products"
-                className="text-xs font-medium text-orange-600 hover:text-orange-700 flex items-center gap-1"
-              >
-                전체보기 <ArrowUpRightIcon className="w-3 h-3" />
-              </Link>
-            </div>
-            <ul className="divide-y divide-gray-200">
-              {/* Conditional Rendering for Products */}
-              {isProductsLoading && !productsData?.data ? (
-                <li className="px-6 py-10 text-center text-gray-500">
-                  <LoadingSpinner className="h-5 w-5 mx-auto" />
-                </li>
-              ) : productsData?.data?.length > 0 ? (
-                productsData.data.map((product) => (
-                  <li
-                    key={product.product_id}
-                    className="px-4 sm:px-6 py-3 flex justify-between items-center gap-3 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-sm font-medium text-gray-900 truncate"
-                        title={product.title}
-                      >
-                        {product.title || "이름 없음"}
-                      </p>
-                      <p className="text-xs text-gray-700">
-                        {formatCurrency(product.base_price)}
-                      </p>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <StatusBadge status={product.status} />
-                    </div>
+            <LightCard className="lg:col-span-1" padding="p-0">
+              <div className="p-4 sm:p-5 border-b border-gray-200 flex justify-between items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <TagIcon className="w-5 h-5 text-gray-500" /> 판매중 상품
+                  현황
+                  {isProductsLoading && (
+                    <LoadingSpinner className="h-4 w-4 ml-1" />
+                  )}
+                </h2>
+                <Link
+                  href="/products"
+                  className="text-xs font-medium text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                >
+                  전체보기 <ArrowUpRightIcon className="w-3 h-3" />
+                </Link>
+              </div>
+              <ul className="divide-y divide-gray-200">
+                {isProductsLoading && !productsData?.data ? (
+                  <li className="px-6 py-10 text-center text-gray-500">
+                    <LoadingSpinner className="h-5 w-5 mx-auto" />
                   </li>
-                ))
-              ) : (
-                <li className="px-6 py-10 text-center text-sm text-gray-500 italic">
-                  판매중인 상품이 없습니다.
-                </li>
-              )}
-            </ul>
-          </LightCard>
+                ) : productsData?.data?.length > 0 ? (
+                  productsData.data.map((product) => (
+                    <li
+                      key={product.product_id}
+                      className="px-4 sm:px-6 py-3 flex justify-between items-center gap-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm font-medium text-gray-900 truncate"
+                          title={product.title}
+                        >
+                          {product.title || "이름 없음"}
+                        </p>
+                        <p className="text-xs text-gray-700">
+                          {formatCurrency(product.base_price)}
+                        </p>
+                      </div>
+                      <div className="flex-shrink-0">
+                        <StatusBadge status={product.status} />
+                      </div>
+                    </li>
+                  ))
+                ) : (
+                  <li className="px-6 py-10 text-center text-sm text-gray-500 italic">
+                    판매중인 상품이 없습니다.
+                  </li>
+                )}
+              </ul>
+            </LightCard>
+          </div>
         </div>
       </main>
     </div>

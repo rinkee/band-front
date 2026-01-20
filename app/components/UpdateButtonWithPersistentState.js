@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
 import { useUpdateProgress } from "../contexts/UpdateProgressContext";
+import { backupUserDataToIndexedDb } from "../lib/indexedDbBackup";
 
 const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts' }) => {
   const [error, setError] = useState("");
@@ -174,6 +175,7 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
     if (detectRawMode()) {
       try {
         await refreshSWRCache(userId);
+        await backupUserDataToIndexedDb({ userId, mode: "raw" });
         setSuccessMessage("새로고침 완료!");
       } catch (e) {
         setError("새로고침 중 문제가 발생했습니다.");
