@@ -662,7 +662,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       customer_name: row.commenter_name || row.customer_name || "-",
       comment: row.comment_body || row.comment || "",
       comment_change: row.comment_change || row.commentChange || null,
-      status: row.status || "주문완료",
+      status: row.order_status || row.status || "주문완료",
       sub_status: row.sub_status || undefined,
       ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
       updated_at: row.updated_at || row.modified_at || row.updatedAt || row.updated_at || null,
@@ -2045,10 +2045,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         const buildUpdate = (st) => {
           const base = {
-            status:
-              st === "미수령" || st === "확인필요" || st === "수령가능"
-                ? "주문완료"
-                : st,
             order_status: getAllowedOrderStatus(st),
             canceled_at: null,
             received_at: null,
