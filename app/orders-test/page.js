@@ -3257,10 +3257,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const sb = getAuthedClient();
 
       // DB 저장
+      const isRawMode = mode === "raw";
+      const targetTable = isRawMode ? "comment_orders" : "orders";
+      const idColumn = isRawMode ? "comment_order_id" : "order_id";
+
       const { data, error } = await sb
-        .from('orders')
+        .from(targetTable)
         .update({ memo: value || null })
-        .eq('order_id', orderId)
+        .eq(idColumn, orderId)
         .eq('user_id', currentUserId)
         .select()
         .single();
