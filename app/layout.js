@@ -10,6 +10,7 @@ import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< Scro
 import { UpdateProgressProvider } from "./contexts/UpdateProgressContext"; // UpdateProgressContext 추가
 import OfflineWatcher from "./components/OfflineWatcher";
 import IndexedDBBackupButton from "./components/IndexedDBBackupButton";
+import { installExtensionOfflineBridge } from "./lib/extensionOfflineBridge";
 
 export default function RootLayoutWrapper({ children }) {
   // Provider를 사용하기 위해 래퍼 컴포넌트
@@ -55,6 +56,10 @@ function LayoutContent({ children }) {
       const base = l.pathname.endsWith("/") ? l.pathname.slice(0, -1) : l.pathname;
       window.history.replaceState(null, "", `${base}/${decoded}${l.hash}`);
     }
+  }, []);
+
+  useEffect(() => {
+    return installExtensionOfflineBridge();
   }, []);
 
   // --- 주문 관리 메뉴 클릭 핸들러 추가 ---

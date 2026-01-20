@@ -11,6 +11,7 @@ import useCustomers, {
 } from "./useCustomers";
 import useUser, { useUserMutations } from "./useUser";
 import usePosts, { usePost, usePostMutations } from "./usePosts";
+import useTopCommentPosts from "./useTopCommentPosts";
 
 // 클라이언트 사이드 훅들
 import useProductsClient, {
@@ -56,6 +57,7 @@ export {
   usePosts,
   usePost,
   usePostMutations,
+  useTopCommentPosts,
 
   // 클라이언트 사이드 훅들 (Direct Supabase)
   useProductsClient,
