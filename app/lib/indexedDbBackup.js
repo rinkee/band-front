@@ -6,6 +6,7 @@ import {
   bulkPut,
   saveSnapshot,
   setMeta,
+  getMeta,
   clearStoresByUserId,
 } from "./indexedDbClient";
 import { dispatchIndexedDbSyncEvent } from "./indexedDbSync";
@@ -75,36 +76,56 @@ const fetchWithRange = async (
   userId,
   dateColumn,
   rangeMs,
-  excludeNames = []
+  excludeNames = [],
+  options = {}
 ) => {
+  const { sinceOverride, limit = 1000, statusFilter } = options;
   const nameColumn = table === "comment_orders" ? "commenter_name" : "customer_name";
-  const since = new Date(Date.now() - rangeMs).toISOString();
-  let query = supabase
-    .from(table)
-    .select(columns)
-    .eq("user_id", userId)
-    .gte(dateColumn, since)
-    .order(dateColumn, { ascending: false });
+  const since = sinceOverride || new Date(Date.now() - rangeMs).toISOString();
+  const results = [];
+  let offset = 0;
 
-  if (
-    (table === "orders" || table === "comment_orders") &&
-    Array.isArray(excludeNames) &&
-    excludeNames.length > 0
-  ) {
-    const exactNames = excludeNames
-      .map((n) => (n || "").toString().trim())
-      .filter(Boolean);
-    if (exactNames.length > 0) {
-      const sanitized = exactNames
-        .map((n) => n.replace(/'/g, "''"))
-        .map((n) => `'${n}'`);
-      query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+  while (true) {
+    let query = supabase
+      .from(table)
+      .select(columns)
+      .eq("user_id", userId)
+      .gte(dateColumn, since)
+      .order(dateColumn, { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (statusFilter?.column && statusFilter?.value) {
+      query = query.eq(statusFilter.column, statusFilter.value);
     }
+
+    if (
+      (table === "orders" || table === "comment_orders") &&
+      Array.isArray(excludeNames) &&
+      excludeNames.length > 0
+    ) {
+      const exactNames = excludeNames
+        .map((n) => (n || "").toString().trim())
+        .filter(Boolean);
+      if (exactNames.length > 0) {
+        const sanitized = exactNames
+          .map((n) => n.replace(/'/g, "''"))
+          .map((n) => `'${n}'`);
+        query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
+    if (Array.isArray(data) && data.length > 0) {
+      results.push(...data);
+    }
+    if (!data || data.length < limit) {
+      break;
+    }
+    offset += limit;
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
-  return data || [];
+  return results;
 };
 
 export const backupUserDataToIndexedDb = async (options = {}) => {
@@ -135,15 +156,24 @@ export const backupUserDataToIndexedDb = async (options = {}) => {
     (c || "").toString().trim().toLowerCase()
   );
 
+  const lastBackupAt = await getMeta("lastBackupAt");
+  const sinceOverride =
+    lastBackupAt && !Number.isNaN(Date.parse(lastBackupAt))
+      ? new Date(lastBackupAt).toISOString()
+      : null;
+  const isInitialBackup = !sinceOverride;
+
+  const orderStatusColumn = orderTable === "comment_orders" ? "order_status" : "status";
+
   const tasks = [];
   tasks.push(
     includePosts
-      ? fetchWithRange("posts", POST_COLUMNS, userId, "posted_at", rangeMs)
+      ? fetchWithRange("posts", POST_COLUMNS, userId, "posted_at", rangeMs, [], { sinceOverride })
       : Promise.resolve([])
   );
   tasks.push(
     includeProducts
-      ? fetchWithRange("products", PRODUCT_COLUMNS, userId, "updated_at", rangeMs)
+      ? fetchWithRange("products", PRODUCT_COLUMNS, userId, "updated_at", rangeMs, [], { sinceOverride })
       : Promise.resolve([])
   );
   tasks.push(
@@ -154,7 +184,11 @@ export const backupUserDataToIndexedDb = async (options = {}) => {
           userId,
           orderDateColumn,
           rangeMs,
-          excludedCustomers
+          excludedCustomers,
+          {
+            sinceOverride,
+            statusFilter: { column: orderStatusColumn, value: "주문완료" },
+          }
         )
       : Promise.resolve([])
   );
@@ -170,14 +204,16 @@ export const backupUserDataToIndexedDb = async (options = {}) => {
   });
 
   const storesToClear = [];
-  if (includePosts) storesToClear.push("posts");
-  if (includeProducts) storesToClear.push("products");
-  if (includeOrders) {
-    storesToClear.push(orderTable);
-    if (orderTable !== "orders") storesToClear.push("orders");
-  }
-  if (storesToClear.length > 0) {
-    await clearStoresByUserId(userId, [...new Set(storesToClear)]);
+  if (isInitialBackup) {
+    if (includePosts) storesToClear.push("posts");
+    if (includeProducts) storesToClear.push("products");
+    if (includeOrders) {
+      storesToClear.push(orderTable);
+      if (orderTable !== "orders") storesToClear.push("orders");
+    }
+    if (storesToClear.length > 0) {
+      await clearStoresByUserId(userId, [...new Set(storesToClear)]);
+    }
   }
 
   if (includePosts) await bulkPut("posts", posts);

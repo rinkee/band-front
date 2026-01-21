@@ -722,7 +722,7 @@ const CommentsModal = ({
 
   // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
   const { data: currentPost } = useSWR(
-    postKey ? `/api/posts/${postKey}` : null,
+    isOpen && postKey ? `/api/posts/${postKey}` : null,
     async (url) => {
       // supabase is already imported at the top
       
@@ -736,8 +736,9 @@ const CommentsModal = ({
       return data;
     },
     {
-      refreshInterval: 2000, // 2초마다 갱신
-      revalidateOnFocus: true
+      refreshInterval: 0, // 폴링 OFF (서버 보호)
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
     }
   );
 
@@ -1017,7 +1018,7 @@ const CommentsModal = ({
 
   // 게시물의 추출된 상품 리스트 가져오기 - user_id 포함
   const { data: products, error: productsError } = useSWR(
-    postKey ? `products-${postKey}` : null,
+    isOpen && postKey ? `products-${postKey}` : null,
     async () => {
       // supabase is already imported at the top
       // 현재 사용자 ID 가져오기
