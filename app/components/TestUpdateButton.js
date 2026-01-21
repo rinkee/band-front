@@ -16,6 +16,7 @@ import {
 
 export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
   const [keyStatus, setKeyStatus] = useState("main"); // main | backup
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -25,6 +26,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
   const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   const BACKUP_RANGE_MS = 20 * 24 * 60 * 60 * 1000; // 최근 20일
+  const COOLDOWN_MS = 15 * 1000; // 15초
   const POST_COLUMNS =
     "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at";
   const PRODUCT_COLUMNS =
@@ -386,7 +388,14 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
   }, [mutate]);
 
   const handleTestUpdate = async () => {
+    const now = Date.now();
+    if (cooldownUntil && now < cooldownUntil) {
+      alert("너무 빠른 요청입니다. 잠시후에 시도해주세요");
+      return;
+    }
+
     try {
+      setCooldownUntil(now + COOLDOWN_MS);
       setIsProcessing(true);
       setKeyStatus("main");
       fetchKeyStatus();

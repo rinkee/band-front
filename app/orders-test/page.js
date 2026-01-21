@@ -463,6 +463,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return false;
   });
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false); // 일괄 상태 변경 로딩 상태
+  const hasRecentStatusChangeRef = useRef(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(30);
@@ -1082,6 +1083,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
     refreshOrdersInFlight.current = promise;
     return promise;
   }, [mutateOrders]);
+
+  // 상태 변경 직후 필터 전환 시 1회만 재조회하여 누락 방지
+  useEffect(() => {
+    if (!hasRecentStatusChangeRef.current) return;
+    hasRecentStatusChangeRef.current = false;
+    refreshOrders({ force: true });
+  }, [filterSelection, showPickupAvailableOnly, refreshOrders]);
 
   // 서버 페이지네이션 데이터 사용
   const totalItems = ordersData?.pagination?.totalItems ?? null;
@@ -2206,6 +2214,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (successCount > 0) {
         console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
         showSuccess(`${successCount}개 주문을 '${newStatus}'로 변경했습니다.`);
+        hasRecentStatusChangeRef.current = true;
       }
       if (failCount > 0) {
         console.warn(`⚠️ ${failCount}건 업데이트 실패`);
@@ -3066,6 +3075,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         { revalidate: false, rollbackOnError: true }
       );
       showSuccess(`주문 상태를 '${updateData.status || newStatus}'로 변경했습니다.`);
+      hasRecentStatusChangeRef.current = true;
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("Status Change Error (client-side):", err);

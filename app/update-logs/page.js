@@ -4,6 +4,16 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 9,
+      date: '2026년 1월 22일',
+      updates: [
+        '주문 페이지의 불필요한 재호출을 제거하고 통계/리스트 캐시를 최적화',
+        '댓글 모달 폴링을 중단하여 과도한 호출을 방지',
+        '게시물 페이지 select 범위 및 count 요청을 최적화하고 짧은 검색 호출을 제한',
+        'IndexedDB 백업을 증분/분할 방식으로 개선하여 부하를 완화'
+      ]
+    },
+    {
       id: 8,
       date: '2025년 12월 15일',
       updates: [
