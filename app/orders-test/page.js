@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, forwardRef, useMemo, useCallback } from "react"; // React Fragment 사용을 위해 React 추가
+import React, { useState, useEffect, useRef, forwardRef, useMemo, useCallback, startTransition } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -964,11 +964,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // SWR 옵션 설정 - 데이터 최신화 우선
   const swrOptions = useMemo(() => ({
     revalidateOnMount: true, // 첫 진입 시에는 반드시 서버 검증
-    revalidateOnFocus: true, // 포커스 시 최신화 (다른 탭 갔다가 돌아올 때)
-    revalidateOnReconnect: true, // 네트워크 재연결 시 재검증
-    revalidateIfStale: true, // 캐시가 오래됐으면 검증
+    revalidateOnFocus: false, // 서버 보호: 포커스 자동 재호출 OFF (수동 새로고침/업데이트로만)
+    revalidateOnReconnect: false, // 서버 보호: 재연결 시 자동 재호출 OFF
+    revalidateIfStale: false, // 서버 보호: stale 자동 재호출 OFF
     refreshInterval: 0, // 자동 주기 새로고침은 유지하지 않음
-    dedupingInterval: 2000, // 중복 요청 방지 간격 2초 (너무 길면 최신화 지연)
+    dedupingInterval: 10000, // 서버 보호: 중복 요청 방지 간격 확대
+    shouldRetryOnError: false, // 서버 보호: 자동 재시도 OFF (폭주 방지)
+    errorRetryCount: 0,
     onError: (err) => {
       if (process.env.NODE_ENV === "development") {
         console.error("SWR Error:", err);
@@ -1006,6 +1008,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     return {
       limit: 30, // 한 페이지에 30개씩 기본 제한
+      // 서버 보호 모드: legacy(get_orders)에서는 총건수(count) 호출을 생략하고 "더보기/다음" UX로 대체
+      includeCount: false,
       sortBy,
       sortOrder,
       // 수령가능만 보기 필터 (RPC 함수 사용)
@@ -1080,8 +1084,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [mutateOrders]);
 
   // 서버 페이지네이션 데이터 사용
-  const totalItems = ordersData?.pagination?.totalItems ?? 0;
-  const totalPages = ordersData?.pagination?.totalPages ?? 1;
+  const totalItems = ordersData?.pagination?.totalItems ?? null;
+  const totalPages = ordersData?.pagination?.totalPages ?? null;
+  const hasMore = ordersData?.pagination?.hasMore ?? false;
+  const isTotalCountKnown = typeof totalItems === "number" && Number.isFinite(totalItems);
+  const showPagination = isTotalCountKnown
+    ? totalItems > itemsPerPage
+    : currentPage > 1 || hasMore;
 
   // 메모 디버깅
   useEffect(() => {
@@ -1432,10 +1441,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const completedCountData = globalStatsData?.statusCounts?.["주문완료"] || 0;
   const paidCountData = globalStatsData?.statusCounts?.["결제완료"] || 0;
 
-  // mutate 함수들을 통합 mutate로 대체
-  const mutateUnreceivedCount = mutateGlobalStats;
-  const mutateCompletedCount = mutateGlobalStats;
-  const mutatePaidCount = mutateGlobalStats;
   const refreshStats = useCallback(
     () => mutateGlobalStats(undefined, { revalidate: true, dedupe: true }),
     [mutateGlobalStats]
@@ -1446,48 +1451,98 @@ function OrdersTestPageContent({ mode = "raw" }) {
     (changedOrders, nextStatus, nextSubStatus) => {
       if (!Array.isArray(changedOrders) || changedOrders.length === 0) return;
 
-      let completedDelta = 0;
-      let unreceivedDelta = 0;
-      let paidDelta = 0;
+      const statusDelta = new Map();
+      const subStatusDelta = new Map();
+
+      const addDelta = (map, key, delta) => {
+        if (!key || !delta) return;
+        map.set(key, (map.get(key) || 0) + delta);
+      };
 
       changedOrders.forEach((o) => {
-        const prevStatus = o.status;
-        const prevSub = o.sub_status || null;
+        const prevStatus = o?.status || null;
+        const prevSub = o?.sub_status ?? null;
         const nextSt = nextStatus ?? prevStatus;
         const nextSub =
           nextSubStatus !== undefined ? nextSubStatus : prevSub;
 
-        if (prevStatus === "주문완료") completedDelta -= 1;
-        if (nextSt === "주문완료") completedDelta += 1;
-
-        if (prevStatus === "결제완료") paidDelta -= 1;
-        if (nextSt === "결제완료") paidDelta += 1;
-
-        if (prevSub === "미수령") unreceivedDelta -= 1;
-        if (nextSub === "미수령") unreceivedDelta += 1;
+        if (prevStatus !== nextSt) {
+          if (prevStatus) addDelta(statusDelta, prevStatus, -1);
+          if (nextSt) addDelta(statusDelta, nextSt, 1);
+        }
+        if (prevSub !== nextSub) {
+          if (prevSub) addDelta(subStatusDelta, prevSub, -1);
+          if (nextSub) addDelta(subStatusDelta, nextSub, 1);
+        }
       });
 
-      if (completedDelta !== 0) {
-        mutateCompletedCount(
-          (prev) => Math.max(0, (prev ?? 0) + completedDelta),
-          false
-        );
-      }
-      if (unreceivedDelta !== 0) {
-        mutateUnreceivedCount(
-          (prev) => Math.max(0, (prev ?? 0) + unreceivedDelta),
-          false
-        );
-      }
-      if (paidDelta !== 0) {
-        mutatePaidCount((prev) => Math.max(0, (prev ?? 0) + paidDelta), false);
-      }
+      if (statusDelta.size === 0 && subStatusDelta.size === 0) return;
+
+      mutateGlobalStats(
+        (prev) => {
+          if (!prev || typeof prev !== "object") return prev;
+
+          const statusCounts = { ...(prev.statusCounts || {}) };
+          const subStatusCounts = { ...(prev.subStatusCounts || {}) };
+
+          const applyDeltaToCounts = (counts, key, delta) => {
+            if (!key || !delta) return;
+            const current = Number(counts[key] ?? 0);
+            const currentValue = Number.isFinite(current) ? current : 0;
+            counts[key] = Math.max(0, currentValue + delta);
+          };
+
+          for (const [k, d] of statusDelta.entries()) {
+            applyDeltaToCounts(statusCounts, k, d);
+          }
+          for (const [k, d] of subStatusDelta.entries()) {
+            applyDeltaToCounts(subStatusCounts, k, d);
+          }
+
+          return { ...prev, statusCounts, subStatusCounts };
+        },
+        { revalidate: false }
+      );
     },
-    [mutateCompletedCount, mutatePaidCount, mutateUnreceivedCount]
+    [mutateGlobalStats]
+  );
+
+  // 현재 필터가 기대하는 주문만 남기기 (상태 변경 후 불필요한 get_orders 재호출 대신 사용)
+  const isOrderVisibleInCurrentView = useCallback(
+    (order) => {
+      if (!order) return false;
+      const status = order.status;
+      const subStatus = order.sub_status ?? null;
+
+      if (filterSelection === "all") return true;
+      if (filterSelection === "주문완료+수령가능") return status === "주문완료";
+      if (filterSelection === "미수령") return subStatus === "미수령";
+      if (filterSelection === "확인필요") return subStatus === "확인필요";
+      if (filterSelection === "none") return !subStatus;
+      return status === filterSelection;
+    },
+    [filterSelection]
   );
 
   const isSearchCountingActive = Boolean((searchTerm || "").trim());
   const unreceivedBadgeCount = unreceivedCountData ?? 0;
+
+  const waitForNextPaint = useCallback(() => {
+    if (typeof requestAnimationFrame !== "function") {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }, []);
+
+  const deferNonCritical = useCallback((fn) => {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(() => fn());
+      return;
+    }
+    setTimeout(() => fn(), 0);
+  }, []);
 
   const orderStatusOptions = useMemo(
     () => [
@@ -1992,7 +2047,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       });
 
     if (selectedOrderIds.length === 0) return;
-    setBulkUpdateLoading(true);
 
     // orders 배열에서 필터링 (orders 페이지와 동일하게)
     const ordersToUpdateFilter = orders.filter(
@@ -2025,7 +2079,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
         : "");
 
     if (!window.confirm(confirmMessage)) {
-      setBulkUpdateLoading(false);
       return;
     }
 
@@ -2033,12 +2086,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
     let failCount = 0;
     let successfulOrderIds = [];
 
+    const shouldClearSubStatus =
+      mode === "raw" || newStatus === "수령완료" || newStatus === "주문취소";
+
+    setBulkUpdateLoading(true);
+    await waitForNextPaint();
+
     try {
       if (mode === "raw") {
         // Raw 모드: 각 주문을 개별적으로 업데이트
         const nowISO = new Date().toISOString();
         const getAllowedOrderStatus = (st) => {
-          const allowed = ["주문완료", "수령완료", "미수령", "주문취소", "확인필요"];
+          const allowed = ["주문완료", "수령완료", "결제완료", "미수령", "주문취소", "확인필요"];
           if (allowed.includes(st)) return st;
           return "주문완료";
         };
@@ -2089,38 +2148,68 @@ function OrdersTestPageContent({ mode = "raw" }) {
         successfulOrderIds = [...orderIdsToProcess];
       }
 
+      const updatedIdSet = new Set(successfulOrderIds);
+
       // 일괄 상태 변경 후 로컬 상태만 optimistic update (서버 재검증 없음)
-      setOrders(prevOrders =>
-        prevOrders.map(order =>
-          orderIdsToProcess.includes(order.order_id)
-            ? {
-              ...order,
-              status: newStatus,
-              sub_status: newStatus === "수령완료" || newStatus === "주문취소" ? null : order.sub_status,
-            }
-            : order
-        )
-      );
+      if (successfulOrderIds.length > 0) {
+        await waitForNextPaint();
+        startTransition(() => {
+          setOrders((prevOrders) => {
+            const next = prevOrders.map((order) =>
+              updatedIdSet.has(order.order_id)
+                ? {
+                  ...order,
+                  status: newStatus,
+                  sub_status: shouldClearSubStatus ? null : order.sub_status,
+                }
+                : order
+            );
+            return next.filter(isOrderVisibleInCurrentView);
+          });
+        });
+      }
 
       if (successfulOrderIds.length > 0) {
         const successfulOrders = orders.filter((o) =>
           successfulOrderIds.includes(o.order_id)
         );
-        const nextSub =
-          newStatus === "수령완료" || newStatus === "주문취소" || newStatus === "주문완료"
-            ? null
-            : undefined;
+        const nextSub = shouldClearSubStatus ? null : undefined;
         adjustBadgeCountsOptimistically(successfulOrders, newStatus, nextSub);
+      }
+
+      // SWR 캐시만 동기 반영 (네트워크 재호출 없음)
+      if (successfulOrderIds.length > 0) {
+        await waitForNextPaint();
+        startTransition(() => {
+          void mutateOrders(
+            (prev) => {
+              if (!prev?.data) return prev;
+              const nextData = prev.data.map((o) =>
+                updatedIdSet.has(o.order_id)
+                  ? {
+                    ...o,
+                    status: newStatus,
+                    sub_status: shouldClearSubStatus ? null : o.sub_status,
+                  }
+                  : o
+              );
+              return {
+                ...prev,
+                data: nextData.filter(isOrderVisibleInCurrentView),
+              };
+            },
+            { revalidate: false, rollbackOnError: true }
+          );
+        });
       }
 
       if (successCount > 0) {
         console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
+        showSuccess(`${successCount}개 주문을 '${newStatus}'로 변경했습니다.`);
       }
       if (failCount > 0) {
         console.warn(`⚠️ ${failCount}건 업데이트 실패`);
-      }
-      if (successCount > 0) {
-        refreshStats(); // 배지/필터 수량 최신화 (get_order_stats 한 번만)
+        showError(`${failCount}건 업데이트에 실패했습니다.`);
       }
 
       // IndexedDB 반영 + 오프라인 페이지 갱신 이벤트
@@ -2129,40 +2218,30 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const now = new Date();
       const kstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
       const koreanISOString = kstDate.toISOString().replace('Z', '+09:00');
-      const updatedOrdersForLocal = ordersToUpdateFilter.map((order) => ({
-        ...order,
-        user_id: userData?.userId || order.user_id,
-        status: newStatus,
-        updated_at: koreanISOString,
-      }));
-      await syncOrdersToIndexedDb(updatedOrdersForLocal);
+      const updatedOrdersForLocal = ordersToUpdateFilter
+        .filter((order) => updatedIdSet.has(order.order_id))
+        .map((order) => ({
+          ...order,
+          user_id: userData?.userId || order.user_id,
+          status: newStatus,
+          updated_at: koreanISOString,
+        }));
+      if (updatedOrdersForLocal.length > 0) {
+        deferNonCritical(() => {
+          syncOrdersToIndexedDb(updatedOrdersForLocal).catch((err) => {
+            if (process.env.NODE_ENV === "development") {
+              console.warn("IndexedDB 동기화 지연 실패:", err);
+            }
+          });
+        });
+      }
     } catch (err) {
       alert(`❌ 일괄 업데이트 중 오류 발생: ${err.message}`);
     } finally {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-    // SWR 캐시만 동기 반영 (네트워크 재호출 없음)
-    await mutateOrders(
-      (prev) => {
-        if (!prev?.data) return prev;
-        return {
-          ...prev,
-          data: prev.data.map((o) =>
-            orderIdsToProcess.includes(o.order_id)
-              ? {
-                ...o,
-                status: newStatus,
-                sub_status: newStatus === "수령완료" || newStatus === "주문취소" ? null : o.sub_status,
-              }
-              : o
-          ),
-        };
-      },
-      { revalidate: false, rollbackOnError: true }
-    );
-    await refreshOrders();
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName, refreshOrders]);
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName, isOrderVisibleInCurrentView, showError, showSuccess, waitForNextPaint, deferNonCritical]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -2925,33 +3004,43 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const targetOrder =
         orders.find((o) => o.order_id === orderId) || selectedOrder || null;
       if (targetOrder) {
-        adjustBadgeCountsOptimistically([targetOrder], updateData.status || newStatus, updateData.sub_status);
-        // 로컬 목록에도 즉시 반영
+        const nextStatus = updateData.status || newStatus;
+        adjustBadgeCountsOptimistically([targetOrder], nextStatus, updateData.sub_status);
+
+        // 로컬 목록에도 즉시 반영 (현재 필터와 불일치하면 목록에서 제거)
         setOrders((prev) => {
-          const exists = prev.some((o) => o.order_id === orderId);
-          const updater = (o) =>
-            o.order_id === orderId
-              ? {
-                ...o,
-                status: updateData.status || newStatus,
-                sub_status: updateData.sub_status ?? o.sub_status ?? null,
-              }
-              : o;
-          if (exists) {
-            return prev.map(updater);
+          const next = [];
+          let found = false;
+
+          for (const o of prev) {
+            if (o.order_id !== orderId) {
+              next.push(o);
+              continue;
+            }
+            found = true;
+
+            const updated = {
+              ...o,
+              status: nextStatus,
+              sub_status: updateData.sub_status ?? o.sub_status ?? null,
+            };
+            if (isOrderVisibleInCurrentView(updated)) {
+              next.push(updated);
+            }
           }
-          // 현재 리스트에 없었더라도, 필터가 주문완료/결제완료/미수령과 맞다면 낙관적으로 추가
-          const candidate = {
-            ...targetOrder,
-            status: updateData.status || newStatus,
-            sub_status: updateData.sub_status ?? targetOrder.sub_status ?? null,
-          };
-          const shouldShow =
-            (filterSelection === "주문완료" && candidate.status === "주문완료") ||
-            (filterSelection === "결제완료" && candidate.status === "결제완료") ||
-            (filterSelection === "미수령" && candidate.sub_status === "미수령") ||
-            filterSelection === "all";
-          return shouldShow ? [...prev, candidate] : prev;
+
+          if (!found) {
+            const candidate = {
+              ...targetOrder,
+              status: nextStatus,
+              sub_status: updateData.sub_status ?? targetOrder.sub_status ?? null,
+            };
+            if (isOrderVisibleInCurrentView(candidate)) {
+              next.push(candidate);
+            }
+          }
+
+          return next;
         });
       }
 
@@ -2960,22 +3049,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
       await mutateOrders(
         (prev) => {
           if (!prev?.data) return prev;
+          const nextData = prev.data.map((o) =>
+            o.order_id === orderId
+              ? {
+                ...o,
+                status: updateData.status || newStatus,
+                sub_status: updateData.sub_status ?? o.sub_status ?? null,
+              }
+              : o
+          );
           return {
             ...prev,
-            data: prev.data.map((o) =>
-              o.order_id === orderId
-                ? {
-                  ...o,
-                  status: updateData.status || newStatus,
-                  sub_status: updateData.sub_status ?? o.sub_status ?? null,
-                }
-                : o
-            ),
+            data: nextData.filter(isOrderVisibleInCurrentView),
           };
         },
         { revalidate: false, rollbackOnError: true }
       );
-      refreshStats();
+      showSuccess(`주문 상태를 '${updateData.status || newStatus}'로 변경했습니다.`);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("Status Change Error (client-side):", err);
@@ -3411,14 +3501,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [currentPage, scrollToTop]); // scrollToTop도 의존성 배열에 추가
 
   const paginate = useCallback((pageNumber) => {
-    // 서버 페이지네이션 사용 - totalPages는 서버에서 제공
-    const total = ordersData?.pagination?.totalPages ?? 1;
-    if (pageNumber >= 1 && pageNumber <= total) {
-      setCurrentPage(pageNumber);
-      // 테이블 스크롤 위치 초기화
-      if (tableContainerRef.current) {
-        tableContainerRef.current.scrollTop = 0;
-      }
+    const total = ordersData?.pagination?.totalPages;
+    if (pageNumber < 1) return;
+    if (typeof total === "number" && Number.isFinite(total) && pageNumber > total) return;
+    setCurrentPage(pageNumber);
+    // 테이블 스크롤 위치 초기화
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTop = 0;
     }
   }, [ordersData?.pagination?.totalPages]);
   const goToPreviousPage = useCallback(() => paginate(currentPage - 1), [paginate, currentPage]);
@@ -4748,20 +4837,36 @@ function OrdersTestPageContent({ mode = "raw" }) {
             </div>
 
             {/* 페이지네이션 - 검색 여부와 상관없이 표시 (하단 고정) */}
-            {totalItems > itemsPerPage && (
+            {showPagination && (
               <div className="flex-shrink-0 px-4 py-3 flex items-center justify-between border-t border-gray-200 bg-white">
                 <div>
                   <p className="text-sm text-gray-700">
-                    총
-                    <span className="font-medium">
-                      {totalItems.toLocaleString()}
-                    </span>
-                    개 중
-                    <span className="font-medium">
-                      {(currentPage - 1) * itemsPerPage + 1}-
-                      {Math.min(currentPage * itemsPerPage, totalItems)}
-                    </span>
-                    표시
+                    {isTotalCountKnown ? (
+                      <>
+                        총
+                        <span className="font-medium">
+                          {totalItems.toLocaleString()}
+                        </span>
+                        개 중
+                        <span className="font-medium">
+                          {(currentPage - 1) * itemsPerPage + 1}-
+                          {Math.min(currentPage * itemsPerPage, totalItems)}
+                        </span>
+                        표시
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium">
+                          {displayOrders.length > 0
+                            ? `${(currentPage - 1) * itemsPerPage + 1}-${(currentPage - 1) * itemsPerPage + displayOrders.length}`
+                            : "0"}
+                        </span>
+                        표시
+                        <span className="ml-2 text-xs text-gray-400">
+                          (총 개수는 생략됨)
+                        </span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <nav
@@ -4775,56 +4880,67 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   >
                     <ArrowLongLeftIcon className="h-5 w-5" />
                   </button>
-                  {(() => {
-                    const pageNumbers = [];
-                    const maxPagesToShow = 5;
-                    const halfMaxPages = Math.floor(maxPagesToShow / 2);
-                    let startPage = Math.max(1, currentPage - halfMaxPages);
-                    let endPage = Math.min(
-                      totalPages,
-                      startPage + maxPagesToShow - 1
-                    );
-                    if (endPage - startPage + 1 < maxPagesToShow)
-                      startPage = Math.max(1, endPage - maxPagesToShow + 1);
-                    if (startPage > 1) {
-                      pageNumbers.push(1);
-                      if (startPage > 2) pageNumbers.push("...");
-                    }
-                    for (let i = startPage; i <= endPage; i++)
-                      pageNumbers.push(i);
-                    if (endPage < totalPages) {
-                      if (endPage < totalPages - 1) pageNumbers.push("...");
-                      pageNumbers.push(totalPages);
-                    }
-                    return pageNumbers.map((page, idx) =>
-                      typeof page === "number" ? (
-                        <button
-                          key={page}
-                          onClick={() => paginate(page)}
-                          disabled={isDataLoading}
-                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === page
-                            ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
-                            : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                            }`}
-                          aria-current={
-                            currentPage === page ? "page" : undefined
-                          }
-                        >
-                          {page}
-                        </button>
-                      ) : (
-                        <span
-                          key={`ellipsis-${idx}`}
-                          className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
-                        >
-                          ...
-                        </span>
-                      )
-                    );
-                  })()}
+                  {typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages > 1 ? (
+                    (() => {
+                      const pageNumbers = [];
+                      const maxPagesToShow = 5;
+                      const halfMaxPages = Math.floor(maxPagesToShow / 2);
+                      let startPage = Math.max(1, currentPage - halfMaxPages);
+                      let endPage = Math.min(
+                        totalPages,
+                        startPage + maxPagesToShow - 1
+                      );
+                      if (endPage - startPage + 1 < maxPagesToShow)
+                        startPage = Math.max(1, endPage - maxPagesToShow + 1);
+                      if (startPage > 1) {
+                        pageNumbers.push(1);
+                        if (startPage > 2) pageNumbers.push("...");
+                      }
+                      for (let i = startPage; i <= endPage; i++)
+                        pageNumbers.push(i);
+                      if (endPage < totalPages) {
+                        if (endPage < totalPages - 1) pageNumbers.push("...");
+                        pageNumbers.push(totalPages);
+                      }
+                      return pageNumbers.map((page, idx) =>
+                        typeof page === "number" ? (
+                          <button
+                            key={page}
+                            onClick={() => paginate(page)}
+                            disabled={isDataLoading}
+                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === page
+                              ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
+                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                              }`}
+                            aria-current={
+                              currentPage === page ? "page" : undefined
+                            }
+                          >
+                            {page}
+                          </button>
+                        ) : (
+                          <span
+                            key={`ellipsis-${idx}`}
+                            className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                          >
+                            ...
+                          </span>
+                        )
+                      );
+                    })()
+                  ) : (
+                    <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                      {currentPage}
+                    </span>
+                  )}
                   <button
                     onClick={goToNextPage}
-                    disabled={currentPage === totalPages || isDataLoading}
+                    disabled={
+                      isDataLoading ||
+                      (typeof totalPages === "number" && Number.isFinite(totalPages)
+                        ? currentPage >= totalPages
+                        : !hasMore)
+                    }
                     className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowLongRightIcon className="h-5 w-5" />

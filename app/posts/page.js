@@ -219,6 +219,48 @@ export default function PostsPage() {
 
   // Supabase에서 직접 posts 데이터 가져오기
   const fetchPosts = async () => {
+    const trimmedQuery = (searchQuery || "").trim();
+    const shouldSearchProducts = trimmedQuery.length >= 2;
+
+    const POSTS_SELECT_FIELDS = [
+      "post_id",
+      "user_id",
+      "band_number",
+      "band_post_url",
+      "author_name",
+      "author_profile",
+      "title",
+      "content",
+      "posted_at",
+      "comment_count",
+      "is_product",
+      "comment_sync_status",
+      "order_needs_ai",
+      "products_data",
+      "image_urls",
+      "photos_data",
+      "pickup_date",
+      "post_key",
+      "band_key",
+      "post_number",
+    ].join(",");
+
+    const PRODUCTS_SELECT_FIELDS = [
+      "product_id",
+      "user_id",
+      "band_number",
+      "title",
+      "base_price",
+      "barcode",
+      "post_id",
+      "updated_at",
+      "pickup_date",
+      "post_key",
+      "band_key",
+      "item_number",
+      "quantity",
+    ].join(",");
+
     // AbortController 생성 및 10초 타임아웃 설정
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -228,12 +270,12 @@ export default function PostsPage() {
     try {
       // 검색어가 있을 때 상품명으로 검색하여 post_key 찾기
       let productPostKeys = [];
-      if (searchQuery) {
+      if (shouldSearchProducts) {
         const { data: productsWithSearch } = await supabase
           .from('products')
           .select('post_key')
           .eq('user_id', userData.userId)
-          .ilike('title', `%${searchQuery}%`)
+          .ilike('title', `%${trimmedQuery}%`)
           .abortSignal(controller.signal);
 
         if (productsWithSearch && productsWithSearch.length > 0) {
@@ -243,27 +285,27 @@ export default function PostsPage() {
 
       // 전체 통계: 카운트만 가져와 네트워크/메모리 사용 최소화
       const statsFilters = (() => {
-        if (!searchQuery) return null;
+        if (!trimmedQuery) return null;
         if (productPostKeys.length > 0) {
-          return `title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,post_key.in.(${productPostKeys.join(',')})`;
+          return `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%,post_key.in.(${productPostKeys.join(',')})`;
         }
-        return `title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`;
+        return `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%`;
       })();
 
       const countPosts = supabase
         .from("posts")
-        .select("*", { count: "exact", head: true })
+        .select("post_id", { count: "estimated", head: true })
         .eq("user_id", userData.userId)
         .abortSignal(controller.signal);
       const countProductPosts = supabase
         .from("posts")
-        .select("*", { count: "exact", head: true })
+        .select("post_id", { count: "estimated", head: true })
         .eq("user_id", userData.userId)
         .eq("is_product", true)
         .abortSignal(controller.signal);
       const countCompletedPosts = supabase
         .from("posts")
-        .select("*", { count: "exact", head: true })
+        .select("post_id", { count: "estimated", head: true })
         .eq("user_id", userData.userId)
         .eq("comment_sync_status", "success")
         .abortSignal(controller.signal);
@@ -290,19 +332,19 @@ export default function PostsPage() {
       // 페이지네이션된 데이터 가져오기
       let query = supabase
         .from("posts")
-        .select(`*`)
+        .select(POSTS_SELECT_FIELDS)
         .eq("user_id", userData.userId)
         .order("posted_at", { ascending: false })
         .abortSignal(controller.signal);
 
       // 검색어가 있으면 적용
-      if (searchQuery) {
+      if (trimmedQuery) {
         if (productPostKeys.length > 0) {
           // 게시물 필드 또는 상품명에 일치하는 post_key
-          query = query.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,post_key.in.(${productPostKeys.join(',')})`);
+          query = query.or(`title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%,post_key.in.(${productPostKeys.join(',')})`);
         } else {
           // 상품명 매칭이 없으면 게시물 필드만 검색
-          query = query.or(`title.ilike.%${searchQuery}%,content.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
+          query = query.or(`title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%`);
         }
       }
 
@@ -323,7 +365,7 @@ export default function PostsPage() {
         // 현재 페이지에 필요한 게시물의 상품만 조회
         const { data: productsResult, error: productsError } = await supabase
           .from('products')
-          .select('*')
+          .select(PRODUCTS_SELECT_FIELDS)
           .eq('user_id', userData.userId)
           .in('post_key', postKeys)
           .order('item_number', { ascending: true })

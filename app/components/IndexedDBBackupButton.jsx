@@ -7,6 +7,7 @@ import {
   bulkPut,
   saveSnapshot,
   setMeta,
+  getMeta,
   clearStoresByUserId,
 } from "../lib/indexedDbClient";
 
@@ -26,34 +27,52 @@ const escapeIlike = (value) =>
     .replace(/%/g, "\\%")
     .replace(/_/g, "\\_");
 
-async function fetchWithRange(table, columns, userId, dateColumn, rangeMs, excludeNames = []) {
+async function fetchWithRange(table, columns, userId, dateColumn, rangeMs, excludeNames = [], options = {}) {
+  const { sinceOverride, limit = 1000, statusFilter } = options;
   const nameColumn = table === "comment_orders" ? "commenter_name" : "customer_name";
-  const since = new Date(Date.now() - rangeMs).toISOString();
-  let query = supabase
-    .from(table)
-    .select(columns)
-    .eq("user_id", userId)
-    .gte(dateColumn, since)
-    .order(dateColumn, { ascending: false });
+  const since = sinceOverride || new Date(Date.now() - rangeMs).toISOString();
+  const results = [];
+  let offset = 0;
 
-  // 주문의 경우 제외 고객을 서버 측에서 먼저 필터링
-  if ((table === "orders" || table === "comment_orders") && Array.isArray(excludeNames) && excludeNames.length > 0) {
-    // PostgREST in() 필터 문자열 생성 (quote + escape)
-    const exactNames = excludeNames
-      .map((n) => (n || "").toString().trim())
-      .filter(Boolean);
-    if (exactNames.length > 0) {
-      const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
-      query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+  while (true) {
+    let query = supabase
+      .from(table)
+      .select(columns)
+      .eq("user_id", userId)
+      .gte(dateColumn, since)
+      .order(dateColumn, { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (statusFilter?.column && statusFilter?.value) {
+      query = query.eq(statusFilter.column, statusFilter.value);
     }
+
+    // 주문의 경우 제외 고객을 서버 측에서 먼저 필터링
+    if ((table === "orders" || table === "comment_orders") && Array.isArray(excludeNames) && excludeNames.length > 0) {
+      // PostgREST in() 필터 문자열 생성 (quote + escape)
+      const exactNames = excludeNames
+        .map((n) => (n || "").toString().trim())
+        .filter(Boolean);
+      if (exactNames.length > 0) {
+        const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
+        query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`${table} 불러오기 실패: ${error.message}`);
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      results.push(...data);
+    }
+    if (!data || data.length < limit) {
+      break;
+    }
+    offset += limit;
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`${table} 불러오기 실패: ${error.message}`);
-  }
-  return data || [];
+  return results;
 }
 
 function resolveUserId(explicitUserId) {
@@ -143,20 +162,28 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
       const orderColumns = isRawMode ? COMMENT_ORDER_COLUMNS : ORDER_COLUMNS;
 
       const rangeMs = RANGE_20_DAYS_MS;
+      const lastBackupAt = await getMeta("lastBackupAt");
+      const sinceOverride =
+        lastBackupAt && !Number.isNaN(Date.parse(lastBackupAt))
+          ? new Date(lastBackupAt).toISOString()
+          : null;
+      const isInitialBackup = !sinceOverride;
+      const orderStatusColumn = orderTable === "comment_orders" ? "order_status" : "status";
 
       const excludedCustomers = resolveExcludedCustomers().map((c) =>
         (c || "").toString().trim().toLowerCase()
       );
       const [posts, products, orders] = await Promise.all([
-        fetchWithRange("posts", POST_COLUMNS, userId, "posted_at", rangeMs),
-        fetchWithRange("products", PRODUCT_COLUMNS, userId, "updated_at", rangeMs),
+        fetchWithRange("posts", POST_COLUMNS, userId, "posted_at", rangeMs, [], { sinceOverride }),
+        fetchWithRange("products", PRODUCT_COLUMNS, userId, "updated_at", rangeMs, [], { sinceOverride }),
         fetchWithRange(
           orderTable,
           orderColumns,
           userId,
           orderDateColumn,
           rangeMs,
-          excludedCustomers
+          excludedCustomers,
+          { sinceOverride, statusFilter: { column: orderStatusColumn, value: "주문완료" } }
         ),
       ]);
 
@@ -169,14 +196,16 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
         );
       });
 
-      setDetail("내 데이터만 초기화 중...");
-      await clearStoresByUserId(userId, [
-        "posts",
-        "products",
-        "orders",
-        "comment_orders",
-        "syncQueue",
-      ]);
+      if (isInitialBackup) {
+        setDetail("내 데이터만 초기화 중...");
+        await clearStoresByUserId(userId, [
+          "posts",
+          "products",
+          "orders",
+          "comment_orders",
+          "syncQueue",
+        ]);
+      }
 
       setDetail("IndexedDB에 저장 중...");
       await bulkPut("posts", posts);

@@ -9,6 +9,7 @@ import {
   bulkPut,
   saveSnapshot,
   setMeta,
+  getMeta,
   getAllFromStore,
   getDb,
 } from "../lib/indexedDbClient";
@@ -199,55 +200,83 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
       const orderConfig = getOrderBackupConfig();
       const orderColumns = orderConfig.isRawMode ? COMMENT_ORDER_COLUMNS : ORDER_COLUMNS;
 
-      // posts/products + 현재 모드 주문 스토어만 초기화 (syncQueue, snapshots, meta는 유지)
-      const clearStores = async (stores) => {
-        const db = await getDb();
-        await new Promise((resolve, reject) => {
-          const tx = db.transaction(stores, "readwrite");
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => reject(tx.error);
-          stores.forEach((name) => {
-            tx.objectStore(name).clear();
-          });
-        });
-      };
-
-      const storesToClear = ["posts", "products", orderConfig.store];
-      if (orderConfig.store !== "orders") storesToClear.push("orders");
-      await clearStores([...new Set(storesToClear)]);
-
       const excludedCustomers = resolveExcludedCustomers();
       const excludedNormalized = excludedCustomers.map((c) => (c || "").toString().trim().toLowerCase());
-      const backupSince = new Date(Date.now() - BACKUP_RANGE_MS).toISOString();
+      const lastBackupAt = await getMeta("lastBackupAt");
+      const sinceOverride =
+        lastBackupAt && !Number.isNaN(Date.parse(lastBackupAt))
+          ? new Date(lastBackupAt).toISOString()
+          : null;
+      const backupSince = sinceOverride || new Date(Date.now() - BACKUP_RANGE_MS).toISOString();
+      const isInitialBackup = !sinceOverride;
+      const orderStatusColumn = orderConfig.table === "comment_orders" ? "order_status" : "status";
+
+      // 최초 백업일 때만 초기화 (syncQueue, snapshots, meta는 유지)
+      if (isInitialBackup) {
+        const clearStores = async (stores) => {
+          const db = await getDb();
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(stores, "readwrite");
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => reject(tx.error);
+            stores.forEach((name) => {
+              tx.objectStore(name).clear();
+            });
+          });
+        };
+
+        const storesToClear = ["posts", "products", orderConfig.store];
+        if (orderConfig.store !== "orders") storesToClear.push("orders");
+        await clearStores([...new Set(storesToClear)]);
+      }
 
       const fetchSince = async (table, columns, dateColumn, options = {}) => {
-        const { nameColumn = null, effectiveDateColumn = null } = options;
-        let query = supabase
-          .from(table)
-          .select(columns)
-          .eq("user_id", userId);
-
+        const {
+          nameColumn = null,
+          effectiveDateColumn = null,
+          statusFilter = null,
+          limit = 1000,
+        } = options;
+        const results = [];
+        let offset = 0;
         const rangeColumn = effectiveDateColumn || dateColumn;
-        if (rangeColumn) {
-          query = query
+
+        while (true) {
+          let query = supabase
+            .from(table)
+            .select(columns)
+            .eq("user_id", userId)
             .gte(rangeColumn, backupSince)
-            .order(rangeColumn, { ascending: false });
-        }
+            .order(rangeColumn, { ascending: false })
+            .range(offset, offset + limit - 1);
 
-        // 제외 고객 서버 필터
-        if ((table === "orders" || table === "comment_orders") && nameColumn && excludedCustomers.length > 0) {
-          const exactNames = excludedCustomers
-            .map((n) => (n || "").toString().trim())
-            .filter(Boolean);
-          if (exactNames.length > 0) {
-            const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
-            query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+          if (statusFilter?.column && statusFilter?.value) {
+            query = query.eq(statusFilter.column, statusFilter.value);
           }
+
+          // 제외 고객 서버 필터
+          if ((table === "orders" || table === "comment_orders") && nameColumn && excludedCustomers.length > 0) {
+            const exactNames = excludedCustomers
+              .map((n) => (n || "").toString().trim())
+              .filter(Boolean);
+            if (exactNames.length > 0) {
+              const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
+              query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+            }
+          }
+
+          const { data, error } = await query;
+          if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
+          if (Array.isArray(data) && data.length > 0) {
+            results.push(...data);
+          }
+          if (!data || data.length < limit) {
+            break;
+          }
+          offset += limit;
         }
 
-        const { data, error } = await query;
-        if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
-        return data || [];
+        return results;
       };
 
       const [posts, products, orders] = await Promise.all([
@@ -256,6 +285,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
         fetchSince(orderConfig.table, orderColumns, orderConfig.dateColumn, {
           effectiveDateColumn: orderConfig.effectiveDateColumn,
           nameColumn: orderConfig.nameColumn,
+          statusFilter: { column: orderStatusColumn, value: "주문완료" },
         }),
       ]);
 
