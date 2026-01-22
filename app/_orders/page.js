@@ -1345,11 +1345,6 @@ function LegacyOrdersPage() {
       return order.product_name;
     }
 
-    // product_title 필드도 확인 (orders_with_products 뷰에서)
-    if (order?.product_title) {
-      return order.product_title;
-    }
-
     return "상품명 없음";
   };
 
@@ -1537,12 +1532,6 @@ function LegacyOrdersPage() {
       return product.barcode;
     }
 
-    // orders 데이터에서 product_barcode 필드 사용 (폴백)
-    const order = orders.find((o) => o.product_id === id);
-    if (order?.product_barcode) {
-      return order.product_barcode;
-    }
-
     return "";
   };
   const getProductById = (id) =>
@@ -1577,14 +1566,14 @@ function LegacyOrdersPage() {
         const prod = getProductById(o.product_id);
         const productName = getProductNameById(o.product_id);
         const { date: titleDateFromName } = parseProductName(productName);
-        const titleDate = titleDateFromName || extractBracketDate(o.product_title);
-        const source = o.product_pickup_date || prod?.pickup_date || titleDate;
+        const titleDate = titleDateFromName || extractBracketDate(o.product_name);
+        const source = prod?.pickup_date || titleDate;
         const avail = source ? isPickupAvailable(source) : false;
         if (avail) {
           byBandAvail.set(bandKey, (byBandAvail.get(bandKey) || 0) + 1);
         }
         if (samples.length < 30) {
-          samples.push({ band_key: bandKey, order_id: o.order_id, product_title: o.product_title || productName, product_pickup_date: o.product_pickup_date, products_pickup_date: prod?.pickup_date || null, titleDate, usedSource: source, available: avail });
+          samples.push({ band_key: bandKey, order_id: o.order_id, product_title: o.product_name || productName, products_pickup_date: prod?.pickup_date || null, titleDate, usedSource: source, available: avail });
         }
       }
 
@@ -2612,7 +2601,7 @@ function LegacyOrdersPage() {
                                 const { name, date } =
                                   parseProductName(productName);
                                 const product = getProductById(order.product_id);
-                                const primary = order.product_pickup_date || product?.pickup_date;
+                                const primary = product?.pickup_date;
                                 const pickupDate = pickEffectivePickupSource(primary, date);
                                 const isAvailable =
                                   isClient && pickupDate
@@ -3098,7 +3087,7 @@ function LegacyOrdersPage() {
                     );
                     const { name, date } = parseProductName(productName);
                     const product = getProductById(selectedOrder.product_id);
-                    const primary = selectedOrder.product_pickup_date || product?.pickup_date;
+                    const primary = product?.pickup_date;
                     const pickupDate = pickEffectivePickupSource(primary, date);
                     const isAvailable =
                       isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
@@ -3356,7 +3345,7 @@ function LegacyOrdersPage() {
                             const { name, date } =
                               parseProductName(productName);
                             const product = getProductById(selectedOrder.product_id);
-                            const primary = selectedOrder.product_pickup_date || product?.pickup_date;
+                            const primary = product?.pickup_date;
                             const pickupDate = pickEffectivePickupSource(primary, date);
                             const isAvailable =
                               isClient && pickupDate
@@ -3413,11 +3402,9 @@ function LegacyOrdersPage() {
                         // --- ADD PRODUCT PICKUP DATE HERE ---
                         {
                           label: "상품 픽업 예정일",
-                          // DB에서 직접 가져온 product_pickup_date 사용 (orders 테이블)
-                          // 없으면 products 테이블의 pickup_date 사용
                           value: (() => {
                             const product = getProductById(selectedOrder.product_id);
-                            const pickupDate = selectedOrder.product_pickup_date || product?.pickup_date;
+                            const pickupDate = product?.pickup_date;
                             return pickupDate ? formatDate(pickupDate) : "-";
                           })(),
                           readOnly: true,

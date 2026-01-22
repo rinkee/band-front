@@ -82,7 +82,6 @@ import {
   SparklesIcon,
   MagnifyingGlassIcon,
   ArrowLongLeftIcon,
-  ArrowLongRightIcon,
   DocumentTextIcon, // DocumentTextIcon 다시 사용
   QrCodeIcon,
   LinkIcon,
@@ -498,6 +497,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(30);
+
+  useEffect(() => {
+    if (mode === "raw" && currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [mode, currentPage]);
   const [products, setProducts] = useState([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -513,7 +518,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // statsLoading 제거 - 클라이언트에서 직접 계산하므로 불필요
   const [filterDateRange, setFilterDateRange] = useState("30days");
-  const [filterDateType, setFilterDateType] = useState("created"); // 날짜 필터 타입: created(주문일시) or updated(수령/변경일시)
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
@@ -713,8 +717,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       comment_key: row.comment_key || row.commentKey || null,
 
       // 기타 UI가 참조하는 필드들 (없으면 안전한 기본값)
-      product_title: row.product_title || null,
-      product_pickup_date: row.product_pickup_date || null,
       memo: row.memo || null,
     };
   }, []);
@@ -1043,12 +1045,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
       // 날짜 필터
       startDate: dateParams.startDate,
       endDate: dateParams.endDate,
-      dateType: "created", // 항상 주문일시 기준
     };
   }, [sortBy, sortOrder, filterSelection, searchTerm, searchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate, showPickupAvailableOnly]);
 
-  // 실제 페이지 사용
-  const effectivePage = currentPage;
+  const isRawMode = mode === "raw";
+
+  // raw 모드는 페이지네이션 없이 1페이지 고정
+  const effectivePage = isRawMode ? 1 : currentPage;
 
   const rawOrdersResult = useCommentOrdersClient(
     mode === "raw" ? userData?.userId : null,
@@ -1095,9 +1098,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const totalPages = ordersData?.pagination?.totalPages ?? null;
   const hasMore = ordersData?.pagination?.hasMore ?? false;
   const isTotalCountKnown = typeof totalItems === "number" && Number.isFinite(totalItems);
-  const showPagination = isTotalCountKnown
-    ? totalItems > itemsPerPage
-    : currentPage > 1 || hasMore;
+  const showPagination = !isRawMode && (
+    isTotalCountKnown
+      ? totalItems > itemsPerPage
+      : currentPage > 1 || hasMore
+  );
 
   // 메모 디버깅
   useEffect(() => {
@@ -2043,7 +2048,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
             ? candidates[0]
             : null);
         const rawTitle =
-          o.product_title ||
           o.product_name ||
           fallbackProd?.title ||
           fallbackProd?.name ||
@@ -2514,8 +2518,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (!map.has(o.product_id)) map.set(o.product_id, o.product_name);
         return;
       }
-      if (o.product_title && !map.has(o.product_id)) {
-        map.set(o.product_id, o.product_title);
+      if (o.product_name && !map.has(o.product_id)) {
+        map.set(o.product_id, o.product_name);
       }
     });
     return map;
@@ -2849,12 +2853,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       return product.barcode;
     }
 
-    // orders 데이터에서 product_barcode 필드 사용 (폴백)
-    const order = orders.find((o) => o.product_id === id);
-    if (order?.product_barcode) {
-      return order.product_barcode;
-    }
-
     return "";
   };
   const getProductById = (id) =>
@@ -2888,14 +2886,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
         const prod = getProductById(o.product_id);
         const productName = getProductNameById(o.product_id);
         const { date: titleDateFromName } = parseProductName(productName);
-        const titleDate = titleDateFromName || extractBracketDate(o.product_title);
-        const source = o.product_pickup_date || prod?.pickup_date || titleDate;
+        const titleDate = titleDateFromName || extractBracketDate(o.product_name);
+        const source = prod?.pickup_date || titleDate;
         const avail = source ? isPickupAvailable(source) : false;
         if (avail) {
           byBandAvail.set(bandKey, (byBandAvail.get(bandKey) || 0) + 1);
         }
         if (samples.length < 30) {
-          samples.push({ band_key: bandKey, order_id: o.order_id, product_title: o.product_title || productName, product_pickup_date: o.product_pickup_date, products_pickup_date: prod?.pickup_date || null, titleDate, usedSource: source, available: avail });
+          samples.push({ band_key: bandKey, order_id: o.order_id, product_title: o.product_name || productName, products_pickup_date: prod?.pickup_date || null, titleDate, usedSource: source, available: avail });
         }
       }
 
@@ -3210,7 +3208,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       localStorage.removeItem('showPickupAvailableOnly');
     }
     setFilterDateRange("30days"); // 기본 날짜로 복귀
-    setFilterDateType("created"); // 날짜 필터 타입도 초기화
     setCustomStartDate(null);
     setCustomEndDate(null);
     setSelectedOrderIds([]);
@@ -4667,7 +4664,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                               return (
                                 <div className="space-y-2">
                                   {list.map((p, idx) => {
-                                    const barcodeVal = p?.barcode || order?.product_barcode || '';
+                                    const barcodeVal = p?.barcode || '';
                                     const isLastBarcode = idx === list.length - 1;
                                     return (
                                       <div
@@ -4744,7 +4741,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     disabled={currentPage === 1 || isDataLoading}
                     className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <ArrowLongLeftIcon className="h-5 w-5" />
+                    이전
                   </button>
                   {typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages > 1 ? (
                     (() => {
@@ -4794,11 +4791,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         )
                       );
                     })()
-                  ) : (
-                    <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-                      {currentPage}
-                    </span>
-                  )}
+                  ) : null}
                   <button
                     onClick={goToNextPage}
                     disabled={
@@ -4809,7 +4802,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     }
                     className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <ArrowLongRightIcon className="h-5 w-5" />
+                    다음
                   </button>
                 </nav>
               </div>
@@ -4896,7 +4889,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   );
                   const { name, date } = parseProductName(productName);
                   const product = getProductById(selectedOrder.product_id);
-                  const primary = selectedOrder.product_pickup_date || product?.pickup_date;
+                  const primary = product?.pickup_date;
                   const pickupDate = pickEffectivePickupSource(primary, date);
                   const isAvailable =
                     isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
@@ -5167,7 +5160,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           );
                           const { name, date } = parseProductName(productName);
                           const product = getProductById(selectedOrder.product_id);
-                          const primary = selectedOrder.product_pickup_date || product?.pickup_date;
+                          const primary = product?.pickup_date;
                           const pickupDate = pickEffectivePickupSource(primary, date);
                           const isAvailable =
                             isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
@@ -5229,7 +5222,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         label: "상품 픽업 예정일",
                         value: (() => {
                           const product = getProductById(selectedOrder.product_id);
-                          const d = selectedOrder.product_pickup_date || product?.pickup_date;
+                          const d = product?.pickup_date;
                           return d ? formatDate(d) : "-";
                         })(),
                         readOnly: true,
