@@ -10,6 +10,7 @@ import { ScrollProvider, useScroll } from "./context/ScrollContext"; // <<< Scro
 import { UpdateProgressProvider } from "./contexts/UpdateProgressContext"; // UpdateProgressContext 추가
 import OfflineWatcher from "./components/OfflineWatcher";
 import IndexedDBBackupButton from "./components/IndexedDBBackupButton";
+import UpdateAvailableBanner from "./components/UpdateAvailableBanner";
 import { installExtensionOfflineBridge } from "./lib/extensionOfflineBridge";
 
 export default function RootLayoutWrapper({ children }) {
@@ -176,6 +177,12 @@ function LayoutContent({ children }) {
 
   // admin 페이지인지 확인 (헤더 숨김 여부 결정)
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  const shouldCheckVersion =
+    pathname === "/orders-test" ||
+    pathname.startsWith("/orders-test/") ||
+    pathname === "/posts" ||
+    pathname.startsWith("/posts/");
 
   // 인증 상태 확인을 위한 useEffect 훅
   useEffect(() => {
@@ -375,6 +382,7 @@ function LayoutContent({ children }) {
       </head>
       <body suppressHydrationWarning>
         <OfflineWatcher />
+        {shouldCheckVersion && <UpdateAvailableBanner mode="entry" />}
         {/* 비상(정적) 모드 안내 배너 */}
         {process.env.NEXT_PUBLIC_FALLBACK_MODE === "true" && (
           <div className="w-full text-center text-sm text-white bg-orange-500 py-1">

@@ -107,23 +107,27 @@ const nextConfig = {
           },
         ],
       },
-      // 나머지 응답(HTML 등)은 캐시 금지
+      // 나머지 응답(HTML 등)은 짧게 캐시 + 재검증
       {
         source: "/:path*",
         headers: [
           {
             key: "Cache-Control",
-            value: "no-store, must-revalidate",
+            value: "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
           },
         ],
       },
     ];
   },
-  // env 블록은 build-time 환경 변수 주입용. rewrites의 런타임 변수와는 직접 관련 없음.
-  // 필요 없다면 제거해도 무방.
-  // env: {
-  //   API_URL: process.env.API_URL || "http://localhost:8000/api",
-  // },
+  // 빌드 버전 문자열을 클라이언트에 주입 (업데이트 알림용)
+  env: {
+    NEXT_PUBLIC_APP_VERSION:
+      process.env.NEXT_PUBLIC_APP_VERSION ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.VERCEL_DEPLOYMENT_ID ||
+      process.env.GIT_COMMIT_SHA ||
+      "",
+  },
   //
   webpack: (config) => {
     return config;

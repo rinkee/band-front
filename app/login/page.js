@@ -22,11 +22,29 @@ const REMEMBER_PASSWORD_CHECKBOX_KEY = "rememberPasswordCheckboxState";
 const REMEMBERED_PASSWORD_KEY = "rememberedPassword";
 const OFFLINE_USER_KEY = "offlineUserId";
 const OFFLINE_ACCOUNTS_KEY = "offlineAccounts";
+const VERSION_CHECK_URL = "/api/version";
+const LOGIN_UPDATE_VERSION_KEY = "poder_login_update_version";
 const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/health`
   : null;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 // --- 👆 상수 정의 위치를 여기로 변경 👆 ---
+
+const getClientVersion = () => {
+  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_APP_VERSION) {
+    return process.env.NEXT_PUBLIC_APP_VERSION;
+  }
+  if (typeof window !== "undefined" && window.__NEXT_DATA__?.buildId) {
+    return window.__NEXT_DATA__.buildId;
+  }
+  return "dev";
+};
+
+const isStableVersion = (value) => {
+  if (!value || typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "unknown" && normalized !== "dev" && normalized !== "development";
+};
 
 async function detectPrivateMode() {
   if (typeof window === "undefined") return false;
@@ -98,6 +116,7 @@ export default function LoginPage() {
   const [checkingPrivate, setCheckingPrivate] = useState(true);
   const [supabaseHealth, setSupabaseHealth] = useState("checking"); // checking | healthy | offline
   const [redirectedForHealth, setRedirectedForHealth] = useState(false);
+  const [versionCheckStatus, setVersionCheckStatus] = useState("checking"); // checking | latest | updating | offline | error
 
   const rememberOfflineAccount = (userId, storeName) => {
     if (!userId || typeof window === "undefined") return;
@@ -204,6 +223,66 @@ export default function LoginPage() {
       });
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  // 로그인 페이지 진입 시 버전 체크 (1회)
+  useEffect(() => {
+    let active = true;
+    const runCheck = async () => {
+      if (typeof window === "undefined") return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        if (active) setVersionCheckStatus("offline");
+        return;
+      }
+      if (active) setVersionCheckStatus("checking");
+      try {
+        const res = await fetch(VERSION_CHECK_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("version check failed");
+        const data = await res.json();
+        const serverVersion = data?.version;
+        const clientVersion = getClientVersion();
+        if (!serverVersion) throw new Error("version missing");
+
+        if (!isStableVersion(serverVersion) || !isStableVersion(clientVersion)) {
+          if (active) setVersionCheckStatus("latest");
+          return;
+        }
+
+        if (serverVersion !== clientVersion) {
+          if (active) setVersionCheckStatus("updating");
+          let shouldReload = true;
+          try {
+            const prev = sessionStorage.getItem(LOGIN_UPDATE_VERSION_KEY);
+            if (prev === serverVersion) {
+              shouldReload = false;
+            } else {
+              sessionStorage.setItem(LOGIN_UPDATE_VERSION_KEY, serverVersion);
+            }
+          } catch (_) {
+            // ignore storage errors
+          }
+          if (shouldReload) {
+            setTimeout(() => {
+              try {
+                const url = new URL(window.location.href);
+                url.searchParams.set("__v", Date.now().toString());
+                window.location.replace(url.toString());
+              } catch (_) {
+                window.location.reload();
+              }
+            }, 400);
+          }
+          return;
+        }
+        if (active) setVersionCheckStatus("latest");
+      } catch (err) {
+        if (active) setVersionCheckStatus("error");
+      }
+    };
+    runCheck();
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -805,6 +884,34 @@ export default function LoginPage() {
             >
               {loading ? "로그인 중..." : "로그인"}
             </button>
+            <div className="mt-3 text-xs text-gray-600">
+              {versionCheckStatus === "checking" && "버전 확인 중입니다..."}
+              {versionCheckStatus === "latest" && "최신 버전입니다."}
+              {versionCheckStatus === "updating" &&
+                "새 버전이 있어 최신 버전으로 업데이트 중입니다..."}
+              {versionCheckStatus === "offline" &&
+                "오프라인 상태라 버전 확인이 지연됩니다."}
+              {versionCheckStatus === "error" &&
+                "버전 확인에 실패했습니다. 새로고침 해주세요."}
+              {(versionCheckStatus === "updating" ||
+                versionCheckStatus === "error") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set("__v", Date.now().toString());
+                      window.location.replace(url.toString());
+                    } catch (_) {
+                      window.location.reload();
+                    }
+                  }}
+                  className="ml-2 rounded border border-gray-200 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50"
+                >
+                  새로고침
+                </button>
+              )}
+            </div>
           </div>
         </form>
 
