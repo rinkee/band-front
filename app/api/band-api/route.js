@@ -30,7 +30,9 @@ export async function POST(request) {
       });
     }
 
-    console.log('Band API Request URL:', url.toString().replace(/access_token=[^&]+/, 'access_token=***'));
+    if (process.env.NODE_ENV === "development") {
+      console.log('Band API Request URL:', url.toString().replace(/access_token=[^&]+/g, 'access_token=***'));
+    }
 
     // Band API 호출
     const response = await fetch(url.toString(), {
@@ -57,19 +59,21 @@ export async function POST(request) {
     const data = await response.json();
     
     // Band API 응답 디버깅
-    console.log('Band API Response:', {
-      endpoint,
-      status: response.status,
-      result_code: data.result_code,
-      has_result_data: !!data.result_data,
-      message: data.result_data?.message || data.message,
-      // access_token 일부만 로깅 (보안상)
-      token_prefix: params?.access_token ? params.access_token.substring(0, 10) + '...' : 'none',
-      band_key: params?.band_key,
-      // 전체 데이터 구조 확인 (개발용)
-      data_keys: Object.keys(data),
-      result_data_keys: data.result_data ? Object.keys(data.result_data) : null
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.log('Band API Response:', {
+        endpoint,
+        status: response.status,
+        result_code: data.result_code,
+        has_result_data: !!data.result_data,
+        message: data.result_data?.message || data.message,
+        // access_token 일부만 로깅 (보안상)
+        token_prefix: params?.access_token ? params.access_token.substring(0, 10) + '...' : 'none',
+        band_key: params?.band_key,
+        // 전체 데이터 구조 확인 (개발용)
+        data_keys: Object.keys(data),
+        result_data_keys: data.result_data ? Object.keys(data.result_data) : null
+      });
+    }
     
     // Band API는 comment_key를 제공하며, content 필드에 댓글 내용이 있음
     

@@ -38,7 +38,12 @@ export async function GET(request) {
       }
     });
 
-    console.log("Fetching comments from BAND API:", bandApiUrl.toString());
+    if (process.env.NODE_ENV === "development") {
+      const safeUrl = bandApiUrl
+        .toString()
+        .replace(/access_token=[^&]+/g, "access_token=***");
+      console.log("Fetching comments from BAND API:", safeUrl);
+    }
 
     // BAND API 호출
     const response = await fetch(bandApiUrl.toString(), {
@@ -49,11 +54,13 @@ export async function GET(request) {
       },
     });
 
-    console.log(
-      "BAND API response status:",
-      response.status,
-      response.statusText
-    );
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        "BAND API response status:",
+        response.status,
+        response.statusText
+      );
+    }
 
     if (!response.ok) {
       console.error(
@@ -71,7 +78,13 @@ export async function GET(request) {
     }
 
     const data = await response.json();
-    console.log("BAND API full response:", JSON.stringify(data, null, 2));
+    if (process.env.NODE_ENV === "development") {
+      console.log("BAND API response meta:", {
+        result_code: data?.result_code,
+        items: data?.result_data?.items?.length || 0,
+        has_next: !!data?.result_data?.paging?.next_params,
+      });
+    }
 
     // BAND API 응답 구조 확인 및 에러 처리
     if (data.result_code !== 1) {

@@ -4,6 +4,15 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 10,
+      date: '2026년 1월 23일',
+      updates: [
+        '검색 필터 적용, 주문 검색 호출 최적화',
+        '주문 통계 호출 최적화',
+      
+      ]
+    },
+    {
       id: 9,
       date: '2026년 1월 22일',
       updates: [

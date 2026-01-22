@@ -136,8 +136,65 @@ const fetchOrder = async (key) => {
   };
 };
 
+const ORDER_STATS_CACHE_PREFIX = "order-stats-cache:";
+const ORDER_STATS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const normalizeOrderStatsFilters = (filters = {}) => {
+  if (!filters || typeof filters !== "object") return "{}";
+  const normalized = {};
+  Object.keys(filters)
+    .sort()
+    .forEach((key) => {
+      const value = filters[key];
+      if (value !== undefined) normalized[key] = value;
+    });
+  return JSON.stringify(normalized);
+};
+
+const getOrderStatsCacheKeyFromNormalized = (userId, _normalizedFilters) => {
+  if (!userId) return null;
+  return `${ORDER_STATS_CACHE_PREFIX}${userId}`;
+};
+
+const getOrderStatsCacheKey = (userId, filterOptions) => {
+  if (!userId) return null;
+  const normalized = normalizeOrderStatsFilters(filterOptions);
+  return getOrderStatsCacheKeyFromNormalized(userId, normalized);
+};
+
+const readOrderStatsCache = (cacheKey) => {
+  if (!cacheKey || typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const savedAt = parsed?.savedAt;
+    if (!savedAt || Date.now() - savedAt > ORDER_STATS_CACHE_TTL_MS) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    return parsed?.data ?? null;
+  } catch (error) {
+    console.warn("Order stats cache read failed:", error);
+    return null;
+  }
+};
+
+const writeOrderStatsCache = (cacheKey, data) => {
+  if (!cacheKey || typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      cacheKey,
+      JSON.stringify({ data, savedAt: Date.now() })
+    );
+  } catch (error) {
+    console.warn("Order stats cache write failed:", error);
+  }
+};
+
 /**
- * 통합 RPC 함수로 주문 통계 조회
+ * 로컬 캐시 우선 주문 통계 조회
+ * (24시간 이후 캐시 갱신)
  */
 const fetchOrderStats = async (key) => {
   const [, userId, filterOptions] = key;
@@ -146,18 +203,39 @@ const fetchOrderStats = async (key) => {
     throw new Error("User ID is required");
   }
 
+  const normalizedFilters =
+    typeof filterOptions === "string"
+      ? filterOptions
+      : normalizeOrderStatsFilters(filterOptions);
+  const parsedFilters =
+    typeof filterOptions === "string"
+      ? JSON.parse(filterOptions || "{}")
+      : filterOptions || {};
+  const cacheKey = getOrderStatsCacheKeyFromNormalized(
+    userId,
+    normalizedFilters
+  );
+  const cached = readOrderStatsCache(cacheKey);
+  if (cached) {
+    console.log("📦 [주문 통계] 캐시 사용:", cacheKey);
+    return {
+      success: true,
+      data: cached,
+    };
+  }
+
   const sb = getAuthedClient();
 
   console.log(`📊 [주문 통계] RPC 호출: userId=${userId}`);
 
   const { data, error } = await sb.rpc('get_order_stats', {
     p_user_id: userId,
-    p_status: filterOptions.status || null,
-    p_sub_status: filterOptions.subStatus || null,
-    p_search: filterOptions.search || null,
-    p_start_date: filterOptions.startDate || null,
-    p_end_date: filterOptions.endDate || null,
-    p_date_type: filterOptions.dateType || 'ordered',
+    p_status: parsedFilters.status || null,
+    p_sub_status: parsedFilters.subStatus || null,
+    p_search: parsedFilters.search || null,
+    p_start_date: parsedFilters.startDate || null,
+    p_end_date: parsedFilters.endDate || null,
+    p_date_type: parsedFilters.dateType || 'ordered',
   });
 
   if (error) {
@@ -167,7 +245,7 @@ const fetchOrderStats = async (key) => {
 
   console.log(`📊 [주문 통계] 결과:`, data);
 
-  return {
+  const result = {
     success: true,
     data: {
       totalOrders: data?.totalOrders || 0,
@@ -175,6 +253,10 @@ const fetchOrderStats = async (key) => {
       subStatusCounts: data?.subStatusCounts || {},
     },
   };
+
+  writeOrderStatsCache(cacheKey, result.data);
+
+  return result;
 };
 
 /**
@@ -216,9 +298,25 @@ export function useOrderClient(orderId, options = {}) {
  * 클라이언트 사이드 주문 통계 훅
  */
 export function useOrderStatsClient(userId, filterOptions = {}, options = {}) {
+  const normalizedFilters = normalizeOrderStatsFilters(filterOptions);
   const getKey = () => {
     if (!userId) return null;
-    return ["orderStats", userId, filterOptions];
+    return ["orderStats", userId, normalizedFilters];
+  };
+
+  const { onSuccess: userOnSuccess, ...restOptions } = options;
+  const cacheKey = getOrderStatsCacheKeyFromNormalized(
+    userId,
+    normalizedFilters
+  );
+  const cachedData = readOrderStatsCache(cacheKey);
+  const wrappedOnSuccess = (data, key, config) => {
+    if (data?.success && data?.data) {
+      writeOrderStatsCache(cacheKey, data.data);
+    }
+    if (typeof userOnSuccess === "function") {
+      userOnSuccess(data, key, config);
+    }
   };
 
   const swrOptions = {
@@ -226,7 +324,10 @@ export function useOrderStatsClient(userId, filterOptions = {}, options = {}) {
     revalidateOnFocus: false,
     revalidateOnReconnect: true,
     dedupingInterval: 10000, // 통계는 조금 더 긴 간격
-    ...options,
+    revalidateOnMount: cachedData ? false : true,
+    fallbackData: cachedData ? { success: true, data: cachedData } : undefined,
+    ...restOptions,
+    onSuccess: wrappedOnSuccess,
   };
 
   return useSWR(getKey, fetchOrderStats, swrOptions);

@@ -98,6 +98,12 @@ export default function PostsPage() {
     }
     return "";
   });
+  const [searchType, setSearchType] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('postsSearchType') || "content";
+    }
+    return "content";
+  });
 
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -183,6 +189,12 @@ export default function PostsPage() {
     }
   }, [searchQuery]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('postsSearchType', searchType);
+    }
+  }, [searchType]);
+
   // 스크롤 위치 실시간 저장
   useEffect(() => {
     if (!scrollableContentRef?.current) return;
@@ -220,7 +232,10 @@ export default function PostsPage() {
   // Supabase에서 직접 posts 데이터 가져오기
   const fetchPosts = async () => {
     const trimmedQuery = (searchQuery || "").trim();
-    const shouldSearchProducts = trimmedQuery.length >= 2;
+    const hasSearchQuery = trimmedQuery.length > 0;
+    const resolvedSearchType = searchType === "product" ? "product" : "content";
+    const shouldSearchProducts = resolvedSearchType === "product" && hasSearchQuery;
+    const shouldSearchContent = resolvedSearchType === "content" && hasSearchQuery;
 
     const POSTS_SELECT_FIELDS = [
       "post_id",
@@ -268,7 +283,7 @@ export default function PostsPage() {
     }, 10000);
 
     try {
-      // 검색어가 있을 때 상품명으로 검색하여 post_key 찾기
+      // 상품명 검색인 경우에만 상품명으로 post_key 찾기
       let productPostKeys = [];
       if (shouldSearchProducts) {
         const { data: productsWithSearch } = await supabase
@@ -283,14 +298,22 @@ export default function PostsPage() {
         }
       }
 
+      if (shouldSearchProducts && productPostKeys.length === 0) {
+        clearTimeout(timeoutId);
+        return {
+          posts: [],
+          totalCount: 0,
+          totalPages: 0,
+          totalStats: {
+            totalPosts: 0,
+            totalProductPosts: 0,
+            totalCompletedPosts: 0,
+          },
+        };
+      }
+
       // 전체 통계: 카운트만 가져와 네트워크/메모리 사용 최소화
-      const statsFilters = (() => {
-        if (!trimmedQuery) return null;
-        if (productPostKeys.length > 0) {
-          return `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%,post_key.in.(${productPostKeys.join(',')})`;
-        }
-        return `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%`;
-      })();
+      const contentFilter = `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%`;
 
       const countPosts = supabase
         .from("posts")
@@ -310,11 +333,17 @@ export default function PostsPage() {
         .eq("comment_sync_status", "success")
         .abortSignal(controller.signal);
 
-      // 검색어 필터를 각 카운트 쿼리에 적용
-      if (statsFilters) {
-        countPosts.or(statsFilters);
-        countProductPosts.or(statsFilters);
-        countCompletedPosts.or(statsFilters);
+      // 검색어 필터를 각 카운트 쿼리에 적용 (작성자명 제거)
+      if (hasSearchQuery) {
+        if (shouldSearchProducts) {
+          countPosts.in('post_key', productPostKeys);
+          countProductPosts.in('post_key', productPostKeys);
+          countCompletedPosts.in('post_key', productPostKeys);
+        } else if (shouldSearchContent) {
+          countPosts.or(contentFilter);
+          countProductPosts.or(contentFilter);
+          countCompletedPosts.or(contentFilter);
+        }
       }
 
       const [
@@ -337,14 +366,12 @@ export default function PostsPage() {
         .order("posted_at", { ascending: false })
         .abortSignal(controller.signal);
 
-      // 검색어가 있으면 적용
-      if (trimmedQuery) {
-        if (productPostKeys.length > 0) {
-          // 게시물 필드 또는 상품명에 일치하는 post_key
-          query = query.or(`title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%,post_key.in.(${productPostKeys.join(',')})`);
-        } else {
-          // 상품명 매칭이 없으면 게시물 필드만 검색
-          query = query.or(`title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%,author_name.ilike.%${trimmedQuery}%`);
+      // 검색어가 있으면 적용 (작성자명 제거)
+      if (hasSearchQuery) {
+        if (shouldSearchProducts) {
+          query = query.in('post_key', productPostKeys);
+        } else if (shouldSearchContent) {
+          query = query.or(contentFilter);
         }
       }
 
@@ -422,7 +449,9 @@ export default function PostsPage() {
     error,
     mutate,
   } = useSWR(
-    userData?.userId ? ['posts', userData.userId, page, limit, searchQuery] : null,
+    userData?.userId
+      ? ['posts', userData.userId, page, limit, searchQuery, searchQuery ? searchType : 'all']
+      : null,
     fetchPosts,
     {
       revalidateOnFocus: false,
@@ -523,12 +552,14 @@ export default function PostsPage() {
     }
     setSearchTerm("");
     setSearchQuery("");
+    setSearchType("content");
     handlePageChange(1);
 
     // sessionStorage도 초기화
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('postsSearchTerm', '');
       sessionStorage.setItem('postsSearchQuery', '');
+      sessionStorage.setItem('postsSearchType', 'content');
       sessionStorage.setItem('postsPageNumber', '1');
       sessionStorage.removeItem('postsScrollPosition'); // 스크롤 위치도 초기화
       sessionStorage.removeItem('postsLastScrollPosition'); // 실시간 저장된 스크롤 위치도 초기화
@@ -1540,6 +1571,11 @@ export default function PostsPage() {
     } catch (_) {}
   };
 
+  const searchPlaceholder =
+    searchType === "product"
+      ? "상품명으로 검색..."
+      : "게시물 내용(제목 포함)으로 검색...";
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
@@ -1551,6 +1587,16 @@ export default function PostsPage() {
               onSubmit={handleSearch}
               className="flex flex-wrap items-center gap-2"
             >
+              <div className="min-w-[96px]">
+                <select
+                  value={searchType}
+                  onChange={(e) => setSearchType(e.target.value)}
+                  className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="content">내용</option>
+                  <option value="product">상품명</option>
+                </select>
+              </div>
               <div className="relative flex-1 min-w-[200px] max-w-xl">
                 <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
                   <svg
@@ -1577,7 +1623,7 @@ export default function PostsPage() {
                       handleSearch();
                     }
                   }}
-                  placeholder="게시물 제목, 내용, 작성자로 검색..."
+                  placeholder={searchPlaceholder}
                   className="block w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
                 />
               </div>

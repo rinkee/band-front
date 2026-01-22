@@ -14,7 +14,11 @@ import {
   getDb,
 } from "../lib/indexedDbClient";
 
-export default function TestUpdateButton({ onProcessingChange, onComplete }) {
+export default function TestUpdateButton({
+  onProcessingChange,
+  onComplete,
+  refreshSWRCacheOnComplete = true,
+}) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [keyStatus, setKeyStatus] = useState("main"); // main | backup
@@ -105,6 +109,18 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
   const fetchKeyStatus = useCallback(async () => {
     try {
+      const cachedStatus = sessionStorage.getItem("bandKeyStatus");
+      if (cachedStatus) {
+        try {
+          const parsedStatus = JSON.parse(cachedStatus);
+          const cachedIndex = parsedStatus?.current_band_key_index ?? 0;
+          setKeyStatus(cachedIndex > 0 ? "backup" : "main");
+          return;
+        } catch (_) {
+          sessionStorage.removeItem("bandKeyStatus");
+        }
+      }
+
       const sessionData = sessionStorage.getItem("userData");
       if (!sessionData) return;
 
@@ -114,7 +130,7 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
       const { data, error } = await supabase
         .from("users")
-        .select("current_band_key_index")
+        .select("current_band_key_index, backup_band_keys")
         .eq("user_id", userId)
         .single();
 
@@ -125,6 +141,15 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
       const isBackup = (data?.current_band_key_index ?? 0) > 0;
       setKeyStatus(isBackup ? "backup" : "main");
+
+      sessionStorage.setItem(
+        "bandKeyStatus",
+        JSON.stringify({
+          current_band_key_index: data?.current_band_key_index ?? 0,
+          backup_band_keys: data?.backup_band_keys ?? null,
+          updated_at: new Date().toISOString(),
+        })
+      );
     } catch (err) {
       console.error("키 상태 조회 중 오류:", err);
     }
@@ -149,6 +174,24 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
 
       if (error) {
         console.error("백업 키 상태 업데이트 실패:", error);
+      } else {
+        let backupKeys = null;
+        const cachedStatus = sessionStorage.getItem("bandKeyStatus");
+        if (cachedStatus) {
+          try {
+            backupKeys = JSON.parse(cachedStatus)?.backup_band_keys ?? null;
+          } catch (_) {
+            sessionStorage.removeItem("bandKeyStatus");
+          }
+        }
+        sessionStorage.setItem(
+          "bandKeyStatus",
+          JSON.stringify({
+            current_band_key_index: nextIndex,
+            backup_band_keys: backupKeys,
+            updated_at: new Date().toISOString(),
+          })
+        );
       }
     } catch (err) {
       console.error("백업 키 상태 업데이트 중 오류:", err);
@@ -439,8 +482,10 @@ export default function TestUpdateButton({ onProcessingChange, onComplete }) {
       if (response.success) {
         setResult(response);
 
-        // SWR 캐시 갱신
-        await refreshSWRCache(userId);
+        // SWR 캐시 갱신 (필요한 페이지에서만)
+        if (refreshSWRCacheOnComplete) {
+          await refreshSWRCache(userId);
+        }
         await fetchKeyStatus();
         // IndexedDB에 최근 7일치 최소 필드 백업
         backupToIndexedDB(userId);

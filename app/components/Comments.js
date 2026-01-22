@@ -5,7 +5,7 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { UserIcon } from "@heroicons/react/24/solid";
-import useSWR, { useSWRConfig } from "swr";
+import { useSWRConfig } from "swr";
 import supabase from '../lib/supabaseClient';
 
 // 밴드 특수 태그 처리 함수
@@ -140,7 +140,7 @@ const ReplyItem = ({ reply, parentAuthorName, formatTimeAgo }) => {
 };
 
 // 댓글 항목 컴포넌트
-const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails, showOrderDetails }) => {
+const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbDataLoading, orderStatus, orderDetails }) => {
   const [imageError, setImageError] = useState(false);
 
   // 프로필 이미지 URL이 유효한지 확인
@@ -273,44 +273,6 @@ const CommentItem = ({ comment, isExcludedCustomer, isSavedInDB, isMissed, isDbD
           </div>
         )}
 
-        {/* 주문 상세 정보 표시 - 주문 처리됨 상태이고 주문 상세 정보가 있을 때 */}
-        {showOrderDetails && isSavedInDB && orderDetails && orderDetails.length > 0 && (
-          <div className="mt-2 mb-2 p-2 bg-gray-100 rounded-lg">
-            {/* <div className="text-sm font-bold mb-1">저장된 주문 정보</div> */}
-            <div className="space-y-1">
-              {orderDetails.map((order, index) => (
-                <div key={index} className="text-sm">
-                  <span className="font-medium">
-                    {(() => {
-                      const productName = order.product_name || '상품';
-                      // 날짜 패턴 제거: [9월3일], [1월15일], [월일] 등 모든 형태
-                      return productName.replace(/\[[^\]]*월[^\]]*일[^\]]*\]\s*/g, '').trim();
-                    })()}
-                  </span>
-                  {order.quantity && (
-                    <span className="ml-1">× {order.quantity}</span>
-                  )}
-                  {(order.total_amount || order.product_price) && (
-                    <span className="font-medium ml-2">
-                      {(() => {
-                        const displayPrice = order.total_amount || order.product_price;
-                        console.log(`🎯 화면 표시 가격:`, {
-                          product: order.product_name,
-                          quantity: order.quantity,
-                          total_amount: order.total_amount,
-                          product_price: order.product_price,
-                          display_price: displayPrice
-                        });
-                        return displayPrice.toLocaleString();
-                      })()}원
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* 시간만 표시 */}
         <div className="text-sm text-gray-500">
           <span>{formatTimeAgo(comment.created_at)}</span>
@@ -349,7 +311,6 @@ const CommentsList = ({
   savedComments = {},
   onEnableReprocess, // 재처리 활성화 콜백 추가
   hideExcludedCustomers = false, // 제외 고객 숨김 상태 추가
-  showOrderDetails = true, // 주문 상세 보기 상태 추가
 }) => {
   const commentsEndRef = useRef(null);
   
@@ -589,7 +550,6 @@ const CommentsList = ({
               isDbDataLoading={isDbDataLoading}
               orderStatus={orderStatus}
               orderDetails={orderDetails}
-              showOrderDetails={showOrderDetails}
             />
           );
         })}
@@ -626,8 +586,10 @@ const CommentsModal = ({
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [savedComments, setSavedComments] = useState({});
+  // DB 저장 상태 조회 중복 방지: 이미 조회했거나 조회 중인 comment_key는 재요청하지 않음
+  const checkedCommentKeysRef = useRef(new Set());
+  const pendingCommentKeysRef = useRef(new Set());
   const [hideExcludedCustomers, setHideExcludedCustomers] = useState(false); // 제외 고객 숨김 상태 추가
-  const [showOrderDetails, setShowOrderDetails] = useState(false); // 주문 상세 보기 토글 상태 (기본 숨김)
   const [isEditingPickupDate, setIsEditingPickupDate] = useState(false); // 수령일 편집 모드
   const [editPickupDate, setEditPickupDate] = useState(''); // 편집 중인 수령일
   const [useBackupByDefault, setUseBackupByDefault] = useState(false); // current_band_key_index > 0 인 경우
@@ -660,24 +622,18 @@ const CommentsModal = ({
   const refreshKeyStatus = useCallback(async () => {
     if (!userId) return;
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("current_band_key_index, backup_band_keys")
-        .eq("user_id", userId)
-        .single();
+      const cachedStatus = sessionStorage.getItem("bandKeyStatus");
+      if (!cachedStatus) return;
 
-      if (error) {
-        // 공개 클라이언트 권한 부족 등으로 발생할 수 있어 경고만 남기고 메인 키로 유지
-        console.warn("키 상태 조회 실패(현재 키 상태 유지):", error?.message || error);
+      let data;
+      try {
+        data = JSON.parse(cachedStatus);
+      } catch (_) {
+        sessionStorage.removeItem("bandKeyStatus");
         return;
       }
 
-      if (!data) {
-        console.warn("키 상태 조회 결과가 없습니다. 기존 상태를 유지합니다.");
-        return;
-      }
-
-      const currentIndex = data.current_band_key_index ?? 0;
+      const currentIndex = data?.current_band_key_index ?? 0;
       setUseBackupByDefault(currentIndex > 0);
 
       const backupFromDb = Array.isArray(data?.backup_band_keys) && data.backup_band_keys.length > 0
@@ -720,30 +676,19 @@ const CommentsModal = ({
     }
   }, [isOpen, userId, refreshKeyStatus]);
 
-  // 현재 post의 최신 정보를 가져오기 위한 SWR 훅
-  const { data: currentPost } = useSWR(
-    isOpen && postKey ? `/api/posts/${postKey}` : null,
-    async (url) => {
-      // supabase is already imported at the top
-      
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('post_key', postKey)
-        .single();
-      
-      if (error) throw error;
-      return data;
-    },
-    {
-      refreshInterval: 0, // 폴링 OFF (서버 보호)
-      revalidateOnFocus: false,
-      dedupingInterval: 10000,
-    }
-  );
-
-  // post prop 대신 currentPost 사용 (fallback으로 post 사용)
-  const activePost = currentPost || post;
+  // 리스트에서 전달된 post 데이터를 그대로 사용 (추가 조회 없음)
+  const activePost = post || {
+    title: postTitle,
+    content: postContent,
+    band_key: bandKey,
+    post_key: postKey,
+  };
+  const products = useMemo(() => {
+    if (Array.isArray(post?.products)) return post.products;
+    if (Array.isArray(post?.products_data)) return post.products_data;
+    if (Array.isArray(order?.products)) return order.products;
+    return [];
+  }, [post, order]);
 
   // 수령일 편집 관련 함수들
   const handlePickupDateEdit = () => {
@@ -977,7 +922,6 @@ const CommentsModal = ({
 
       // SWR 캐시 갱신 (전역 mutate 사용)
       await globalMutate(`/api/posts/${postKey}`);
-      await globalMutate(`products-${postKey}`);
 
       // 모든 관련 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(postKey));
@@ -1017,34 +961,7 @@ const CommentsModal = ({
   };
 
   // 게시물의 추출된 상품 리스트 가져오기 - user_id 포함
-  const { data: products, error: productsError } = useSWR(
-    isOpen && postKey ? `products-${postKey}` : null,
-    async () => {
-      // supabase is already imported at the top
-      // 현재 사용자 ID 가져오기
-      const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
-      const userId = userData.userId;
-      
-      if (!userId) {
-        console.warn('사용자 ID가 없어서 상품을 가져올 수 없습니다.');
-        return [];
-      }
-      
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('post_key', postKey)
-        .eq('user_id', userId)  // user_id 필터 추가
-        .order('created_at', { ascending: true });
-      
-      if (error) throw error;
-      return data;
-    },
-    {
-      revalidateOnFocus: false,
-      refreshInterval: 0
-    }
-  );
+  const productsError = null;
 
 
   // 제외고객 숨김 상태를 고려한 댓글 수 계산
@@ -1214,19 +1131,21 @@ const CommentsModal = ({
       const newComments = apiResponse.data?.items || [];
 
       // 대댓글 디버그 로그
-      console.log('[CommentsModal 대댓글 디버그] Band API 응답:', {
-        total_comments: newComments.length,
-        has_latest_comments: newComments.some(c => c.latest_comments && c.latest_comments.length > 0),
-        comments_with_replies: newComments.filter(c => c.latest_comments && c.latest_comments.length > 0).map(c => ({
-          comment_key: c.comment_key,
-          content: c.content?.substring(0, 30),
-          replies_count: c.latest_comments.length,
-          replies: c.latest_comments.map(r => ({
-            author: r.author?.name,
-            body: r.body?.substring(0, 30)
+      if (process.env.NODE_ENV === "development") {
+        console.log('[CommentsModal 대댓글 디버그] Band API 응답:', {
+          total_comments: newComments.length,
+          has_latest_comments: newComments.some(c => c.latest_comments && c.latest_comments.length > 0),
+          comments_with_replies: newComments.filter(c => c.latest_comments && c.latest_comments.length > 0).map(c => ({
+            comment_key: c.comment_key,
+            content: c.content?.substring(0, 30),
+            replies_count: c.latest_comments.length,
+            replies: c.latest_comments.map(r => ({
+              author: r.author?.name,
+              body: r.body?.substring(0, 30)
+            }))
           }))
-        }))
-      });
+        });
+      }
 
       if (isRefresh) {
         setComments(newComments);
@@ -1238,12 +1157,9 @@ const CommentsModal = ({
         // 더보기 댓글 로드 시에는 스크롤 위치 유지
         const prevScrollHeight = scrollContainerRef.current?.scrollHeight || 0;
 
-        setComments((prev) => {
-          const updatedComments = [...prev, ...newComments];
-          // 새로운 댓글들의 DB 저장 상태 확인
-          checkCommentsInDB(updatedComments);
-          return updatedComments;
-        });
+        setComments((prev) => [...prev, ...newComments]);
+        // ✅ 새로 들어온 댓글만 DB 저장 상태 확인 (기존 댓글 재조회 방지)
+        checkCommentsInDB(newComments);
         setShouldScrollToBottom(false);
 
         // 새 댓글 추가 후 스크롤 위치 조정 (이전 위치 유지)
@@ -1314,12 +1230,9 @@ const CommentsModal = ({
         const currentScrollHeight =
           scrollContainerRef.current?.scrollHeight || 0;
 
-        setComments((prev) => {
-          const updatedComments = [...prev, ...newComments];
-          // 새로운 댓글들의 DB 저장 상태 확인
-          checkCommentsInDB(updatedComments);
-          return updatedComments;
-        });
+        setComments((prev) => [...prev, ...newComments]);
+        // ✅ 새로 들어온 댓글만 DB 저장 상태 확인 (기존 댓글 재조회 방지)
+        checkCommentsInDB(newComments);
         setNextParams(apiResponse.data?.paging?.next_params || null);
 
         // 스크롤 위치 유지
@@ -1344,14 +1257,25 @@ const CommentsModal = ({
     if (!commentsToCheck || commentsToCheck.length === 0) return;
     
     try {
-      const commentKeys = commentsToCheck.map(c => c.comment_key);
-      
-      console.log('📤 댓글 DB 확인 요청:', {
-        commentKeysCount: commentKeys.length,
-        postKey,
-        bandKey,
-        commentKeys: commentKeys.slice(0, 3) // 첫 3개만 로그
+      const rawKeys = commentsToCheck.map((c) => c?.comment_key).filter(Boolean);
+      const uniqueKeys = Array.from(new Set(rawKeys));
+
+      // 이미 조회했거나 조회 중인 키는 제외
+      const keysToQuery = uniqueKeys.filter((k) => {
+        return !checkedCommentKeysRef.current.has(k) && !pendingCommentKeysRef.current.has(k);
       });
+
+      if (keysToQuery.length === 0) return;
+      keysToQuery.forEach((k) => pendingCommentKeysRef.current.add(k));
+      
+      if (process.env.NODE_ENV === "development") {
+        console.log('📤 댓글 DB 확인 요청(증분):', {
+          commentKeysCount: keysToQuery.length,
+          postKey,
+          bandKey,
+          commentKeys: keysToQuery.slice(0, 3) // 첫 3개만 로그
+        });
+      }
       
       // 현재 사용자 ID 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
@@ -1359,6 +1283,7 @@ const CommentsModal = ({
       
       if (!userId) {
         console.warn('사용자 ID가 없어서 댓글 DB 확인을 할 수 없습니다.');
+        keysToQuery.forEach((k) => pendingCommentKeysRef.current.delete(k));
         return;
       }
       
@@ -1368,7 +1293,7 @@ const CommentsModal = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          commentKeys,
+          commentKeys: keysToQuery,
           postKey,
           bandKey,
           userId  // userId 추가
@@ -1377,16 +1302,27 @@ const CommentsModal = ({
       
       if (response.ok) {
         const data = await response.json();
-        console.log('📥 댓글 DB 확인 응답:', data);
+        if (process.env.NODE_ENV === "development") {
+          console.log('📥 댓글 DB 확인 응답:', data);
+        }
         
         if (data.success && data.savedComments) {
-          setSavedComments(data.savedComments);
+          // ✅ 증분 결과 병합 (기존 키 유지)
+          setSavedComments((prev) => ({ ...prev, ...data.savedComments }));
         }
+
+        // 요청한 키는 조회 완료 처리
+        keysToQuery.forEach((k) => checkedCommentKeysRef.current.add(k));
+        keysToQuery.forEach((k) => pendingCommentKeysRef.current.delete(k));
       } else {
         console.error('API 응답 오류:', response.status, await response.text());
+        // 실패 시 재시도 가능하도록 pending에서 제거
+        keysToQuery.forEach((k) => pendingCommentKeysRef.current.delete(k));
       }
     } catch (error) {
       console.error('DB 저장 상태 확인 오류:', error);
+      const rawKeys = commentsToCheck.map((c) => c?.comment_key).filter(Boolean);
+      rawKeys.forEach((k) => pendingCommentKeysRef.current.delete(k));
     }
   };
 
@@ -1397,6 +1333,10 @@ const CommentsModal = ({
       setNextParams(null);
       setShowLoadMoreButton(false);
       setShouldScrollToBottom(false);
+      // DB 저장 상태 캐시 초기화 (새 게시물 오픈 시 중복 조회 방지)
+      setSavedComments({});
+      checkedCommentKeysRef.current.clear();
+      pendingCommentKeysRef.current.clear();
       
       // 세션에서 제외 고객 목록 가져오기
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
@@ -1608,7 +1548,6 @@ const CommentsModal = ({
                     savedComments={savedComments}
                     onEnableReprocess={onEnableReprocess}
                     hideExcludedCustomers={hideExcludedCustomers}
-                    showOrderDetails={showOrderDetails}
                   />
                 </div>
               </div>
@@ -1630,23 +1569,6 @@ const CommentsModal = ({
                     />
                   </button>
                   <span className="text-sm sm:text-base font-medium text-gray-700">제외고객 숨김</span>
-                </div>
-
-                {/* 주문 상세 보기 모듈 */}
-                <div className="flex items-center gap-1.5 sm:gap-2 bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl">
-                  <button
-                    onClick={() => setShowOrderDetails(!showOrderDetails)}
-                    className={`relative inline-flex h-5 w-8 sm:h-6 sm:w-9 items-center rounded-full transition-all duration-300 cursor-pointer ${
-                      showOrderDetails ? 'bg-blue-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-2.5 w-2.5 sm:h-3 sm:w-3 transform rounded-full bg-white transition-transform duration-300 ${
-                        showOrderDetails ? 'translate-x-[14px] sm:translate-x-5' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                  <span className="text-sm sm:text-base font-medium text-gray-700">주문 상세 보기</span>
                 </div>
 
                 {/* 누락 주문 재처리 모듈 */}
