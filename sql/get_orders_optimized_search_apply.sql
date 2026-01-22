@@ -16,6 +16,23 @@ DROP FUNCTION IF EXISTS public.get_orders(
   p_date_type text
 );
 
+DROP FUNCTION IF EXISTS public.get_orders(
+  p_user_id text,
+  p_status text,
+  p_sub_status text,
+  p_search text,
+  p_search_type text,
+  p_limit integer,
+  p_offset integer,
+  p_start_date timestamp with time zone,
+  p_end_date timestamp with time zone,
+  p_sort_by text,
+  p_sort_order text,
+  p_customer_exact text,
+  p_post_key text,
+  p_pickup_available boolean
+);
+
 CREATE OR REPLACE FUNCTION public.get_orders(
   p_user_id text,
   p_status text DEFAULT NULL::text,
@@ -30,8 +47,7 @@ CREATE OR REPLACE FUNCTION public.get_orders(
   p_sort_order text DEFAULT 'desc'::text,
   p_customer_exact text DEFAULT NULL::text,
   p_post_key text DEFAULT NULL::text,
-  p_pickup_available boolean DEFAULT false,
-  p_date_type text DEFAULT 'ordered'::text
+  p_pickup_available boolean DEFAULT false
 )
 RETURNS TABLE(
   order_id text,
@@ -53,10 +69,7 @@ RETURNS TABLE(
   post_key text,
   band_key text,
   processing_method character varying,
-  item_number numeric,
-  product_title text,
-  product_barcode text,
-  product_pickup_date timestamp with time zone
+  item_number numeric
 )
 LANGUAGE plpgsql
 STABLE
@@ -110,22 +123,8 @@ AS $function$
         o.post_key,
         o.band_key,
         o.processing_method,
-        o.item_number,
-        prod.product_title,
-        prod.product_barcode,
-        prod.product_pickup_date
+        o.item_number
       FROM orders o
-      LEFT JOIN LATERAL (
-        SELECT
-          p.title AS product_title,
-          p.barcode AS product_barcode,
-          p.pickup_date AS product_pickup_date
-        FROM products p
-        WHERE p.user_id = o.user_id
-          AND p.post_key = o.post_key
-        ORDER BY p.item_number
-        LIMIT 1
-      ) prod ON true
       WHERE o.user_id = p_user_id
         AND (
           NOT p_pickup_available
@@ -150,8 +149,8 @@ AS $function$
         )
         AND (p_customer_exact IS NULL OR o.customer_name = p_customer_exact)
         AND (p_post_key IS NULL OR o.post_key = p_post_key)
-        AND (p_start_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END >= p_start_date))
-        AND (p_end_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END <= p_end_date))
+        AND (p_start_date IS NULL OR o.ordered_at >= p_start_date)
+        AND (p_end_date IS NULL OR o.ordered_at <= p_end_date)
         AND (v_excluded_customers IS NULL OR o.customer_name <> ALL(v_excluded_customers))
       ORDER BY
         CASE WHEN v_sort_by = 'ordered_at' AND v_sort_order = 'asc' THEN o.ordered_at END ASC,
@@ -185,22 +184,8 @@ AS $function$
         o.post_key,
         o.band_key,
         o.processing_method,
-        o.item_number,
-        prod.product_title,
-        prod.product_barcode,
-        prod.product_pickup_date
+        o.item_number
       FROM orders o
-      LEFT JOIN LATERAL (
-        SELECT
-          p.title AS product_title,
-          p.barcode AS product_barcode,
-          p.pickup_date AS product_pickup_date
-        FROM products p
-        WHERE p.user_id = o.user_id
-          AND p.post_key = o.post_key
-        ORDER BY p.item_number
-        LIMIT 1
-      ) prod ON true
       WHERE o.user_id = p_user_id
         AND (
           NOT p_pickup_available
@@ -226,8 +211,8 @@ AS $function$
         AND (p_customer_exact IS NULL OR o.customer_name = p_customer_exact)
         AND (p_post_key IS NULL OR o.post_key = p_post_key)
         AND o.customer_name ILIKE v_search_pattern
-        AND (p_start_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END >= p_start_date))
-        AND (p_end_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END <= p_end_date))
+        AND (p_start_date IS NULL OR o.ordered_at >= p_start_date)
+        AND (p_end_date IS NULL OR o.ordered_at <= p_end_date)
         AND (v_excluded_customers IS NULL OR o.customer_name <> ALL(v_excluded_customers))
       ORDER BY
         CASE WHEN v_sort_by = 'ordered_at' AND v_sort_order = 'asc' THEN o.ordered_at END ASC,
@@ -261,22 +246,8 @@ AS $function$
         o.post_key,
         o.band_key,
         o.processing_method,
-        o.item_number,
-        prod.product_title,
-        prod.product_barcode,
-        prod.product_pickup_date
+        o.item_number
       FROM orders o
-      LEFT JOIN LATERAL (
-        SELECT
-          p.title AS product_title,
-          p.barcode AS product_barcode,
-          p.pickup_date AS product_pickup_date
-        FROM products p
-        WHERE p.user_id = o.user_id
-          AND p.post_key = o.post_key
-        ORDER BY p.item_number
-        LIMIT 1
-      ) prod ON true
       WHERE o.user_id = p_user_id
         AND (
           NOT p_pickup_available
@@ -302,8 +273,8 @@ AS $function$
         AND (p_customer_exact IS NULL OR o.customer_name = p_customer_exact)
         AND (p_post_key IS NULL OR o.post_key = p_post_key)
         AND o.comment ILIKE v_search_pattern
-        AND (p_start_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END >= p_start_date))
-        AND (p_end_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END <= p_end_date))
+        AND (p_start_date IS NULL OR o.ordered_at >= p_start_date)
+        AND (p_end_date IS NULL OR o.ordered_at <= p_end_date)
         AND (v_excluded_customers IS NULL OR o.customer_name <> ALL(v_excluded_customers))
       ORDER BY
         CASE WHEN v_sort_by = 'ordered_at' AND v_sort_order = 'asc' THEN o.ordered_at END ASC,
@@ -337,22 +308,8 @@ AS $function$
         o.post_key,
         o.band_key,
         o.processing_method,
-        o.item_number,
-        prod.product_title,
-        prod.product_barcode,
-        prod.product_pickup_date
+        o.item_number
       FROM orders o
-      LEFT JOIN LATERAL (
-        SELECT
-          p.title AS product_title,
-          p.barcode AS product_barcode,
-          p.pickup_date AS product_pickup_date
-        FROM products p
-        WHERE p.user_id = o.user_id
-          AND p.post_key = o.post_key
-        ORDER BY p.item_number
-        LIMIT 1
-      ) prod ON true
       WHERE o.user_id = p_user_id
         AND (
           NOT p_pickup_available
@@ -387,8 +344,8 @@ AS $function$
               AND p3.title ILIKE v_search_pattern
           )
         )
-        AND (p_start_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END >= p_start_date))
-        AND (p_end_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END <= p_end_date))
+        AND (p_start_date IS NULL OR o.ordered_at >= p_start_date)
+        AND (p_end_date IS NULL OR o.ordered_at <= p_end_date)
         AND (v_excluded_customers IS NULL OR o.customer_name <> ALL(v_excluded_customers))
       ORDER BY
         CASE WHEN v_sort_by = 'ordered_at' AND v_sort_order = 'asc' THEN o.ordered_at END ASC,
@@ -421,22 +378,8 @@ AS $function$
       o.post_key,
       o.band_key,
       o.processing_method,
-      o.item_number,
-      prod.product_title,
-      prod.product_barcode,
-      prod.product_pickup_date
+      o.item_number
     FROM orders o
-    LEFT JOIN LATERAL (
-      SELECT
-        p.title AS product_title,
-        p.barcode AS product_barcode,
-        p.pickup_date AS product_pickup_date
-      FROM products p
-      WHERE p.user_id = o.user_id
-        AND p.post_key = o.post_key
-      ORDER BY p.item_number
-      LIMIT 1
-    ) prod ON true
     WHERE o.user_id = p_user_id
       AND (
         NOT p_pickup_available
@@ -472,8 +415,8 @@ AS $function$
             AND p3.title ILIKE v_search_pattern
         )
       )
-      AND (p_start_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END >= p_start_date))
-      AND (p_end_date IS NULL OR (CASE WHEN p_date_type = 'updated' THEN o.updated_at ELSE o.ordered_at END <= p_end_date))
+      AND (p_start_date IS NULL OR o.ordered_at >= p_start_date)
+      AND (p_end_date IS NULL OR o.ordered_at <= p_end_date)
       AND (v_excluded_customers IS NULL OR o.customer_name <> ALL(v_excluded_customers))
     ORDER BY
       CASE WHEN v_sort_by = 'ordered_at' AND v_sort_order = 'asc' THEN o.ordered_at END ASC,

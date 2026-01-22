@@ -37,7 +37,6 @@ const fetchOrders = async (key) => {
     p_customer_exact: filters.exactCustomerName || null,
     p_post_key: filters.postKey || null,
     p_pickup_available: !!filters.pickupAvailable,
-    p_date_type: filters.dateType || 'ordered',
   };
 
   const countParams = {
