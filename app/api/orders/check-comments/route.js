@@ -11,13 +11,15 @@ export async function POST(request) {
     const body = await request.json();
     const { commentKeys, postKey, bandKey, userId } = body;
 
-    console.log('📥 API 요청 파라미터:', {
-      commentKeys: commentKeys?.slice(0, 3),
-      commentKeysCount: commentKeys?.length,
-      postKey,
-      bandKey,
-      userId
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.log('📥 API 요청 파라미터:', {
+        commentKeys: commentKeys?.slice(0, 3),
+        commentKeysCount: commentKeys?.length,
+        postKey,
+        bandKey,
+        userId
+      });
+    }
 
     if (!commentKeys || !Array.isArray(commentKeys)) {
       return NextResponse.json({
@@ -54,17 +56,19 @@ export async function POST(request) {
       }, { status: 500 });
     }
 
-    console.log('🔍 주문 데이터 조회 결과:', {
-      commentKeysCount: commentKeys.length,
-      ordersFound: orders?.length || 0,
-      orders: orders?.map(o => ({
-        comment_key: o.comment_key,
-        product_name: o.product_name,
-        quantity: o.quantity,
-        price: o.price,
-        status: o.status
-      }))
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.log('🔍 주문 데이터 조회 결과:', {
+        commentKeysCount: commentKeys.length,
+        ordersFound: orders?.length || 0,
+        orders: orders?.map(o => ({
+          comment_key: o.comment_key,
+          product_name: o.product_name,
+          quantity: o.quantity,
+          price: o.price,
+          status: o.status
+        }))
+      });
+    }
 
 
     // 각 댓글 키에 대해 DB 저장 여부 및 상태 확인 (주문 상세 정보 포함)
@@ -80,14 +84,16 @@ export async function POST(request) {
           status: commentOrders[0].status, // 첫 번째 주문의 상태 사용
           orders: commentOrders.map(order => {
             const finalPrice = order.total_amount || order.price;
-            console.log(`💰 주문 가격 매핑:`, {
-              customer: order.customer_name,
-              product: order.product_name,
-              quantity: order.quantity,
-              original_price: order.price,
-              total_amount: order.total_amount,
-              final_price: finalPrice
-            });
+            if (process.env.NODE_ENV === "development") {
+              console.log(`💰 주문 가격 매핑:`, {
+                customer: order.customer_name,
+                product: order.product_name,
+                quantity: order.quantity,
+                original_price: order.price,
+                total_amount: order.total_amount,
+                final_price: finalPrice
+              });
+            }
             return {
               product_name: order.product_name,
               quantity: order.quantity,
@@ -105,7 +111,9 @@ export async function POST(request) {
       }
     });
 
-    console.log('📤 최종 응답 데이터:', { savedComments });
+    if (process.env.NODE_ENV === "development") {
+      console.log('📤 최종 응답 데이터:', { savedComments });
+    }
 
     return NextResponse.json({
       success: true,

@@ -35,6 +35,38 @@ import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
+
+const ORDER_STATS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const readGlobalStatsCache = (cacheKey) => {
+  if (!cacheKey || typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const savedAt = parsed?.savedAt;
+    if (!savedAt || Date.now() - savedAt > ORDER_STATS_CACHE_TTL_MS) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    return parsed?.data ?? null;
+  } catch (error) {
+    console.warn("[글로벌 통계] 캐시 읽기 실패:", error);
+    return null;
+  }
+};
+
+const writeGlobalStatsCache = (cacheKey, data) => {
+  if (!cacheKey || typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      cacheKey,
+      JSON.stringify({ data, savedAt: Date.now() })
+    );
+  } catch (error) {
+    console.warn("[글로벌 통계] 캐시 쓰기 실패:", error);
+  }
+};
 import {
   clearOrdersTestProductsCache,
   readOrdersTestProductsByBandPostCache,
@@ -448,8 +480,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
-  // 검색 타입: 고객/상품을 모두 찾는 통합 모드로 기본값 설정
-  const searchType = "combined"; // "customer" | "product" | "combined"
+  const [searchType, setSearchType] = useState("customer"); // "customer" | "product" | "post_key"
   const [sortBy, setSortBy] = useState(null); // 기본값: 정렬 안함
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
@@ -472,6 +503,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [activeTab, setActiveTab] = useState("status");
   const tableContainerRef = useRef(null); // 테이블 컨테이너 스크롤 제어용
+  const ENABLE_DETAIL_MODAL = false;
 
   // 편집 관련 상태들
   const [editingOrderId, setEditingOrderId] = useState(null);
@@ -572,6 +604,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (postKey) {
       // 검색어 설정
       setSearchTerm(postKey);
+      setSearchType("post_key");
 
       // 검색 인풋에 값 설정 (여러 번 시도하여 확실하게 설정)
       const setInputValue = () => {
@@ -654,9 +687,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // comment_orders -> legacy orders shape 매핑
   const mapCommentOrderToLegacy = useCallback((row) => {
-    const qty = Number.isFinite(Number(row?.selected_quantity)) ? Number(row.selected_quantity) : 1;
-    const price = Number.isFinite(Number(row?.selected_price)) ? Number(row.selected_price) : (Number.isFinite(Number(row?.price)) ? Number(row.price) : 0);
-    const total = price * qty;
     return {
       // 핵심 식별자 및 기본 정보
       order_id: String(row.comment_order_id ?? row.id ?? row.order_id ?? crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`),
@@ -671,16 +701,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       canceled_at: row.canceled_at || null,
       processing_method: "raw",
 
-      // 상품/금액 관련 (없으면 기본값)
+      // 상품 관련
       product_id: row.selected_product_id || row.product_id || null,
       product_name: row.product_name || null,
-      quantity: qty,
-      price,
-      total_amount: Number.isFinite(total) ? total : 0,
-      selected_barcode_option: row.selected_barcode
-        ? { barcode: row.selected_barcode, price: price || undefined }
-        : undefined,
-      ai_extraction_result: row.ai_extraction_result || null,
 
       // 게시물/댓글 식별
       post_key: row.post_key || null,
@@ -692,7 +715,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       // 기타 UI가 참조하는 필드들 (없으면 안전한 기본값)
       product_title: row.product_title || null,
       product_pickup_date: row.product_pickup_date || null,
-      selected_barcode: row.selected_barcode || null,
       memo: row.memo || null,
     };
   }, []);
@@ -933,24 +955,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return Array.isArray(list) ? list : [];
   }, [postProductsByPostKey, postProductsByBandPost]);
 
-  // --- 현재 페이지 주문들의 총 수량 계산 ---
-
-  // --- 현재 페이지 주문들의 총 수량 및 총 금액 계산 ---
-  const { currentPageTotalQuantity, currentPageTotalAmount } = useMemo(() => {
-    return displayOrders.reduce(
-      (totals, order) => {
-        const quantity = parseInt(order.quantity, 10);
-        const amount = parseFloat(order.total_amount); // <<< total_amount는 실수일 수 있으므로 parseFloat 사용
-
-        totals.currentPageTotalQuantity += isNaN(quantity) ? 0 : quantity;
-        totals.currentPageTotalAmount += isNaN(amount) ? 0 : amount; // <<< 총 금액 합산
-
-        return totals;
-      },
-      { currentPageTotalQuantity: 0, currentPageTotalAmount: 0 } // <<< 초기값을 객체로 설정
-    );
-  }, [displayOrders]);
-  // --- 총 수량 및 총 금액 계산 끝 ---
+  // --- 현재 페이지 총 수량/금액 계산 제거 (사용 안함) ---
   const checkbox = useRef();
 
   const { mutate: globalMutate } = useSWRConfig(); //
@@ -988,21 +993,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
       customEndDate
     );
 
-    // post_key 형식인지 감지
-    // 1. band_number:post_number 형식 (예: "95098260:12545") - 둘 다 숫자이고 콜론으로 구분
-    // 2. Band API post_key 형식 - 정확히 24자의 영숫자/_/- 조합
-    const isPostKeyFormat = (term) => {
-      if (!term) return false;
-      // 숫자:숫자 형식
-      if (/^(\d+):(\d+)$/.test(term)) return true;
-      // Band post_key 형식: 정확히 24자, 영숫자와 _- 허용
-      if (/^[A-Za-z0-9_-]{24}$/.test(term)) return true;
-      return false;
-    };
+    const normalizedSearchTerm = (searchTerm || "").trim();
+    const isPostKeySearch = searchType === "post_key";
+    const resolvedPostKey = isPostKeySearch ? (normalizedSearchTerm || undefined) : undefined;
+    const resolvedSearch = isPostKeySearch ? undefined : (normalizedSearchTerm || undefined);
+    const resolvedSearchType = resolvedSearch
+      ? (isPostKeySearch ? "combined" : searchType)
+      : undefined;
 
-    const detectedPostKey = isPostKeyFormat(searchTerm) ? searchTerm : undefined;
-
-    console.log('🔑 [ordersFilters] searchTerm:', searchTerm, '-> detectedPostKey:', detectedPostKey);
+    console.log('🔑 [ordersFilters] searchTerm:', searchTerm, '-> postKey:', resolvedPostKey);
 
     // 수령가능만 보기 필터 활성화 여부
     const isPickupAvailable = showPickupAvailableOnly || filterSelection === "주문완료+수령가능";
@@ -1034,11 +1033,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (filterSelection === "none") return "none";
         return undefined;
       })(),
-      // raw 모드에서 post_key 형식이면 postKey로 직접 필터링, 아니면 일반 검색
-      postKey: detectedPostKey,
-      // post_key 형식이 아닐 때만 일반 검색어로 처리
-      search: detectedPostKey ? undefined : (searchTerm || undefined),
-      searchType: searchType, // "customer" 또는 "product"
+      // post_key 전용 검색이면 postKey로 직접 필터링
+      postKey: resolvedPostKey,
+      // post_key가 아닐 때만 일반 검색어로 처리
+      search: resolvedSearch,
+      searchType: resolvedSearchType, // "customer" | "product"
       commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined,
       exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined,
       // 날짜 필터
@@ -1396,6 +1395,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
   // RPC 함수로 통합: 미수령/주문완료/결제완료 카운트를 한 번에 조회
+  const globalStatsCacheKey =
+    userData?.userId && mode
+      ? `orders-test-global-stats:${userData.userId}:${mode}`
+      : null;
+  const cachedGlobalStats = readGlobalStatsCache(globalStatsCacheKey);
+
   const {
     data: globalStatsData,
     mutate: mutateGlobalStats,
@@ -1413,6 +1418,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
       ]
       : null,
     async () => {
+      if (cachedGlobalStats) {
+        console.log("📦 [글로벌 통계] 캐시 사용");
+        return cachedGlobalStats;
+      }
+
       const sb = getAuthedClient();
       const rpcName = mode === "raw" ? "get_comment_order_stats" : "get_order_stats";
 
@@ -1433,14 +1443,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
         return { statusCounts: {}, subStatusCounts: {} };
       }
 
-      console.log(`📊 [글로벌 통계] 결과:`, data);
-      return data || { statusCounts: {}, subStatusCounts: {} };
+      const normalized = data || { statusCounts: {}, subStatusCounts: {} };
+      writeGlobalStatsCache(globalStatsCacheKey, normalized);
+      console.log(`📊 [글로벌 통계] 결과:`, normalized);
+      return normalized;
     },
     {
       revalidateOnFocus: false, // 포커스 시 중복 호출 방지
       revalidateOnReconnect: true,
       revalidateIfStale: true,
       dedupingInterval: 30000,
+      revalidateOnMount: cachedGlobalStats ? false : true,
+      fallbackData: cachedGlobalStats || undefined,
     }
   );
 
@@ -1630,32 +1644,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const isSomeDisplayedSelected =
     displayedOrderIds.length > 0 &&
     displayedOrderIds.some((id) => selectedOrderIdSet.has(id));
-
-  // 선택된 주문들의 총 수량과 총 금액 계산
-  const selectedOrderTotals = useMemo(() => {
-    const selectedOrders = displayOrders.filter(order =>
-      selectedOrderIds.includes(order.order_id)
-    );
-
-    const totalQuantity = selectedOrders.reduce((sum, order) => {
-      const quantity = parseInt(order.quantity, 10);
-      return sum + (isNaN(quantity) ? 0 : quantity);
-    }, 0);
-
-    const totalAmount = selectedOrders.reduce((sum, order) => {
-      // selected_barcode_option이 있으면 그 가격 사용, 없으면 기본 가격 사용
-      let price = 0;
-      if (order.selected_barcode_option?.price) {
-        price = order.selected_barcode_option.price;
-      } else if (order.price) {
-        price = order.price;
-      }
-      const quantity = parseInt(order.quantity, 10) || 0;
-      return sum + (price * quantity);
-    }, 0);
-
-    return { totalQuantity, totalAmount };
-  }, [displayOrders, selectedOrderIds]);
 
   useEffect(() => {
     if (checkbox.current)
@@ -1857,18 +1845,25 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 검색창 업데이트 및 검색 실행 함수 ---
   const handleCellClickToSearch = useCallback((searchValue, postKey = null) => {
-    if (!searchValue && !postKey) return; // 빈 값은 무시
+    const trimmedSearchValue = (searchValue || "").trim();
+    const trimmedPostKey = (postKey || "").trim();
+    if (!trimmedSearchValue && !trimmedPostKey) return; // 빈 값은 무시
 
-    // post_key가 제공되면 post_key로 검색 (해당 게시물의 모든 주문)
-    // 그렇지 않으면 searchValue로 검색 (모든 게시물에서 상품명 검색)
-    const searchTerm = postKey || searchValue;
-    const trimmedSearchTerm = searchTerm.trim();
-    const displayValue = searchValue ? searchValue.trim() : trimmedSearchTerm;
-
-    if (searchInputRef.current) {
-      searchInputRef.current.value = displayValue; // 검색창에는 상품명 표시
+    if (trimmedSearchValue) {
+      setSearchType("product");
+      if (searchInputRef.current) {
+        searchInputRef.current.value = trimmedSearchValue;
+      }
+      setSearchTerm(trimmedSearchValue);
+    } else if (trimmedPostKey) {
+      setSearchType("post_key");
+      if (searchInputRef.current) {
+        searchInputRef.current.value = trimmedPostKey;
+      }
+      setSearchTerm(trimmedPostKey);
     }
-    setSearchTerm(trimmedSearchTerm); // 실제 검색은 postKey로
+
+    setExactCustomerFilter(null);
     setCurrentPage(1); // 검색 시 첫 페이지로 이동
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
     // 검색 후 맨 위로 스크롤
@@ -1884,7 +1879,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
 
     try {
-      const response = await fetch(`${window.location.origin}/api/posts/${postId}/products`);
+      const userId = userData?.userId;
+      if (!userId) return [];
+
+      const url = new URL(`/api/posts/${postId}/products`, window.location.origin);
+      url.searchParams.set("user_id", userId);
+      const response = await fetch(url.toString());
       const result = await response.json();
 
       if (result.success) {
@@ -3085,6 +3085,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   };
   const handleTabChange = (tab) => setActiveTab(tab);
   const openDetailModal = (order) => {
+    if (!ENABLE_DETAIL_MODAL) return;
     setSelectedOrder({ ...order });
     // 주문 정보 수정 상태 초기화 복구
     setTempItemNumber(order.item_number || 1);
@@ -3110,6 +3111,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       searchInputRef.current.value = "";
       searchInputRef.current.focus();
     }
+    setSearchType("customer");
     setSearchTerm(""); // 검색어 상태도 초기화
     setExactCustomerFilter(null); // 고객명 필터도 초기화
     setCurrentPage(1); // 페이지 1로 리셋
@@ -3197,6 +3199,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (searchInputRef.current) {
       searchInputRef.current.value = "";
     }
+    setSearchType("customer");
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
@@ -3236,6 +3239,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (searchInputRef.current) {
       searchInputRef.current.value = trimmedName;
     }
+    setSearchType("customer");
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);
@@ -3589,53 +3593,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
         console.error("Update Error (client-side):", err);
       }
       alert(err.message || "주문 정보 업데이트에 실패했습니다.");
-    }
-  };
-
-  // --- 바코드 옵션 변경 핸들러 ---
-  const handleBarcodeOptionChange = async (orderId, selectedOption) => {
-    if (!userData?.userId) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("User ID is missing");
-      }
-      return;
-    }
-
-    try {
-      // comment_orders: 선택 바코드/가격 업데이트
-      const updateData = {
-        selected_barcode: selectedOption.barcode,
-        selected_price: selectedOption.price,
-      };
-
-      await updateCommentOrder(orderId, updateData, userData.userId, { revalidate: false });
-
-      // 로컬/SWR 캐시 갱신 후 상품 캐시만 새로고침 (네트워크 재호출 최소화)
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.order_id === orderId
-            ? { ...o, ...updateData }
-            : o
-        )
-      );
-      await mutateOrders(
-        (prev) => {
-          if (!prev?.data) return prev;
-          return {
-            ...prev,
-            data: prev.data.map((o) =>
-              o.order_id === orderId ? { ...o, ...updateData } : o
-            ),
-          };
-        },
-        { revalidate: false, rollbackOnError: true }
-      );
-      await mutateProducts(); // 상품 데이터만 재조회 트리거
-    } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to update barcode option:", error);
-      }
-      alert("바코드 옵션 변경에 실패했습니다.");
     }
   };
 
@@ -4046,120 +4003,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   />
                 </div>
               </div>
-              {/* 검색 필터 */}
-              <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-32 self-stretch">
-                  <TagIcon className="w-5 h-5 mr-2 text-gray-400 flex-shrink-0" />
-                  검색
-                </div>
-                {/* 검색 입력 및 버튼들 - 반응형 레이아웃 재조정 */}
-                <div className="bg-white flex-grow w-full px-4 py-0 flex flex-wrap md:flex-nowrap md:items-center gap-2">
-                  {/* 검색 입력 */}
-                  <div className="relative w-full md:flex-grow md:max-w-sm order-1">
-                    {" "}
-                    {/* order-1 */}
-                    <input
-                      ref={searchInputRef}
-                      type="text"
-                      placeholder="고객명, 상품명, 바코드, post_key..."
-                      onKeyDown={handleKeyDown}
-                      className="w-full pl-9 pr-10 py-2 md:py-3 text-sm md:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                      disabled={isDataLoading}
-                    />
-                    {/* TODO: 내일 처리 - 검색 타입 선택 드롭다운 */}
-                    {/* <div className="flex items-center gap-2 w-full md:flex-grow md:max-w-lg order-1">
-                      <select
-                        value={searchType}
-                        onChange={(e) => setSearchType(e.target.value)}
-                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        disabled={isDataLoading}
-                      >
-                        <option value="customer">고객명</option>
-                        <option value="product">상품명</option>
-                      </select>
-                      <div className="relative flex-1">
-                        <input
-                          ref={searchInputRef}
-                          type="text"
-                          placeholder={searchType === "product" ? "상품명 검색..." : "고객명 검색..."}
-                          onKeyDown={handleKeyDown}
-                          className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                          disabled={isDataLoading}
-                        />
-                    </div> */}
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                      <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                    </div>
-                    {/* X 버튼 - 항상 표시 */}
-                    <button
-                      type="button"
-                      onClick={clearInputValue}
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                      aria-label="검색 내용 지우기"
-                    >
-                      <XMarkIcon className="w-5 h-5" />
-                    </button>
-                  </div>
-                  {/* 검색/초기화 버튼 그룹 */}
-                  <div className="flex flex-row gap-2 w-full py-2 sm:w-auto order-2">
-                    {" "}
-                    {/* order-2, sm:w-auto */}
-                    <button
-                      onClick={handleSearch}
-                      className="flex-1 sm:flex-none px-8 py-2 md:py-3 text-sm md:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2" // flex-1 sm:flex-none
-                      disabled={isDataLoading}
-                    >
-                      {isDataLoading ? (
-                        <>
-                          <svg
-                            className="animate-spin h-4 w-4 md:h-5 md:w-5 text-white"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            ></path>
-                          </svg>
-                          <span>검색 중...</span>
-                        </>
-                      ) : (
-                        "검색"
-                      )}
-                    </button>
-                    <button
-                      onClick={handleClearSearch}
-                      disabled={isDataLoading}
-                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 md:py-3 text-sm md:text-base rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" // flex-1 sm:flex-none
-                      aria-label="검색 초기화"
-                      title="검색 및 필터 초기화"
-                    >
-                      <ArrowUturnLeftIcon className="w-4 h-4 md:w-5 md:h-5 mr-1" />
-                      초기화
-                    </button>
-                    <button
-                      onClick={() => handleSyncNow({ force: true })}
-                      disabled={isDataLoading || isSyncing}
-                      className="flex-1 sm:flex-none flex items-center justify-center px-5 py-2 md:py-3 text-sm md:text-base rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                      aria-label="데이터 동기화"
-                      title="서버에서 최신 데이터 다시 불러오기"
-                    >
-                      <ArrowPathIcon className={`w-4 h-4 md:w-5 md:h-5 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
-                      {isSyncing ? "동기화 중..." : "동기화"}
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
           </LightCard>
         </div>
@@ -4250,14 +4093,33 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   검색
                 </div>
                 <div className="bg-white flex-grow w-full px-3 md:px-4 py-2 flex flex-col lg:flex-row items-stretch lg:items-center gap-2 lg:justify-between">
-                  {/* 첫 번째 줄: 검색 입력 + 버튼들 */}
+                  {/* 첫 번째 줄: 검색 타입 + 입력 + 버튼들 */}
                   <div className="flex items-center gap-2 flex-wrap lg:flex-1">
+                    <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value)}
+                      className="min-w-[110px] flex-shrink-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      disabled={isDataLoading}
+                    >
+                        <option value="customer">고객명</option>
+                        <option value="product">상품명</option>
+                        <option value="comment">댓글내용</option>
+                        <option value="post_key">post_key</option>
+                    </select>
                     {/* 검색 입력 */}
                     <div className="relative flex-1 min-w-[150px] lg:max-w-sm">
                       <input
                         ref={searchInputRef}
                         type="text"
-                        placeholder="고객명, 상품명, 바코드, post_key..."
+                          placeholder={
+                            searchType === "product"
+                              ? "상품명 검색..."
+                              : searchType === "comment"
+                                ? "댓글 검색..."
+                                : searchType === "post_key"
+                                  ? "post_key 검색..."
+                                  : "고객명 검색..."
+                          }
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             handleSearch();
@@ -4316,6 +4178,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   <div className="flex items-center gap-2">
                     {userData?.function_number === 9 ? (
                       <TestUpdateButton
+                        refreshSWRCacheOnComplete={false}
                         onProcessingChange={(isProcessing, result) => {
                           setIsTestUpdating(isProcessing);
                           if (!isProcessing && result) {
@@ -4329,7 +4192,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         onComplete={async (result) => {
                           try {
                             await refreshOrders();
-                            await mutateProducts();
                           } catch (_) { }
                         }}
                       />
@@ -4727,7 +4589,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                 return idx + 1;
                               };
 
-                              const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
 
                               return (
                                 <div className="space-y-2">
@@ -4735,12 +4596,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                                     const itemNo = getItemNumber(p, idx);
                                     const rawTitle = p?.title || p?.name || '-';
                                     const title = cleanProductName(rawTitle);
-                                    const selected = isSelected(p);
-                                    const price = (selected && Number.isFinite(order?.selected_price))
-                                      ? Number(order.selected_price)
-                                      : (Number.isFinite(Number(p?.base_price))
-                                        ? Number(p.base_price)
-                                        : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null));
+                                    const price = Number.isFinite(Number(p?.base_price))
+                                      ? Number(p.base_price)
+                                      : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null);
                                     let imgUrl = p?.image_url || p?.thumbnail_url || p?.thumb_url || null;
                                     if (!imgUrl) {
                                       const bk = p?.band_key || order?.band_key;
@@ -4806,12 +4664,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             {(() => {
                               const list = getCandidateProductsForOrder(order) || [];
                               if (!Array.isArray(list) || list.length === 0) return <span className="text-sm text-gray-400">없음</span>;
-                              const isSelected = (p) => order.product_id && p?.product_id === order.product_id;
                               return (
                                 <div className="space-y-2">
                                   {list.map((p, idx) => {
-                                    const selected = isSelected(p);
-                                    const barcodeVal = selected && order?.selected_barcode ? order.selected_barcode : (p?.barcode || '');
+                                    const barcodeVal = p?.barcode || order?.product_barcode || '';
                                     const isLastBarcode = idx === list.length - 1;
                                     return (
                                       <div
@@ -5028,7 +4884,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       </main>
 
       {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
-      {isDetailModalOpen && selectedOrder && (
+      {ENABLE_DETAIL_MODAL && isDetailModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
           <div className="bg-white rounded-xl max-w-2xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* 모달 헤더 */}
@@ -5930,156 +5786,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       {/* 토스트 알림 컨테이너 */}
       <ToastContainer toasts={toasts} hideToast={hideToast} />
-    </div>
-  );
-}
-
-// 바코드 옵션 선택 컴포넌트
-function BarcodeOptionSelector({ order, product, onOptionChange }) {
-  const [selectedOption, setSelectedOption] = useState(null);
-  const isCompleted = order.status === "수령완료";
-
-  // 바코드 옵션이 있는지 확인
-  const barcodeOptions = useMemo(
-    () => product?.barcode_options?.options || [],
-    [product?.barcode_options?.options]
-  );
-  const hasOptions = barcodeOptions.length > 1; // 기본 옵션 외에 다른 옵션이 있는지
-
-  // AI가 매칭한 옵션과 바코드 옵션을 매칭하는 함수
-  const findMatchingBarcodeOption = (aiSelectedOption, customerComment) => {
-    if (!aiSelectedOption && !customerComment) return null;
-
-    // 매칭 키워드 정의
-    const matchingKeywords = {
-      반통: ["반통", "반"],
-      "1통": ["1통", "한통", "일통", "1개", "한개"],
-      "2통": ["2통", "두통", "이통", "2개", "두개"],
-      "3통": ["3통", "세통", "삼통", "3개", "세개"],
-      "4통": ["4통", "네통", "사통", "4개", "네개"],
-      "5통": ["5통", "다섯통", "오통", "5개", "다섯개"],
-      "1개": ["1개", "한개", "일개"],
-      "2개": ["2개", "두개", "이개"],
-      "3개": ["3개", "세개", "삼개"],
-      "1팩": ["1팩", "한팩", "일팩"],
-      "2팩": ["2팩", "두팩", "이팩"],
-      "1박스": ["1박스", "한박스", "일박스"],
-      "2박스": ["2박스", "두박스", "이박스"],
-      "1세트": ["1세트", "한세트", "일세트"],
-      "2세트": ["2세트", "두세트", "이세트"],
-    };
-
-    // 1. AI가 선택한 옵션과 바코드 옵션 직접 매칭
-    if (aiSelectedOption) {
-      const aiOption = aiSelectedOption.toLowerCase();
-      const matchedOption = barcodeOptions.find((option) => {
-        const optionName = option.name.toLowerCase();
-        return optionName.includes(aiOption) || aiOption.includes(optionName);
-      });
-      if (matchedOption) {
-        // AI 매칭 성공
-        return matchedOption;
-      }
-    }
-
-    // 2. 고객 댓글과 바코드 옵션 키워드 매칭
-    if (customerComment) {
-      const comment = customerComment.toLowerCase();
-
-      for (const [optionKey, keywords] of Object.entries(matchingKeywords)) {
-        // 댓글에 해당 키워드가 포함되어 있는지 확인
-        const hasKeyword = keywords.some((keyword) =>
-          comment.includes(keyword)
-        );
-        if (hasKeyword) {
-          // 바코드 옵션에서 해당 키워드를 포함한 옵션 찾기
-          const matchedOption = barcodeOptions.find((option) => {
-            const optionName = option.name.toLowerCase();
-            return keywords.some((keyword) => optionName.includes(keyword));
-          });
-          if (matchedOption) {
-            // 댓글 매칭 성공
-            return matchedOption;
-          }
-        }
-      }
-    }
-
-    return null;
-  };
-
-  // 초기 선택값 설정 (우선순위: 저장된 선택값 > AI 매칭 > 메인 옵션)
-  useEffect(() => {
-    if (order.selected_barcode_option) {
-      // 이미 선택된 옵션이 있으면 해당 옵션 선택
-      const savedOption = barcodeOptions.find(
-        (opt) => opt.barcode === order.selected_barcode_option.barcode
-      );
-      setSelectedOption(
-        savedOption || barcodeOptions.find((opt) => opt.is_main)
-      );
-    } else {
-      // 🔥 AI가 매칭한 옵션을 기본값으로 설정
-      const aiMatchedOption = findMatchingBarcodeOption(
-        order.ai_extraction_result?.selectedOption,
-        order.comment
-      );
-
-      if (aiMatchedOption) {
-        setSelectedOption(aiMatchedOption);
-      } else {
-        // AI 매칭 실패 시 기본값은 메인 옵션
-        const mainOption = barcodeOptions.find((opt) => opt.is_main);
-        setSelectedOption(mainOption || barcodeOptions[0]);
-      }
-    }
-  }, [order, barcodeOptions]);
-
-  const handleOptionSelect = (option) => {
-    setSelectedOption(option);
-    onOptionChange(order.order_id, option);
-  };
-
-  // 옵션이 없거나 1개만 있으면 선택 UI 표시 안함
-  if (!hasOptions) {
-    return null;
-  }
-
-  return (
-    <div className="mt-1 ml-6 pl-4 border-l-2 border-gray-300 bg-gray-50/30 rounded-r-lg">
-      <div className="py-2">
-        {/* 가로 배치 옵션들 - 간소화 */}
-        <div className="flex flex-wrap gap-2">
-          {barcodeOptions.map((option, index) => (
-            <label
-              key={index}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md border ${isCompleted ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-                } transition-all text-sm ${selectedOption?.barcode === option.barcode
-                  ? "border-blue-400 bg-blue-100 shadow-sm"
-                  : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-            >
-              <input
-                type="radio"
-                name={`barcode-option-${order.order_id}`}
-                checked={selectedOption?.barcode === option.barcode}
-                disabled={isCompleted}
-                onChange={() => handleOptionSelect(option)}
-                className="h-3 w-3 text-gray-600 focus:ring-gray-500"
-              />
-              <span className="text-sm font-medium text-gray-900">
-                {option.name}
-                {option.is_main && (
-                  <span className="text-gray-500 ml-1">(기본)</span>
-                )}
-              </span>
-              <span className="text-xs text-gray-600">
-                ₩{option.price?.toLocaleString()}
-              </span>
-            </label>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
