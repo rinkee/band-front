@@ -9,9 +9,12 @@ export default function UpdateLogsPage() {
       updates: [
         '검색 필터 적용, 주문 검색 호출 최적화',
         '주문 통계 호출 최적화',
-      
+        '상품정보 캐시 사용 및 go/gco 응답 축소',
+        '최신 배포 체크 추가'
       ]
     },
+    //RPC 상품필드 제거하고 products 조회로 통일
+    //get_orders date_type 제거 + get_comment_orders 간소화
     {
       id: 9,
       date: '2026년 1월 22일',
