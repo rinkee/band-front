@@ -199,6 +199,36 @@ function LayoutContent({ children }) {
           setUserData(userDataObj); // 사용자 데이터 상태 업데이트
           setIsLoggedIn(true); // 로그인 상태를 true로 설정
           // 사용자 로그인됨
+          return;
+        }
+
+        // 세션이 없으면 localStorage의 userId로 최소 로그인 상태 복원
+        const storedUserId = localStorage.getItem("userId");
+        if (storedUserId) {
+          let fallbackLabel = null;
+          try {
+            const raw = localStorage.getItem("offlineAccounts");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const match = parsed.find((item) => item?.userId === storedUserId);
+                fallbackLabel = match?.storeName || null;
+              }
+            }
+          } catch (_) {
+            // ignore parse errors
+          }
+
+          const fallbackUser = {
+            userId: storedUserId,
+          };
+          if (fallbackLabel) {
+            fallbackUser.store_name = fallbackLabel;
+            fallbackUser.loginId = fallbackLabel;
+          }
+          setUserData(fallbackUser);
+          setIsLoggedIn(true);
+          return;
         } else {
           // 사용자 데이터 또는 토큰 중 하나라도 없으면 로그아웃 상태로 간주합니다.
           setIsLoggedIn(false); // 로그인 상태를 false로 설정
@@ -213,6 +243,16 @@ function LayoutContent({ children }) {
         // 잠재적으로 손상된 데이터 제거
         sessionStorage.removeItem("userData");
         sessionStorage.removeItem("token");
+        try {
+          const storedUserId = localStorage.getItem("userId");
+          if (storedUserId) {
+            setUserData({ userId: storedUserId });
+            setIsLoggedIn(true);
+            return;
+          }
+        } catch (_) {
+          // ignore storage errors
+        }
         setIsLoggedIn(false); // 로그아웃 상태로 설정
         setUserData(null); // 사용자 데이터 초기화
       }
@@ -503,7 +543,7 @@ function LayoutContent({ children }) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                       <span className="text-xs lg:text-sm font-medium text-indigo-700">
-                        {userData?.loginId}
+                        {userData?.loginId || userData?.store_name || ""}
                       </span>
                       <svg className={`w-4 h-4 text-indigo-600 transition-transform ${userDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />

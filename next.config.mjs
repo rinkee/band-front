@@ -3,6 +3,32 @@ const isGithubPages = process.env.GITHUB_PAGES === "true";
 
 const isProd = process.env.NODE_ENV === "production";
 
+import fs from "fs";
+import path from "path";
+
+const getVersionFromFile = () => {
+  try {
+    const versionPath = path.join(process.cwd(), "public", "version.json");
+    const raw = fs.readFileSync(versionPath, "utf8");
+    const data = JSON.parse(raw);
+    if (data?.latest?.version) {
+      return data.latest.version;
+    }
+    if (Array.isArray(data?.releases) && data.releases.length > 0) {
+      const first = data.releases.find((item) => item?.version);
+      if (first?.version) return first.version;
+    }
+    if (data?.version) {
+      return data.version;
+    }
+  } catch (_) {
+    // ignore
+  }
+  return null;
+};
+
+const versionFromFile = getVersionFromFile();
+
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
@@ -122,6 +148,7 @@ const nextConfig = {
   // 빌드 버전 문자열을 클라이언트에 주입 (업데이트 알림용)
   env: {
     NEXT_PUBLIC_APP_VERSION:
+      versionFromFile ||
       process.env.NEXT_PUBLIC_APP_VERSION ||
       process.env.VERCEL_GIT_COMMIT_SHA ||
       process.env.VERCEL_DEPLOYMENT_ID ||

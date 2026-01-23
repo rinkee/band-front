@@ -18,6 +18,7 @@ export default function TestUpdateButton({
   onProcessingChange,
   onComplete,
   refreshSWRCacheOnComplete = true,
+  onKeyStatusChange,
 }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [cooldownUntil, setCooldownUntil] = useState(0);
@@ -203,6 +204,12 @@ export default function TestUpdateButton({
   React.useEffect(() => {
     fetchKeyStatus();
   }, [fetchKeyStatus]);
+
+  React.useEffect(() => {
+    if (onKeyStatusChange) {
+      onKeyStatusChange({ keyStatus, backupSummary });
+    }
+  }, [onKeyStatusChange, keyStatus, backupSummary]);
 
   const fetchLastWeek = async (table, columns, userId, dateColumn) => {
     const since = new Date(Date.now() - ONE_WEEK_MS).toISOString();
@@ -510,26 +517,9 @@ export default function TestUpdateButton({
     }
   };
 
-  const showKeyStatus = true;
-  const keyStatusLabel = backupSummary
-    ? backupSummary
-    : keyStatus === "backup"
-    ? "백업키 사용중"
-    : "기본키 사용중";
-  const keyStatusClass = backupSummary
-    ? "text-gray-800"
-    : keyStatus === "backup"
-    ? "text-amber-500"
-    : "text-emerald-600";
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
-        {showKeyStatus && (
-          <span className={`text-xs font-semibold ${keyStatusClass}`}>
-            {keyStatusLabel}
-          </span>
-        )}
         <button
           onClick={handleTestUpdate}
           disabled={isProcessing}

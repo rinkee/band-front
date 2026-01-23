@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, forwardRef, useMemo, useCallback, startTransition } from "react"; // React Fragment 사용을 위해 React 추가
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle, useMemo, useCallback, startTransition } from "react"; // React Fragment 사용을 위해 React 추가
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -74,6 +74,245 @@ import {
   writeOrdersTestProductsCache,
 } from "../lib/ordersTestProductsCache";
 
+const OrdersSearchBar = forwardRef(function OrdersSearchBar(
+  {
+    initialSearchType = "customer",
+    onSearchTypeChange,
+    searchInputRef,
+    isDataLoading,
+    isSyncing,
+    onSearch,
+    onClearSearch,
+    onSyncNow,
+    onClearInput,
+    onRefreshOrders,
+    onMutateProducts,
+    totalItems,
+    userFunctionNumber,
+    onKeyStatusChange,
+    onProcessingChange,
+  },
+  ref
+) {
+  const [searchType, setSearchType] = useState(initialSearchType);
+  const [showSearchMore, setShowSearchMore] = useState(false);
+  const dropdownRef = useRef(null);
+  const moreButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!showSearchMore) return;
+    const handleClickOutside = (event) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
+        moreButtonRef.current &&
+        !moreButtonRef.current.contains(event.target)
+      ) {
+        setShowSearchMore(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSearchMore]);
+
+  const applySearchType = useCallback(
+    (nextType) => {
+      setSearchType(nextType);
+      if (typeof onSearchTypeChange === "function") {
+        onSearchTypeChange(nextType);
+      }
+    },
+    [onSearchTypeChange]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setSearchType: (nextType) => {
+        applySearchType(nextType);
+      },
+    }),
+    [applySearchType]
+  );
+
+  return (
+    <div className="sticky top-0 z-50 bg-gray-200 px-4 lg:px-6 pb-4 mt-6">
+      <div>
+        <div className="w-full px-3 md:px-4 py-3 bg-white border border-gray-200 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex flex-1 items-center gap-2 min-w-0">
+            <div className="relative flex items-center flex-1 lg:flex-none lg:w-[500px] border border-gray-300 rounded-lg bg-white overflow-visible min-w-0">
+              <div className="flex items-center bg-gray-100 px-1 py-1 flex-shrink-0">
+                <div className="flex items-center border-gray-200 bg-gray-100 p-1 text-sm lg:text-base">
+                  <label
+                    className={`cursor-pointer select-none rounded-md px-2 lg:px-3 py-1 transition whitespace-nowrap ${
+                      searchType === "customer"
+                        ? "bg-black text-white shadow-sm font-semibold"
+                        : "text-gray-800 hover:text-gray-900"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="searchType"
+                      checked={searchType === "customer"}
+                      onChange={() => applySearchType("customer")}
+                      disabled={isDataLoading}
+                      className="sr-only"
+                    />
+                    <span className="text-xs lg:text-base">고객명</span>
+                  </label>
+                  <label
+                    className={`cursor-pointer select-none rounded-md px-2 lg:px-3 py-1 transition whitespace-nowrap ${
+                      searchType === "product"
+                        ? "bg-black text-white shadow-sm font-semibold"
+                        : "text-gray-800 hover:text-gray-900"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="searchType"
+                      checked={searchType === "product"}
+                      onChange={() => applySearchType("product")}
+                      disabled={isDataLoading}
+                      className="sr-only"
+                    />
+                    <span className="text-xs lg:text-base">상품명</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSearchMore(!showSearchMore)}
+                    ref={moreButtonRef}
+                    className="hidden sm:inline-block ml-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    ▼
+                  </button>
+                </div>
+              </div>
+
+              {showSearchMore && (
+                <div
+                  ref={dropdownRef}
+                  className="absolute left-0 top-full mt-2 w-40 rounded-md border border-gray-200 bg-white shadow-lg z-[70]"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applySearchType("comment");
+                      setShowSearchMore(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                      searchType === "comment" ? "bg-gray-100 font-semibold" : ""
+                    }`}
+                  >
+                    댓글내용
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applySearchType("post_key");
+                      setShowSearchMore(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                      searchType === "post_key" ? "bg-gray-100 font-semibold" : ""
+                    }`}
+                  >
+                    post_key
+                  </button>
+                </div>
+              )}
+
+              <div className="relative flex-1 min-w-0">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder={
+                    searchType === "product"
+                      ? "상품명으로 검색하세요"
+                      : searchType === "comment"
+                        ? "댓글내용으로 검색하세요"
+                        : searchType === "post_key"
+                          ? "post_key로 검색하세요"
+                          : "고객명으로 검색하세요"
+                  }
+                  onKeyDown={(e) => e.key === "Enter" && onSearch()}
+                  className="w-full pl-2 pr-7 py-2 text-sm lg:pl-3 lg:py-3 lg:text-base border-0 focus:outline-none focus:ring-0 bg-transparent"
+                  disabled={isDataLoading}
+                />
+                <button
+                  type="button"
+                  onClick={onClearInput}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={onSearch}
+              className="flex-shrink-0 px-3 lg:px-5 py-2 lg:py-3 text-sm lg:text-base font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 whitespace-nowrap"
+              disabled={isDataLoading}
+            >
+              검색
+            </button>
+
+            <button
+              onClick={onClearSearch}
+              className="flex-shrink-0 flex items-center justify-center px-3 lg:px-4 py-2 lg:py-3 rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+              title="초기화"
+            >
+              <ArrowUturnLeftIcon className="w-5 h-5 lg:mr-1" />
+              <span className="hidden lg:inline text-sm font-medium">초기화</span>
+            </button>
+
+            <button
+              onClick={() => onSyncNow({ force: true })}
+              disabled={isSyncing}
+              className="flex-shrink-0 flex items-center justify-center px-3 lg:px-4 py-2 lg:py-3 rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+              title="새로고침"
+            >
+              <ArrowPathIcon className={`w-5 h-5 lg:mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+              <span className="hidden lg:inline text-sm font-medium">새로고침</span>
+            </button>
+          </div>
+
+          <div className="flex-none flex items-center justify-end">
+            {userFunctionNumber === 9 ? (
+              <div className="relative group">
+                <TestUpdateButton
+                  refreshSWRCacheOnComplete={false}
+                  onKeyStatusChange={({ keyStatus }) => {
+                    if (onKeyStatusChange) onKeyStatusChange(keyStatus);
+                  }}
+                  onProcessingChange={(isProcessing, result) => {
+                    if (onProcessingChange) onProcessingChange(isProcessing, result);
+                  }}
+                  onComplete={async () => {
+                    try {
+                      if (onRefreshOrders) await onRefreshOrders();
+                    } catch (_) {}
+                  }}
+                />
+              </div>
+            ) : (
+              <UpdateButton
+                pageType="orders"
+                totalItems={totalItems}
+                onSuccess={async () => {
+                  try {
+                    if (onRefreshOrders) await onRefreshOrders();
+                    if (onMutateProducts) await onMutateProducts();
+                  } catch (_) {}
+                }}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // --- 아이콘 (Heroicons) ---
 import {
   CheckCircleIcon,
@@ -101,7 +340,6 @@ import {
   XMarkIcon,
   CalendarDaysIcon,
   FunnelIcon,
-  TagIcon,
   CheckIcon,
   CodeBracketIcon,
   ClockIcon,
@@ -227,7 +465,7 @@ function CustomRadioGroup({
   disabled = false,
 }) {
   return (
-    <div className="flex items-center gap-x-4 md:gap-x-6 gap-y-3 flex-wrap">
+    <div className="flex items-center gap-x-4 md:gap-x-4 gap-y-3 flex-wrap">
       {options.map((option) => (
         <label
           key={option.value}
@@ -310,7 +548,14 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 }
 
 // --- 상태 배지 ---
-function StatusBadge({ status, processingMethod, completedAt }) {
+function StatusBadge({
+  status,
+  processingMethod,
+  completedAt,
+  orderedAt,
+  paidAt,
+  canceledAt,
+}) {
   let bgColor, textColor;
   switch (status) {
     case "수령완료":
@@ -360,7 +605,7 @@ function StatusBadge({ status, processingMethod, completedAt }) {
     }
   };
 
-  const formatCompletedAt = (dateStr) => {
+  const formatStatusAt = (dateStr) => {
     if (!dateStr) return null;
     const date = new Date(dateStr);
     const month = date.getMonth() + 1;
@@ -370,6 +615,16 @@ function StatusBadge({ status, processingMethod, completedAt }) {
     return `${month}/${day} ${hour}:${minute}`;
   };
 
+  const getStatusTimestamp = () => {
+    if (status === "수령완료") return completedAt;
+    if (status === "주문취소") return canceledAt;
+    if (status === "결제완료") return paidAt;
+    if (status === "주문완료") return orderedAt;
+    return null;
+  };
+
+  const statusTimestamp = getStatusTimestamp();
+
   return (
     <div className="flex flex-col items-center">
       <span
@@ -378,9 +633,9 @@ function StatusBadge({ status, processingMethod, completedAt }) {
         {getProcessingIcon()}
         {status}
       </span>
-      {status === "수령완료" && completedAt && (
+      {statusTimestamp && (
         <span className="text-[10px] text-gray-500 mt-0.5">
-          {formatCompletedAt(completedAt)}
+          {formatStatusAt(statusTimestamp)}
         </span>
       )}
     </div>
@@ -479,7 +734,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(""); // 디바운스된 검색어 상태
-  const [searchType, setSearchType] = useState("customer"); // "customer" | "product" | "post_key"
+  const [appliedSearchType, setAppliedSearchType] = useState("customer"); // "customer" | "product" | "post_key"
+  const searchTypeRef = useRef("customer");
+  const searchBarRef = useRef(null);
+  const [bandKeyStatus, setBandKeyStatus] = useState("main"); // main | backup
   const [sortBy, setSortBy] = useState(null); // 기본값: 정렬 안함
   const [sortOrder, setSortOrder] = useState("desc");
   const [filterSelection, setFilterSelection] = useState("주문완료"); // 사용자가 UI에서 선택한 값
@@ -608,7 +866,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (postKey) {
       // 검색어 설정
       setSearchTerm(postKey);
-      setSearchType("post_key");
+      searchTypeRef.current = "post_key";
+      setAppliedSearchType("post_key");
+      if (searchBarRef.current?.setSearchType) {
+        searchBarRef.current.setSearchType("post_key");
+      }
 
       // 검색 인풋에 값 설정 (여러 번 시도하여 확실하게 설정)
       const setInputValue = () => {
@@ -700,6 +962,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       status: row.order_status || row.status || "주문완료",
       sub_status: row.sub_status || undefined,
       ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
+      paid_at: row.paid_at || null,
       updated_at: row.updated_at || row.modified_at || row.updatedAt || row.updated_at || null,
       completed_at: row.received_at || row.completed_at || null,
       canceled_at: row.canceled_at || null,
@@ -996,11 +1259,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     );
 
     const normalizedSearchTerm = (searchTerm || "").trim();
-    const isPostKeySearch = searchType === "post_key";
+    const isPostKeySearch = appliedSearchType === "post_key";
     const resolvedPostKey = isPostKeySearch ? (normalizedSearchTerm || undefined) : undefined;
     const resolvedSearch = isPostKeySearch ? undefined : (normalizedSearchTerm || undefined);
     const resolvedSearchType = resolvedSearch
-      ? (isPostKeySearch ? "combined" : searchType)
+      ? (isPostKeySearch ? "combined" : appliedSearchType)
       : undefined;
 
     console.log('🔑 [ordersFilters] searchTerm:', searchTerm, '-> postKey:', resolvedPostKey);
@@ -1046,7 +1309,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       startDate: dateParams.startDate,
       endDate: dateParams.endDate,
     };
-  }, [sortBy, sortOrder, filterSelection, searchTerm, searchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate, showPickupAvailableOnly]);
+  }, [sortBy, sortOrder, filterSelection, searchTerm, appliedSearchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate, showPickupAvailableOnly]);
 
   const isRawMode = mode === "raw";
 
@@ -1580,7 +1843,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       { value: "미수령", label: "미수령", badgeCount: unreceivedBadgeCount },
       { value: "주문취소", label: "주문취소" },
       { value: "결제완료", label: "결제완료", badgeCount: paidCountData ?? 0, badgeColor: "yellow" },
-      { value: "확인필요", label: "확인필요" },
     ],
     [completedCountData, paidCountData, unreceivedBadgeCount]
   );
@@ -1619,6 +1881,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
       if (updateData.canceled_at !== undefined) {
         payload.canceled_at = updateData.canceled_at;
+      }
+      if (updateData.paid_at !== undefined) {
+        payload.paid_at = updateData.paid_at;
       }
       return await legacyMutations.updateOrderStatus(orderId, payload, userId, { revalidate: false });
     }
@@ -1855,13 +2120,21 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (!trimmedSearchValue && !trimmedPostKey) return; // 빈 값은 무시
 
     if (trimmedSearchValue) {
-      setSearchType("product");
+      searchTypeRef.current = "product";
+      setAppliedSearchType("product");
+      if (searchBarRef.current?.setSearchType) {
+        searchBarRef.current.setSearchType("product");
+      }
       if (searchInputRef.current) {
         searchInputRef.current.value = trimmedSearchValue;
       }
       setSearchTerm(trimmedSearchValue);
     } else if (trimmedPostKey) {
-      setSearchType("post_key");
+      searchTypeRef.current = "post_key";
+      setAppliedSearchType("post_key");
+      if (searchBarRef.current?.setSearchType) {
+        searchBarRef.current.setSearchType("post_key");
+      }
       if (searchInputRef.current) {
         searchInputRef.current.value = trimmedPostKey;
       }
@@ -2108,13 +2381,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (mode === "raw") {
         // Raw 모드: 각 주문을 개별적으로 업데이트
         const nowISO = new Date().toISOString();
+        const paidAtById = new Map(orders.map((order) => [order.order_id, order.paid_at]));
         const getAllowedOrderStatus = (st) => {
           const allowed = ["주문완료", "수령완료", "결제완료", "미수령", "주문취소", "확인필요"];
           if (allowed.includes(st)) return st;
           return "주문완료";
         };
 
-        const buildUpdate = (st) => {
+        const buildUpdate = (st, orderId) => {
           const base = {
             order_status: getAllowedOrderStatus(st),
             canceled_at: null,
@@ -2126,6 +2400,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
             base.received_at = nowISO;
           } else if (st === "주문취소") {
             base.canceled_at = nowISO;
+          } else if (st === "결제완료") {
+            const existingPaidAt = paidAtById.get(orderId) || null;
+            if (!existingPaidAt) {
+              base.paid_at = nowISO;
+            }
           } else if (["미수령", "확인필요", "수령가능"].includes(st)) {
             base.sub_status = st;
           }
@@ -2135,7 +2414,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         const results = await Promise.allSettled(
           orderIdsToProcess.map(id =>
-            rawMutations.updateCommentOrder(id, buildUpdate(newStatus), userData.userId, { revalidate: false })
+            rawMutations.updateCommentOrder(id, buildUpdate(newStatus, id), userData.userId, { revalidate: false })
           )
         );
 
@@ -2465,13 +2744,17 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   useEffect(() => {
     if (ordersData?.data) {
-      // comment_orders 데이터를 레거시 UI가 기대하는 형태로 변환하여 표시
-      try {
-        const mapped = Array.isArray(ordersData.data)
-          ? ordersData.data.map(mapCommentOrderToLegacy)
-          : [];
-        setOrders(mapped);
-      } catch (_) {
+      if (mode === "raw") {
+        // comment_orders 데이터를 레거시 UI가 기대하는 형태로 변환하여 표시
+        try {
+          const mapped = Array.isArray(ordersData.data)
+            ? ordersData.data.map(mapCommentOrderToLegacy)
+            : [];
+          setOrders(mapped);
+        } catch (_) {
+          setOrders(ordersData.data);
+        }
+      } else {
         setOrders(ordersData.data);
       }
       // Debug pickup availability per band (beta)
@@ -2485,7 +2768,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
     // 클라이언트 측 페이지네이션에서는 필터 변경 시 이미 setCurrentPage(1) 처리됨
     // 서버 데이터 체크는 불필요 (항상 page=1로 요청하므로)
-  }, [ordersData, ordersError]);
+  }, [ordersData, ordersError, mode, mapCommentOrderToLegacy]);
   // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -2982,6 +3265,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       const nowISO = new Date().toISOString();
       const updateData = {};
+      const existingOrder =
+        orders.find((o) => o.order_id === orderId) || selectedOrder || null;
+      const existingPaidAt = existingOrder?.paid_at || null;
 
       // 메인 상태 변경
       if (mainStatuses.includes(newStatus)) {
@@ -2994,7 +3280,13 @@ function OrdersTestPageContent({ mode = "raw" }) {
           updateData.canceled_at = nowISO;
           updateData.received_at = null;
           updateData.sub_status = null;
-        } else if (newStatus === "주문완료" || newStatus === "결제완료") {
+        } else if (newStatus === "결제완료") {
+          updateData.canceled_at = null;
+          updateData.received_at = null;
+          if (!existingPaidAt) {
+            updateData.paid_at = nowISO;
+          }
+        } else if (newStatus === "주문완료") {
           updateData.canceled_at = null;
           updateData.received_at = null;
         }
@@ -3109,24 +3401,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       searchInputRef.current.value = "";
       searchInputRef.current.focus();
     }
-    setSearchType("customer");
-    setSearchTerm(""); // 검색어 상태도 초기화
-    setExactCustomerFilter(null); // 고객명 필터도 초기화
-    setCurrentPage(1); // 페이지 1로 리셋
-    setSelectedOrderIds([]); // 선택된 주문 초기화
-
-    // URL 파라미터 제거
-    if (typeof window !== 'undefined') {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.delete("postKey");
-      newUrl.searchParams.delete("postedAt");
-      window.history.replaceState({}, "", newUrl.toString());
-    }
-
-    // 페이지 최상단으로 즉시 스크롤
-    if (mainTopRef.current) {
-      mainTopRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
-    }
   };
 
   // 개별 필터 해제 함수들
@@ -3171,9 +3445,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const handleSearch = useCallback(() => {
     const trimmedInput = searchInputRef.current?.value.trim() || "";
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
-    if (trimmedInput !== searchTerm) {
+    const currentSearchType = searchTypeRef.current || "customer";
+    const shouldUpdateSearchType = currentSearchType !== appliedSearchType;
+    if (trimmedInput !== searchTerm || shouldUpdateSearchType) {
       // New search triggered
-      setSearchTerm(trimmedInput);
+      if (trimmedInput !== searchTerm) {
+        setSearchTerm(trimmedInput);
+      }
+      if (shouldUpdateSearchType) {
+        setAppliedSearchType(currentSearchType);
+      }
       setCurrentPage(1); // 검색 시 항상 1페이지로
       setExactCustomerFilter(null); // 일반 검색 시 정확 고객명 필터 초기화
       setSelectedOrderIds([]); // 선택 초기화
@@ -3182,7 +3463,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         setTimeout(() => scrollToTop(), 100);
       }
     }
-  }, [searchTerm, scrollToTop]);
+  }, [searchTerm, appliedSearchType, scrollToTop]);
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -3197,7 +3478,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (searchInputRef.current) {
       searchInputRef.current.value = "";
     }
-    setSearchType("customer");
+    searchTypeRef.current = "customer";
+    setAppliedSearchType("customer");
+    if (searchBarRef.current?.setSearchType) {
+      searchBarRef.current.setSearchType("customer");
+    }
     setSearchTerm("");
     setExactCustomerFilter(null);
     setCurrentPage(1);
@@ -3236,7 +3521,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (searchInputRef.current) {
       searchInputRef.current.value = trimmedName;
     }
-    setSearchType("customer");
+    searchTypeRef.current = "customer";
+    setAppliedSearchType("customer");
+    if (searchBarRef.current?.setSearchType) {
+      searchBarRef.current.setSearchType("customer");
+    }
     setSearchTerm(""); // 일반 검색어는 비움
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);
@@ -3792,7 +4081,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 메인 UI ---
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 flex">
+    <div className="min-h-screen bg-gray-200 text-gray-900 flex">
       <style>{datePickerStyle}</style>
       {/* 수동 동기화 로딩 인디케이터 */}
       {isSyncing && (
@@ -4013,12 +4302,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
               <div className="divide-y divide-gray-200">
                 {/* 조회 기간 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-4 text-xs md:text-base font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-32 self-stretch rounded-tl-xl">
-                    <CalendarDaysIcon className="w-4 h-4 md:w-6 md:h-6 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-4 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-20 self-stretch rounded-tl-xl">
+                    
                     <span className="hidden sm:inline">기간</span>
                     <span className="sm:hidden">기간</span>
                   </div>
-                  <div className="bg-white px-4 md:px-6 py-2 md:py-4 flex items-center gap-x-4 md:gap-x-6 gap-y-3 flex-wrap rounded-tr-xl relative z-50">
+                  <div className="bg-white px-4 md:px-4 py-0 md:py-0 flex items-center gap-x-4 md:gap-x-4 gap-y-3 flex-wrap rounded-tr-xl relative z-50">
                     <DatePicker
                       selectsRange={true}
                       startDate={customStartDate}
@@ -4061,8 +4350,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 {/* 상태 필터 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-2 text-xs md:text-base font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-32 self-stretch rounded-bl-xl">
-                    <FunnelIcon className="w-4 h-4 md:w-6 md:h-6 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-2 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-20 self-stretch rounded-bl-xl">
+                    
                     상태
                   </div>
                   <div className="bg-white px-4 md:px-6 py-3 md:py-3 rounded-br-xl">
@@ -4081,144 +4370,43 @@ function OrdersTestPageContent({ mode = "raw" }) {
         </div>
 
         {/* 검색 필터 - sticky */}
-        <div className="sticky top-0 z-10 bg-gray-100 px-4 lg:px-6 pb-4 mt-4 ">
-          <div>
-            <LightCard padding="p-0" className="overflow-hidden">
-              <div className="grid grid-cols-[max-content_1fr] items-center">
-                <div className="bg-gray-50 px-3 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-28 self-stretch">
-                  <TagIcon className="w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
-                  검색
-                </div>
-                <div className="bg-white flex-grow w-full px-3 md:px-4 py-2 flex flex-col lg:flex-row items-stretch lg:items-center gap-2 lg:justify-between">
-                  {/* 첫 번째 줄: 검색 타입 + 입력 + 버튼들 */}
-                  <div className="flex items-center gap-2 flex-wrap lg:flex-1">
-                    <select
-                      value={searchType}
-                      onChange={(e) => setSearchType(e.target.value)}
-                      className="min-w-[110px] flex-shrink-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-                      disabled={isDataLoading}
-                    >
-                        <option value="customer">고객명</option>
-                        <option value="product">상품명</option>
-                        <option value="comment">댓글내용</option>
-                        <option value="post_key">post_key</option>
-                    </select>
-                    {/* 검색 입력 */}
-                    <div className="relative flex-1 min-w-[150px] lg:max-w-sm">
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                          placeholder={
-                            searchType === "product"
-                              ? "상품명 검색..."
-                              : searchType === "comment"
-                                ? "댓글 검색..."
-                                : searchType === "post_key"
-                                  ? "post_key 검색..."
-                                  : "고객명 검색..."
-                          }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleSearch();
-                          }
-                        }}
-                        className="w-full pl-9 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        disabled={isDataLoading}
-                      />
-                      <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                        <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={clearInputValue}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                        aria-label="검색 내용 지우기"
-                      >
-                        <XMarkIcon className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <button
-                      onClick={handleSearch}
-                      className="px-5 lg:px-6 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      disabled={isDataLoading}
-                    >
-                      검색
-                    </button>
-                    <button
-                      onClick={handleClearSearch}
-                      disabled={isDataLoading}
-                      className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      aria-label="검색 초기화"
-                      title="검색 및 필터 초기화"
-                    >
-                      <ArrowUturnLeftIcon className="w-4 h-4 mr-1" />
-                      초기화
-                    </button>
-                    <button
-                      onClick={() => handleSyncNow({ force: true })}
-                      disabled={isDataLoading || isSyncing}
-                      className="flex items-center justify-center px-3 lg:px-4 py-2 text-sm rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      aria-label="데이터 새로고침"
-                      title="서버에서 최신 데이터 다시 불러오기"
-                    >
-                      <ArrowPathIcon className={`w-4 h-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
-                      {isSyncing ? "데이터 가져오는 중..." : "새로고침"}
-                    </button>
-                    {isSearchLoading && (
-                      <div className="flex items-center gap-1 text-xs text-orange-600 whitespace-nowrap" aria-live="polite">
-                        <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                        <span>검색 중...</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* 두 번째 줄: UpdateButton */}
-                  <div className="flex items-center gap-2">
-                    {userData?.function_number === 9 ? (
-                      <TestUpdateButton
-                        refreshSWRCacheOnComplete={false}
-                        onProcessingChange={(isProcessing, result) => {
-                          setIsTestUpdating(isProcessing);
-                          if (!isProcessing && result) {
-                            setTestUpdateResult(result);
-                            // 3초 후 결과 닫기
-                            setTimeout(() => {
-                              setTestUpdateResult(null);
-                            }, 3000);
-                          }
-                        }}
-                        onComplete={async (result) => {
-                          try {
-                            await refreshOrders();
-                          } catch (_) { }
-                        }}
-                      />
-                    ) : (
-                      <UpdateButton
-                        pageType="orders"
-                        totalItems={totalItems}
-                        onSuccess={async () => {
-                          try {
-                            await refreshOrders();
-                            await mutateProducts();
-                          } catch (_) { }
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </LightCard>
-          </div>
-        </div>
+        <OrdersSearchBar
+          ref={searchBarRef}
+          initialSearchType={appliedSearchType}
+          onSearchTypeChange={(nextType) => {
+            searchTypeRef.current = nextType;
+          }}
+          searchInputRef={searchInputRef}
+          isDataLoading={isDataLoading}
+          isSyncing={isSyncing}
+          onSearch={handleSearch}
+          onClearSearch={handleClearSearch}
+          onSyncNow={handleSyncNow}
+          onClearInput={clearInputValue}
+          onRefreshOrders={refreshOrders}
+          onMutateProducts={mutateProducts}
+          totalItems={totalItems}
+          userFunctionNumber={userData?.function_number}
+          onKeyStatusChange={(keyStatus) => {
+            if (keyStatus) setBandKeyStatus(keyStatus);
+          }}
+          onProcessingChange={(isProcessing, result) => {
+            setIsTestUpdating(isProcessing);
+            if (!isProcessing && result) {
+              setTestUpdateResult(result);
+              setTimeout(() => setTestUpdateResult(null), 3000);
+            }
+          }}
+        />
 
         {/* 주문 리스트 영역 */}
-        <div className="pb-24 px-2 lg:px-6 pt-0">
+        <div className="pb-24 px-2 lg:px-6 pt-4 mt-0">
           <div className="bg-white rounded-lg shadow-sm">
             {/* 업데이트 버튼 제거: 상단 우측 영역으로 이동 */}
             {/* 테이블 컨테이너 */}
             <div ref={tableContainerRef} className="relative">
               <table className="min-w-full ">
-                <thead className="bg-black sticky top-[100px] lg:top-[72px] z-10">
+              <thead className="bg-black sticky top-[140px] sm:top-[120px] md:top-[88px] lg:top-[92px] z-10">
                   <tr>
                     <th
                       scope="col"
@@ -4378,7 +4566,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
                           </td>
                           {/* 상태 */}
                           <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center whitespace-nowrap w-24">
-                            <StatusBadge status={order.status} processingMethod={order.processing_method} completedAt={order.completed_at} />
+                            <StatusBadge
+                              status={order.status}
+                              processingMethod={order.processing_method}
+                              completedAt={order.completed_at}
+                              orderedAt={order.ordered_at}
+                              paidAt={order.paid_at}
+                              canceledAt={order.canceled_at}
+                            />
                           </td>
                           {/* 수령일시 */}
                           <td className="py-2 xl:py-3 px-1 md:px-3 lg:px-4 xl:px-6 text-center w-20 md:w-24 xl:w-32">
@@ -5080,6 +5275,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
                             status={selectedOrder.status}
                             processingMethod={selectedOrder.processing_method}
                             completedAt={selectedOrder.completed_at}
+                            orderedAt={selectedOrder.ordered_at}
+                            paidAt={selectedOrder.paid_at}
+                            canceledAt={selectedOrder.canceled_at}
                           />
                         </div>
                         <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">

@@ -28,7 +28,8 @@ export async function savePostAndProducts(
   aiAnalysisResult,
   bandKey,
   aiExtractionStatus = "not_attempted",
-  userSettings = null
+  userSettings = null,
+  options = {}
 ) {
   if (!userId || !post || !post.postKey) {
     console.error("savePostAndProducts에 잘못된 입력");
@@ -43,6 +44,8 @@ export async function savePostAndProducts(
     aiAnalysisResult.products[0] &&
     (aiAnalysisResult.products[0].title || aiAnalysisResult.products[0].basePrice !== undefined)
   );
+  const isProductCandidate = options?.isProductCandidate === true;
+  const effectiveIsProduct = isProductPost || isProductCandidate;
 
   const postId = userId + "_post_" + post.postKey;
 
@@ -52,9 +55,13 @@ export async function savePostAndProducts(
   // Band API timestamp 직접 사용
   try {
     // AI 분류 결과 저장
-    const classificationResult = isProductPost ? "상품게시물" : "일반게시물";
-    const classificationReason = aiAnalysisResult?.reason ||
-      (isProductPost ? "AI가 상품 정보를 감지함" : "상품 정보 없음");
+    const classificationResult =
+      options?.classificationResult ||
+      (effectiveIsProduct ? "상품게시물" : "일반게시물");
+    const classificationReason =
+      options?.classificationReason ||
+      aiAnalysisResult?.reason ||
+      (effectiveIsProduct ? "AI가 상품 정보를 감지함" : "상품 정보 없음");
 
     // 🔥 [수정] keyword_mappings 추출 로직 개선
     let finalKeywordMappings = null;
@@ -144,7 +151,7 @@ export async function savePostAndProducts(
       posted_at: dateObject.toISOString(),
       // 🔥 [수정] AI가 "일반게시물"로 분류하면 is_product를 false로 설정
       // aiExtractionStatus === "failed"이어도 AI 분류를 신뢰
-      is_product: isProductPost && classificationResult !== "일반게시물",
+      is_product: effectiveIsProduct && classificationResult !== "일반게시물",
       updated_at: new Date().toISOString(),
       post_key: post.postKey,
       image_urls: imageUrls.length > 0 ? imageUrls : null,

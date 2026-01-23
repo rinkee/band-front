@@ -698,6 +698,19 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
               // 게시물 및 상품 저장
               if (!testMode) {
+                const shouldRetryOnNextUpdate =
+                  !!mightBeProduct &&
+                  (aiExtractionStatus === "failed" || aiExtractionStatus === "error");
+                const saveOptions = shouldRetryOnNextUpdate
+                  ? {
+                      isProductCandidate: true,
+                      classificationResult: "상품게시물",
+                      classificationReason:
+                        aiExtractionStatus === "error"
+                          ? "AI 추출 오류 (재시도 대기)"
+                          : "AI 추출 실패 (재시도 대기)"
+                    }
+                  : {};
                 savedPostId = await savePostAndProducts(
                   supabase,
                   userId,
@@ -705,7 +718,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   aiAnalysisResult,
                   bandKey,
                   aiExtractionStatus,
-                  userSettings
+                  userSettings,
+                  saveOptions
                 );
               } else {
                 savedPostId = `test_${postKey}`;
