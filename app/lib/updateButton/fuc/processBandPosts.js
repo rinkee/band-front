@@ -933,6 +933,49 @@ export async function processBandPosts(supabase, userId, options = {}) {
               // === 기존 게시물 처리 ===
               savedPostId = dbPostData?.post_id || `${userId}_post_${postKey}`;
 
+              // 기존 게시물이지만 가격 정보가 없으면 공지사항으로 확정 처리
+              const mightBeProduct = contentHasPriceIndicator(apiPost.content);
+              if (!mightBeProduct) {
+                if (!testMode && (dbPostData?.is_product !== false || dbPostData?.ai_extraction_status !== "not_product")) {
+                  const nowIso = new Date().toISOString();
+                  const { error: nonProductUpdateError } = await supabase
+                    .from("posts")
+                    .update({
+                      is_product: false,
+                      ai_extraction_status: "not_product",
+                      ai_classification_result: "공지사항",
+                      ai_classification_reason: "가격 정보 없음",
+                      ai_classification_at: nowIso,
+                      products_data: null,
+                      multiple_products: false,
+                      keyword_mappings: null,
+                      order_needs_ai: false,
+                      order_needs_ai_reason: null,
+                      comment_sync_status: "completed",
+                      comment_sync_log: null,
+                      updated_at: nowIso
+                    })
+                    .eq("post_id", savedPostId);
+
+                  if (nonProductUpdateError) {
+                    console.error(`공지사항 전환 업데이트 실패 (post ${postKey}):`, nonProductUpdateError);
+                  } else {
+                    console.log(`공지사항 전환 완료 (post ${postKey})`);
+                  }
+                }
+
+                return {
+                  ...apiPost,
+                  aiAnalysisResult: null,
+                  dbPostId: savedPostId,
+                  aiExtractionStatus: "not_product",
+                  comment_sync_status: "completed",
+                  isNewPost: false,
+                  hasNewComments: false,
+                  processedComments: []
+                };
+              }
+
               // 이미 처리된 일반 게시물은 스킵 (is_product: false면 failed 상태여도 재시도 안 함)
               if (dbPostData?.is_product === false) {
                 return {

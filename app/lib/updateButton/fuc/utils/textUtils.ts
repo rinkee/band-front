@@ -191,6 +191,10 @@ export function contentHasPriceIndicator(content: any) {
   // 🔥 [수정] 전화번호와 URL 패턴 제거 후 검증
   const phonePattern = /0\d{1,2}-\d{3,4}-\d{4}/g;
   const urlPattern = /https?:\/\/[^\s]+/g;  // ✅ URL 제거
+  const urlMatches = content.match(urlPattern);
+  if (urlMatches && urlMatches.length >= 20) {
+    return false;
+  }
   let cleanedContent = content.replace(phonePattern, '');
   cleanedContent = cleanedContent.replace(urlPattern, '');  // ✅ URL 제거
   const lowerContent = cleanedContent.toLowerCase();

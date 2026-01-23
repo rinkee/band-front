@@ -454,7 +454,7 @@ export async function fetchBandPostsWithFailover(bandApiFailover, userId, limit,
       if (data.paging && data.paging.next_params && allPosts.length < limit) {
         nextParams = data.paging.next_params;
         hasMore = true;
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 0));
       } else {
         hasMore = false;
       }

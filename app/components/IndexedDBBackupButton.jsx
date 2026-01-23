@@ -12,7 +12,7 @@ import {
 } from "../lib/indexedDbClient";
 
 const POST_COLUMNS =
-  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at";
+  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at";
 const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =
@@ -20,6 +20,7 @@ const ORDER_COLUMNS =
 const COMMENT_ORDER_COLUMNS = "*";
 
 const RANGE_20_DAYS_MS = 20 * 24 * 60 * 60 * 1000;
+const POSTS_SCHEMA_VERSION = 1;
 
 const escapeIlike = (value) =>
   value
@@ -138,6 +139,7 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
   const [detail, setDetail] = useState("");
   const [externalStatus, setExternalStatus] = useState("idle"); // idle | syncing | success
   const externalTimers = useRef({ done: null, reset: null });
+  const postsMigrationRanRef = useRef(false);
 
   const handleBackup = async () => {
     if (!isIndexedDBAvailable()) {
@@ -266,6 +268,47 @@ export default function IndexedDBBackupButton({ userId: propUserId, variant = "b
       }
     };
   }, [status]);
+
+  useEffect(() => {
+    const runPostsSchemaMigration = async () => {
+      if (postsMigrationRanRef.current) return;
+      if (!isIndexedDBAvailable()) return;
+      if (status === "loading") return;
+      const userId = resolveUserId(propUserId);
+      if (!userId) return;
+
+      try {
+        const currentVersion = Number(await getMeta("postsSchemaVersion") || 0);
+        if (currentVersion >= POSTS_SCHEMA_VERSION) {
+          postsMigrationRanRef.current = true;
+          return;
+        }
+
+        postsMigrationRanRef.current = true;
+        setExternalStatus("syncing");
+
+        const posts = await fetchWithRange(
+          "posts",
+          POST_COLUMNS,
+          userId,
+          "posted_at",
+          RANGE_20_DAYS_MS,
+          [],
+          { sinceOverride: null }
+        );
+
+        await clearStoresByUserId(userId, ["posts"]);
+        await bulkPut("posts", posts);
+        await setMeta("postsSchemaVersion", POSTS_SCHEMA_VERSION);
+
+        setExternalStatus("success");
+      } catch (_) {
+        setExternalStatus("idle");
+      }
+    };
+
+    runPostsSchemaMigration();
+  }, [propUserId, status]);
 
   const effectiveStatus =
     status === "loading"

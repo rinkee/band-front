@@ -4159,7 +4159,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       {/* 일괄 처리 중 로딩 오버레이 */}
       {bulkUpdateLoading && (
-        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
+        <div className="fixed inset-0 bg-gray-900/60 z-[80] flex items-center justify-center p-4 ">
           <div className="bg-white p-6 rounded-xl shadow-xl flex flex-col items-center">
             <LoadingSpinner className="h-12 w-12 text-orange-500 mb-3" />
             <p className="text-gray-700 font-medium">상태 변경 중...</p>
@@ -4170,7 +4170,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       {/* 테스트 업데이트 로딩 오버레이 */}
       {(isTestUpdating || testUpdateResult) && (
         <div
-          className="fixed inset-0 flex items-center justify-center z-50"
+          className="fixed inset-0 flex items-center justify-center z-[80]"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
         >
           <div className="bg-white rounded-lg p-8 shadow-xl flex flex-col items-center gap-4 border-2 border-gray-200">

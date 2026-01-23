@@ -171,7 +171,7 @@ export async function savePostAndProducts(
       // AI 추출이 실패한 경우 댓글 처리도 불가능
       comment_sync_status:
         aiExtractionStatus === "error"
-          ? "error"
+          ? "failed"
           : aiExtractionStatus === "failed"
           ? "failed"
           : !post.commentCount || post.commentCount === 0

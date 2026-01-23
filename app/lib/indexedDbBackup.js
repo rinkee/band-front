@@ -12,7 +12,7 @@ import {
 import { dispatchIndexedDbSyncEvent } from "./indexedDbSync";
 
 const POST_COLUMNS =
-  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at";
+  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at";
 const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =

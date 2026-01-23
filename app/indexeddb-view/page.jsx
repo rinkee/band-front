@@ -59,6 +59,8 @@ const STORE_CONFIG = {
       "band_key",
       "content",
       "posted_at",
+      "comment_count",
+      "last_checked_comment_at",
     ],
   },
   syncQueue: {
