@@ -5038,7 +5038,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
                     <XCircleIcon className="w-5 h-5 mr-1.5" />
-                    선택 주문취소
+                    주문취소
                   </button>
                   <button
                     onClick={() => handleBulkStatusUpdate("결제완료")}
@@ -5046,7 +5046,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
                     <CurrencyDollarIcon className="w-5 h-5 mr-1.5" />
-                    선택 결제완료
+                    결제완료
                   </button>
                   <button
                     onClick={() => handleBulkStatusUpdate("주문완료")}
@@ -5062,7 +5062,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     className="inline-flex items-center rounded-lg px-4 py-2.5 text-sm md:text-base font-semibold bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
                     <CheckCircleIcon className="w-5 h-5 mr-1.5" />
-                    선택 수령완료
+                    수령완료
                   </button>
                 </div>
               </div>
