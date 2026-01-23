@@ -65,6 +65,9 @@ export default function DashboardPage() {
   const [showDatePicker, setShowDatePicker] = useState(false); // Show/hide date picker
   const [showMoreFilters, setShowMoreFilters] = useState(false); // Show/hide more filters
   const [selectedMonth, setSelectedMonth] = useState(0); // 0: 이번달, -1: 저번달, null: 직접입력
+  const [appVersion, setAppVersion] = useState(
+    process.env.NEXT_PUBLIC_APP_VERSION || ""
+  );
 
   const swrOptions = {
     revalidateOnFocus: false,
@@ -124,6 +127,33 @@ export default function DashboardPage() {
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]); // Include handleLogout if it's defined outside and used inside
+
+  useEffect(() => {
+    let active = true;
+    const loadVersion = async () => {
+      if (typeof window === "undefined") return;
+      try {
+        const res = await fetch("/api/version", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!active) return;
+        if (data?.version) {
+          setAppVersion(data.version);
+        } else if (!appVersion && window.__NEXT_DATA__?.buildId) {
+          setAppVersion(window.__NEXT_DATA__.buildId);
+        }
+      } catch (_) {
+        if (!active) return;
+        if (!appVersion && window.__NEXT_DATA__?.buildId) {
+          setAppVersion(window.__NEXT_DATA__.buildId);
+        }
+      }
+    };
+    loadVersion();
+    return () => {
+      active = false;
+    };
+  }, [appVersion]);
 
   // SWR Hooks for fetching data
   const {
@@ -557,6 +587,9 @@ export default function DashboardPage() {
           <div className="space-y-4" />
         </div>
       </main>
+      <div className="fixed bottom-3 right-3 text-sm font-semibold text-gray-600">
+        v{appVersion || "-"}
+      </div>
     </div>
   );
 }

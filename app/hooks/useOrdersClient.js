@@ -525,8 +525,29 @@ export function useOrderClientMutations() {
       throw error;
     }
 
+    let paidUpdates = [];
+    if (newStatus === "결제완료") {
+      const { data: paidData, error: paidError } = await supabase
+        .from("orders")
+        .update({ paid_at: nowISO })
+        .in("order_id", orderIds)
+        .eq("user_id", userId)
+        .is("paid_at", null)
+        .select();
+
+      if (paidError) {
+        throw paidError;
+      }
+      paidUpdates = paidData || [];
+    }
+
     // Optimistic Update: 캐시를 직접 수정하여 get_orders 호출 방지
     const updatedOrdersMap = new Map(data.map(order => [order.order_id, order]));
+    if (paidUpdates.length > 0) {
+      paidUpdates.forEach((order) => {
+        updatedOrdersMap.set(order.order_id, order);
+      });
+    }
 
     // orders 캐시 직접 업데이트 (revalidate 없음)
     globalMutate(

@@ -107,6 +107,7 @@ export default function PostsPage() {
 
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [bandKeyStatus, setBandKeyStatus] = useState("main"); // main | backup
 
   // 바코드 편집 상태
   const [editingBarcode, setEditingBarcode] = useState(null); // { postKey, productId, value }
@@ -250,6 +251,7 @@ export default function PostsPage() {
       "comment_count",
       "is_product",
       "comment_sync_status",
+      "ai_extraction_status",
       "order_needs_ai",
       "products_data",
       "image_urls",
@@ -1587,15 +1589,39 @@ export default function PostsPage() {
               onSubmit={handleSearch}
               className="flex flex-wrap items-center gap-2"
             >
-              <div className="min-w-[96px]">
-                <select
-                  value={searchType}
-                  onChange={(e) => setSearchType(e.target.value)}
-                  className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              <div className="flex items-center bg-gray-100 px-1 py-1 rounded-md border border-gray-300">
+                <label
+                  className={`cursor-pointer select-none rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm transition whitespace-nowrap ${
+                    searchType === "content"
+                      ? "bg-black text-white shadow-sm font-semibold"
+                      : "text-gray-800 hover:text-gray-900"
+                  }`}
                 >
-                  <option value="content">내용</option>
-                  <option value="product">상품명</option>
-                </select>
+                  <input
+                    type="radio"
+                    name="postsSearchType"
+                    checked={searchType === "content"}
+                    onChange={() => setSearchType("content")}
+                    className="sr-only"
+                  />
+                  내용
+                </label>
+                <label
+                  className={`cursor-pointer select-none rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm transition whitespace-nowrap ${
+                    searchType === "product"
+                      ? "bg-black text-white shadow-sm font-semibold"
+                      : "text-gray-800 hover:text-gray-900"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="postsSearchType"
+                    checked={searchType === "product"}
+                    onChange={() => setSearchType("product")}
+                    className="sr-only"
+                  />
+                  상품명
+                </label>
               </div>
               <div className="relative flex-1 min-w-[200px] max-w-xl">
                 <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
@@ -1629,7 +1655,7 @@ export default function PostsPage() {
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-black hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-600"
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
               >
                 검색
               </button>
@@ -1686,18 +1712,26 @@ export default function PostsPage() {
             <div className="flex items-center gap-3">
               {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
               {userData?.function_number === 9 ? (
-                <TestUpdateButton
-                  onProcessingChange={(isProcessing, result) => {
-                    setIsTestUpdating(isProcessing);
-                    if (!isProcessing && result) {
-                      setTestUpdateResult(result);
-                      // 3초 후 결과 닫기
-                      setTimeout(() => {
-                        setTestUpdateResult(null);
-                      }, 3000);
-                    }
-                  }}
-                />
+                <div className="relative group">
+                  <TestUpdateButton
+                    onProcessingChange={(isProcessing, result) => {
+                      setIsTestUpdating(isProcessing);
+                      if (!isProcessing && result) {
+                        setTestUpdateResult(result);
+                        // 3초 후 결과 닫기
+                        setTimeout(() => {
+                          setTestUpdateResult(null);
+                        }, 3000);
+                      }
+                    }}
+                    onKeyStatusChange={({ keyStatus }) => {
+                      if (keyStatus) setBandKeyStatus(keyStatus);
+                    }}
+                  />
+                  <span className="pointer-events-none absolute right-0 top-full mt-2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+                    {bandKeyStatus === "backup" ? "백업키 사용중" : "기본키 사용중"}
+                  </span>
+                </div>
               ) : (
                 <UpdateButton pageType="posts" />
               )}
@@ -2936,6 +2970,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const aiStatus = (post?.ai_extraction_status || "").toLowerCase();
+  const isAiRetryPending = post?.is_product && (aiStatus === "error" || aiStatus === "failed");
 
   // 메뉴 외부 클릭 감지
   useEffect(() => {
@@ -3402,7 +3438,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-md transition-all text-xs font-medium ${
               !post.is_product
                 ? 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
-                : post.comment_sync_status === 'pending'
+                : isAiRetryPending || post.comment_sync_status === 'pending'
                 ? 'bg-amber-50 text-amber-700 border border-amber-200'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
             }`}
@@ -3411,7 +3447,7 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
               className={`inline-block h-2 w-2 rounded-full ${
                 !post.is_product
                   ? 'bg-gray-400'
-                  : post.comment_sync_status === 'pending'
+                  : isAiRetryPending || post.comment_sync_status === 'pending'
                   ? 'bg-amber-500 animate-pulse'
                   : 'bg-gray-400'
               }`}
@@ -3419,6 +3455,8 @@ function PostCard({ post, onClick, onViewOrders, onViewComments, onDeletePost, o
             <span>
               {!post.is_product
                 ? '상품으로 재처리'
+                : isAiRetryPending
+                ? '재처리중'
                 : post.comment_sync_status === 'pending'
                 ? '재처리중'
                 : '누락 주문 재처리'

@@ -41,7 +41,9 @@ export async function extractProductInfoAI(content, postTime = null, postKey) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`AI API 호출 실패: ${response.status} ${response.statusText} - ${errorText}`);
+      const httpError = new Error(`AI API 호출 실패: ${response.status} ${response.statusText} - ${errorText}`);
+      httpError.name = "AIHttpError";
+      throw httpError;
     }
 
     const result = await response.json();
@@ -60,6 +62,9 @@ export async function extractProductInfoAI(content, postTime = null, postKey) {
 
   } catch (error) {
     console.error('[AI 분석] 오류:', error);
+    if (error?.name === "AIHttpError") {
+      throw error;
+    }
     return getDefaultProduct(error.message);
   }
 }
