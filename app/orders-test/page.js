@@ -136,7 +136,7 @@ const OrdersSearchBar = forwardRef(function OrdersSearchBar(
   );
 
   return (
-    <div className="sticky top-0 z-50 bg-gray-100 px-4 lg:px-6 pb-4 mt-6">
+    <div className="sticky top-0 z-50 bg-gray-200 px-4 lg:px-6 pb-4 mt-6">
       <div>
         <div className="w-full px-3 md:px-4 py-3 bg-white border border-gray-200 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex flex-1 items-center gap-2 min-w-0">
@@ -4081,7 +4081,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 메인 UI ---
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 flex">
+    <div className="min-h-screen bg-gray-200 text-gray-900 flex">
       <style>{datePickerStyle}</style>
       {/* 수동 동기화 로딩 인디케이터 */}
       {isSyncing && (
@@ -4302,8 +4302,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
               <div className="divide-y divide-gray-200">
                 {/* 조회 기간 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-4 text-xs md:text-base font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-26 self-stretch rounded-tl-xl">
-                    <CalendarDaysIcon className="w-4 h-4 md:w-6 md:h-6 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-4 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-20 self-stretch rounded-tl-xl">
+                    
                     <span className="hidden sm:inline">기간</span>
                     <span className="sm:hidden">기간</span>
                   </div>
@@ -4350,8 +4350,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
                 </div>
                 {/* 상태 필터 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
-                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-2 text-xs md:text-base font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-26 self-stretch rounded-bl-xl">
-                    <FunnelIcon className="w-4 h-4 md:w-6 md:h-6 mr-1 md:mr-2 text-gray-400 flex-shrink-0" />
+                  <div className="bg-gray-50 px-3 md:px-5 py-3 md:py-2 text-xs md:text-sm font-medium text-gray-600 flex items-center border-r border-gray-200 w-20 md:w-20 self-stretch rounded-bl-xl">
+                    
                     상태
                   </div>
                   <div className="bg-white px-4 md:px-6 py-3 md:py-3 rounded-br-xl">
@@ -4406,7 +4406,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
             {/* 테이블 컨테이너 */}
             <div ref={tableContainerRef} className="relative">
               <table className="min-w-full ">
-              <thead className="bg-black sticky top-[124px] lg:top-[92px] z-10">
+              <thead className="bg-black sticky top-[140px] sm:top-[120px] md:top-[88px] lg:top-[92px] z-10">
                   <tr>
                     <th
                       scope="col"
