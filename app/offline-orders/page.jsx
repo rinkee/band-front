@@ -17,6 +17,8 @@ import {
   setMeta,
   bulkPut,
 } from "../lib/indexedDbClient";
+import { normalizeComment } from "../lib/band-processor/core/commentProcessor";
+import { extractOrdersFromComments } from "../lib/band-processor/core/orderProcessor";
 import supabase from "../lib/supabaseClient";
 import Toast from "../components/Toast";
 
@@ -27,13 +29,14 @@ const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   : null;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const POST_COLUMNS =
-  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at";
+  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at";
 const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =
   "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
 const OFFLINE_USER_KEY = "offlineUserId";
 const OFFLINE_ACCOUNTS_KEY = "offlineAccounts";
+const MAX_COMMENT_PAGES = 10;
 
 // 바코드 컴포넌트
 const Barcode = ({ value, width = 1.2, height = 32, fontSize = 12 }) => {
@@ -97,6 +100,8 @@ export default function OfflineOrdersPage() {
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [offlineCommentSyncing, setOfflineCommentSyncing] = useState(false);
+  const [offlineCommentCooldownUntil, setOfflineCommentCooldownUntil] = useState(0);
   const [exactCustomerFilter, setExactCustomerFilter] = useState("");
   const [incrementalSyncing, setIncrementalSyncing] = useState(false);
   const [excludedCustomers, setExcludedCustomers] = useState([]);
@@ -798,6 +803,435 @@ export default function OfflineOrdersPage() {
     return safe;
   };
 
+  const getBandTokensFromUserData = () => {
+    if (!userData) return [];
+    const tokens = [];
+    const accessTokens = Array.isArray(userData.band_access_tokens)
+      ? userData.band_access_tokens
+      : null;
+
+    if (accessTokens && accessTokens.length > 0) {
+      accessTokens.forEach((entry) => {
+        if (!entry) return;
+        if (typeof entry === "string") {
+          tokens.push(entry);
+          return;
+        }
+        if (entry.access_token) {
+          tokens.push(entry.access_token);
+        }
+      });
+    } else if (userData.band_access_token) {
+      tokens.push(userData.band_access_token);
+    }
+
+    if (Array.isArray(userData.backup_band_keys)) {
+      userData.backup_band_keys.forEach((token) => {
+        if (token) tokens.push(token);
+      });
+    }
+
+    return [...new Set(tokens.filter(Boolean).map((t) => String(t)))];
+  };
+
+  const resolveOfflinePostLimit = () => {
+    const fromUser = Number(userData?.post_fetch_limit || userData?.postFetchLimit);
+    if (Number.isFinite(fromUser) && fromUser > 0) {
+      return posts.length > 0 ? Math.min(fromUser, posts.length) : fromUser;
+    }
+    if (typeof window !== "undefined") {
+      const raw = sessionStorage.getItem("userPostLimit");
+      const fromSession = Number(raw);
+      if (Number.isFinite(fromSession) && fromSession > 0) {
+        return posts.length > 0 ? Math.min(fromSession, posts.length) : fromSession;
+      }
+    }
+    if (posts.length > 0) return posts.length;
+    return 50;
+  };
+
+  const callBandApiWithFailover = async (endpoint, params, tokens, preferredIndex = 0) => {
+    const tokenList = Array.isArray(tokens) ? tokens : [];
+    if (tokenList.length === 0) {
+      throw new Error("Band API 토큰이 없습니다.");
+    }
+
+    const indices = new Set();
+    if (preferredIndex >= 0 && preferredIndex < tokenList.length) {
+      indices.add(preferredIndex);
+    }
+    for (let i = 0; i < tokenList.length; i += 1) {
+      indices.add(i);
+    }
+
+    let lastError = null;
+    for (const idx of indices) {
+      const token = tokenList[idx];
+      if (!token) continue;
+      try {
+        const response = await fetch("/api/band-api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint,
+            params: { ...params, access_token: token },
+            method: "GET",
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.result_code !== 1) {
+          const message =
+            data?.result_data?.message ||
+            data?.message ||
+            `Band API 오류 (${response.status})`;
+          lastError = new Error(message);
+          continue;
+        }
+
+        return { data, tokenIndex: idx };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error("Band API 호출 실패");
+  };
+
+  const fetchAllCommentsWithPaging = async (postKey, bandKey, tokens) => {
+    let allComments = [];
+    let nextParams = null;
+    let pageCount = 0;
+    let preferredIndex = 0;
+
+    while (pageCount < MAX_COMMENT_PAGES) {
+      pageCount += 1;
+      const params = {
+        band_key: bandKey,
+        post_key: postKey,
+        ...(nextParams || {}),
+      };
+
+      const { data, tokenIndex } = await callBandApiWithFailover(
+        "/band/post/comments",
+        params,
+        tokens,
+        preferredIndex
+      );
+
+      preferredIndex = tokenIndex;
+      const items = data?.result_data?.items || [];
+      allComments = allComments.concat(items);
+
+      if (data?.result_data?.paging?.next_params) {
+        nextParams = data.result_data.paging.next_params;
+      } else {
+        break;
+      }
+    }
+
+    return allComments;
+  };
+
+  const MAX_POST_PAGES = 50;
+  const POSTS_PAGE_SIZE = 20;
+
+  const fetchPostsWithPaging = async (bandKey, tokens, totalLimit) => {
+    let allPosts = [];
+    let nextParams = null;
+    let pageCount = 0;
+    let preferredIndex = 0;
+
+    const target = Number.isFinite(totalLimit) && totalLimit > 0 ? totalLimit : POSTS_PAGE_SIZE;
+
+    while (pageCount < MAX_POST_PAGES && allPosts.length < target) {
+      pageCount += 1;
+      const params = {
+        band_key: bandKey,
+        locale: "ko_KR",
+        limit: POSTS_PAGE_SIZE,
+        ...(nextParams || {}),
+      };
+
+      const { data, tokenIndex } = await callBandApiWithFailover(
+        "/band/posts",
+        params,
+        tokens,
+        preferredIndex
+      );
+
+      preferredIndex = tokenIndex;
+      const items = data?.result_data?.items || [];
+      if (items.length > 0) {
+        allPosts = allPosts.concat(items);
+      }
+
+      if (data?.result_data?.paging?.next_params) {
+        nextParams = data.result_data.paging.next_params;
+      } else {
+        break;
+      }
+    }
+
+    return allPosts.slice(0, target);
+  };
+
+  const getProductsForPost = (post) => {
+    const postKey = post?.post_key || post?.postKey;
+    if (postKey && productsByPostKey[postKey]) {
+      return productsByPostKey[postKey];
+    }
+
+    const band = post?.band_number || post?.bandNumber || post?.band_key || post?.bandKey;
+    const postNum = post?.post_number ?? post?.postNumber;
+    if (band != null && postNum != null) {
+      const key = `${band}_${String(postNum)}`;
+      if (productsByBandPost[key]) return productsByBandPost[key];
+    }
+
+    return [];
+  };
+
+  const handleOfflineCommentUpdate = async () => {
+    if (offlineCommentSyncing) return;
+    const now = Date.now();
+    if (offlineCommentCooldownUntil && now < offlineCommentCooldownUntil) {
+      setToast({ type: "info", message: "너무 빠른 요청입니다. 잠시후에 시도해주세요." });
+      return;
+    }
+    if (!isIndexedDBAvailable()) {
+      setToast({ type: "error", message: "IndexedDB를 사용할 수 없습니다." });
+      return;
+    }
+
+    const userId = resolveUserId();
+    if (!userId) {
+      setToast({ type: "error", message: "사용자 정보를 찾을 수 없습니다." });
+      return;
+    }
+
+    if (!userData?.userId) {
+      setToast({ type: "error", message: "로그인 정보가 필요합니다." });
+      return;
+    }
+
+    if (userData.userId !== userId) {
+      setToast({
+        type: "error",
+        message: "선택된 계정과 로그인 계정이 다릅니다. 다시 로그인해주세요.",
+      });
+      return;
+    }
+
+    if (!posts.length) {
+      setToast({ type: "info", message: "로컬 게시물이 없습니다." });
+      return;
+    }
+
+    const tokens = getBandTokensFromUserData();
+    if (tokens.length === 0) {
+      setToast({ type: "error", message: "Band API 토큰을 찾을 수 없습니다." });
+      return;
+    }
+
+    const bandKey =
+      userData?.band_key ||
+      posts[0]?.band_key ||
+      posts[0]?.bandKey ||
+      null;
+
+    if (!bandKey) {
+      setToast({ type: "error", message: "Band Key를 찾을 수 없습니다." });
+      return;
+    }
+
+    setOfflineCommentCooldownUntil(now + 15 * 1000);
+    setOfflineCommentSyncing(true);
+
+    try {
+      const limit = resolveOfflinePostLimit();
+      const apiPosts = await fetchPostsWithPaging(bandKey, tokens, limit);
+      if (apiPosts.length === 0) {
+        setToast({ type: "info", message: "Band API에서 게시물을 가져오지 못했습니다." });
+        return;
+      }
+
+      const localPostByKey = new Map(
+        posts
+          .map((post) => [post.post_key || post.postKey, post])
+          .filter(([key]) => !!key)
+      );
+
+      const apiPostByKey = new Map(
+        apiPosts
+          .map((post) => [post.post_key, post])
+          .filter(([key]) => !!key)
+      );
+
+      const postsToCheck = [];
+      for (const [postKey, localPost] of localPostByKey.entries()) {
+        const apiPost = apiPostByKey.get(postKey);
+        if (!apiPost) continue;
+        const apiCount = Number(apiPost.comment_count ?? 0);
+        const localCount = Number(localPost.comment_count ?? 0);
+        if (apiCount > localCount) {
+          postsToCheck.push({ postKey, localPost, apiPost });
+        }
+      }
+
+      if (postsToCheck.length === 0) {
+        setToast({ type: "info", message: "신규 댓글이 없습니다." });
+        return;
+      }
+
+      const allOrders = await getAllFromStore("orders");
+      const userOrders = allOrders.filter(
+        (order) => !order?.user_id || order.user_id === userId
+      );
+      const commentKeysByPostKey = new Map();
+      userOrders.forEach((order) => {
+        const postKey = order.post_key || order.postKey;
+        if (!postKey) return;
+        const key = order.comment_key || order.commentKey || order.band_comment_id;
+        if (!key) return;
+        if (!commentKeysByPostKey.has(postKey)) {
+          commentKeysByPostKey.set(postKey, new Set());
+        }
+        commentKeysByPostKey.get(postKey).add(String(key));
+      });
+
+      let updatedPostCount = 0;
+      let totalNewComments = 0;
+      let totalNewOrders = 0;
+      const updatedPosts = [];
+      const postQueueItems = [];
+      const nowIso = new Date().toISOString();
+
+      for (const { postKey, localPost, apiPost } of postsToCheck) {
+        const comments = await fetchAllCommentsWithPaging(
+          postKey,
+          apiPost?.band_key || bandKey,
+          tokens
+        );
+
+        const normalizedComments = comments.map((comment) => normalizeComment(comment));
+        const existingKeys = commentKeysByPostKey.get(postKey) || new Set();
+        const newComments = normalizedComments.filter((comment) => {
+          const key = comment.commentKey || comment.comment_key || comment.key;
+          if (!key) return false;
+          return !existingKeys.has(String(key));
+        });
+
+        totalNewComments += newComments.length;
+
+        if (newComments.length > 0) {
+          const productsForPost = getProductsForPost(localPost);
+          const productsWithItems = productsForPost.map((product, idx) => ({
+            ...product,
+            itemNumber: getItemNumber(product, idx),
+          }));
+
+          const bandNumber =
+            localPost?.band_number ||
+            localPost?.bandNumber ||
+            userData?.bandNumber ||
+            userData?.band_number ||
+            bandKey;
+
+          const postInfo = {
+            ...localPost,
+            post_key: localPost.post_key || localPost.postKey || postKey,
+            band_key: localPost.band_key || localPost.bandKey || bandKey,
+            band_number: bandNumber,
+            products: productsWithItems,
+            keywordMappings: localPost.keywordMappings || localPost.keyword_mappings,
+            order_needs_ai: localPost.order_needs_ai,
+          };
+
+          const useAI = postInfo.order_needs_ai === true;
+          const extraction = await extractOrdersFromComments({
+            postInfo,
+            comments: newComments,
+            userId,
+            bandNumber,
+            postId: postKey,
+            useAI,
+            forceAI: useAI,
+          });
+
+          const ordersToSave = extraction?.orders || [];
+          for (const order of ordersToSave) {
+            const updatedOrder = {
+              ...order,
+              updated_at: order.updated_at || nowIso,
+            };
+            await upsertOrderLocal(updatedOrder);
+            await addToQueue({
+              table: "orders",
+              op: "upsert",
+              pkValue: updatedOrder.order_id,
+              payload: sanitizeOrderPayload(updatedOrder),
+              updatedAt: updatedOrder.updated_at,
+              user_id: userId,
+            });
+            totalNewOrders += 1;
+          }
+        }
+
+        updatedPosts.push({
+          ...localPost,
+          comment_count: apiPost.comment_count ?? localPost.comment_count ?? 0,
+          last_checked_comment_at: nowIso,
+        });
+        postQueueItems.push({
+          table: "posts",
+          op: "upsert",
+          pkValue: localPost.post_id,
+          payload: {
+            post_id: localPost.post_id,
+            user_id: localPost.user_id || userId,
+            post_key: localPost.post_key || postKey,
+            band_key: localPost.band_key || bandKey,
+            band_number: localPost.band_number || userData?.bandNumber || userData?.band_number,
+            comment_count: apiPost.comment_count ?? localPost.comment_count ?? 0,
+            last_checked_comment_at: nowIso,
+          },
+          updatedAt: nowIso,
+          user_id: userId,
+        });
+        updatedPostCount += 1;
+      }
+
+      if (updatedPosts.length > 0) {
+        await bulkPut("posts", updatedPosts);
+      }
+      if (postQueueItems.length > 0) {
+        for (const item of postQueueItems) {
+          await addToQueue(item);
+        }
+      }
+
+      await Promise.all([
+        loadRecentOrders(),
+        loadQueueSize(),
+        loadPosts(),
+        loadDbCounts(),
+      ]);
+
+      setToast({
+        type: "success",
+        message: `댓글 업데이트 완료: 게시물 ${updatedPostCount}건, 신규 댓글 ${totalNewComments}개, 신규 주문 ${totalNewOrders}건`,
+      });
+    } catch (err) {
+      setToast({
+        type: "error",
+        message: err.message || "댓글 업데이트 중 오류가 발생했습니다.",
+      });
+    } finally {
+      setOfflineCommentSyncing(false);
+    }
+  };
+
   const handleBulkStatusUpdate = async (nextStatus) => {
     if (selectedOrderIds.length === 0) return;
     setBulkLoading(true);
@@ -1312,11 +1746,25 @@ export default function OfflineOrdersPage() {
           </div>
         </div>
         {/* 안내 문구 */}
-        <div className="mt-2 text-sm text-gray-700 space-y-1">
-          <p>서버와 연결이 불안정할 때 백업 데이터로 주문을 처리할 수 있는 페이지입니다.</p>
-          <p className="text-gray-500">
-            이 페이지에서 변경한 내용은 서버가 복구되면 자동으로 동기화됩니다.
-          </p>
+        <div className="mt-2 flex items-start justify-between gap-4">
+          <div className="text-sm text-gray-700 space-y-1">
+            <p>서버와 연결이 불안정할 때 백업 데이터로 주문을 처리할 수 있는 페이지입니다.</p>
+            <p className="text-gray-500">
+              이 페이지에서 변경한 내용은 서버가 복구되면 자동으로 동기화됩니다.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              onClick={handleOfflineCommentUpdate}
+              disabled={offlineCommentSyncing}
+              className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm whitespace-nowrap"
+              title="Band API로 신규 댓글을 가져와 로컬에 저장합니다"
+            >
+              <ArrowPathIcon className={`w-4 h-4 ${offlineCommentSyncing ? "animate-spin" : ""}`} />
+              {offlineCommentSyncing ? "댓글 업데이트 중" : "댓글 업데이트"}
+            </button>
+            <p className="text-xs text-gray-500">이미 저장된 게시물의 신규 댓글은 불러올 수 있습니다.</p>
+          </div>
         </div>
       </div>
 
