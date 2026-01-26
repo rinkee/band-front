@@ -40,6 +40,8 @@ import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dat
 import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
 
 const ORDER_STATS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MANUAL_SEARCH_REFRESH_MIN_INTERVAL_MS = 800;
+const MANUAL_SEARCH_COOLDOWN_ALERT_MIN_INTERVAL_MS = 2500;
 
 const readGlobalStatsCache = (cacheKey) => {
   if (!cacheKey || typeof window === "undefined") return null;
@@ -742,12 +744,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [appliedSearchType, setAppliedSearchType] = useState("customer"); // "customer" | "product" | "post_key"
   const searchTypeRef = useRef("customer");
   const searchBarRef = useRef(null);
-  const [postKeySearchNonce, setPostKeySearchNonce] = useState(0);
-  const [pendingPostKey, setPendingPostKey] = useState(null);
-  const [pendingPostedAt, setPendingPostedAt] = useState(null);
+  const [postKeySearchNonce, setPostKeySearchNonce] = useState("0");
+  const [pendingPostKey, setPendingPostKey] = useState(null); // { postKey, postedAt, ts }
   const [urlPostKeyFilter, setUrlPostKeyFilter] = useState(null);
-  const lastPostKeyTsRef = useRef(null);
-  const [skipInitialOrdersFetch, setSkipInitialOrdersFetch] = useState(false);
   const [bandKeyStatus, setBandKeyStatus] = useState("main"); // main | backup
   const [sortBy, setSortBy] = useState(null); // 기본값: 정렬 안함
   const [sortOrder, setSortOrder] = useState("desc");
@@ -856,6 +855,41 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [initialSyncing, setInitialSyncing] = useState(true); // 첫 진입 동기화 진행 여부
   const [lastSyncAt, setLastSyncAt] = useState(0); // 마지막 동기화 시각 (ms)
   const syncTimeoutRef = useRef(null);
+  const timeoutsRef = useRef(new Set());
+  const lastManualSearchRefreshAtRef = useRef(0);
+  const lastManualSearchCooldownAlertAtRef = useRef(0);
+
+  const warnSearchCooldown = useCallback(() => {
+    const now = Date.now();
+    if (now - lastManualSearchCooldownAlertAtRef.current < MANUAL_SEARCH_COOLDOWN_ALERT_MIN_INTERVAL_MS) {
+      return;
+    }
+    lastManualSearchCooldownAlertAtRef.current = now;
+    if (typeof window !== "undefined") {
+      alert("검색을 너무 빠르게 반복하고 있어요. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    showError("검색을 너무 빠르게 반복하고 있어요. 잠시 후 다시 시도해주세요.");
+  }, [showError]);
+
+  const setSafeTimeout = useCallback((fn, delayMs) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current.delete(id);
+      fn();
+    }, delayMs);
+    timeoutsRef.current.add(id);
+    return id;
+  }, []);
+
+  useEffect(() => {
+    const timeouts = timeoutsRef.current;
+    return () => {
+      for (const id of timeouts) {
+        clearTimeout(id);
+      }
+      timeouts.clear();
+    };
+  }, []);
 
   // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
@@ -904,28 +938,60 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [filterDateRange, customStartDate, customEndDate]);
 
   // URL에서 postKey를 받아서 대기 상태로 저장
-  useEffect(() => {
-    const postKey = searchParams.get('postKey');
-    const postedAt = searchParams.get('postedAt');
-    const ts = searchParams.get('ts');
-    if (postKey) {
-      setSkipInitialOrdersFetch(true);
-      if (ts && ts !== lastPostKeyTsRef.current) {
-        lastPostKeyTsRef.current = ts;
-        setPostKeySearchNonce((v) => v + 1);
+  const replaceUrlSearchParams = useCallback((mutator) => {
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      if (typeof mutator === "function") {
+        mutator(url.searchParams);
       }
-      setPendingPostKey(postKey);
-      setPendingPostedAt(postedAt || null);
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (next === current) return;
+      startTransition(() => {
+        router.replace(next, { scroll: false });
+      });
+    } catch (_) {
+      // ignore
     }
-  }, [searchParams]);
+  }, [router]);
+
+  const stripOrdersTestNavParams = useCallback(() => {
+    replaceUrlSearchParams((sp) => {
+      sp.delete("postKey");
+      sp.delete("post_key");
+      sp.delete("postedAt");
+      sp.delete("ts");
+    });
+  }, [replaceUrlSearchParams]);
+
+  const urlPostKeyParam = searchParams.get('postKey') || searchParams.get('post_key');
+  const urlPostedAtParam = searchParams.get('postedAt');
+  const urlTsParam = searchParams.get('ts');
+
+  useEffect(() => {
+    const postKey = urlPostKeyParam;
+    if (!postKey) return;
+    const postedAt = urlPostedAtParam || null;
+    const ts = urlTsParam || null;
+
+    // 같은 postKey라도 ts가 바뀌면 SWR 키가 바뀌도록 (뒤로가기 후 재진입 포함)
+    if (ts) {
+      setPostKeySearchNonce(ts);
+    } else {
+      setPostKeySearchNonce(String(Date.now()));
+    }
+
+    setPendingPostKey({ postKey, postedAt, ts });
+  }, [urlPostKeyParam, urlPostedAtParam, urlTsParam]);
 
   // 초기 동기화 완료 후 postKey 검색 적용
   useEffect(() => {
     if (initialSyncing) return;
     if (!pendingPostKey) return;
 
-    const postKey = pendingPostKey;
-    const postedAt = pendingPostedAt;
+    const postKey = pendingPostKey.postKey;
+    const postedAt = pendingPostKey.postedAt;
     if (postKey) {
       // 검색어 설정
       setSearchTerm(postKey);
@@ -945,9 +1011,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       };
 
       setInputValue(); // 즉시 실행
-      setTimeout(setInputValue, 0); // 다음 틱에 실행
-      setTimeout(setInputValue, 100); // 100ms 후 실행
-      setTimeout(setInputValue, 300); // 300ms 후 실행
+      setSafeTimeout(setInputValue, 0); // 다음 틱에 실행
+      setSafeTimeout(setInputValue, 100); // 100ms 후 실행
+      setSafeTimeout(setInputValue, 300); // 300ms 후 실행
 
       // 상태를 "전체"로 변경
       setFilterSelection("all");
@@ -988,18 +1054,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setSelectedOrderIds([]);
 
       // URL에서 파라미터 즉시 제거 (다른 검색 동작을 방해하지 않도록)
-      setTimeout(() => {
-        const newUrl = new URL(window.location);
-        newUrl.searchParams.delete("postKey");
-        newUrl.searchParams.delete("postedAt");
-        newUrl.searchParams.delete("ts");
-        window.history.replaceState({}, "", newUrl.toString());
-      }, 500);
+      stripOrdersTestNavParams();
     }
     setPendingPostKey(null);
-    setPendingPostedAt(null);
-    setSkipInitialOrdersFetch(false);
-  }, [pendingPostKey, pendingPostedAt, initialSyncing]);
+  }, [pendingPostKey, initialSyncing, stripOrdersTestNavParams, setSafeTimeout]);
 
   // 동기화 타임아웃 (10초 무응답 시 오류 카드 표출)
   useEffect(() => {
@@ -1390,7 +1448,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // raw 모드는 페이지네이션 없이 1페이지 고정
   const effectivePage = isRawMode ? 1 : currentPage;
 
-  const shouldFetchOrders = !!userData?.userId && !skipInitialOrdersFetch;
+  const shouldFetchOrders = !!userData?.userId && (
+    !pendingPostKey ? true : (!initialSyncing && !!urlPostKeyFilter)
+  );
 
   const rawOrdersResult = useCommentOrdersClient(
     mode === "raw" && shouldFetchOrders ? userData?.userId : null,
@@ -1765,14 +1825,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
       : null,
     async () => {
       if (cachedGlobalStats) {
-        console.log("📦 [글로벌 통계] 캐시 사용");
+        if (process.env.NODE_ENV === "development") {
+          console.log("📦 [글로벌 통계] 캐시 사용");
+        }
         return cachedGlobalStats;
       }
 
       const sb = getAuthedClient();
       const rpcName = mode === "raw" ? "get_comment_order_stats" : "get_order_stats";
 
-      console.log(`📊 [글로벌 통계] RPC 호출: ${rpcName}`);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`📊 [글로벌 통계] RPC 호출: ${rpcName}`);
+      }
 
       const { data, error } = await sb.rpc(rpcName, {
         p_user_id: userData.userId,
@@ -1791,14 +1855,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       const normalized = data || { statusCounts: {}, subStatusCounts: {} };
       writeGlobalStatsCache(globalStatsCacheKey, normalized);
-      console.log(`📊 [글로벌 통계] 결과:`, normalized);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`📊 [글로벌 통계] 결과:`, normalized);
+      }
       return normalized;
     },
     {
       revalidateOnFocus: false, // 포커스 시 중복 호출 방지
-      revalidateOnReconnect: true,
-      revalidateIfStale: true,
-      dedupingInterval: 30000,
+      revalidateOnReconnect: false, // 서버 보호: 재연결 시 자동 재호출 OFF
+      revalidateIfStale: false, // 서버 보호: stale 자동 재호출 OFF
+      dedupingInterval: 60000,
       revalidateOnMount: cachedGlobalStats ? false : true,
       fallbackData: cachedGlobalStats || undefined,
     }
@@ -1911,8 +1977,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
       requestIdleCallback(() => fn());
       return;
     }
-    setTimeout(() => fn(), 0);
-  }, []);
+    setSafeTimeout(() => fn(), 0);
+  }, [setSafeTimeout]);
 
   const orderStatusOptions = useMemo(
     () => [
@@ -2199,6 +2265,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const trimmedPostKey = (postKey || "").trim();
     if (!trimmedSearchValue && !trimmedPostKey) return; // 빈 값은 무시
 
+    const nextType = trimmedSearchValue ? "product" : "post_key";
+    const nextTerm = trimmedSearchValue || trimmedPostKey;
+    const nextPostKeyFilter = nextType === "post_key" ? (nextTerm || null) : null;
+    const currentPostKeyFilter = urlPostKeyFilter || null;
+
+    // 클릭으로 검색을 명시적으로 트리거했는데 조건이 동일하면, 1회 재검증만 수행
+    if (nextTerm === searchTerm && nextType === appliedSearchType && currentPostKeyFilter === nextPostKeyFilter) {
+      const now = Date.now();
+      if (now - lastManualSearchRefreshAtRef.current < MANUAL_SEARCH_REFRESH_MIN_INTERVAL_MS) {
+        warnSearchCooldown();
+        return;
+      }
+      lastManualSearchRefreshAtRef.current = now;
+      refreshOrders({ force: true });
+      return;
+    }
+
     if (trimmedSearchValue) {
       searchTypeRef.current = "product";
       setAppliedSearchType("product");
@@ -2209,6 +2292,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         searchInputRef.current.value = trimmedSearchValue;
       }
       setSearchTerm(trimmedSearchValue);
+      setUrlPostKeyFilter(null);
     } else if (trimmedPostKey) {
       searchTypeRef.current = "post_key";
       setAppliedSearchType("post_key");
@@ -2219,6 +2303,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         searchInputRef.current.value = trimmedPostKey;
       }
       setSearchTerm(trimmedPostKey);
+      setUrlPostKeyFilter(trimmedPostKey || null);
     }
 
     setExactCustomerFilter(null);
@@ -2226,9 +2311,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]); // 검색 시 선택된 항목 초기화 (선택적)
     // 검색 후 맨 위로 스크롤
     if (scrollToTop) {
-      setTimeout(() => scrollToTop(), 100);
+      setSafeTimeout(() => scrollToTop(), 100);
     }
-  }, [scrollToTop]);
+  }, [scrollToTop, appliedSearchType, searchTerm, urlPostKeyFilter, refreshOrders, setSafeTimeout, warnSearchCooldown]);
 
   // 편집 관련 함수들
   const fetchProductsForPost = async (postId) => {
@@ -2755,11 +2840,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setSelectedOrderIds([]);
 
       // URL에서 검색 파라미터 제거 (한 번만 실행되도록)
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.delete("search");
-      window.history.replaceState({}, "", newUrl.toString());
+      replaceUrlSearchParams((sp) => {
+        sp.delete("search");
+      });
     }
-  }, [searchParams]);
+  }, [searchParams, replaceUrlSearchParams]);
 
   // 페이지 가시성 변경 및 포커스 감지하여 상품 데이터 업데이트
   useEffect(() => {
@@ -3500,12 +3585,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
 
     // URL 파라미터 제거
-    if (typeof window !== 'undefined') {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.delete("postKey");
-      newUrl.searchParams.delete("postedAt");
-      window.history.replaceState({}, "", newUrl.toString());
-    }
+    stripOrdersTestNavParams();
   };
 
   const clearCustomerFilter = () => {
@@ -3528,7 +3608,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     const currentSearchType = searchTypeRef.current || "customer";
     const shouldUpdateSearchType = currentSearchType !== appliedSearchType;
-    if (trimmedInput !== searchTerm || shouldUpdateSearchType) {
+    const nextPostKeyFilter = currentSearchType === "post_key" ? (trimmedInput || null) : null;
+    const shouldUpdatePostKeyFilter = (urlPostKeyFilter || null) !== nextPostKeyFilter;
+
+    // 사용자가 "검색"을 명시적으로 눌렀는데 조건이 동일하면, 키를 바꾸지 않고 1회 재검증만 수행
+    // (캐시 엔트리 폭증 방지 + 원하는 타이밍에 반드시 최신 결과 보장)
+    if (trimmedInput === searchTerm && !shouldUpdateSearchType && !shouldUpdatePostKeyFilter) {
+      const now = Date.now();
+      if (now - lastManualSearchRefreshAtRef.current < MANUAL_SEARCH_REFRESH_MIN_INTERVAL_MS) {
+        warnSearchCooldown();
+        return;
+      }
+      lastManualSearchRefreshAtRef.current = now;
+      refreshOrders({ force: true });
+      return;
+    }
+
+    if (trimmedInput !== searchTerm || shouldUpdateSearchType || shouldUpdatePostKeyFilter) {
       // New search triggered
       if (trimmedInput !== searchTerm) {
         setSearchTerm(trimmedInput);
@@ -3537,7 +3633,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         setAppliedSearchType(currentSearchType);
       }
       if (currentSearchType === "post_key") {
-        setUrlPostKeyFilter(trimmedInput || null);
+        setUrlPostKeyFilter(nextPostKeyFilter);
       } else {
         setUrlPostKeyFilter(null);
       }
@@ -3546,10 +3642,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setSelectedOrderIds([]); // 선택 초기화
       // 검색 후 맨 위로 스크롤
       if (scrollToTop) {
-        setTimeout(() => scrollToTop(), 100);
+        setSafeTimeout(() => scrollToTop(), 100);
       }
     }
-  }, [searchTerm, appliedSearchType, scrollToTop]);
+  }, [searchTerm, appliedSearchType, scrollToTop, refreshOrders, urlPostKeyFilter, setSafeTimeout, warnSearchCooldown]);
 
   // 입력란에서 엔터 키 누를 때 이벤트 핸들러
   const handleKeyDown = (e) => {
@@ -3588,12 +3684,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSelectedOrderIds([]);
 
     // URL 파라미터 제거
-    if (typeof window !== 'undefined') {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.delete("postKey");
-      newUrl.searchParams.delete("postedAt");
-      window.history.replaceState({}, "", newUrl.toString());
-    }
+    stripOrdersTestNavParams();
 
     // 페이지 최상단으로 즉시 스크롤
     if (mainTopRef.current) {
@@ -3756,7 +3847,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setFocusedMemoId(null);
 
       // 2초 후 저장 완료 표시 제거
-      setTimeout(() => {
+      setSafeTimeout(() => {
         setMemoSavingStates(prev => {
           const newState = { ...prev };
           delete newState[orderId];
@@ -3787,7 +3878,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       console.error('메모 저장 오류:', error);
       setMemoSavingStates(prev => ({ ...prev, [orderId]: 'error' }));
 
-      setTimeout(() => {
+      setSafeTimeout(() => {
         setMemoSavingStates(prev => {
           const newState = { ...prev };
           delete newState[orderId];
@@ -3795,7 +3886,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         });
       }, 3000);
     }
-  }, [userData, mutateOrders, syncOrdersToIndexedDb]);
+  }, [userData, mutateOrders, syncOrdersToIndexedDb, setSafeTimeout]);
 
   // --- 메모 취소 핸들러 ---
   const handleMemoCancel = useCallback((orderId) => {
@@ -4028,7 +4119,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // 댓글 모달에서 failover 요청 시 다음 키로 재시도
   const handleCommentsFailover = (order, prevTryKeyIndex = 0) => {
     setIsCommentsModalOpen(false);
-    setTimeout(() => {
+    setSafeTimeout(() => {
       openCommentsModal(order, prevTryKeyIndex + 1);
     }, 100);
   };
@@ -4517,7 +4608,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
             setIsTestUpdating(isProcessing);
             if (!isProcessing && result) {
               setTestUpdateResult(result);
-              setTimeout(() => setTestUpdateResult(null), 3000);
+              setSafeTimeout(() => setTestUpdateResult(null), 3000);
             }
           }}
         />

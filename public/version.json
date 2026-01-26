@@ -1,6 +1,11 @@
 {
   "releases": [
     {
+      "version": "1.0.7",
+      "date": "2026-01-26",
+      "summary": "orders-test 검색/재진입 시 get_orders 호출 보장(뒤로가기 포함) + 동일조건 재검색은 강제 재검증 1회로 최적화(연타 알림/쿨다운 포함) + stats 자동호출 감소"
+    },
+    {
       "version": "1.0.6",
       "date": "2026-01-26",
       "summary": "posts페이지에 새로고침 적용 & orders-test 기간 수정로직을 계속 이어지게 수정"
