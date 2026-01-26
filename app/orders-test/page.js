@@ -14,6 +14,9 @@ const datePickerStyle = `
   .react-datepicker-popper {
     z-index: 9999 !important;
   }
+  .react-datepicker__close-icon {
+    display: none;
+  }
 `;
 
 import { api } from "../lib/fetcher";
@@ -241,9 +244,11 @@ const OrdersSearchBar = forwardRef(function OrdersSearchBar(
                 <button
                   type="button"
                   onClick={onClearInput}
-                  className="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 flex items-center pr-2"
                 >
-                  <XMarkIcon className="w-4 h-4" />
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors">
+                    <XMarkIcon className="w-4 h-4" />
+                  </span>
                 </button>
               </div>
             </div>
@@ -815,6 +820,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState(null);
 
+  const CUSTOM_DATE_STORAGE_KEY = "orders-test-custom-date-range";
+
   // raw 상품 조회용 맵 (post_key 또는 band+post 조합) - sessionStorage에서 복원
   const [postProductsByPostKey, setPostProductsByPostKey] = useState(() => {
     return readOrdersTestProductsByPostKeyCache();
@@ -854,6 +861,41 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setShowNoticeModal(true); // 저장된 값이 없으면 모달 표시
     }
   }, []);
+
+  // 직접 선택한 기간 로컬스토리지 복원
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(CUSTOM_DATE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.start) return;
+      const start = new Date(parsed.start);
+      const end = parsed?.end ? new Date(parsed.end) : null;
+      if (isNaN(start.getTime())) return;
+      setCustomStartDate(start);
+      setCustomEndDate(end && !isNaN(end.getTime()) ? end : null);
+      setFilterDateRange("custom");
+    } catch (_) {
+      // ignore parse errors
+    }
+  }, []);
+
+  // 직접 선택 기간 저장 (custom일 때만 유지)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (filterDateRange === "custom" && customStartDate) {
+      localStorage.setItem(
+        CUSTOM_DATE_STORAGE_KEY,
+        JSON.stringify({
+          start: customStartDate.toISOString(),
+          end: customEndDate ? customEndDate.toISOString() : null,
+        })
+      );
+    } else {
+      localStorage.removeItem(CUSTOM_DATE_STORAGE_KEY);
+    }
+  }, [filterDateRange, customStartDate, customEndDate]);
 
   // URL에서 postKey를 받아서 자동으로 검색 (초기 동기화 완료 후)
   useEffect(() => {
@@ -2603,7 +2645,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     ({ value, onClick, isActive, disabled }, ref) => (
       <button
         className={`flex items-center pl-3 pr-8 py-2 md:py-2.5 rounded-md text-xs md:text-sm font-medium transition border whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] sm:max-w-none ${isActive
-          ? "bg-orange-500 text-white border-orange-500 shadow-sm"
+          ? "bg-gray-300 text-gray-700 hover:bg-gray-400"
           : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 hover:border-gray-400"
           } ${disabled
             ? "!bg-gray-100 !border-gray-200 text-gray-400 cursor-not-allowed opacity-50"
@@ -2615,7 +2657,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         title={value || "날짜 직접 선택"}
       >
         <CalendarDaysIcon
-          className={`w-4 h-4 md:w-5 md:h-5 mr-1.5 md:mr-2 flex-shrink-0 ${isActive ? "text-white" : "text-gray-400"
+          className={`w-4 h-4 md:w-5 md:h-5 mr-1.5 md:mr-2 flex-shrink-0 ${isActive ? "text-black" : "text-gray-400"
             }`}
         />
         <span className="overflow-hidden text-ellipsis">
@@ -3247,10 +3289,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const formatDateForPicker = (date) => {
     if (!date) return "";
     const d = new Date(date);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}.${mm}.${dd}`;
+    const yy = String(d.getFullYear()).slice(-2);
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${yy}년 ${m}월 ${day}일`;
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
@@ -3492,9 +3534,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('showPickupAvailableOnly');
     }
-    setFilterDateRange("30days"); // 기본 날짜로 복귀
-    setCustomStartDate(null);
-    setCustomEndDate(null);
+    // 직접선택(custom)일 때는 기간 유지, 그 외는 기본 기간으로 초기화
+    if (filterDateRange !== "custom") {
+      setFilterDateRange("30days"); // 기본 날짜로 복귀
+      setCustomStartDate(null);
+      setCustomEndDate(null);
+    }
     setSelectedOrderIds([]);
 
     // URL 파라미터 제거
@@ -3784,7 +3829,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setCurrentPage(1);
       setSelectedOrderIds([]);
     } else {
-      handleDateRangeChange("7days");
+      handleDateRangeChange("30days");
     }
   };
 
@@ -4235,33 +4280,49 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   기간
                 </div>
                 <div className="bg-white px-4 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap">
-                  <DatePicker
-                    selectsRange={true}
-                    startDate={customStartDate}
-                    endDate={customEndDate}
-                    onChange={handleCustomDateChange}
-                    locale={ko}
-                    dateFormat="yyyy.MM.dd"
-                    maxDate={new Date()}
-                    isClearable={true}
-                    placeholderText="날짜 선택"
-                    disabled={isDataLoading}
-                    popperPlacement="bottom-start"
-                    customInput={
-                      <CustomDateInputButton
-                        isActive={filterDateRange === "custom"}
-                        disabled={isDataLoading}
-                        value={
-                          customStartDate
-                            ? `${formatDateForPicker(customStartDate)}${customEndDate
-                              ? ` ~ ${formatDateForPicker(customEndDate)}`
+                  <div className="flex items-center gap-2">
+                    <DatePicker
+                      selectsRange={true}
+                      startDate={customStartDate}
+                      endDate={customEndDate}
+                      onChange={handleCustomDateChange}
+                      locale={ko}
+                      dateFormat="yyyy.MM.dd"
+                      maxDate={new Date()}
+                      isClearable={false}
+                      placeholderText="날짜 선택"
+                      disabled={isDataLoading}
+                      popperPlacement="bottom-start"
+                      customInput={
+                        <CustomDateInputButton
+                          isActive={filterDateRange === "custom"}
+                          disabled={isDataLoading}
+                          value={
+                            customStartDate
+                              ? `${formatDateForPicker(customStartDate)}${customEndDate
+                                ? ` ~ ${formatDateForPicker(customEndDate)}`
+                                : ""
+                              }`
                               : ""
-                            }`
-                            : ""
-                        }
-                      />
-                    }
-                  />
+                          }
+                        />
+                      }
+                    />
+                    {customStartDate && (
+                      <div className="flex items-center gap-2">
+                        
+                        <button
+                          type="button"
+                          onClick={clearDateRangeFilter}
+                          className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800 transition-colors"
+                          title="기간 초기화"
+                          disabled={isDataLoading}
+                        >
+                          <XMarkIcon className="w-4 h-4 mx-auto" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <CustomRadioGroup
                     name="dateRange"
                     options={dateRangeOptions}
@@ -4296,9 +4357,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
 
         {/* 필터 섹션 */}
-        <div className="px-4 lg:px-6 pt-4 relative z-40">
+        <div className="px-4 lg:px-6 pt-4 relative z-[60]">
           <div>
-            <LightCard padding="p-0" className="relative z-40 overflow-visible">
+            <LightCard padding="p-0" className="relative z-[60] overflow-visible">
               <div className="divide-y divide-gray-200">
                 {/* 조회 기간 */}
                 <div className="grid grid-cols-[max-content_1fr] items-center">
@@ -4308,35 +4369,52 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <span className="sm:hidden">기간</span>
                   </div>
                   <div className="bg-white px-4 md:px-4 py-0 md:py-0 flex items-center gap-x-4 md:gap-x-4 gap-y-3 flex-wrap rounded-tr-xl relative z-50">
-                    <DatePicker
-                      selectsRange={true}
-                      startDate={customStartDate}
-                      endDate={customEndDate}
-                      onChange={handleCustomDateChange}
-                      locale={ko}
-                      dateFormat="yyyy.MM.dd"
-                      maxDate={new Date()}
-                      isClearable={true}
-                      placeholderText="직접 선택"
-                      disabled={isDataLoading}
-                      popperPlacement="bottom-start"
-                      popperProps={{ strategy: 'fixed' }}
-                      popperClassName="!z-50"
-                      customInput={
-                        <CustomDateInputButton
-                          isActive={filterDateRange === "custom"}
-                          disabled={isDataLoading}
-                          value={
-                            customStartDate
-                              ? `${formatDateForPicker(customStartDate)}${customEndDate
-                                ? ` ~ ${formatDateForPicker(customEndDate)}`
+                    <div className="flex items-center gap-2">
+                      <DatePicker
+                        selectsRange={true}
+                        startDate={customStartDate}
+                        endDate={customEndDate}
+                        onChange={handleCustomDateChange}
+                        locale={ko}
+                        dateFormat="yyyy.MM.dd"
+                        maxDate={new Date()}
+                        isClearable={false}
+                        placeholderText="직접 선택"
+                        disabled={isDataLoading}
+                        popperPlacement="bottom-start"
+                        popperProps={{ strategy: 'fixed' }}
+                        popperClassName="!z-50"
+                        customInput={
+                          <CustomDateInputButton
+                            isActive={filterDateRange === "custom"}
+                            disabled={isDataLoading}
+                            value={
+                              customStartDate
+                                ? `${formatDateForPicker(customStartDate)}${customEndDate
+                                  ? ` ~ ${formatDateForPicker(customEndDate)}`
+                                  : ""
+                                }`
                                 : ""
-                              }`
-                              : ""
-                          }
-                        />
-                      }
-                    />
+                            }
+                          />
+                        }
+                      />
+                      {customStartDate && (
+                        <div className="flex items-center gap-2">
+                          
+                          <button
+                            type="button"
+                            onClick={clearDateRangeFilter}
+                            className="w-8 h-8 rounded-full bg-orange-500 text-orange-200 hover:bg-orange-200 hover:text-orange-800 transition-colors"
+                            title="기간 초기화"
+                            disabled={isDataLoading}
+                          >
+                            <XMarkIcon className="w-4 h-4 mx-auto" />
+                            
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <CustomRadioGroup
                       name="dateRange"
                       options={dateRangeOptions}
@@ -4503,15 +4581,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
                     <tr>
                       <td
                         colSpan="7"
-                        className="px-6 py-10 text-center text-sm text-gray-500"
+                        className="px-6 py-10 text-center text-base md:text-lg text-gray-500"
                       >
-                        {searchTerm ||
-                          filterSelection !== "all" ||
-                          filterDateRange !== "30days" || // 기본값 변경 반영
-                          (filterDateRange === "custom" &&
-                            (customStartDate || customEndDate))
-                          ? "조건에 맞는 주문이 없습니다."
-                          : "표시할 주문이 없습니다."}
+                        {searchTerm
+                          ? `'${searchTerm}'로 검색 결과가 없습니다. 다른 이름으로 검색해주세요.`
+                          : filterSelection !== "all" ||
+                            filterDateRange !== "30days" || // 기본값 변경 반영
+                            (filterDateRange === "custom" &&
+                              (customStartDate || customEndDate))
+                            ? "조건에 맞는 주문이 없습니다."
+                            : "표시할 주문이 없습니다."}
                       </td>
                     </tr>
                   )}

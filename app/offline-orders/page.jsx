@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import { ArrowPathIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
@@ -89,6 +90,7 @@ const processBandTags = (text) => {
 };
 
 export default function OfflineOrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -342,10 +344,18 @@ export default function OfflineOrdersPage() {
     if (incrementalSyncing) return;
     const userId = resolveUserId();
     if (!userId) return;
+    const pendingQueue = await getPendingQueue();
+    const hasPending = userId
+      ? pendingQueue.some((q) => !q.user_id || q.user_id === userId)
+      : pendingQueue.length > 0;
+    if (hasPending) {
+      return;
+    }
     setIncrementalSyncing(true);
     try {
+      const lastSyncKey = `lastSyncAt:${userId}`;
       const lastSyncAt =
-        (await getMeta("lastSyncAt")) ||
+        (await getMeta(lastSyncKey)) ||
         new Date(Date.now() - ONE_WEEK_MS).toISOString();
 
       const fetchSince = async (table, columns, dateColumn) => {
@@ -368,7 +378,7 @@ export default function OfflineOrdersPage() {
       await bulkPut("posts", postsNew);
       await bulkPut("products", productsNew);
       await bulkPut("orders", ordersNew);
-      await setMeta("lastSyncAt", new Date().toISOString());
+      await setMeta(lastSyncKey, new Date().toISOString());
       setToast({
         type: "success",
         message: `증분 동기화 완료 (posts ${postsNew.length}, products ${productsNew.length}, orders ${ordersNew.length})`,
@@ -1287,7 +1297,7 @@ export default function OfflineOrdersPage() {
       setSelectedOrderIds([]);
       const canSyncNow = isSupabaseHealthy && (typeof navigator === "undefined" || navigator.onLine);
       if (canSyncNow) {
-        scheduleSyncQueue(2000);
+        scheduleSyncQueue(1000);
         // 큐가 서버로 반영되기 전에 증분 동기화를 호출하면
         // 서버의 이전 상태로 덮어써지는 문제가 있어 큐 동기화 이후에만 동기화
         setToast({
@@ -1314,7 +1324,7 @@ export default function OfflineOrdersPage() {
   const scheduleSyncQueue = (delayMs = 3000) => {
     const canSync =
       supabaseHealth === "healthy" && (typeof navigator === "undefined" || navigator.onLine);
-    if (!canSync) return;
+    if (!canSync || queueSize <= 0) return;
     if (syncDebounceRef.current) {
       clearTimeout(syncDebounceRef.current);
     }
@@ -1327,8 +1337,9 @@ export default function OfflineOrdersPage() {
   const handleSyncQueue = async () => {
     if (!isIndexedDBAvailable()) {
       setToast({ type: "error", message: "IndexedDB를 사용할 수 없습니다." });
-      return;
+      return false;
     }
+    if (syncingRef.current) return false;
     setSyncing(true);
     syncingRef.current = true;
     try {
@@ -1340,7 +1351,7 @@ export default function OfflineOrdersPage() {
 
       if (!filteredQueue.length) {
         setToast({ type: "info", message: "동기화할 항목이 없습니다." });
-        return;
+        return true;
       }
 
       const response = await fetch("/api/sync", {
@@ -1366,9 +1377,9 @@ export default function OfflineOrdersPage() {
       ? data.results.filter((r) => r?.ok).map((r) => r.id)
       : filteredQueue.map((q) => q.id);
 
-    if (Array.isArray(data?.results)) {
-      const failed = data.results.filter((r) => !r?.ok);
-      if (failed.length > 0) {
+      if (Array.isArray(data?.results)) {
+        const failed = data.results.filter((r) => !r?.ok);
+        if (failed.length > 0) {
         const reasons = failed
           .map((r) => `${r.id ?? "?"}: ${r.reason ?? "알 수 없는 오류"}`)
           .join(", ");
@@ -1377,7 +1388,7 @@ export default function OfflineOrdersPage() {
           type: "error",
           message: `동기화 실패(${failed.length}건): ${reasons}`,
         });
-        return;
+        return false;
       }
     }
 
@@ -1388,14 +1399,24 @@ export default function OfflineOrdersPage() {
         type: "success",
         message: `동기화 완료 (${okIds.length}/${queueItems.length})`,
       });
+      return true;
     } catch (err) {
       setToast({
         type: "error",
         message: err.message || "동기화 중 오류가 발생했습니다.",
       });
+      return false;
     } finally {
       setSyncing(false);
       syncingRef.current = false;
+    }
+  };
+
+  const handleGoOrders = async () => {
+    if (syncingRef.current) return;
+    const ok = await handleSyncQueue();
+    if (ok) {
+      router.push("/orders-test");
     }
   };
 
@@ -1577,7 +1598,7 @@ export default function OfflineOrdersPage() {
   // 온라인/포커스/헬스 회복 시 자동 동기화
   useEffect(() => {
     const trySync = () => {
-      if (!syncingRef.current && isSupabaseHealthy) {
+      if (queueSize > 0 && !syncingRef.current && isSupabaseHealthy) {
         scheduleSyncQueue(500);
       }
     };
@@ -1596,15 +1617,18 @@ export default function OfflineOrdersPage() {
       };
     }
     return undefined;
-  }, [isSupabaseHealthy]);
+  }, [isSupabaseHealthy, queueSize]);
 
   // 건강 상태 변화 감지 (offline -> healthy) 시 모달 표시
   useEffect(() => {
     if (prevHealthRef.current !== "healthy" && isSupabaseHealthy) {
       setShowOnlineModal(true);
+      if (queueSize > 0 && !syncingRef.current) {
+        scheduleSyncQueue(0);
+      }
     }
     prevHealthRef.current = supabaseHealth;
-  }, [supabaseHealth, isSupabaseHealthy]);
+  }, [supabaseHealth, isSupabaseHealthy, queueSize]);
 
   // 페이지 이탈 경고 (대기열 있을 때)
   useEffect(() => {
@@ -1868,13 +1892,16 @@ export default function OfflineOrdersPage() {
               >
                 닫기
               </button>
-              <Link
-                href="/orders-test"
+              <button
+                type="button"
                 className="px-4 py-2 rounded-md bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700"
-                onClick={() => setShowOnlineModal(false)}
+                onClick={async () => {
+                  setShowOnlineModal(false);
+                  await handleGoOrders();
+                }}
               >
                 주문 페이지로 이동
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -1890,12 +1917,13 @@ export default function OfflineOrdersPage() {
                 <span className="text-xs text-gray-300">원래 페이지로 돌아가 온라인 작업을 이어가세요.</span>
               </div>
             </div>
-            <Link
-              href="/orders-test"
+            <button
+              type="button"
               className="inline-flex items-center justify-center px-3 py-2 text-sm font-semibold rounded-lg bg-white text-gray-900 hover:bg-gray-100 shadow-sm"
+              onClick={handleGoOrders}
             >
               주문 페이지로 이동
-            </Link>
+            </button>
           </div>
         </div>
       )}
