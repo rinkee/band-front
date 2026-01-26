@@ -227,7 +227,7 @@ const fetchOrderStats = async (key) => {
 
   console.log(`📊 [주문 통계] RPC 호출: userId=${userId}`);
 
-  const { data, error } = await sb.rpc('get_order_stats', {
+  const rpcParams = {
     p_user_id: userId,
     p_status: parsedFilters.status || null,
     p_sub_status: parsedFilters.subStatus || null,
@@ -235,7 +235,9 @@ const fetchOrderStats = async (key) => {
     p_start_date: parsedFilters.startDate || null,
     p_end_date: parsedFilters.endDate || null,
     p_date_type: parsedFilters.dateType || 'ordered',
-  });
+  };
+
+  const { data, error } = await sb.rpc('get_order_stats', rpcParams);
 
   if (error) {
     console.error('RPC 통계 조회 실패:', error);

@@ -1801,6 +1801,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // 글로벌 통계 데이터 (날짜 필터만 적용, 상태 필터는 제외) - 통계 카드용
   // RPC 함수로 통합: 미수령/주문완료/결제완료 카운트를 한 번에 조회
+  const forceGlobalStatsRef = useRef(false);
   const globalStatsCacheKey =
     userData?.userId && mode
       ? `orders-test-global-stats:${userData.userId}:${mode}:${filterDateRange}:${dateFilterParams.startDate || "none"}:${dateFilterParams.endDate || "none"}`
@@ -1824,21 +1825,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
       ]
       : null,
     async () => {
-      if (cachedGlobalStats) {
-        if (process.env.NODE_ENV === "development") {
-          console.log("📦 [글로벌 통계] 캐시 사용");
+      const shouldBypassCache = forceGlobalStatsRef.current;
+      if (!shouldBypassCache) {
+        const cached = readGlobalStatsCache(globalStatsCacheKey);
+        if (cached) {
+          if (process.env.NODE_ENV === "development") {
+            console.log("📦 [글로벌 통계] 캐시 사용");
+          }
+          return cached;
         }
-        return cachedGlobalStats;
       }
+      forceGlobalStatsRef.current = false;
 
       const sb = getAuthedClient();
-      const rpcName = mode === "raw" ? "get_comment_order_stats" : "get_order_stats";
+      const rpcCandidates =
+        mode === "raw"
+          ? ["get_comment_order_stats"]
+          : ["get_order_stats"];
 
       if (process.env.NODE_ENV === "development") {
-        console.log(`📊 [글로벌 통계] RPC 호출: ${rpcName}`);
+        console.log(`📊 [글로벌 통계] RPC 호출: ${rpcCandidates[0]}`);
       }
 
-      const { data, error } = await sb.rpc(rpcName, {
+      const rpcParams = {
         p_user_id: userData.userId,
         p_status: null,
         p_sub_status: null,
@@ -1846,7 +1855,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
         p_start_date: dateFilterParams.startDate || null,
         p_end_date: dateFilterParams.endDate || null,
         p_date_type: 'ordered',
-      });
+      };
+
+      let data;
+      let error;
+      for (const rpcName of rpcCandidates) {
+        const res = await sb.rpc(rpcName, rpcParams);
+        data = res?.data;
+        error = res?.error;
+        if (!error) break;
+        if (process.env.NODE_ENV === "development") {
+          console.warn(`[글로벌 통계] RPC 실패 (${rpcName})`, error);
+        }
+      }
 
       if (error) {
         console.error("[글로벌 통계] RPC error:", error);
@@ -1876,8 +1897,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const paidCountData = globalStatsData?.statusCounts?.["결제완료"] || 0;
 
   const refreshStats = useCallback(
-    () => mutateGlobalStats(undefined, { revalidate: true, dedupe: true }),
-    [mutateGlobalStats]
+    (force = false) => {
+      if (force) {
+        forceGlobalStatsRef.current = true;
+        if (typeof window !== "undefined" && globalStatsCacheKey) {
+          try {
+            localStorage.removeItem(globalStatsCacheKey);
+          } catch (_) {}
+        }
+      }
+      return mutateGlobalStats(undefined, { revalidate: true, dedupe: !force });
+    },
+    [mutateGlobalStats, globalStatsCacheKey]
   );
 
   // 기간 필터 변경 시 통계는 SWR 키 변경으로 1회만 재호출됨
@@ -3766,7 +3797,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       // 주문/배지/상품 모두 강제 재검증 (동일 키는 dedupe로 병합)
       await Promise.all([
         refreshOrders({ force }),
-        refreshStats(),
+        refreshStats(force),
       ]);
     } finally {
       const elapsed = Date.now() - start;
@@ -3953,6 +3984,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   const handleDateRangeChange = (range) => {
     setFilterDateRange(range);
+    if (range !== "custom") {
+      setCustomStartDate(null);
+      setCustomEndDate(null);
+    }
     setCurrentPage(1);
     setSelectedOrderIds([]);
   };
