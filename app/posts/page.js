@@ -677,7 +677,7 @@ export default function PostsPage() {
     }
 
     // 주문 관리 페이지로 이동: postKey와 postedAt을 함께 전달
-    let url = `/orders-test?postKey=${encodeURIComponent(postKey)}`;
+    let url = `/orders-test?postKey=${encodeURIComponent(postKey)}&ts=${Date.now()}`;
     if (postedAt) {
       url += `&postedAt=${encodeURIComponent(postedAt)}`;
     }
