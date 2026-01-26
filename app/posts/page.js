@@ -1797,13 +1797,13 @@ export default function PostsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-3 py-2 sm:py-2.5">
-          {/* 검색 영역 */}
-          <div className="mb-2 sm:mb-3">
+          <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* 검색 영역 */}
             <form
               onSubmit={handleSearch}
-              className="flex flex-wrap items-center gap-2"
+              className="flex flex-wrap items-center gap-2 md:flex-nowrap"
             >
               <div className="flex items-center bg-gray-100 px-1 py-1 rounded-md border border-gray-300">
                 <label
@@ -1839,7 +1839,7 @@ export default function PostsPage() {
                   상품명
                 </label>
               </div>
-              <div className="relative flex-1 min-w-[200px] max-w-xl">
+              <div className="relative flex-1 min-w-[180px] max-w-xl md:flex-none md:w-[260px]">
                 <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
                   <svg
                     className="h-4 w-4 text-gray-400"
@@ -1898,10 +1898,9 @@ export default function PostsPage() {
                 </button>
               )}
             </form>
-          </div>
 
-          {/* 통계 및 버튼 영역 배포가 안됌*/}
-          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+            {/* 통계 및 버튼 영역 배포가 안됌*/}
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 lg:flex-nowrap">
             {/* 통계 요약 */}
             <div className="flex items-center gap-2 sm:gap-4">
               <div className="text-center">
@@ -1916,16 +1915,10 @@ export default function PostsPage() {
                 </div>
                 <div className="text-[10px] sm:text-xs text-gray-500">상품</div>
               </div>
-              <div className="text-center">
-                <div className="text-sm sm:text-lg font-bold text-green-600">
-                  {totalStats.totalCompletedPosts}
-                </div>
-                <div className="text-[10px] sm:text-xs text-gray-500">처리완료</div>
-              </div>
             </div>
 
             {/* 업데이트 버튼 */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 lg:ml-6">
               {/* function_number가 9이면 TestUpdateButton, 아니면 UpdateButton */}
               {userData?.function_number === 9 ? (
                 <div className="relative group">
@@ -1935,7 +1928,7 @@ export default function PostsPage() {
                       if (!isProcessing && result) {
                         setTestUpdateResult(result);
                         // 3초 후 결과 닫기
-                        setTimeout(() => {
+                        setSafeTimeout(() => {
                           setTestUpdateResult(null);
                         }, 3000);
                       }
@@ -1985,6 +1978,7 @@ export default function PostsPage() {
                 )}
               </button>
             </div>
+          </div>
           </div>
         </div>
       </div>
