@@ -742,6 +742,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const [appliedSearchType, setAppliedSearchType] = useState("customer"); // "customer" | "product" | "post_key"
   const searchTypeRef = useRef("customer");
   const searchBarRef = useRef(null);
+  const [postKeySearchNonce, setPostKeySearchNonce] = useState(0);
+  const [pendingPostKey, setPendingPostKey] = useState(null);
+  const [pendingPostedAt, setPendingPostedAt] = useState(null);
+  const [urlPostKeyFilter, setUrlPostKeyFilter] = useState(null);
+  const lastPostKeyTsRef = useRef(null);
+  const [skipInitialOrdersFetch, setSkipInitialOrdersFetch] = useState(false);
   const [bandKeyStatus, setBandKeyStatus] = useState("main"); // main | backup
   const [sortBy, setSortBy] = useState(null); // 기본값: 정렬 안함
   const [sortOrder, setSortOrder] = useState("desc");
@@ -897,17 +903,33 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   }, [filterDateRange, customStartDate, customEndDate]);
 
-  // URL에서 postKey를 받아서 자동으로 검색 (초기 동기화 완료 후)
+  // URL에서 postKey를 받아서 대기 상태로 저장
   useEffect(() => {
-    // 초기 동기화 중이면 대기
-    if (initialSyncing) return;
-
     const postKey = searchParams.get('postKey');
     const postedAt = searchParams.get('postedAt');
+    const ts = searchParams.get('ts');
+    if (postKey) {
+      setSkipInitialOrdersFetch(true);
+      if (ts && ts !== lastPostKeyTsRef.current) {
+        lastPostKeyTsRef.current = ts;
+        setPostKeySearchNonce((v) => v + 1);
+      }
+      setPendingPostKey(postKey);
+      setPendingPostedAt(postedAt || null);
+    }
+  }, [searchParams]);
 
+  // 초기 동기화 완료 후 postKey 검색 적용
+  useEffect(() => {
+    if (initialSyncing) return;
+    if (!pendingPostKey) return;
+
+    const postKey = pendingPostKey;
+    const postedAt = pendingPostedAt;
     if (postKey) {
       // 검색어 설정
       setSearchTerm(postKey);
+      setUrlPostKeyFilter(postKey);
       searchTypeRef.current = "post_key";
       setAppliedSearchType("post_key");
       if (searchBarRef.current?.setSearchType) {
@@ -954,6 +976,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
           // 날짜 파싱 실패 시 기본값 유지
           console.error("Failed to parse postedAt:", e);
         }
+      } else {
+        // postedAt이 없으면 기간 제한 없이 조회
+        setFilterDateRange("all");
+        setCustomStartDate(null);
+        setCustomEndDate(null);
       }
 
       setCurrentPage(1);
@@ -965,10 +992,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
         const newUrl = new URL(window.location);
         newUrl.searchParams.delete("postKey");
         newUrl.searchParams.delete("postedAt");
+        newUrl.searchParams.delete("ts");
         window.history.replaceState({}, "", newUrl.toString());
       }, 500);
     }
-  }, [searchParams, initialSyncing]);
+    setPendingPostKey(null);
+    setPendingPostedAt(null);
+    setSkipInitialOrdersFetch(false);
+  }, [pendingPostKey, pendingPostedAt, initialSyncing]);
 
   // 동기화 타임아웃 (10초 무응답 시 오류 카드 표출)
   useEffect(() => {
@@ -1302,8 +1333,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     const normalizedSearchTerm = (searchTerm || "").trim();
     const isPostKeySearch = appliedSearchType === "post_key";
-    const resolvedPostKey = isPostKeySearch ? (normalizedSearchTerm || undefined) : undefined;
-    const resolvedSearch = isPostKeySearch ? undefined : (normalizedSearchTerm || undefined);
+    const resolvedPostKey = urlPostKeyFilter || (isPostKeySearch ? (normalizedSearchTerm || undefined) : undefined);
+    const resolvedSearch = resolvedPostKey ? undefined : (normalizedSearchTerm || undefined);
     const resolvedSearchType = resolvedSearch
       ? (isPostKeySearch ? "combined" : appliedSearchType)
       : undefined;
@@ -1345,28 +1376,31 @@ function OrdersTestPageContent({ mode = "raw" }) {
       // post_key가 아닐 때만 일반 검색어로 처리
       search: resolvedSearch,
       searchType: resolvedSearchType, // "customer" | "product"
+      searchNonce: postKeySearchNonce,
       commenterExact: mode === "raw" ? (exactCustomerFilter || undefined) : undefined,
       exactCustomerName: mode === "legacy" ? (exactCustomerFilter || undefined) : undefined,
       // 날짜 필터
       startDate: dateParams.startDate,
       endDate: dateParams.endDate,
     };
-  }, [sortBy, sortOrder, filterSelection, searchTerm, appliedSearchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate, showPickupAvailableOnly]);
+  }, [sortBy, sortOrder, filterSelection, searchTerm, appliedSearchType, mode, exactCustomerFilter, filterDateRange, customStartDate, customEndDate, showPickupAvailableOnly, postKeySearchNonce, urlPostKeyFilter]);
 
   const isRawMode = mode === "raw";
 
   // raw 모드는 페이지네이션 없이 1페이지 고정
   const effectivePage = isRawMode ? 1 : currentPage;
 
+  const shouldFetchOrders = !!userData?.userId && !skipInitialOrdersFetch;
+
   const rawOrdersResult = useCommentOrdersClient(
-    mode === "raw" ? userData?.userId : null,
+    mode === "raw" && shouldFetchOrders ? userData?.userId : null,
     effectivePage,
     ordersFilters,
     swrOptions
   );
 
   const legacyOrdersResult = useOrdersClient(
-    mode === "legacy" ? userData?.userId : null,
+    mode === "legacy" && shouldFetchOrders ? userData?.userId : null,
     effectivePage,
     ordersFilters,
     swrOptions
@@ -1397,6 +1431,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     hasRecentStatusChangeRef.current = false;
     refreshOrders({ force: true });
   }, [filterSelection, showPickupAvailableOnly, refreshOrders]);
+
+  // 주문 보기(postKey)는 SWR 키 변경으로 1회만 호출
 
   // 서버 페이지네이션 데이터 사용
   const totalItems = ordersData?.pagination?.totalItems ?? null;
@@ -3459,6 +3495,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       searchInputRef.current.value = "";
     }
     setSearchTerm("");
+    setUrlPostKeyFilter(null);
     setCurrentPage(1);
     setSelectedOrderIds([]);
 
@@ -3499,6 +3536,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (shouldUpdateSearchType) {
         setAppliedSearchType(currentSearchType);
       }
+      if (currentSearchType === "post_key") {
+        setUrlPostKeyFilter(trimmedInput || null);
+      } else {
+        setUrlPostKeyFilter(null);
+      }
       setCurrentPage(1); // 검색 시 항상 1페이지로
       setExactCustomerFilter(null); // 일반 검색 시 정확 고객명 필터 초기화
       setSelectedOrderIds([]); // 선택 초기화
@@ -3524,6 +3566,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
     searchTypeRef.current = "customer";
     setAppliedSearchType("customer");
+    setUrlPostKeyFilter(null);
     if (searchBarRef.current?.setSearchType) {
       searchBarRef.current.setSearchType("customer");
     }

@@ -9,6 +9,7 @@ export default function UpdateLogsPage() {
       updates: [
         '상품 관리 페이지에 새로고침 적용',
         '주문 관리 페이지에 기간 설정 fix 적용',
+        '주문보기 검색이 잘 안되던 문제를 해결함'
         
       ]
     },
