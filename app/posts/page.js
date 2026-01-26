@@ -84,26 +84,9 @@ export default function PostsPage() {
 
   // 검색 관련 상태 - sessionStorage에서 복원
   const searchInputRef = useRef(null);
-  const [searchTerm, setSearchTerm] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const savedSearchTerm = sessionStorage.getItem('postsSearchTerm');
-      return savedSearchTerm || "";
-    }
-    return "";
-  });
-  const [searchQuery, setSearchQuery] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const savedSearchQuery = sessionStorage.getItem('postsSearchQuery');
-      return savedSearchQuery || "";
-    }
-    return "";
-  });
-  const [searchType, setSearchType] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('postsSearchType') || "content";
-    }
-    return "content";
-  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchType, setSearchType] = useState("content");
 
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,9 +130,58 @@ export default function PostsPage() {
   // 테스트 업데이트 로딩 상태
   const [isTestUpdating, setIsTestUpdating] = useState(false);
   const [testUpdateResult, setTestUpdateResult] = useState(null);
+  const [isRefreshingPosts, setIsRefreshingPosts] = useState(false);
+  const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0);
+  const refreshCooldownTimerRef = useRef(null);
 
   // 타임아웃 상태
   const [loadTimeout, setLoadTimeout] = useState(false);
+
+  const handleRefreshPosts = async () => {
+    if (!userData?.userId || isRefreshingPosts) return;
+    const now = Date.now();
+    const REFRESH_MIN_MS = 1000;
+    const REFRESH_COOLDOWN_MS = 3000;
+    if (refreshCooldownUntil && now < refreshCooldownUntil) {
+      showError("잠시 후 다시 시도해주세요.");
+      return;
+    }
+    setRefreshCooldownUntil(now + REFRESH_COOLDOWN_MS);
+    if (refreshCooldownTimerRef.current) {
+      clearTimeout(refreshCooldownTimerRef.current);
+    }
+    refreshCooldownTimerRef.current = setTimeout(() => {
+      setRefreshCooldownUntil(0);
+      refreshCooldownTimerRef.current = null;
+    }, REFRESH_COOLDOWN_MS);
+    const start = Date.now();
+    setIsRefreshingPosts(true);
+    try {
+      await globalMutate(
+        (key) =>
+          Array.isArray(key) && key[0] === "posts" && key[1] === userData.userId,
+        (current) => current,
+        { revalidate: true }
+      );
+      showSuccess("게시물/상품 정보를 최신화했습니다.");
+    } catch (error) {
+      showError(`새로고침 실패: ${error.message || error}`);
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < REFRESH_MIN_MS) {
+        await new Promise((resolve) => setTimeout(resolve, REFRESH_MIN_MS - elapsed));
+      }
+      setIsRefreshingPosts(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (refreshCooldownTimerRef.current) {
+        clearTimeout(refreshCooldownTimerRef.current);
+      }
+    };
+  }, []);
 
   // 사용자 데이터 가져오기
   useEffect(() => {
@@ -181,6 +213,22 @@ export default function PostsPage() {
       sessionStorage.removeItem('postsLastScrollPosition');
     }
   }, [page]);
+
+  // 검색 상태 복원 (클라이언트 전용)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedSearchTerm = sessionStorage.getItem("postsSearchTerm") || "";
+    const savedSearchQuery = sessionStorage.getItem("postsSearchQuery") || "";
+    const savedSearchType = sessionStorage.getItem("postsSearchType") || "content";
+
+    setSearchTerm(savedSearchTerm);
+    setSearchQuery(savedSearchQuery);
+    setSearchType(savedSearchType);
+
+    if (searchInputRef.current) {
+      searchInputRef.current.value = savedSearchTerm;
+    }
+  }, []);
 
   // 검색 실행 시에만 sessionStorage에 저장 (searchQuery 변경 시)
   useEffect(() => {
@@ -1735,6 +1783,39 @@ export default function PostsPage() {
               ) : (
                 <UpdateButton pageType="posts" />
               )}
+              <button
+                type="button"
+                onClick={handleRefreshPosts}
+                disabled={isRefreshingPosts || !userData?.userId || (refreshCooldownUntil && Date.now() < refreshCooldownUntil)}
+                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center min-w-[88px]"
+                title="캐시를 초기화하고 최신 게시물/상품 데이터를 다시 불러옵니다"
+              >
+                {isRefreshingPosts ? (
+                  <svg
+                    className="h-4 w-4 animate-spin text-gray-500"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    aria-label="로딩 중"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                ) : (
+                  "새로고침"
+                )}
+              </button>
             </div>
           </div>
         </div>
