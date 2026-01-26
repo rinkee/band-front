@@ -1707,7 +1707,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // RPC 함수로 통합: 미수령/주문완료/결제완료 카운트를 한 번에 조회
   const globalStatsCacheKey =
     userData?.userId && mode
-      ? `orders-test-global-stats:${userData.userId}:${mode}`
+      ? `orders-test-global-stats:${userData.userId}:${mode}:${filterDateRange}:${dateFilterParams.startDate || "none"}:${dateFilterParams.endDate || "none"}`
       : null;
   const cachedGlobalStats = readGlobalStatsCache(globalStatsCacheKey);
 
@@ -1777,6 +1777,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     () => mutateGlobalStats(undefined, { revalidate: true, dedupe: true }),
     [mutateGlobalStats]
   );
+
+  // 기간 필터 변경 시 통계는 SWR 키 변경으로 1회만 재호출됨
 
   // 상태 변경 시 배지 카운트를 낙관적으로 맞춰주는 헬퍼 (증가/감소 모두 처리)
   const adjustBadgeCountsOptimistically = useCallback(
