@@ -817,9 +817,9 @@ export default function ProductBarcodeModal({
       );
       setData({ ...data, products: updatedProducts });
     }
-    
-    // 상품 업데이트 후 데이터 새로고침
-    fetchPostDetails();
+
+    // updatedProduct를 이미 받은 상태이므로 여기서는 추가 재조회하지 않음
+    // (특히 "전체 저장"에서 상품마다 재조회가 발생하는 문제를 방지)
     // 상위 컴포넌트도 갱신
     if (onProductUpdate) {
       onProductUpdate(updatedProduct);

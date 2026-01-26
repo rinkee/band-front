@@ -22,6 +22,10 @@ import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // ex
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 import { EllipsisVerticalIcon, TrashIcon } from "@heroicons/react/24/outline";
 
+const POSTS_STATS_CACHE_TTL_MS = 60 * 1000;
+const POSTS_CACHE_MAX_ENTRIES = 30;
+const POSTS_REVALIDATE_THROTTLE_MS = 1500;
+
 // 네이버 이미지 프록시 헬퍼 함수
 // thumbnail 옵션: 's150' (150px 정사각형), 'w300' (너비 300px), 'w580' 등
 const getProxiedImageUrl = (url, options = {}) => {
@@ -74,6 +78,10 @@ export default function PostsPage() {
   const [userData, setUserData] = useState(null);
   const { scrollableContentRef } = useScroll();
   const { mutate: globalMutate } = useSWRConfig();
+  const timeoutsRef = useRef(new Set());
+  const statsCacheRef = useRef(new Map()); // key -> { savedAt, totalCount, totalStats, productPostKeys }
+  const lastPostsRevalidateAtRef = useRef(0);
+  const scheduledPostsRevalidateRef = useRef(null);
 
   // URL 파라미터에서 페이지 번호 읽기 (없으면 1)
   const [page, setPage] = useState(() => {
@@ -137,6 +145,29 @@ export default function PostsPage() {
   // 타임아웃 상태
   const [loadTimeout, setLoadTimeout] = useState(false);
 
+  const setSafeTimeout = useCallback((fn, delayMs) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current.delete(id);
+      fn();
+    }, delayMs);
+    timeoutsRef.current.add(id);
+    return id;
+  }, []);
+
+  useEffect(() => {
+    const timeouts = timeoutsRef.current;
+    return () => {
+      for (const id of timeouts) {
+        clearTimeout(id);
+      }
+      timeouts.clear();
+      if (scheduledPostsRevalidateRef.current) {
+        clearTimeout(scheduledPostsRevalidateRef.current);
+        scheduledPostsRevalidateRef.current = null;
+      }
+    };
+  }, []);
+
   const handleRefreshPosts = async () => {
     if (!userData?.userId || isRefreshingPosts) return;
     const now = Date.now();
@@ -157,12 +188,9 @@ export default function PostsPage() {
     const start = Date.now();
     setIsRefreshingPosts(true);
     try {
-      await globalMutate(
-        (key) =>
-          Array.isArray(key) && key[0] === "posts" && key[1] === userData.userId,
-        (current) => current,
-        { revalidate: true }
-      );
+      // 사용자 액션 새로고침은 "현재 화면"만 갱신 (전체 캐시 페이지 재검증 폭주 방지)
+      statsCacheRef.current.clear();
+      await mutate(fetchPosts(), { revalidate: false });
       showSuccess("게시물/상품 정보를 최신화했습니다.");
     } catch (error) {
       showError(`새로고침 실패: ${error.message || error}`);
@@ -201,7 +229,7 @@ export default function PostsPage() {
     if (newPage !== page) {
       setPage(newPage);
     }
-  }, [searchParams]);
+  }, [searchParams, page]);
 
   // 페이지 번호가 변경될 때마다 스크롤 최상단 이동
   useEffect(() => {
@@ -333,18 +361,27 @@ export default function PostsPage() {
     }, 10000);
 
     try {
+      const statsCacheKey = `${userData.userId}:${resolvedSearchType}:${trimmedQuery}`;
+      const now = Date.now();
+      const cached = statsCacheRef.current.get(statsCacheKey);
+      const isCacheFresh = cached && now - cached.savedAt < POSTS_STATS_CACHE_TTL_MS;
+
       // 상품명 검색인 경우에만 상품명으로 post_key 찾기
       let productPostKeys = [];
       if (shouldSearchProducts) {
-        const { data: productsWithSearch } = await supabase
-          .from('products')
-          .select('post_key')
-          .eq('user_id', userData.userId)
-          .ilike('title', `%${trimmedQuery}%`)
-          .abortSignal(controller.signal);
+        if (isCacheFresh && Array.isArray(cached.productPostKeys)) {
+          productPostKeys = cached.productPostKeys;
+        } else {
+          const { data: productsWithSearch } = await supabase
+            .from('products')
+            .select('post_key')
+            .eq('user_id', userData.userId)
+            .ilike('title', `%${trimmedQuery}%`)
+            .abortSignal(controller.signal);
 
-        if (productsWithSearch && productsWithSearch.length > 0) {
-          productPostKeys = [...new Set(productsWithSearch.map(p => p.post_key))];
+          if (productsWithSearch && productsWithSearch.length > 0) {
+            productPostKeys = [...new Set(productsWithSearch.map(p => p.post_key))];
+          }
         }
       }
 
@@ -362,51 +399,73 @@ export default function PostsPage() {
         };
       }
 
-      // 전체 통계: 카운트만 가져와 네트워크/메모리 사용 최소화
-      const contentFilter = `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%`;
+      // 전체 통계: 동일 검색 조건에서는 페이지 이동 시 재사용 (페이지네이션 중 3회 count 호출 방지)
+      let totalCount = null;
+      let totalStats = null;
+      if (isCacheFresh && cached.totalStats && typeof cached.totalCount === "number") {
+        totalCount = cached.totalCount;
+        totalStats = cached.totalStats;
+      } else {
+        // 카운트만 가져와 네트워크/메모리 사용 최소화
+        const contentFilter = `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%`;
 
-      const countPosts = supabase
-        .from("posts")
-        .select("post_id", { count: "estimated", head: true })
-        .eq("user_id", userData.userId)
-        .abortSignal(controller.signal);
-      const countProductPosts = supabase
-        .from("posts")
-        .select("post_id", { count: "estimated", head: true })
-        .eq("user_id", userData.userId)
-        .eq("is_product", true)
-        .abortSignal(controller.signal);
-      const countCompletedPosts = supabase
-        .from("posts")
-        .select("post_id", { count: "estimated", head: true })
-        .eq("user_id", userData.userId)
-        .eq("comment_sync_status", "success")
-        .abortSignal(controller.signal);
+        const countPosts = supabase
+          .from("posts")
+          .select("post_id", { count: "estimated", head: true })
+          .eq("user_id", userData.userId)
+          .abortSignal(controller.signal);
+        const countProductPosts = supabase
+          .from("posts")
+          .select("post_id", { count: "estimated", head: true })
+          .eq("user_id", userData.userId)
+          .eq("is_product", true)
+          .abortSignal(controller.signal);
+        const countCompletedPosts = supabase
+          .from("posts")
+          .select("post_id", { count: "estimated", head: true })
+          .eq("user_id", userData.userId)
+          .eq("comment_sync_status", "success")
+          .abortSignal(controller.signal);
 
-      // 검색어 필터를 각 카운트 쿼리에 적용 (작성자명 제거)
-      if (hasSearchQuery) {
-        if (shouldSearchProducts) {
-          countPosts.in('post_key', productPostKeys);
-          countProductPosts.in('post_key', productPostKeys);
-          countCompletedPosts.in('post_key', productPostKeys);
-        } else if (shouldSearchContent) {
-          countPosts.or(contentFilter);
-          countProductPosts.or(contentFilter);
-          countCompletedPosts.or(contentFilter);
+        // 검색어 필터를 각 카운트 쿼리에 적용 (작성자명 제거)
+        if (hasSearchQuery) {
+          if (shouldSearchProducts) {
+            countPosts.in('post_key', productPostKeys);
+            countProductPosts.in('post_key', productPostKeys);
+            countCompletedPosts.in('post_key', productPostKeys);
+          } else if (shouldSearchContent) {
+            countPosts.or(contentFilter);
+            countProductPosts.or(contentFilter);
+            countCompletedPosts.or(contentFilter);
+          }
+        }
+
+        const [
+          { count: c1 },
+          { count: c2 },
+          { count: c3 }
+        ] = await Promise.all([countPosts, countProductPosts, countCompletedPosts]);
+
+        totalCount = c1 || 0;
+        totalStats = {
+          totalPosts: c1 || 0,
+          totalProductPosts: c2 || 0,
+          totalCompletedPosts: c3 || 0,
+        };
+
+        // 캐시 저장(간단 LRU): 너무 커지지 않게 제한
+        const nextEntry = {
+          savedAt: now,
+          totalCount,
+          totalStats,
+          productPostKeys: shouldSearchProducts ? productPostKeys : [],
+        };
+        statsCacheRef.current.set(statsCacheKey, nextEntry);
+        if (statsCacheRef.current.size > POSTS_CACHE_MAX_ENTRIES) {
+          const firstKey = statsCacheRef.current.keys().next().value;
+          if (firstKey) statsCacheRef.current.delete(firstKey);
         }
       }
-
-      const [
-        { count: totalCount },
-        { count: totalProductCount },
-        { count: totalCompletedCount }
-      ] = await Promise.all([countPosts, countProductPosts, countCompletedPosts]);
-
-      const totalStats = {
-        totalPosts: totalCount || 0,
-        totalProductPosts: totalProductCount || 0,
-        totalCompletedPosts: totalCompletedCount || 0,
-      };
 
       // 페이지네이션된 데이터 가져오기
       let query = supabase
@@ -515,6 +574,22 @@ export default function PostsPage() {
     }
   );
 
+  const schedulePostsRevalidate = useCallback(() => {
+    const now = Date.now();
+    const elapsed = now - lastPostsRevalidateAtRef.current;
+    if (elapsed >= POSTS_REVALIDATE_THROTTLE_MS) {
+      lastPostsRevalidateAtRef.current = now;
+      mutate();
+      return;
+    }
+    if (scheduledPostsRevalidateRef.current) return;
+    scheduledPostsRevalidateRef.current = setSafeTimeout(() => {
+      scheduledPostsRevalidateRef.current = null;
+      lastPostsRevalidateAtRef.current = Date.now();
+      mutate();
+    }, POSTS_REVALIDATE_THROTTLE_MS - elapsed);
+  }, [mutate, setSafeTimeout]);
+
   // 데이터가 로드되면 타임아웃 상태 해제
   useEffect(() => {
     if (postsData || error) {
@@ -578,7 +653,7 @@ export default function PostsPage() {
         }, { revalidate: false });
       }
       // SWR 캐시 갱신하여 게시물 목록 새로고침
-      mutate();
+      schedulePostsRevalidate();
     };
 
     if (typeof window !== 'undefined') {
@@ -587,7 +662,7 @@ export default function PostsPage() {
         window.removeEventListener('postUpdated', handlePostUpdated);
       };
     }
-  }, [mutate]);
+  }, [mutate, schedulePostsRevalidate]);
 
   // 검색 기능
   // 페이지 변경 핸들러
@@ -628,7 +703,12 @@ export default function PostsPage() {
 
   const handleProductUpdate = (updatedProduct) => {
     // 바코드 업데이트 후 posts 데이터 즉시 반영
-    console.log("Posts 페이지: 바코드 업데이트 후 즉시 반영", updatedProduct);
+    if (process.env.NODE_ENV === "development") {
+      console.log("Posts 페이지: 바코드 업데이트 후 즉시 반영", updatedProduct);
+    }
+
+    const targetPostId = updatedProduct?.post_id || selectedPostId;
+    const targetPostKey = updatedProduct?.post_key;
     
     // 낙관적 업데이트 - 즉시 UI에 반영
     mutate(
@@ -636,7 +716,10 @@ export default function PostsPage() {
         if (!currentData || !currentData.posts) return currentData;
         
         const updatedPosts = currentData.posts.map(post => {
-          if (post.post_id === selectedPostId) {
+          const isTarget =
+            (targetPostId && post.post_id === targetPostId) ||
+            (targetPostKey && post.post_key === targetPostKey);
+          if (isTarget) {
             // 상품 데이터 업데이트
             const updatedProducts = post.products?.map(p => 
               p.product_id === updatedProduct?.product_id ? updatedProduct : p
@@ -661,10 +744,7 @@ export default function PostsPage() {
       }
     );
     
-    // 이후 백그라운드에서 서버 데이터 동기화
-    setTimeout(() => {
-      mutate(); // 서버에서 최신 데이터 가져오기
-    }, 1000);
+    // 서버 재동기화는 수동 새로고침 버튼으로만 (네트워크 호출 최소화)
   };
 
   const handleViewOrders = (postKey, postedAt) => {
@@ -989,6 +1069,8 @@ export default function PostsPage() {
       const nowIso = new Date().toISOString();
       const newItemNumber = productData.item_number.toString().trim();
       const originalItemNumber = originalProduct.item_number?.toString();
+      let productForCacheUpdate = null;
+      let originalProductIdForCacheUpdate = productId;
 
       // item_number가 변경되었는지 확인
       const itemNumberChanged = newItemNumber !== originalItemNumber;
@@ -1069,6 +1151,17 @@ export default function PostsPage() {
 
         console.log('상품 번호 변경 완료');
 
+        productForCacheUpdate = insertedProduct || {
+          ...originalProduct,
+          product_id: newProductId,
+          item_number: newItemNumber,
+          title: productData.title,
+          base_price: parseFloat(productData.base_price) || 0,
+          barcode: productData.barcode || '',
+          updated_at: nowIso
+        };
+        originalProductIdForCacheUpdate = productId;
+
         await syncProductsToIndexedDb(insertedProduct || {
           ...originalProduct,
           product_id: newProductId,
@@ -1095,6 +1188,14 @@ export default function PostsPage() {
 
         if (error) throw error;
 
+        productForCacheUpdate = updatedProduct || {
+          ...originalProduct,
+          title: productData.title,
+          base_price: parseFloat(productData.base_price) || 0,
+          barcode: productData.barcode || '',
+          updated_at: nowIso
+        };
+
         await syncProductsToIndexedDb(updatedProduct || {
           ...originalProduct,
           title: productData.title,
@@ -1114,8 +1215,33 @@ export default function PostsPage() {
       sessionStorage.removeItem('ordersProductsByPostKey');
       sessionStorage.removeItem('ordersProductsByBandPost');
 
-      // 데이터 새로고침
-      await mutate();
+      // 검색용 통계/검색키 캐시 무효화 (상품명 검색 누락 방지)
+      statsCacheRef.current.clear();
+
+      // 현재 화면 데이터는 로컬 캐시만 업데이트 (불필요한 목록+상품 재조회 방지)
+      await mutate((current) => {
+        if (!current?.posts || !Array.isArray(current.posts)) return current;
+        const postKey = originalProduct?.post_key;
+        if (!postKey) return current;
+
+        const nextPosts = current.posts.map((p) => {
+          if (p.post_key !== postKey) return p;
+          const nextProducts = Array.isArray(p.products)
+            ? (() => {
+                const filtered = p.products.filter((prod) => prod.product_id !== originalProductIdForCacheUpdate);
+                const merged = productForCacheUpdate ? [...filtered, productForCacheUpdate] : filtered;
+                merged.sort((a, b) => (parseInt(a.item_number) || 0) - (parseInt(b.item_number) || 0));
+                return merged;
+              })()
+            : p.products;
+          return {
+            ...p,
+            products: nextProducts,
+            products_data: nextProducts,
+          };
+        });
+        return { ...current, posts: nextPosts };
+      }, { revalidate: false });
     } catch (error) {
       console.error('상품 수정 오류:', error);
       showError(`상품 수정 중 오류가 발생했습니다: ${error.message}`);
@@ -1347,8 +1473,27 @@ export default function PostsPage() {
         { revalidate: true }
       );
 
-      // 데이터 새로고침
-      mutate();
+      // UI는 로컬에서 즉시 반영 + 백그라운드 동기화는 쓰로틀
+      statsCacheRef.current.clear();
+      mutate((current) => {
+        if (!current?.posts || !Array.isArray(current.posts)) return current;
+        const nextPosts = current.posts.map((p) => {
+          if (p.post_key !== postKey) return p;
+          const nextProducts = Array.isArray(p.products)
+            ? p.products.map((prod) => ({
+                ...prod,
+                pickup_date: pickupDateISO,
+              }))
+            : p.products;
+          return {
+            ...p,
+            pickup_date: pickupDateISO,
+            products: nextProducts,
+            products_data: nextProducts,
+          };
+        });
+        return { ...current, posts: nextPosts };
+      }, { revalidate: false });
     } catch (error) {
       console.error('수령일 수정 오류:', error);
       showError(`수령일 수정 중 오류가 발생했습니다: ${error.message}`);
@@ -1386,8 +1531,31 @@ export default function PostsPage() {
       sessionStorage.removeItem('ordersProductsByPostKey');
       sessionStorage.removeItem('ordersProductsByBandPost');
 
-      // 데이터 즉시 새로고침 (바코드 이미지 바로 표시)
-      mutate();
+      // UI는 로컬에서 즉시 반영 + 백그라운드 동기화는 쓰로틀
+      statsCacheRef.current.clear();
+      mutate((current) => {
+        if (!current?.posts || !Array.isArray(current.posts)) return current;
+        const nextPosts = current.posts.map((p) => {
+          if (p.post_key !== postKey) return p;
+          const nextProducts = Array.isArray(p.products)
+            ? p.products.map((prod) => {
+                if (prod.product_id !== productId) return prod;
+                return {
+                  ...prod,
+                  ...(updatedProduct || {}),
+                  barcode: barcodeValue.trim(),
+                  updated_at: updatedProduct?.updated_at || new Date().toISOString(),
+                };
+              })
+            : p.products;
+          return {
+            ...p,
+            products: nextProducts,
+            products_data: nextProducts,
+          };
+        });
+        return { ...current, posts: nextPosts };
+      }, { revalidate: false });
 
       await syncProductsToIndexedDb(updatedProduct || {
         product_id: productId,
@@ -1399,7 +1567,7 @@ export default function PostsPage() {
       setSavedBarcode(productId);
 
       // 1초 후 배경색만 제거
-      setTimeout(() => {
+      setSafeTimeout(() => {
         setSavedBarcode(null);
       }, 1000);
     } catch (error) {
@@ -2472,8 +2640,6 @@ export default function PostsPage() {
         isOpen={isModalOpen}
         onClose={() => {
           handleCloseModal();
-          // 모달 닫을 때도 데이터 동기화
-          mutate();
         }}
         postId={selectedPostId}
         userId={userData?.userId}
