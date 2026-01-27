@@ -313,6 +313,9 @@ export default function PostsPage() {
     const resolvedSearchType = searchType === "product" ? "product" : "content";
     const shouldSearchProducts = resolvedSearchType === "product" && hasSearchQuery;
     const shouldSearchContent = resolvedSearchType === "content" && hasSearchQuery;
+    const contentFilter = shouldSearchContent
+      ? `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%`
+      : null;
 
     const POSTS_SELECT_FIELDS = [
       "post_id",
@@ -407,8 +410,6 @@ export default function PostsPage() {
         totalStats = cached.totalStats;
       } else {
         // 카운트만 가져와 네트워크/메모리 사용 최소화
-        const contentFilter = `title.ilike.%${trimmedQuery}%,content.ilike.%${trimmedQuery}%`;
-
         const countPosts = supabase
           .from("posts")
           .select("post_id", { count: "estimated", head: true })
@@ -475,14 +476,14 @@ export default function PostsPage() {
         .order("posted_at", { ascending: false })
         .abortSignal(controller.signal);
 
-      // 검색어가 있으면 적용 (작성자명 제거)
-      if (hasSearchQuery) {
-        if (shouldSearchProducts) {
-          query = query.in('post_key', productPostKeys);
-        } else if (shouldSearchContent) {
-          query = query.or(contentFilter);
-        }
-      }
+	      // 검색어가 있으면 적용 (작성자명 제거)
+	      if (hasSearchQuery) {
+	        if (shouldSearchProducts) {
+	          query = query.in('post_key', productPostKeys);
+	        } else if (shouldSearchContent) {
+	          query = query.or(contentFilter);
+	        }
+	      }
 
       // 페이지네이션 적용
       const from = (page - 1) * limit;
