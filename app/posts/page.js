@@ -94,7 +94,7 @@ export default function PostsPage() {
   const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchType, setSearchType] = useState("content");
+  const [searchType, setSearchType] = useState("product");
 
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -247,7 +247,7 @@ export default function PostsPage() {
     if (typeof window === "undefined") return;
     const savedSearchTerm = sessionStorage.getItem("postsSearchTerm") || "";
     const savedSearchQuery = sessionStorage.getItem("postsSearchQuery") || "";
-    const savedSearchType = sessionStorage.getItem("postsSearchType") || "content";
+    const savedSearchType = sessionStorage.getItem("postsSearchType") || "product";
 
     setSearchTerm(savedSearchTerm);
     setSearchQuery(savedSearchQuery);
@@ -667,8 +667,19 @@ export default function PostsPage() {
 
   // 검색 기능
   // 페이지 변경 핸들러
+  const pushPostsPage = useCallback((nextPage) => {
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (!nextPage || Number(nextPage) <= 1) {
+      params.delete("page");
+    } else {
+      params.set("page", String(nextPage));
+    }
+    const qs = params.toString();
+    router.push(qs ? `/posts?${qs}` : "/posts");
+  }, [router, searchParams]);
+
   const handlePageChange = (newPage) => {
-    router.push(`/posts?page=${newPage}`);
+    pushPostsPage(newPage);
   };
 
   const handleClearSearch = () => {
@@ -678,14 +689,14 @@ export default function PostsPage() {
     }
     setSearchTerm("");
     setSearchQuery("");
-    setSearchType("content");
-    handlePageChange(1);
+    setSearchType("product");
+    pushPostsPage(1);
 
     // sessionStorage도 초기화
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('postsSearchTerm', '');
       sessionStorage.setItem('postsSearchQuery', '');
-      sessionStorage.setItem('postsSearchType', 'content');
+      sessionStorage.setItem('postsSearchType', 'product');
       sessionStorage.setItem('postsPageNumber', '1');
       sessionStorage.removeItem('postsScrollPosition'); // 스크롤 위치도 초기화
       sessionStorage.removeItem('postsLastScrollPosition'); // 실시간 저장된 스크롤 위치도 초기화
@@ -1264,9 +1275,9 @@ export default function PostsPage() {
     if (value !== searchQuery) {
       setSearchQuery(value);
       setSearchTerm(value);
-      setPage(1);
+      pushPostsPage(1);
     }
-  }, [searchQuery]);
+  }, [searchQuery, pushPostsPage]);
 
   // 상품 삭제 함수
   const handleDeleteProduct = async (product) => {
@@ -1801,104 +1812,104 @@ export default function PostsPage() {
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-3 py-2 sm:py-2.5">
           <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
-            {/* 검색 영역 */}
-            <form
-              onSubmit={handleSearch}
-              className="flex flex-wrap items-center gap-2 md:flex-nowrap"
-            >
-              <div className="flex items-center bg-gray-100 px-1 py-1 rounded-md border border-gray-300">
-                <label
-                  className={`cursor-pointer select-none rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm transition whitespace-nowrap ${
-                    searchType === "content"
-                      ? "bg-black text-white shadow-sm font-semibold"
-                      : "text-gray-800 hover:text-gray-900"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="postsSearchType"
-                    checked={searchType === "content"}
-                    onChange={() => setSearchType("content")}
-                    className="sr-only"
-                  />
-                  내용
-                </label>
-                <label
-                  className={`cursor-pointer select-none rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm transition whitespace-nowrap ${
-                    searchType === "product"
-                      ? "bg-black text-white shadow-sm font-semibold"
-                      : "text-gray-800 hover:text-gray-900"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="postsSearchType"
-                    checked={searchType === "product"}
-                    onChange={() => setSearchType("product")}
-                    className="sr-only"
-                  />
-                  상품명
-                </label>
-              </div>
-              <div className="relative flex-1 min-w-[180px] max-w-xl md:flex-none md:w-[260px]">
-                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                  <svg
-                    className="h-4 w-4 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                </div>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  defaultValue={searchTerm}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSearch();
-                    }
-                  }}
-                  placeholder={searchPlaceholder}
-                  className="block w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
-                />
-              </div>
-              <button
-                type="submit"
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-              >
-                검색
-              </button>
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={handleClearSearch}
-                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <svg
-                    className="h-3 w-3 sm:h-4 sm:w-4 mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                  검색 초기화
-                </button>
-              )}
-            </form>
+	            {/* 검색 영역 */}
+	            <form
+	              onSubmit={handleSearch}
+	              className="flex flex-wrap items-center gap-2 md:flex-nowrap"
+	            >
+	              <div className="flex items-center bg-gray-100 px-1 py-1 rounded-md border border-gray-300">
+	                <label
+	                  className={`cursor-pointer select-none rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm transition whitespace-nowrap ${
+	                    searchType === "product"
+	                      ? "bg-black text-white shadow-sm font-semibold"
+	                      : "text-gray-800 hover:text-gray-900"
+	                  }`}
+	                >
+	                  <input
+	                    type="radio"
+	                    name="postsSearchType"
+	                    checked={searchType === "product"}
+	                    onChange={() => setSearchType("product")}
+	                    className="sr-only"
+	                  />
+	                  상품명
+	                </label>
+	                <label
+	                  className={`cursor-pointer select-none rounded-md px-2 sm:px-3 py-1 text-xs sm:text-sm transition whitespace-nowrap ${
+	                    searchType === "content"
+	                      ? "bg-black text-white shadow-sm font-semibold"
+	                      : "text-gray-800 hover:text-gray-900"
+	                  }`}
+	                >
+	                  <input
+	                    type="radio"
+	                    name="postsSearchType"
+	                    checked={searchType === "content"}
+	                    onChange={() => setSearchType("content")}
+	                    className="sr-only"
+	                  />
+	                  내용
+	                </label>
+	              </div>
+	              <div className="relative flex-1 min-w-[180px] max-w-xl md:flex-none md:w-[260px]">
+	                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+	                  <svg
+	                    className="h-4 w-4 text-gray-400"
+	                    fill="none"
+	                    stroke="currentColor"
+	                    viewBox="0 0 24 24"
+	                  >
+	                    <path
+	                      strokeLinecap="round"
+	                      strokeLinejoin="round"
+	                      strokeWidth="2"
+	                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+	                    />
+	                  </svg>
+	                </div>
+	                <input
+	                  ref={searchInputRef}
+	                  type="text"
+	                  defaultValue={searchTerm}
+	                  onKeyDown={(e) => {
+	                    if (e.key === "Enter") {
+	                      e.preventDefault();
+	                      handleSearch();
+	                    }
+	                  }}
+	                  placeholder={searchPlaceholder}
+	                  className="block w-full pl-8 pr-2 py-1.5 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
+	                />
+	              </div>
+	              <button
+	                type="submit"
+	                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs sm:text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+	              >
+	                검색
+	              </button>
+	              {searchQuery && (
+	                <button
+	                  type="button"
+	                  onClick={handleClearSearch}
+	                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs sm:text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+	                >
+	                  <svg
+	                    className="h-3 w-3 sm:h-4 sm:w-4 mr-1"
+	                    fill="none"
+	                    stroke="currentColor"
+	                    viewBox="0 0 24 24"
+	                  >
+	                    <path
+	                      strokeLinecap="round"
+	                      strokeLinejoin="round"
+	                      strokeWidth="2"
+	                      d="M6 18L18 6M6 6l12 12"
+	                    />
+	                  </svg>
+	                  검색 초기화
+	                </button>
+	              )}
+	            </form>
 
             {/* 통계 및 버튼 영역 배포가 안됌*/}
             <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 lg:flex-nowrap">
