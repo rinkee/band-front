@@ -5,6 +5,12 @@ import { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import { processBandPosts } from "../lib/updateButton/fuc/processBandPosts";
 import {
+  readBandKeyStatusCache,
+  isBandKeyStatusCacheFresh,
+  writeBandKeyStatusCache,
+  fetchBandKeyStatusFromDb,
+} from "../lib/bandKeyStatusCache";
+import {
   isIndexedDBAvailable,
   bulkPut,
   saveSnapshot,
@@ -110,16 +116,11 @@ export default function TestUpdateButton({
 
   const fetchKeyStatus = useCallback(async () => {
     try {
-      const cachedStatus = sessionStorage.getItem("bandKeyStatus");
+      const cachedStatus = readBandKeyStatusCache();
       if (cachedStatus) {
-        try {
-          const parsedStatus = JSON.parse(cachedStatus);
-          const cachedIndex = parsedStatus?.current_band_key_index ?? 0;
-          setKeyStatus(cachedIndex > 0 ? "backup" : "main");
-          return;
-        } catch (_) {
-          sessionStorage.removeItem("bandKeyStatus");
-        }
+        const cachedIndex = cachedStatus?.current_band_key_index ?? 0;
+        setKeyStatus(cachedIndex > 0 ? "backup" : "main");
+        if (isBandKeyStatusCacheFresh(cachedStatus)) return;
       }
 
       const sessionData = sessionStorage.getItem("userData");
@@ -129,28 +130,14 @@ export default function TestUpdateButton({
       const userId = userData?.userId;
       if (!userId) return;
 
-      const { data, error } = await supabase
-        .from("users")
-        .select("current_band_key_index, backup_band_keys")
-        .eq("user_id", userId)
-        .single();
-
-      if (error) {
-        console.error("키 상태 조회 실패:", error);
-        return;
-      }
-
+      const data = await fetchBandKeyStatusFromDb(supabase, userId);
       const isBackup = (data?.current_band_key_index ?? 0) > 0;
       setKeyStatus(isBackup ? "backup" : "main");
 
-      sessionStorage.setItem(
-        "bandKeyStatus",
-        JSON.stringify({
-          current_band_key_index: data?.current_band_key_index ?? 0,
-          backup_band_keys: data?.backup_band_keys ?? null,
-          updated_at: new Date().toISOString(),
-        })
-      );
+      writeBandKeyStatusCache({
+        current_band_key_index: data?.current_band_key_index ?? 0,
+        backup_band_keys: data?.backup_band_keys ?? null,
+      });
     } catch (err) {
       console.error("키 상태 조회 중 오류:", err);
     }
@@ -176,23 +163,11 @@ export default function TestUpdateButton({
       if (error) {
         console.error("백업 키 상태 업데이트 실패:", error);
       } else {
-        let backupKeys = null;
-        const cachedStatus = sessionStorage.getItem("bandKeyStatus");
-        if (cachedStatus) {
-          try {
-            backupKeys = JSON.parse(cachedStatus)?.backup_band_keys ?? null;
-          } catch (_) {
-            sessionStorage.removeItem("bandKeyStatus");
-          }
-        }
-        sessionStorage.setItem(
-          "bandKeyStatus",
-          JSON.stringify({
-            current_band_key_index: nextIndex,
-            backup_band_keys: backupKeys,
-            updated_at: new Date().toISOString(),
-          })
-        );
+        const backupKeys = readBandKeyStatusCache()?.backup_band_keys ?? null;
+        writeBandKeyStatusCache({
+          current_band_key_index: nextIndex,
+          backup_band_keys: backupKeys,
+        });
       }
     } catch (err) {
       console.error("백업 키 상태 업데이트 중 오류:", err);

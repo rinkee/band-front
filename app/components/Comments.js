@@ -7,6 +7,12 @@ import {
 import { UserIcon } from "@heroicons/react/24/solid";
 import { useSWRConfig } from "swr";
 import supabase from '../lib/supabaseClient';
+import {
+  readBandKeyStatusCache,
+  isBandKeyStatusCacheFresh,
+  writeBandKeyStatusCache,
+  fetchBandKeyStatusFromDb,
+} from "../lib/bandKeyStatusCache";
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -622,27 +628,34 @@ const CommentsModal = ({
   const refreshKeyStatus = useCallback(async () => {
     if (!userId) return;
     try {
-      const cachedStatus = sessionStorage.getItem("bandKeyStatus");
-      if (!cachedStatus) return;
+      const cached = readBandKeyStatusCache();
+      if (cached) {
+        const currentIndex = cached?.current_band_key_index ?? 0;
+        setUseBackupByDefault(currentIndex > 0);
 
-      let data;
-      try {
-        data = JSON.parse(cachedStatus);
-      } catch (_) {
-        sessionStorage.removeItem("bandKeyStatus");
-        return;
+        const backupFromCache =
+          Array.isArray(cached?.backup_band_keys) && cached.backup_band_keys.length > 0
+            ? cached.backup_band_keys[0].access_token || cached.backup_band_keys[0]
+            : null;
+
+        if (backupFromCache) setDbBackupToken((prev) => prev || backupFromCache);
+        if (isBandKeyStatusCacheFresh(cached)) return;
       }
 
-      const currentIndex = data?.current_band_key_index ?? 0;
-      setUseBackupByDefault(currentIndex > 0);
+      const data = await fetchBandKeyStatusFromDb(supabase, userId);
+      setUseBackupByDefault((data?.current_band_key_index ?? 0) > 0);
 
-      const backupFromDb = Array.isArray(data?.backup_band_keys) && data.backup_band_keys.length > 0
-        ? data.backup_band_keys[0].access_token || data.backup_band_keys[0]
-        : null;
+      const backupFromDb =
+        Array.isArray(data?.backup_band_keys) && data.backup_band_keys.length > 0
+          ? data.backup_band_keys[0].access_token || data.backup_band_keys[0]
+          : null;
 
-      if (backupFromDb) {
-        setDbBackupToken((prev) => prev || backupFromDb);
-      }
+      if (backupFromDb) setDbBackupToken((prev) => prev || backupFromDb);
+
+      writeBandKeyStatusCache({
+        current_band_key_index: data?.current_band_key_index ?? 0,
+        backup_band_keys: data?.backup_band_keys ?? null,
+      });
     } catch (err) {
       console.error("키 상태 갱신 중 오류:", err);
     }
