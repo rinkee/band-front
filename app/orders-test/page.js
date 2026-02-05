@@ -3636,6 +3636,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // 검색 버튼 클릭 또는 Enter 키 입력 시 실제 검색 실행
   const handleSearch = useCallback(() => {
     const trimmedInput = searchInputRef.current?.value.trim() || "";
+    if (!trimmedInput) {
+      return;
+    }
     // 현재 검색어와 다를 때만 상태 업데이트 및 API 재요청
     const currentSearchType = searchTypeRef.current || "customer";
     const shouldUpdateSearchType = currentSearchType !== appliedSearchType;

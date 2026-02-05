@@ -1,6 +1,6 @@
 "use client";
 
-import { bulkPut, isIndexedDBAvailable } from "./indexedDbClient";
+import { bulkPut, bulkMerge, isIndexedDBAvailable } from "./indexedDbClient";
 import { dispatchIndexedDbSyncEvent } from "./indexedDbSync";
 
 const BRIDGE_MESSAGE_TYPE = "BOH_OFFLINE_SYNC";
@@ -10,6 +10,14 @@ const pending = {
   orders: new Map(),
   products: new Map(),
   posts: new Map(),
+  comment_orders: new Map(),
+};
+
+const pendingSchema = {
+  orders: "legacy",
+  products: "legacy",
+  posts: "legacy",
+  comment_orders: "supabase",
 };
 
 let flushTimer = null;
@@ -402,11 +410,25 @@ const resolveKey = (kind, record) => {
   if (kind === "orders") return record.order_id ?? record.orderId ?? null;
   if (kind === "products") return record.product_id ?? record.productId ?? null;
   if (kind === "posts") return record.post_id ?? record.postId ?? null;
+  if (kind === "comment_orders") {
+    return (
+      record.comment_order_id ??
+      record.commentOrderId ??
+      record.comment_key ??
+      record.commentKey ??
+      null
+    );
+  }
   return null;
 };
 
 const resolveUpdatedAt = (record) => {
-  const raw = record?.updated_at ?? record?.ordered_at ?? record?.posted_at ?? null;
+  const raw =
+    record?.updated_at ??
+    record?.comment_created_at ??
+    record?.ordered_at ??
+    record?.posted_at ??
+    null;
   const ts = raw ? Date.parse(String(raw)) : NaN;
   return Number.isFinite(ts) ? ts : 0;
 };
@@ -419,8 +441,29 @@ const queueMappedRecords = (kind, records, meta) => {
 
   const bucket = pending[kind];
   if (!bucket) return;
+  pendingSchema[kind] = "legacy";
 
   mapped.forEach((record) => {
+    const key = resolveKey(kind, record);
+    if (!key) return;
+    const existing = bucket.get(key);
+    if (!existing || resolveUpdatedAt(record) >= resolveUpdatedAt(existing)) {
+      bucket.set(key, record);
+    }
+  });
+
+  if (flushTimer != null) return;
+  flushTimer = setTimeout(flushQueue, flushDelayMs);
+};
+
+const queueSupabaseRecords = (kind, records) => {
+  const list = records.filter(Boolean);
+  if (list.length === 0) return;
+  const bucket = pending[kind];
+  if (!bucket) return;
+  pendingSchema[kind] = "supabase";
+
+  list.forEach((record) => {
     const key = resolveKey(kind, record);
     if (!key) return;
     const existing = bucket.get(key);
@@ -446,33 +489,119 @@ const requeue = (kind, records) => {
 const flushQueue = async () => {
   flushTimer = null;
 
+  const debug = (() => {
+    try {
+      return !!(typeof window !== "undefined" && window.__BOH_IDB_DEBUG__);
+    } catch (_) {
+      return false;
+    }
+  })();
+
   if (!isIndexedDBAvailable()) {
     pending.orders.clear();
     pending.products.clear();
     pending.posts.clear();
+    pending.comment_orders.clear();
     return;
   }
 
   const orders = Array.from(pending.orders.values());
   const products = Array.from(pending.products.values());
   const posts = Array.from(pending.posts.values());
+  const commentOrders = Array.from(pending.comment_orders.values());
 
   pending.orders.clear();
   pending.products.clear();
   pending.posts.clear();
+  pending.comment_orders.clear();
 
-  if (!orders.length && !products.length && !posts.length) return;
+  if (!orders.length && !products.length && !posts.length && !commentOrders.length) return;
+
+  const postAck = (payload) => {
+    try {
+      if (typeof window === "undefined" || !window.postMessage) return;
+      window.postMessage({ type: "BOH_OFFLINE_ACK", payload }, window.location.origin);
+    } catch (_) {}
+  };
+
+  const writeStore = async (storeName, items, schema) => {
+    if (!items.length) return false;
+    try {
+      let count = 0;
+      if (storeName === "comment_orders") {
+        count = await bulkMerge(storeName, items);
+      } else if (schema === "supabase") {
+        count = await bulkMerge(storeName, items);
+      } else {
+        count = await bulkPut(storeName, items);
+      }
+      postAck({ store: storeName, count: count ?? items.length, ok: true, schema });
+      return true;
+    } catch (err) {
+      postAck({
+        store: storeName,
+        count: items.length,
+        ok: false,
+        schema,
+        error: (err && (err.message || err.toString())) || "unknown",
+      });
+      throw err;
+    }
+  };
+
+  let anySuccess = false;
+  let hadFailure = false;
 
   try {
-    if (orders.length) await bulkPut("orders", orders);
-    if (products.length) await bulkPut("products", products);
-    if (posts.length) await bulkPut("posts", posts);
-    dispatchIndexedDbSyncEvent();
-  } catch (_) {
-    if (orders.length) requeue("orders", orders);
-    if (products.length) requeue("products", products);
-    if (posts.length) requeue("posts", posts);
-    if (flushTimer == null) {
+    if (debug) {
+      console.log("[BOH][offline-bridge] flush", {
+        orders: orders.length,
+        products: products.length,
+        posts: posts.length,
+        comment_orders: commentOrders.length,
+      });
+    }
+    if (orders.length) {
+      try {
+        const ok = await writeStore("orders", orders, pendingSchema.orders);
+        anySuccess = anySuccess || ok;
+      } catch (_) {
+        hadFailure = true;
+        requeue("orders", orders);
+      }
+    }
+    if (products.length) {
+      try {
+        const ok = await writeStore("products", products, pendingSchema.products);
+        anySuccess = anySuccess || ok;
+      } catch (_) {
+        hadFailure = true;
+        requeue("products", products);
+      }
+    }
+    if (posts.length) {
+      try {
+        const ok = await writeStore("posts", posts, pendingSchema.posts);
+        anySuccess = anySuccess || ok;
+      } catch (_) {
+        hadFailure = true;
+        requeue("posts", posts);
+      }
+    }
+    if (commentOrders.length) {
+      try {
+        const ok = await writeStore("comment_orders", commentOrders, "supabase");
+        anySuccess = anySuccess || ok;
+      } catch (_) {
+        hadFailure = true;
+        requeue("comment_orders", commentOrders);
+      }
+    }
+  } finally {
+    if (anySuccess) {
+      dispatchIndexedDbSyncEvent();
+    }
+    if (hadFailure && flushTimer == null) {
       flushTimer = setTimeout(flushQueue, flushDelayMs);
     }
   }
@@ -498,10 +627,21 @@ export const installExtensionOfflineBridge = (options = {}) => {
       const payload = data.payload || null;
       if (!payload || typeof payload !== "object") return;
       const kind = payload.kind;
-      if (!kind || !["orders", "products", "posts"].includes(String(kind))) return;
+      if (!kind || !["orders", "products", "posts", "comment_orders"].includes(String(kind))) return;
+      try {
+        if (window.__BOH_IDB_DEBUG__) {
+          const count = Array.isArray(payload.records) ? payload.records.length : 0;
+          console.log("[BOH][offline-bridge] recv", { kind, count, schema: payload.schema || payload?.meta?.schema || null });
+        }
+      } catch (_) {}
       const records = toArray(payload.records);
       if (!records.length) return;
-      queueMappedRecords(String(kind), records, payload.meta || null);
+      const schema = payload.schema || payload?.meta?.schema || null;
+      if (schema === "supabase") {
+        queueSupabaseRecords(String(kind), records);
+      } else {
+        queueMappedRecords(String(kind), records, payload.meta || null);
+      }
     } catch (_) {
       // ignore
     }

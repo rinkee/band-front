@@ -17,6 +17,7 @@ import {
   getMeta,
   setMeta,
   bulkPut,
+  bulkMerge,
 } from "../lib/indexedDbClient";
 import { normalizeComment } from "../lib/band-processor/core/commentProcessor";
 import { extractOrdersFromComments } from "../lib/band-processor/core/orderProcessor";
@@ -35,6 +36,7 @@ const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =
   "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
+const COMMENT_ORDER_COLUMNS = "*";
 const OFFLINE_USER_KEY = "offlineUserId";
 const OFFLINE_ACCOUNTS_KEY = "offlineAccounts";
 const MAX_COMMENT_PAGES = 10;
@@ -258,11 +260,102 @@ export default function OfflineOrdersPage() {
     rememberOfflineAccount(userId, storeName);
   };
 
+  const resolveOrderProcessingMode = (data = userData) => {
+    const fromData =
+      data?.orderProcessingMode ||
+      data?.order_processing_mode ||
+      data?.user?.orderProcessingMode ||
+      data?.user?.order_processing_mode ||
+      null;
+    if (fromData) {
+      return String(fromData).toLowerCase() === "raw" ? "raw" : "legacy";
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const sessionData = sessionStorage.getItem("userData");
+        if (sessionData) {
+          const parsed = JSON.parse(sessionData);
+          const mode =
+            parsed?.orderProcessingMode ||
+            parsed?.order_processing_mode ||
+            parsed?.user?.orderProcessingMode ||
+            parsed?.user?.order_processing_mode ||
+            "legacy";
+          return String(mode).toLowerCase() === "raw" ? "raw" : "legacy";
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return "legacy";
+  };
+
+  const isRawMode = useMemo(
+    () => resolveOrderProcessingMode(userData) === "raw",
+    [userData]
+  );
+
   const filterByUserId = (items = []) => {
     const uid = resolveUserId();
     if (!uid) return [];
     return items.filter((item) => !item?.user_id || item.user_id === uid);
   };
+
+  const mapCommentOrderToLegacy = useCallback((row) => {
+    if (!row) return row;
+    const commentText =
+      row.comment_body ??
+      row.comment_text ??
+      row.commentText ??
+      row.order_text ??
+      row.orderText ??
+      row.comment ??
+      "";
+    const customerName =
+      row.commenter_name ||
+      row.customer_name ||
+      row.member_name ||
+      row.memberName ||
+      "-";
+    const bandNum = row.band_number ?? row.bandNumber ?? row.band_key ?? row.bandKey ?? null;
+    const postNum =
+      row.post_number ??
+      row.postNumber ??
+      row.post_id ??
+      row.postId ??
+      null;
+    const postKey = row.post_key || (bandNum != null && postNum != null ? `${bandNum}:${postNum}` : null);
+    return {
+      order_id: String(row.comment_order_id ?? row.id ?? row.order_id ?? crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`),
+      comment_order_id: row.comment_order_id ?? row.commentOrderId ?? null,
+      customer_name: customerName,
+      comment: commentText,
+      comment_change: row.comment_change || row.commentChange || null,
+      status: row.order_status || row.status || "주문완료",
+      order_status: row.order_status || row.status || "주문완료",
+      sub_status: row.sub_status || undefined,
+      ordered_at:
+        row.ordered_at ||
+        row.comment_created_at ||
+        row.commentCreatedAt ||
+        row.created_at ||
+        row.createdAt ||
+        null,
+      paid_at: row.paid_at || null,
+      updated_at: row.updated_at || row.modified_at || row.updatedAt || row.updated_at || null,
+      completed_at: row.received_at || row.completed_at || null,
+      canceled_at: row.canceled_at || null,
+      processing_method: "raw",
+      product_id: row.selected_product_id || row.product_id || null,
+      product_name: row.product_name || null,
+      post_key: postKey,
+      post_number: postNum != null ? String(postNum) : null,
+      band_key: row.band_key || bandNum || null,
+      band_number: bandNum != null ? bandNum : null,
+      comment_key: row.comment_key || row.commentKey || null,
+      memo: row.memo || null,
+    };
+  }, []);
 
   // 주문에 해당하는 상품 목록 가져오기 (orders-test와 동일한 로직)
   const getCandidateProductsForOrder = (order) => {
@@ -372,16 +465,24 @@ export default function OfflineOrdersPage() {
       const [postsNew, productsNew, ordersNew] = await Promise.all([
         fetchSince("posts", POST_COLUMNS, "posted_at"),
         fetchSince("products", PRODUCT_COLUMNS, "updated_at"),
-        fetchSince("orders", ORDER_COLUMNS, "updated_at"),
+        isRawMode
+          ? fetchSince("comment_orders", COMMENT_ORDER_COLUMNS, "updated_at")
+          : fetchSince("orders", ORDER_COLUMNS, "updated_at"),
       ]);
 
-      await bulkPut("posts", postsNew);
-      await bulkPut("products", productsNew);
-      await bulkPut("orders", ordersNew);
+      if (isRawMode) {
+        await bulkMerge("posts", postsNew);
+        await bulkMerge("products", productsNew);
+        await bulkMerge("comment_orders", ordersNew);
+      } else {
+        await bulkPut("posts", postsNew);
+        await bulkPut("products", productsNew);
+        await bulkPut("orders", ordersNew);
+      }
       await setMeta(lastSyncKey, new Date().toISOString());
       setToast({
         type: "success",
-        message: `증분 동기화 완료 (posts ${postsNew.length}, products ${productsNew.length}, orders ${ordersNew.length})`,
+        message: `증분 동기화 완료 (posts ${postsNew.length}, products ${productsNew.length}, ${isRawMode ? "comment_orders" : "orders"} ${ordersNew.length})`,
       });
     } catch (err) {
       setToast({
@@ -397,7 +498,7 @@ export default function OfflineOrdersPage() {
       ]);
       setIncrementalSyncing(false);
     }
-  }, [incrementalSyncing]);
+  }, [incrementalSyncing, isRawMode]);
 
   // 상품 번호 추출
   const getItemNumber = (p, idx) => {
@@ -424,7 +525,7 @@ export default function OfflineOrdersPage() {
       const [allPosts, allProducts, allOrders] = await Promise.all([
         getAllFromStore("posts"),
         getAllFromStore("products"),
-        getAllFromStore("orders"),
+        getAllFromStore(isRawMode ? "comment_orders" : "orders"),
       ]);
 
       const userPosts = allPosts.filter(item => item?.user_id === userId);
@@ -487,11 +588,12 @@ export default function OfflineOrdersPage() {
     const loadId = ++ordersLoadIdRef.current;
     setLoading(true);
     try {
-      const allOrders = await getAllFromStore("orders");
+      const allOrders = await getAllFromStore(isRawMode ? "comment_orders" : "orders");
       console.log("[offline-orders] 로드된 주문 수:", allOrders.length);
       const filteredOrders = filterByUserId(allOrders);
-      console.log("[offline-orders] 필터링 후 주문 수:", filteredOrders.length);
-      const recent = [...filteredOrders].sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+      const mappedOrders = isRawMode ? filteredOrders.map(mapCommentOrderToLegacy).filter(Boolean) : filteredOrders;
+      console.log("[offline-orders] 필터링 후 주문 수:", mappedOrders.length);
+      const recent = [...mappedOrders].sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
       if (recent.length > 0) {
         const sample = recent[0];
         console.log("[offline-orders] 주문 샘플:", sample);
@@ -663,6 +765,15 @@ export default function OfflineOrdersPage() {
     loadDbCounts();
   }, [currentUserId]);
 
+  // raw/legacy 모드 전환 시 데이터 새로 불러오기
+  useEffect(() => {
+    if (!currentUserId) return;
+    loadRecentOrders();
+    loadProducts();
+    loadPosts();
+    loadDbCounts();
+  }, [isRawMode]);
+
   // 사용자 드롭다운 외부 클릭 감지
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -685,7 +796,12 @@ export default function OfflineOrdersPage() {
     const handler = async () => {
       // IndexedDB에 새로운 스냅샷이 들어왔을 때 목록 갱신
       await syncIncremental();
-      await loadRecentOrders();
+      await Promise.all([
+        loadRecentOrders(),
+        loadProducts(),
+        loadPosts(),
+        loadDbCounts(),
+      ]);
     };
     if (typeof window !== "undefined") {
       window.addEventListener("indexeddb-sync", handler);
@@ -697,10 +813,35 @@ export default function OfflineOrdersPage() {
     };
   }, [syncIncremental]);
 
+  const searchCommentOrders = async (term) => {
+    const all = await getAllFromStore("comment_orders");
+    const filtered = filterByUserId(all);
+    if (!term) return filtered.map(mapCommentOrderToLegacy).filter(Boolean);
+    const lower = term.toLowerCase();
+    const matched = filtered.filter((row) => {
+      const name = row.commenter_name || "";
+      const body = row.comment_body || "";
+      const key = row.comment_key || "";
+      const id = row.comment_order_id || "";
+      return (
+        String(name).toLowerCase().includes(lower) ||
+        String(body).toLowerCase().includes(lower) ||
+        String(key).includes(term) ||
+        String(id).includes(term)
+      );
+    });
+    return matched.map(mapCommentOrderToLegacy).filter(Boolean);
+  };
+
   const handleSearch = async (term) => {
     setSearchTerm(term);
     if (!term) {
       await loadRecentOrders();
+      return;
+    }
+    if (isRawMode) {
+      const results = await searchCommentOrders(term);
+      setOrders(results);
       return;
     }
     const results = await searchOrders(term, 200);
@@ -756,6 +897,28 @@ export default function OfflineOrdersPage() {
     return patch;
   };
 
+  const applyRawStatusPatch = (order, nextStatus, nowIso) => {
+    const allowed = ["주문완료", "수령완료", "결제완료", "미수령", "주문취소", "확인필요", "수령가능"];
+    const normalized = allowed.includes(nextStatus) ? nextStatus : "주문완료";
+    const patch = {
+      order_status: normalized,
+      canceled_at: null,
+      received_at: null,
+      sub_status: null,
+      updated_at: nowIso,
+    };
+    if (normalized === "수령완료") {
+      patch.received_at = order.received_at || order.completed_at || nowIso;
+    } else if (normalized === "주문취소") {
+      patch.canceled_at = order.canceled_at || nowIso;
+    } else if (normalized === "결제완료") {
+      if (!order.paid_at) patch.paid_at = nowIso;
+    } else if (["미수령", "확인필요", "수령가능"].includes(normalized)) {
+      patch.sub_status = normalized;
+    }
+    return patch;
+  };
+
   // Supabase 스키마에 맞춰 주문 payload를 필터링
   const ORDER_SYNC_KEYS = new Set([
     "order_id",
@@ -804,10 +967,47 @@ export default function OfflineOrdersPage() {
     "comment_change",
   ]);
 
+  const COMMENT_ORDER_SYNC_KEYS = new Set([
+    "comment_order_id",
+    "comment_key",
+    "comment_id",
+    "user_id",
+    "band_number",
+    "post_number",
+    "post_key",
+    "order_status",
+    "sub_status",
+    "comment_body",
+    "comment_created_at",
+    "ordered_at",
+    "updated_at",
+    "paid_at",
+    "received_at",
+    "canceled_at",
+    "comment_change",
+    "commenter_name",
+    "commenter_user_no",
+    "commenter_profile_url",
+    "attachments",
+    "products_snapshot",
+    "source",
+    "status",
+    "memo",
+  ]);
+
   const sanitizeOrderPayload = (order) => {
     if (!order) return order;
     const safe = {};
     ORDER_SYNC_KEYS.forEach((key) => {
+      if (order[key] !== undefined) safe[key] = order[key];
+    });
+    return safe;
+  };
+
+  const sanitizeCommentOrderPayload = (order) => {
+    if (!order) return order;
+    const safe = {};
+    COMMENT_ORDER_SYNC_KEYS.forEach((key) => {
       if (order[key] !== undefined) safe[key] = order[key];
     });
     return safe;
@@ -1004,6 +1204,13 @@ export default function OfflineOrdersPage() {
 
   const handleOfflineCommentUpdate = async () => {
     if (offlineCommentSyncing) return;
+    if (isRawMode) {
+      setToast({
+        type: "info",
+        message: "RAW 모드에서는 댓글 업데이트를 사용할 수 없습니다.",
+      });
+      return;
+    }
     const now = Date.now();
     if (offlineCommentCooldownUntil && now < offlineCommentCooldownUntil) {
       setToast({ type: "info", message: "너무 빠른 요청입니다. 잠시후에 시도해주세요." });
@@ -1247,6 +1454,110 @@ export default function OfflineOrdersPage() {
     setBulkLoading(true);
     try {
       const now = new Date().toISOString();
+      if (isRawMode) {
+        const userId = resolveUserId();
+        const allRaw = filterByUserId(await getAllFromStore("comment_orders"));
+        const rawById = new Map();
+        const rawByCommentKey = new Map();
+        allRaw.forEach((row) => {
+          if (row?.comment_order_id != null) {
+            rawById.set(String(row.comment_order_id), row);
+          }
+          if (row?.comment_key) {
+            rawByCommentKey.set(String(row.comment_key), row);
+          }
+        });
+
+        const updates = [];
+        const queueItems = [];
+        const updatedUi = [];
+
+        const selected = orders.filter((o) => selectedOrderIds.includes(o.order_id));
+        for (const order of selected) {
+          const commentOrderId =
+            order?.comment_order_id ??
+            order?.commentOrderId ??
+            order?.order_id ??
+            null;
+          const commentKey = order?.comment_key ?? order?.commentKey ?? null;
+          const raw =
+            (commentOrderId != null ? rawById.get(String(commentOrderId)) : null) ||
+            (commentKey ? rawByCommentKey.get(String(commentKey)) : null);
+          const base = raw || {
+            comment_order_id: commentOrderId,
+            comment_key: commentKey || undefined,
+            user_id: order?.user_id || userId || undefined,
+            post_key: order?.post_key || undefined,
+            band_number: order?.band_number ?? undefined,
+            post_number: order?.post_number ?? undefined,
+          };
+          if (!base.comment_order_id) continue;
+
+          const patch = applyRawStatusPatch(raw || order, nextStatus, now);
+          const updatedRaw = { ...base, ...patch };
+          updates.push(updatedRaw);
+
+          queueItems.push({
+            table: "comment_orders",
+            op: "upsert",
+            pkValue: updatedRaw.comment_order_id,
+            payload: sanitizeCommentOrderPayload(updatedRaw),
+            updatedAt: updatedRaw.updated_at || now,
+            user_id: updatedRaw.user_id || userId || undefined,
+          });
+
+          updatedUi.push({
+            ...order,
+            status: patch.order_status,
+            order_status: patch.order_status,
+            updated_at: patch.updated_at || order.updated_at,
+            completed_at: patch.received_at || order.completed_at,
+            canceled_at: patch.canceled_at ?? order.canceled_at,
+            paid_at: patch.paid_at ?? order.paid_at,
+            sub_status: patch.sub_status ?? order.sub_status,
+          });
+        }
+
+        if (updates.length === 0) {
+          setToast({
+            type: "warning",
+            message: "선택된 주문을 찾을 수 없습니다. 데이터를 다시 불러옵니다.",
+          });
+          await loadRecentOrders();
+          setBulkLoading(false);
+          return;
+        }
+
+        await bulkMerge("comment_orders", updates);
+        for (const item of queueItems) {
+          await addToQueue(item);
+        }
+        await loadQueueSize();
+
+        setOrders((prev) =>
+          prev.map((order) => {
+            const next = updatedUi.find((u) => u.order_id === order.order_id);
+            return next || order;
+          })
+        );
+        setSelectedOrderIds([]);
+
+        const canSyncNow = isSupabaseHealthy && (typeof navigator === "undefined" || navigator.onLine);
+        if (canSyncNow) {
+          scheduleSyncQueue(1000);
+          setToast({
+            type: "success",
+            message: `선택한 ${updates.length}건을 '${nextStatus}'로 변경했습니다.`,
+          });
+        } else {
+          setToast({
+            type: "info",
+            message: "서버 연결 복구 시 자동 동기화됩니다.",
+          });
+        }
+        return;
+      }
+
       let updates = orders
         .filter((o) => selectedOrderIds.includes(o.order_id))
         .map((o) => ({
@@ -1361,6 +1672,8 @@ export default function OfflineOrdersPage() {
           items: filteredQueue.map((q) =>
             q.table === "orders"
               ? { ...q, payload: sanitizeOrderPayload(q.payload) }
+              : q.table === "comment_orders"
+              ? { ...q, payload: sanitizeCommentOrderPayload(q.payload) }
               : q
           ),
         }),
@@ -1373,24 +1686,24 @@ export default function OfflineOrdersPage() {
       const data = await response.json();
 
       // 성공 처리: 응답에 ok 필드가 있으면 ok만 제거, 없으면 전체 제거
-    const okIds = Array.isArray(data?.results)
-      ? data.results.filter((r) => r?.ok).map((r) => r.id)
-      : filteredQueue.map((q) => q.id);
+      const okIds = Array.isArray(data?.results)
+        ? data.results.filter((r) => r?.ok).map((r) => r.id)
+        : filteredQueue.map((q) => q.id);
 
       if (Array.isArray(data?.results)) {
         const failed = data.results.filter((r) => !r?.ok);
         if (failed.length > 0) {
-        const reasons = failed
-          .map((r) => `${r.id ?? "?"}: ${r.reason ?? "알 수 없는 오류"}`)
-          .join(", ");
-        // 큐를 지우기 전에 사용자에게 이유를 알려주고 리턴
-        setToast({
-          type: "error",
-          message: `동기화 실패(${failed.length}건): ${reasons}`,
-        });
-        return false;
+          const reasons = failed
+            .map((r) => `${r.id ?? "?"}: ${r.reason ?? "알 수 없는 오류"}`)
+            .join(", ");
+          // 큐를 지우기 전에 사용자에게 이유를 알려주고 리턴
+          setToast({
+            type: "error",
+            message: `동기화 실패(${failed.length}건): ${reasons}`,
+          });
+          return false;
+        }
       }
-    }
 
       await deleteQueueItems(okIds);
       await loadQueueSize();

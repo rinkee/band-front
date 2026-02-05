@@ -248,13 +248,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // === 메인 로직 ===
     // 🔥 SMART PRIORITY SYSTEM START 🔥
 
-    // 0-1. DB에서 pending 또는 failed 상태인 posts 먼저 조회
+    // 0-1. DB에서 pending 또는 failed 상태인 posts 먼저 조회 (최근 3일)
     console.log(`DB에서 pending/failed 상태 게시물 조회`);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
     const { data: pendingPosts, error: pendingError } = await supabase
       .from("posts")
-      .select("post_key, title, comment_count, last_checked_comment_at, posted_at")
+      .select("post_key, band_key, title, content, comment_count, posted_at, band_post_url")
       .eq("user_id", userId)
       .in("comment_sync_status", ["pending", "failed"])
+      .gte("posted_at", threeDaysAgo)
       .order("comment_count", { ascending: false })
       .limit(100);
 
@@ -262,24 +264,6 @@ export async function processBandPosts(supabase, userId, options = {}) {
       console.error(`Pending posts 조회 실패: ${pendingError.message}`);
     } else {
       console.log(`[0-1단계] ${pendingPosts?.length || 0}개의 pending/failed 게시물 발견`);
-    }
-
-    // 0-2. 7일 이상 체크 안 한 posts 조회
-    console.log(`7일 이상 체크 안 한 게시물 조회`);
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: oldUncheckedPosts, error: oldError } = await supabase
-      .from("posts")
-      .select("post_key, title, comment_count, last_checked_comment_at, posted_at")
-      .eq("user_id", userId)
-      .gt("comment_count", 0)
-      .or(`last_checked_comment_at.is.null,last_checked_comment_at.lt.${sevenDaysAgo}`)
-      .order("comment_count", { ascending: false })
-      .limit(100);
-
-    if (oldError) {
-      console.error(`Old unchecked posts 조회 실패: ${oldError.message}`);
-    } else {
-      console.log(`${oldUncheckedPosts?.length || 0}개의 오래된 미체크 게시물 발견`);
     }
 
     // 1. Band API 게시물 가져오기
@@ -298,53 +282,23 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
     // 🔥 SMART PRIORITY: pending/old posts를 Band API format으로 변환하여 추가
     console.log(`DB posts를 Band API 형식으로 변환`);
-    const dbPostsToAdd = new Set();
-
-    // Pending posts 추가
     if (pendingPosts && pendingPosts.length > 0) {
+      const existingKeys = new Set(posts.map((p) => p.postKey));
       for (const dbPost of pendingPosts) {
-        if (!posts.some((p) => p.postKey === dbPost.post_key)) {
-          dbPostsToAdd.add(dbPost.post_key);
-        }
+        if (existingKeys.has(dbPost.post_key)) continue;
+        posts.push({
+          postKey: dbPost.post_key,
+          bandKey: dbPost.band_key || bandKey,
+          title: dbPost.title,
+          content: dbPost.content || "",
+          commentCount: dbPost.comment_count,
+          createdAt: dbPost.posted_at,
+          author: { role: "admin" },
+          url: dbPost.band_post_url || "",
+          fromDB: true
+        });
       }
-    }
-
-    // Old unchecked posts 추가
-    if (oldUncheckedPosts && oldUncheckedPosts.length > 0) {
-      for (const dbPost of oldUncheckedPosts) {
-        if (!posts.some((p) => p.postKey === dbPost.post_key) && !dbPostsToAdd.has(dbPost.post_key)) {
-          dbPostsToAdd.add(dbPost.post_key);
-        }
-      }
-    }
-
-    // DB에서 추가할 posts의 상세 정보 조회
-    if (dbPostsToAdd.size > 0) {
-      console.log(`[1-3단계] ${dbPostsToAdd.size}개의 추가 posts 정보 조회 중...`);
-      // 한 사용자 = 한 밴드이므로 user_id로 모든 posts 조회 후 필터링 (URL 길이 제한 문제 해결)
-      const { data: allPosts, error: additionalError } = await supabase
-        .from("posts")
-        .select("*")
-        .eq("user_id", userId);
-
-      if (!additionalError && allPosts) {
-        // 클라이언트 사이드에서 필요한 post_key만 필터링
-        const additionalPosts = allPosts.filter(p => dbPostsToAdd.has(p.post_key));
-        for (const dbPost of additionalPosts) {
-          posts.push({
-            postKey: dbPost.post_key,
-            bandKey: dbPost.band_key || bandKey,
-            title: dbPost.title,
-            content: dbPost.content || "",
-            commentCount: dbPost.comment_count,
-            createdAt: dbPost.posted_at,
-            author: { role: "admin" },
-            url: dbPost.url || "",
-            fromDB: true
-          });
-        }
-        console.log(`[1-3단계] ${additionalPosts.length}개의 DB posts 추가됨. 총 ${posts.length}개 처리 예정`);
-      }
+      console.log(`[1-3단계] ${pendingPosts.length}개의 DB posts 추가됨. 총 ${posts.length}개 처리 예정`);
     }
 
     let postsWithAnalysis = [];
