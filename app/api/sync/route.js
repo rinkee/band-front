@@ -4,7 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
-const conflictKeys = ["order_id", "product_id", "post_id", "id", "comment_key", "post_key"];
+const conflictKeys = [
+  "order_id",
+  "comment_order_id",
+  "product_id",
+  "post_id",
+  "id",
+  "comment_key",
+  "post_key",
+];
 
 const supabaseAdmin = url && serviceKey ? createClient(url, serviceKey) : null;
 

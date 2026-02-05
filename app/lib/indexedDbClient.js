@@ -6,11 +6,18 @@
  */
 
 const DB_NAME = "band-offline-cache";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise = null;
 
 const isBrowser = () => typeof window !== "undefined" && "indexedDB" in window;
+const isIdbDebugEnabled = () => {
+  try {
+    return !!(typeof window !== "undefined" && window.__BOH_IDB_DEBUG__);
+  } catch (_) {
+    return false;
+  }
+};
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
@@ -26,10 +33,17 @@ function openDatabase() {
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
 
+      const upgradeTx = request.transaction;
       if (!db.objectStoreNames.contains("posts")) {
         const store = db.createObjectStore("posts", { keyPath: "post_id" });
         store.createIndex("updated_at", "updated_at", { unique: false });
         store.createIndex("status", "status", { unique: false });
+        store.createIndex("post_key", "post_key", { unique: false });
+      } else if (upgradeTx) {
+        const store = upgradeTx.objectStore("posts");
+        if (!store.indexNames.contains("post_key")) {
+          store.createIndex("post_key", "post_key", { unique: false });
+        }
       }
 
       if (!db.objectStoreNames.contains("products")) {
@@ -53,6 +67,16 @@ function openDatabase() {
         store.createIndex("status", "status", { unique: false });
         store.createIndex("comment_created_at", "comment_created_at", { unique: false });
         store.createIndex("commenter_name", "commenter_name", { unique: false });
+        store.createIndex("comment_key", "comment_key", { unique: false });
+        store.createIndex("order_status", "order_status", { unique: false });
+      } else if (upgradeTx) {
+        const store = upgradeTx.objectStore("comment_orders");
+        if (!store.indexNames.contains("comment_key")) {
+          store.createIndex("comment_key", "comment_key", { unique: false });
+        }
+        if (!store.indexNames.contains("order_status")) {
+          store.createIndex("order_status", "order_status", { unique: false });
+        }
       }
 
       if (!db.objectStoreNames.contains("syncQueue")) {
@@ -113,7 +137,78 @@ export async function bulkPut(storeName, items = []) {
     });
   });
 
+  if (isIdbDebugEnabled()) {
+    try {
+      console.log("[BOH][idb] bulkPut", { storeName, count });
+    } catch (_) {}
+  }
   return count;
+}
+
+const parseUpdatedAt = (value) => {
+  if (!value) return 0;
+  const t = Date.parse(String(value));
+  return Number.isNaN(t) ? 0 : t;
+};
+
+const mergeRecord = (existing, incoming) => {
+  if (!existing) return incoming;
+  const incomingTs = parseUpdatedAt(incoming?.updated_at ?? incoming?.updatedAt ?? null);
+  const existingTs = parseUpdatedAt(existing?.updated_at ?? existing?.updatedAt ?? null);
+  const shouldApply = !existingTs || !incomingTs || incomingTs >= existingTs;
+  if (!shouldApply) return existing;
+  const merged = { ...existing };
+  Object.keys(incoming || {}).forEach((key) => {
+    if (incoming[key] === undefined) return;
+    merged[key] = incoming[key];
+  });
+  return merged;
+};
+
+const resolveKeyFromItem = (keyPath, item) => {
+  if (!keyPath) return null;
+  if (Array.isArray(keyPath)) {
+    return keyPath.map((k) => item?.[k]);
+  }
+  return item?.[keyPath];
+};
+
+export async function bulkMerge(storeName, items = []) {
+  if (!items.length) return 0;
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([storeName], "readwrite");
+    const store = tx.objectStore(storeName);
+    const keyPath = store.keyPath;
+    let count = 0;
+
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+    tx.oncomplete = () => {
+      if (isIdbDebugEnabled()) {
+        try {
+          console.log("[BOH][idb] bulkMerge", { storeName, count });
+        } catch (_) {}
+      }
+      resolve(count);
+    };
+
+    items.forEach((item) => {
+      const key = resolveKeyFromItem(keyPath, item);
+      if (key == null) return;
+      const getReq = store.get(key);
+      getReq.onsuccess = () => {
+        const existing = getReq.result || null;
+        const merged = mergeRecord(existing, item);
+        store.put(merged);
+        count += 1;
+      };
+      getReq.onerror = () => {
+        store.put(item);
+        count += 1;
+      };
+    });
+  });
 }
 
 export async function putRecord(storeName, item) {
@@ -274,8 +369,22 @@ export async function clearStoresByUserId(userId, storeNames = []) {
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(existing, "readwrite");
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onerror = () => {
+      if (isIdbDebugEnabled()) {
+        try {
+          console.warn("[BOH][idb] bulkMerge error", { storeName, error: tx.error });
+        } catch (_) {}
+      }
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      if (isIdbDebugEnabled()) {
+        try {
+          console.warn("[BOH][idb] bulkMerge abort", { storeName, error: tx.error });
+        } catch (_) {}
+      }
+      reject(tx.error);
+    };
     tx.oncomplete = () => resolve(true);
 
     existing.forEach((name) => {
