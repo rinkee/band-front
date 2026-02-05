@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "1.1.0",
+      "date": "2026-02-05",
+      "summary": "컴퓨팅 스몰로 업그레이드, 상당히 안정적임, get_orders 더 최적화, testUpdateButton에서 select=*을 하던걸 안하게 수정함"
+
+    },
+    {
       "version": "1.0.9",
       "date": "2026-01-27",
       "summary": "posts 페이지에서 검색시 오류가 나던 문제를 해결함"
