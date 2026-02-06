@@ -248,15 +248,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // === 메인 로직 ===
     // 🔥 SMART PRIORITY SYSTEM START 🔥
 
-    // 0-1. DB에서 pending 또는 failed 상태인 posts 먼저 조회 (최근 3일)
+    // 0-1. DB에서 pending 또는 failed 상태인 posts 먼저 조회 (최근 14일)
     console.log(`DB에서 pending/failed 상태 게시물 조회`);
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const { data: pendingPosts, error: pendingError } = await supabase
       .from("posts")
       .select("post_key, band_key, title, content, comment_count, posted_at, band_post_url")
       .eq("user_id", userId)
       .in("comment_sync_status", ["pending", "failed"])
-      .gte("posted_at", threeDaysAgo)
+      .gte("posted_at", twoWeeksAgo)
       .order("comment_count", { ascending: false })
       .limit(100);
 

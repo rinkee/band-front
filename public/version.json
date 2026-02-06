@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "1.1.1",
+      "date": "2026-02-05",
+      "summary": "재처리 기간을 3일에서 2주로 수정"
+
+    },
+    {
       "version": "1.1.0",
       "date": "2026-02-05",
       "summary": "컴퓨팅 스몰로 업그레이드, 상당히 안정적임, get_orders 더 최적화, testUpdateButton에서 select=*을 하던걸 안하게 수정함"
