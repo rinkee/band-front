@@ -5,7 +5,6 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const target = searchParams.get("url");
-    console.log("[image-proxy] Requested URL:", target);
 
     if (!target) {
       return new Response("Missing 'url' query parameter", { status: 400 });
@@ -18,7 +17,6 @@ export async function GET(request) {
       if (remoteUrl.protocol === 'https:') {
         remoteUrl.protocol = 'http:';
       }
-      console.log("[image-proxy] Parsed URL:", remoteUrl.toString());
     } catch (e) {
       console.error("[image-proxy] Invalid URL:", e);
       return new Response("Invalid URL", { status: 400 });
@@ -48,14 +46,12 @@ export async function GET(request) {
     upstreamHeaders.set("Referer", `${remoteUrl.protocol}//${remoteUrl.hostname}/`);
 
     // Fetch the remote image. Follow redirects.
-    console.log("[image-proxy] Fetching from:", remoteUrl.toString());
     const res = await fetch(remoteUrl.toString(), {
       method: "GET",
       headers: upstreamHeaders,
       redirect: "follow",
     });
 
-    console.log("[image-proxy] Response status:", res.status);
     if (!res.ok || !res.body) {
       console.error("[image-proxy] Upstream error:", res.status, await res.text().catch(() => ''));
       return new Response(`Upstream error: ${res.status}`, { status: res.status || 502 });
@@ -78,4 +74,3 @@ export async function GET(request) {
     return new Response(`Proxy error: ${err.message}`, { status: 500 });
   }
 }
-

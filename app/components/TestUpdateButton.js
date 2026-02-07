@@ -16,7 +16,6 @@ import {
   saveSnapshot,
   setMeta,
   getMeta,
-  getAllFromStore,
   getDb,
 } from "../lib/indexedDbClient";
 
@@ -33,9 +32,9 @@ export default function TestUpdateButton({
   const [error, setError] = useState(null);
   const [backupSummary, setBackupSummary] = useState(null);
   const backupTimerRef = useRef(null);
+  const backupInFlightRef = useRef(null);
   const { mutate } = useSWRConfig();
 
-  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   const BACKUP_RANGE_MS = 20 * 24 * 60 * 60 * 1000; // 최근 20일
   const COOLDOWN_MS = 15 * 1000; // 15초
   const POST_COLUMNS =
@@ -46,18 +45,21 @@ export default function TestUpdateButton({
     "order_id,user_id,post_number,band_number,customer_name,comment,status,ordered_at,updated_at,post_key,band_key,comment_key,memo";
   const COMMENT_ORDER_COLUMNS = "*";
 
-  const escapeIlike = (value) =>
-    value
-      .replace(/\\/g, "\\\\")
-      .replace(/%/g, "\\%")
-      .replace(/_/g, "\\_");
-
-  const resolveExcludedCustomers = () => {
+  const readSessionUserData = () => {
     try {
       const sessionData = sessionStorage.getItem("userData");
-      if (!sessionData) return [];
-      const parsed = JSON.parse(sessionData);
-      const raw = parsed?.excludedCustomers ?? parsed?.excluded_customers;
+      if (!sessionData) return null;
+      return JSON.parse(sessionData);
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const resolveExcludedCustomers = (sessionUserData = null) => {
+    try {
+      const parsed = sessionUserData || readSessionUserData();
+      if (!parsed) return [];
+      const raw = parsed.excludedCustomers ?? parsed.excluded_customers;
       if (Array.isArray(raw)) return raw;
       if (typeof raw === "string") {
         return raw
@@ -71,11 +73,10 @@ export default function TestUpdateButton({
     }
   };
 
-  const detectRawMode = () => {
+  const detectRawMode = (sessionUserData = null) => {
     try {
-      const s = sessionStorage.getItem("userData");
-      if (!s) return false;
-      const u = JSON.parse(s);
+      const u = sessionUserData || readSessionUserData();
+      if (!u) return false;
       const mode =
         u?.orderProcessingMode ||
         u?.order_processing_mode ||
@@ -102,8 +103,8 @@ export default function TestUpdateButton({
     return { ...row, comment_order_id: normalized };
   };
 
-  const getOrderBackupConfig = () => {
-    const isRawMode = detectRawMode();
+  const getOrderBackupConfig = (sessionUserData = null) => {
+    const isRawMode = detectRawMode(sessionUserData);
     return {
       isRawMode,
       table: isRawMode ? "comment_orders" : "orders",
@@ -123,10 +124,8 @@ export default function TestUpdateButton({
         if (isBandKeyStatusCacheFresh(cachedStatus)) return;
       }
 
-      const sessionData = sessionStorage.getItem("userData");
-      if (!sessionData) return;
-
-      const userData = JSON.parse(sessionData);
+      const userData = readSessionUserData();
+      if (!userData) return;
       const userId = userData?.userId;
       if (!userId) return;
 
@@ -148,10 +147,8 @@ export default function TestUpdateButton({
     setKeyStatus(nextIndex > 0 ? "backup" : "main");
 
     try {
-      const sessionData = sessionStorage.getItem("userData");
-      if (!sessionData) return;
-
-      const userData = JSON.parse(sessionData);
+      const userData = readSessionUserData();
+      if (!userData) return;
       const userId = userData?.userId;
       if (!userId) return;
 
@@ -186,18 +183,12 @@ export default function TestUpdateButton({
     }
   }, [onKeyStatusChange, keyStatus, backupSummary]);
 
-  const fetchLastWeek = async (table, columns, userId, dateColumn) => {
-    const since = new Date(Date.now() - ONE_WEEK_MS).toISOString();
-    const { data, error } = await supabase
-      .from(table)
-      .select(columns)
-      .eq("user_id", userId)
-      .gte(dateColumn, since)
-      .order(dateColumn, { ascending: false });
-
-    if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
-    return data || [];
-  };
+  React.useEffect(() => () => {
+    if (backupTimerRef.current) {
+      clearTimeout(backupTimerRef.current);
+      backupTimerRef.current = null;
+    }
+  }, []);
 
   const formatBackupSummary = (counts) => {
     const parts = [];
@@ -222,40 +213,49 @@ export default function TestUpdateButton({
   };
 
   const backupToIndexedDB = async (userId) => {
-    if (!isIndexedDBAvailable()) return;
-    try {
-      const orderConfig = getOrderBackupConfig();
-      const orderColumns = orderConfig.isRawMode ? COMMENT_ORDER_COLUMNS : ORDER_COLUMNS;
+    if (!isIndexedDBAvailable() || !userId) return;
+    if (backupInFlightRef.current) {
+      return backupInFlightRef.current;
+    }
 
-      const excludedCustomers = resolveExcludedCustomers();
-      const excludedNormalized = excludedCustomers.map((c) => (c || "").toString().trim().toLowerCase());
-      const lastBackupAt = await getMeta("lastBackupAt");
-      const sinceOverride =
-        lastBackupAt && !Number.isNaN(Date.parse(lastBackupAt))
-          ? new Date(lastBackupAt).toISOString()
-          : null;
-      const backupSince = sinceOverride || new Date(Date.now() - BACKUP_RANGE_MS).toISOString();
-      const isInitialBackup = !sinceOverride;
-      const orderStatusColumn = orderConfig.table === "comment_orders" ? "order_status" : "status";
+    const backupPromise = (async () => {
+      try {
+        const sessionUserData = readSessionUserData();
+        const orderConfig = getOrderBackupConfig(sessionUserData);
+        const orderColumns = orderConfig.isRawMode ? COMMENT_ORDER_COLUMNS : ORDER_COLUMNS;
 
-      // 최초 백업일 때만 초기화 (syncQueue, snapshots, meta는 유지)
-      if (isInitialBackup) {
-        const clearStores = async (stores) => {
-          const db = await getDb();
-          await new Promise((resolve, reject) => {
-            const tx = db.transaction(stores, "readwrite");
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => reject(tx.error);
-            stores.forEach((name) => {
-              tx.objectStore(name).clear();
+        const excludedCustomers = resolveExcludedCustomers(sessionUserData);
+        const excludedNormalized = excludedCustomers
+          .map((c) => (c || "").toString().trim().toLowerCase())
+          .filter(Boolean);
+        const excludedExactSet = new Set(excludedNormalized);
+        const lastBackupAt = await getMeta("lastBackupAt");
+        const sinceOverride =
+          lastBackupAt && !Number.isNaN(Date.parse(lastBackupAt))
+            ? new Date(lastBackupAt).toISOString()
+            : null;
+        const backupSince = sinceOverride || new Date(Date.now() - BACKUP_RANGE_MS).toISOString();
+        const isInitialBackup = !sinceOverride;
+        const orderStatusColumn = orderConfig.table === "comment_orders" ? "order_status" : "status";
+
+        // 최초 백업일 때만 초기화 (syncQueue, snapshots, meta는 유지)
+        if (isInitialBackup) {
+          const clearStores = async (stores) => {
+            const db = await getDb();
+            await new Promise((resolve, reject) => {
+              const tx = db.transaction(stores, "readwrite");
+              tx.oncomplete = () => resolve(true);
+              tx.onerror = () => reject(tx.error);
+              stores.forEach((name) => {
+                tx.objectStore(name).clear();
+              });
             });
-          });
-        };
+          };
 
-        const storesToClear = ["posts", "products", orderConfig.store];
-        if (orderConfig.store !== "orders") storesToClear.push("orders");
-        await clearStores([...new Set(storesToClear)]);
-      }
+          const storesToClear = ["posts", "products", orderConfig.store];
+          if (orderConfig.store !== "orders") storesToClear.push("orders");
+          await clearStores([...new Set(storesToClear)]);
+        }
 
       const fetchSince = async (table, columns, dateColumn, options = {}) => {
         const {
@@ -265,86 +265,173 @@ export default function TestUpdateButton({
           limit = 1000,
         } = options;
         const results = [];
-        let offset = 0;
         const rangeColumn = effectiveDateColumn || dateColumn;
+        const primaryKeyByTable = {
+          posts: "post_id",
+          products: "product_id",
+          orders: "order_id",
+          comment_orders: "comment_order_id",
+        };
+        const pkColumn = primaryKeyByTable[table] || null;
+        const exactExcludedNamesSql =
+          (table === "orders" || table === "comment_orders") && nameColumn && excludedCustomers.length > 0
+            ? (() => {
+                const exactNames = excludedCustomers
+                  .map((n) => (n || "").toString().trim())
+                    .filter(Boolean);
+                  if (exactNames.length === 0) return null;
+                  const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
+                return `(${sanitized.join(",")})`;
+              })()
+            : null;
 
-        while (true) {
-          let query = supabase
-            .from(table)
-            .select(columns)
+        const applyCommonFilters = (query) => {
+          let next = query
             .eq("user_id", userId)
-            .gte(rangeColumn, backupSince)
-            .order(rangeColumn, { ascending: false })
-            .range(offset, offset + limit - 1);
+            .gte(rangeColumn, backupSince);
 
           if (statusFilter?.column && statusFilter?.value) {
-            query = query.eq(statusFilter.column, statusFilter.value);
+            next = next.eq(statusFilter.column, statusFilter.value);
           }
 
-          // 제외 고객 서버 필터
-          if ((table === "orders" || table === "comment_orders") && nameColumn && excludedCustomers.length > 0) {
-            const exactNames = excludedCustomers
-              .map((n) => (n || "").toString().trim())
-              .filter(Boolean);
-            if (exactNames.length > 0) {
-              const sanitized = exactNames.map((n) => n.replace(/'/g, "''")).map((n) => `'${n}'`);
-              query = query.not(nameColumn, "in", `(${sanitized.join(",")})`);
+          if (exactExcludedNamesSql) {
+            next = next.not(nameColumn, "in", exactExcludedNamesSql);
+          }
+
+          return next;
+        };
+
+        const quoteFilterValue = (value) => {
+          const str = String(value ?? "");
+          return `"${str.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+        };
+
+        // fallback: 기존 offset pagination (안전망)
+        const fetchWithOffsetFallback = async () => {
+          const fallbackResults = [];
+          let offset = 0;
+
+          while (true) {
+            let query = applyCommonFilters(
+              supabase
+                .from(table)
+                .select(columns)
+            )
+              .order(rangeColumn, { ascending: false })
+              .range(offset, offset + limit - 1);
+
+            const { data, error } = await query;
+            if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
+            if (Array.isArray(data) && data.length > 0) {
+              fallbackResults.push(...data);
             }
+            if (!data || data.length < limit) {
+              break;
+            }
+            offset += limit;
           }
 
-          const { data, error } = await query;
-          if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
-          if (Array.isArray(data) && data.length > 0) {
-            results.push(...data);
-          }
-          if (!data || data.length < limit) {
-            break;
-          }
-          offset += limit;
+          return fallbackResults;
+        };
+
+        if (!pkColumn) {
+          return fetchWithOffsetFallback();
         }
 
-        return results;
+        // keyset pagination: 대량 데이터에서 offset 성능 저하 방지
+        try {
+          let cursor = null;
+
+          while (true) {
+            let query = applyCommonFilters(
+              supabase
+                .from(table)
+                .select(columns)
+            )
+              .order(rangeColumn, { ascending: false })
+              .order(pkColumn, { ascending: false })
+              .limit(limit);
+
+            if (cursor?.rangeValue && cursor?.pkValue) {
+              query = query.or(
+                `${rangeColumn}.lt.${quoteFilterValue(cursor.rangeValue)},and(${rangeColumn}.eq.${quoteFilterValue(cursor.rangeValue)},${pkColumn}.lt.${quoteFilterValue(cursor.pkValue)})`
+              );
+            }
+
+            const { data, error } = await query;
+            if (error) throw new Error(`${table} 불러오기 실패: ${error.message}`);
+            if (!Array.isArray(data) || data.length === 0) break;
+
+            results.push(...data);
+
+            if (data.length < limit) break;
+
+            const last = data[data.length - 1];
+            const nextRangeValue = last?.[rangeColumn];
+            const nextPkValue = last?.[pkColumn];
+            if (!nextRangeValue || !nextPkValue) break;
+
+            cursor = {
+              rangeValue: nextRangeValue,
+              pkValue: nextPkValue,
+            };
+          }
+
+          return results;
+        } catch (keysetError) {
+          console.warn(`[backupToIndexedDB] keyset pagination 실패, offset fallback 사용: ${keysetError.message}`);
+          return fetchWithOffsetFallback();
+        }
       };
 
-      const [posts, products, orders] = await Promise.all([
-        fetchSince("posts", POST_COLUMNS, "posted_at"),
-        fetchSince("products", PRODUCT_COLUMNS, "updated_at"),
-        fetchSince(orderConfig.table, orderColumns, orderConfig.dateColumn, {
-          effectiveDateColumn: orderConfig.effectiveDateColumn,
-          nameColumn: orderConfig.nameColumn,
-          statusFilter: { column: orderStatusColumn, value: "주문완료" },
-        }),
-      ]);
+        const [posts, products, orders] = await Promise.all([
+          fetchSince("posts", POST_COLUMNS, "posted_at"),
+          fetchSince("products", PRODUCT_COLUMNS, "updated_at"),
+          fetchSince(orderConfig.table, orderColumns, orderConfig.dateColumn, {
+            effectiveDateColumn: orderConfig.effectiveDateColumn,
+            nameColumn: orderConfig.nameColumn,
+            statusFilter: { column: orderStatusColumn, value: "주문완료" },
+          }),
+        ]);
 
-      const filteredOrders = orders.filter((o) => {
-        const name = (o[orderConfig.nameColumn] || "").toString().trim().toLowerCase();
-        return (
-          !excludedNormalized.includes(name) &&
-          !excludedNormalized.some((ex) => ex && name.includes(ex))
-        );
-      });
+        const filteredOrders = orders.filter((o) => {
+          const name = (o[orderConfig.nameColumn] || "").toString().trim().toLowerCase();
+          if (!name) return true;
+          if (excludedExactSet.has(name)) return false;
+          return !excludedNormalized.some((ex) => name.includes(ex));
+        });
 
-      await bulkPut("posts", posts);
-      await bulkPut("products", products);
-      const normalizedOrders = orderConfig.isRawMode
-        ? filteredOrders.map(ensureCommentOrderId)
-        : filteredOrders;
-      await bulkPut(orderConfig.store, normalizedOrders);
+        await bulkPut("posts", posts);
+        await bulkPut("products", products);
+        const normalizedOrders = orderConfig.isRawMode
+          ? filteredOrders.map(ensureCommentOrderId)
+          : filteredOrders;
+        await bulkPut(orderConfig.store, normalizedOrders);
 
-      const snapshot = await saveSnapshot({
-        counts: {
-          posts: posts.length,
-          products: products.length,
-          [orderConfig.store]: filteredOrders.length,
-          ...(orderConfig.store !== "orders" ? { orders: filteredOrders.length } : {}),
-        },
-        notes: `test-update user:${userId}`,
-      });
-      await setMeta("lastBackupAt", snapshot.createdAt);
-      const counts = snapshot.counts || {};
-      showBackupSummary(formatBackupSummary(counts));
-    } catch (e) {
-      showBackupSummary(e.message || "백업 실패");
+        const snapshot = await saveSnapshot({
+          counts: {
+            posts: posts.length,
+            products: products.length,
+            [orderConfig.store]: filteredOrders.length,
+            ...(orderConfig.store !== "orders" ? { orders: filteredOrders.length } : {}),
+          },
+          notes: `test-update user:${userId}`,
+        });
+        await setMeta("lastBackupAt", snapshot.createdAt);
+        const counts = snapshot.counts || {};
+        showBackupSummary(formatBackupSummary(counts));
+      } catch (e) {
+        showBackupSummary(e.message || "백업 실패");
+      }
+    })();
+
+    backupInFlightRef.current = backupPromise;
+    try {
+      return await backupPromise;
+    } finally {
+      if (backupInFlightRef.current === backupPromise) {
+        backupInFlightRef.current = null;
+      }
     }
   };
 
@@ -353,8 +440,14 @@ export default function TestUpdateButton({
     if (!isIndexedDBAvailable()) return true;
     try {
       const { store } = getOrderBackupConfig();
-      const orders = await getAllFromStore(store);
-      return !orders || orders.length === 0;
+      const db = await getDb();
+      const count = await new Promise((resolve, reject) => {
+        const tx = db.transaction([store], "readonly");
+        const request = tx.objectStore(store).count();
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result || 0);
+      });
+      return count === 0;
     } catch {
       return true;
     }
@@ -430,12 +523,11 @@ export default function TestUpdateButton({
       setBackupSummary(null);
 
       // 사용자 정보 가져오기
-      const sessionData = sessionStorage.getItem("userData");
-      if (!sessionData) {
+      const userData = readSessionUserData();
+      if (!userData) {
         throw new Error("사용자 정보를 찾을 수 없습니다. 로그인이 필요합니다.");
       }
 
-      const userData = JSON.parse(sessionData);
       const userId = userData.userId;
 
       if (!userId) {

@@ -33,28 +33,41 @@ import ErrorCard from "../components/ErrorCard";
 import TestUpdateButton from "../components/TestUpdateButton"; // 테스트 업데이트 버튼
 import { useScroll } from "../context/ScrollContext"; // <<< ScrollContext 임포트
 import CommentsModal from "../components/Comments"; // 댓글 모달 import
+import OptimizedImage from "../components/OptimizedImage";
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
-import { syncOrdersToIndexedDb } from "../lib/indexedDbSync";
+import { syncCommentOrdersToIndexedDb, syncOrdersToIndexedDb } from "../lib/indexedDbSync";
 
-const ORDER_STATS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const ORDER_STATS_CACHE_HARD_TTL_MS = 24 * 60 * 60 * 1000;
+const ORDER_STATS_CACHE_SOFT_TTL_MS = 5 * 60 * 1000;
 const MANUAL_SEARCH_REFRESH_MIN_INTERVAL_MS = 800;
 const MANUAL_SEARCH_COOLDOWN_ALERT_MIN_INTERVAL_MS = 2500;
+const RAW_BULK_STATUS_UPDATE_BATCH_SIZE = 10;
+const EMPTY_LIST = Object.freeze([]);
 
-const readGlobalStatsCache = (cacheKey) => {
+const readGlobalStatsCacheEntry = (cacheKey) => {
   if (!cacheKey || typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(cacheKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const savedAt = parsed?.savedAt;
-    if (!savedAt || Date.now() - savedAt > ORDER_STATS_CACHE_TTL_MS) {
+    const savedAt = Number(parsed?.savedAt);
+    if (!Number.isFinite(savedAt)) {
       localStorage.removeItem(cacheKey);
       return null;
     }
-    return parsed?.data ?? null;
+    const ageMs = Date.now() - savedAt;
+    if (ageMs > ORDER_STATS_CACHE_HARD_TTL_MS) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    return {
+      data: parsed?.data ?? null,
+      savedAt,
+      isSoftStale: ageMs > ORDER_STATS_CACHE_SOFT_TTL_MS,
+    };
   } catch (error) {
     console.warn("[글로벌 통계] 캐시 읽기 실패:", error);
     return null;
@@ -328,8 +341,6 @@ import {
   SparklesIcon,
   MagnifyingGlassIcon,
   ArrowLongLeftIcon,
-  DocumentTextIcon, // DocumentTextIcon 다시 사용
-  QrCodeIcon,
   LinkIcon,
   PencilIcon,
   ChevronUpIcon,
@@ -340,16 +351,12 @@ import {
   ArrowPathIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  UserCircleIcon,
   ChatBubbleBottomCenterTextIcon,
-  ArrowTopRightOnSquareIcon,
   CurrencyDollarIcon,
   XMarkIcon,
   CalendarDaysIcon,
   FunnelIcon,
   CheckIcon,
-  CodeBracketIcon,
-  ClockIcon,
   ChatBubbleOvalLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 
@@ -428,29 +435,6 @@ const getProxiedImageUrl = (url, options = {}) => {
 
   return url;
 };
-
-function calculateTotalAmount(qty, priceOptions, fallbackPrice) {
-  if (!Array.isArray(priceOptions) || priceOptions.length === 0) {
-    return fallbackPrice * qty;
-  }
-  const sortedOptions = [...priceOptions].sort(
-    (a, b) => b.quantity - a.quantity
-  );
-  let remain = qty;
-  let total = 0;
-  for (const opt of sortedOptions) {
-    const cnt = Math.floor(remain / opt.quantity);
-    if (cnt > 0) {
-      total += cnt * opt.price;
-      remain -= cnt * opt.quantity;
-    }
-  }
-  if (remain > 0) {
-    const smallest = sortedOptions[sortedOptions.length - 1];
-    total += remain * (smallest.price / smallest.quantity);
-  }
-  return Math.round(total);
-}
 
 // --- 라이트 테마 카드 ---
 function LightCard({ children, className = "", padding = "p-6" }) {
@@ -555,7 +539,7 @@ function LoadingSpinner({ className = "h-5 w-5", color = "text-gray-500" }) {
 }
 
 // --- 상태 배지 ---
-function StatusBadge({
+const StatusBadge = React.memo(function StatusBadge({
   status,
   processingMethod,
   completedAt,
@@ -647,9 +631,10 @@ function StatusBadge({
       )}
     </div>
   );
-}
+});
+StatusBadge.displayName = "StatusBadge";
 // --- 바코드 컴포넌트 ---
-const Barcode = ({ value, width = 2, height = 100, fontSize = 16 }) => {
+const Barcode = React.memo(function Barcode({ value, width = 2, height = 100, fontSize = 16 }) {
   const barcodeRef = useRef(null);
   useEffect(() => {
     if (barcodeRef.current && value) {
@@ -679,48 +664,311 @@ const Barcode = ({ value, width = 2, height = 100, fontSize = 16 }) => {
       </div>
     );
   return <svg ref={barcodeRef} className="block mx-auto" />;
-};
+});
+Barcode.displayName = "Barcode";
 
-// --- 상태 변경 버튼 스타일 함수 ---
-const getStatusButtonStyle = (status) => {
-  let baseStyle =
-    " inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md font-medium text-xs sm:text-sm transition disabled:opacity-60 disabled:cursor-not-allowed";
-  let statusClass = "";
-  // 모달 내 상태 버튼 (주문완료, 주문취소, 확인필요)
-  if (status === "주문완료")
-    statusClass =
-      "bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200";
-  else if (status === "주문취소")
-    statusClass =
-      "bg-red-100 text-red-700 hover:bg-red-200 border border-red-200";
-  else if (status === "확인필요")
-    statusClass = "bg-gray-700 text-white hover:bg-gray-800";
-  // 모달 푸터 수령 완료 버튼
-  else if (status === "수령완료")
-    statusClass = "bg-green-600 text-white hover:bg-green-700";
-  else if (status === "미수령")
-    statusClass = "bg-green-600 text-white hover:bg-green-700";
-  else statusClass = "bg-gray-800 text-white hover:bg-gray-900"; // 기본/폴백
-  return `${baseStyle} ${statusClass}`;
-};
+const OrderTableRow = React.memo(function OrderTableRow({
+  order,
+  orderId,
+  isSelected,
+  isOrdersLoading,
+  isEditing,
+  candidateProducts,
+  commentView,
+  barcodeViewMode,
+  isMemoFocused,
+  memoSavingState,
+  renderPickupDisplay,
+  formatDate,
+  getProductById,
+  onCheckboxChange,
+  onExactCustomerSearch,
+  onCellClickToSearch,
+  onMemoFocus,
+  onMemoSave,
+  onMemoCancel,
+  setMemoInputRef,
+}) {
+  const productList = Array.isArray(candidateProducts) ? candidateProducts : EMPTY_LIST;
+  const hasProducts = productList.length > 0;
 
-// --- 상태에 따른 아이콘 반환 함수 ---
-const getStatusIcon = (status) => {
-  switch (status) {
-    case "수령완료":
-      return <CheckCircleIcon className="w-4 h-4" />;
-    case "주문취소":
-      return <XCircleIcon className="w-4 h-4" />;
-    case "주문완료":
-      return <SparklesIcon className="w-4 h-4" />;
-    case "확인필요":
-      return <ExclamationCircleIcon className="w-4 h-4" />;
-    case "미수령":
-      return <ExclamationCircleIcon className="w-4 h-4" />;
-    default:
-      return null;
+  let displayProd = null;
+  if (order.product_id) {
+    displayProd =
+      productList.find((p) => p.product_id === order.product_id) ||
+      getProductById(order.product_id) ||
+      null;
   }
-};
+  if (!displayProd && hasProducts) displayProd = productList[0];
+  const pickupDate = displayProd?.pickup_date || null;
+
+  const currentComment = commentView?.currentComment || "";
+  const commentChangeData = commentView?.commentChangeData ?? null;
+  const previousComment = commentView?.previousComment || "";
+  const latestComment = commentView?.latestComment ?? (currentComment || "");
+  const showPrevious = Boolean(commentView?.showPrevious);
+  const memoOrderId = String(order?.order_id ?? order?.comment_order_id ?? orderId);
+
+  return (
+    <tr
+      className={`${isEditing
+        ? "bg-blue-50 border-l-4 border-blue-400"
+        : isSelected
+          ? "bg-orange-50"
+          : "hover:bg-gray-50"
+        } transition-colors group ${isOrdersLoading ? "opacity-70" : ""
+        }`}
+    >
+      <td
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-12 px-6 sm:w-16 sm:px-8"
+      >
+        <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
+          <input
+            type="checkbox"
+            className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+            value={orderId}
+            checked={isSelected}
+            onChange={(e) => onCheckboxChange(orderId, e.target.checked)}
+          />
+        </div>
+      </td>
+      {/* 고객명 */}
+      <td
+        className="py-2 xl:py-3 pr-1 md:pr-2 xl:pr-3 w-24"
+        onClick={(e) => {
+          e.stopPropagation();
+          onExactCustomerSearch(order.customer_name);
+        }}
+      >
+        <div className="flex items-center min-h-[60px]">
+          <span
+            className="text-md text-gray-700 font-medium hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
+            title={order.customer_name}
+          >
+            {order.customer_name || "-"}
+          </span>
+        </div>
+      </td>
+      {/* 상태 */}
+      <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center whitespace-nowrap w-24">
+        <StatusBadge
+          status={order.status}
+          processingMethod={order.processing_method}
+          completedAt={order.completed_at}
+          orderedAt={order.ordered_at}
+          paidAt={order.paid_at}
+          canceledAt={order.canceled_at}
+        />
+      </td>
+      {/* 수령일시 */}
+      <td className="py-2 xl:py-3 px-1 md:px-3 lg:px-4 xl:px-6 text-center w-20 md:w-24 xl:w-32">
+        <div className="text-sm md:text-base font-medium text-gray-900">
+          {renderPickupDisplay(pickupDate)}
+        </div>
+      </td>
+      {/* 댓글 */}
+      <td className="py-2 xl:py-3 px-2 md:px-3 lg:px-4 xl:px-6 w-60 md:w-72 xl:w-80">
+        <div>
+          {!commentChangeData ? (
+            <div className="break-words leading-tight font-semibold" title={currentComment}>
+              {order.sub_status === "확인필요" && (
+                <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
+              )}
+              {currentComment || "-"}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {showPrevious && (
+                <div className="text-gray-500 line-through text-sm">
+                  <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                  <span className="break-words leading-tight font-semibold">{previousComment}</span>
+                </div>
+              )}
+              <div className="break-words leading-tight">
+                {order.sub_status === "확인필요" && (
+                  <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
+                )}
+                <span className="text-sm font-semibold text-orange-600 mr-1">
+                  {commentChangeData.status === "deleted" ? "[유저에 의해 삭제된 댓글]" : "[수정됨]"}
+                </span>
+                <span className="font-semibold">{latestComment}</span>
+              </div>
+            </div>
+          )}
+          {/* 주문일시 */}
+          <div className="text-xs xl:text-sm text-gray-400 mt-1">
+            {formatDate(order.ordered_at)}
+          </div>
+          {/* 메모 */}
+          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+            <div className="relative">
+              <input
+                type="text"
+                ref={(el) => setMemoInputRef(memoOrderId, el)}
+                className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-sm md:text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${order.memo ? "bg-red-50 text-red-600 font-semibold border-red-300" : ""
+                  }`}
+                placeholder="메모 입력..."
+                defaultValue={order.memo || ""}
+                onFocus={() => onMemoFocus(memoOrderId, order.memo || "")}
+              />
+
+              {/* 저장/취소 버튼 (포커스 시 표시) */}
+              {isMemoFocused && !memoSavingState && (
+                <div className="absolute top-full left-0 mt-1 flex gap-1 z-50 shadow-md">
+                  <button
+                    onClick={() => onMemoSave(memoOrderId)}
+                    className="px-3 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.99] transition"
+                  >
+                    저장
+                  </button>
+                  <button
+                    onClick={() => onMemoCancel(memoOrderId)}
+                    className="px-3 py-2 text-sm bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 active:scale-[0.99] transition"
+                  >
+                    취소
+                  </button>
+                </div>
+              )}
+
+              {/* 저장 상태 표시 */}
+              {memoSavingState && (
+                <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-1 text-xs">
+                  {memoSavingState === "saving" && (
+                    <>
+                      <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-gray-500">저장 중...</span>
+                    </>
+                  )}
+                  {memoSavingState === "saved" && (
+                    <>
+                      <svg className="h-3 w-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span className="text-green-600">저장됨</span>
+                    </>
+                  )}
+                  {memoSavingState === "error" && (
+                    <>
+                      <svg className="h-3 w-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                      </svg>
+                      <span className="text-red-600">저장 실패</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </td>
+      {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
+      <td
+        className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-sm md:text-base xl:text-xl text-gray-700 align-top"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!hasProducts ? (
+          <span className="text-gray-400">-</span>
+        ) : (
+          <div className="space-y-2">
+            {productList.map((p, idx) => {
+              const itemNo = p?.__display_item_no ?? idx + 1;
+              const title = p?.__display_title || p?.title || p?.name || "-";
+              const price = p?.__display_price ?? null;
+              const imgUrl = p?.__display_image_url || null;
+              const proxiedImgUrl =
+                p?.__display_proxied_image_url ||
+                (imgUrl ? getProxiedImageUrl(imgUrl, { thumbnail: "s150" }) : null);
+              const isLastProduct = idx === productList.length - 1;
+              return (
+                <div
+                  key={p?.product_id || `${idx}`}
+                  className={`p-2 flex items-start gap-2 ${!isLastProduct ? "border-b border-gray-200 " : ""}`}
+                  style={{ minHeight: "86px" }}
+                  title={title}
+                >
+                  <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0 border border-gray-200">
+                    {proxiedImgUrl ? (
+                      <OptimizedImage
+                        src={proxiedImgUrl}
+                        alt={title}
+                        width={56}
+                        height={56}
+                        sizes="56px"
+                        className="w-full h-full object-cover"
+                        fallback={
+                          <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">
+                            이미지
+                          </div>
+                        }
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">이미지</div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-start xl:items-center gap-2">
+                      {productList.length > 1 && (
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-[13px] font-semibold text-gray-900 flex-shrink-0">
+                          {itemNo}번
+                        </span>
+                      )}
+                      <span
+                        className={`text-sm md:text-base xl:text-lg leading-snug text-gray-900 font-medium break-words line-clamp-2 xl:whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
+                        onClick={() => onCellClickToSearch(title, order.post_key)}
+                        title="클릭하여 이 게시물의 주문 검색"
+                      >
+                        {title}
+                      </span>
+                    </div>
+                    {price != null && (
+                      <div className="text-sm md:text-base xl:text-lg text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </td>
+      {/* 바코드 */}
+      <td className="py-2 xl:py-3 pr-1 lg:pr-4 xl:pr-6 text-center text-base xl:text-lg text-gray-700 w-32 align-top">
+        {!hasProducts ? (
+          <span className="text-sm text-gray-400">없음</span>
+        ) : (
+          <div className="space-y-2">
+            {productList.map((p, idx) => {
+              const barcodeVal = p?.barcode || "";
+              const isLastBarcode = idx === productList.length - 1;
+              return (
+                <div
+                  key={p?.product_id || `${idx}`}
+                  className={`flex items-center justify-center px-2 ${isLastBarcode ? "py-2" : "pt-2  border-b border-gray-200"}`}
+                  style={{ minHeight: barcodeViewMode === "large" ? "120px" : "86px" }}
+                >
+                  {barcodeVal ? (
+                    <Barcode
+                      value={barcodeVal}
+                      height={barcodeViewMode === "large" ? 50 : 32}
+                      width={barcodeViewMode === "large" ? 1.8 : 1.2}
+                      fontSize={barcodeViewMode === "large" ? 16 : 12}
+                    />
+                  ) : (
+                    <span className="text-sm text-gray-400">없음</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+});
+OrderTableRow.displayName = "OrderTableRow";
 
 // --- 메인 페이지 컴포넌트 ---
 // 모드에 따라 다른 테이블 사용 (raw: comment_orders, legacy: orders)
@@ -772,11 +1020,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   }, [mode, currentPage]);
   const [products, setProducts] = useState([]);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [activeTab, setActiveTab] = useState("status");
   const tableContainerRef = useRef(null); // 테이블 컨테이너 스크롤 제어용
-  const ENABLE_DETAIL_MODAL = false;
 
   // 편집 관련 상태들
   const [editingOrderId, setEditingOrderId] = useState(null);
@@ -805,19 +1049,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     [filterDateRange, customStartDate, customEndDate]
   );
 
-  // --- 주문 정보 수정 관련 상태 복구 ---
-  const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [tempItemNumber, setTempItemNumber] = useState(1);
-  const [tempQuantity, setTempQuantity] = useState(1);
-  const [tempPrice, setTempPrice] = useState(0);
-
-  // --- 바코드 저장 관련 상태 및 함수 ---
-  const [newBarcodeValue, setNewBarcodeValue] = useState("");
-  const [isSavingBarcode, setIsSavingBarcode] = useState(false);
-
   // --- 메모 저장 관련 상태 ---
   const [memoSavingStates, setMemoSavingStates] = useState({}); // { orderId: 'saving' | 'saved' | 'error' }
-  const [memoValues, setMemoValues] = useState({}); // { orderId: memoText }
   const [focusedMemoId, setFocusedMemoId] = useState(null); // 현재 포커스된 메모 ID
   const [originalMemoValues, setOriginalMemoValues] = useState({}); // 원본 메모 값 (취소용)
 
@@ -835,6 +1068,22 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return readOrdersTestProductsByBandPostCache();
   });
   const [postsImages, setPostsImages] = useState({}); // key: `${band_key}_${post_key}` => [urls]
+  const postProductsByPostKeyRef = useRef(postProductsByPostKey);
+  const postProductsByBandPostRef = useRef(postProductsByBandPost);
+  const postsImagesRef = useRef(postsImages);
+  const productFetchRequestSeqRef = useRef(0);
+
+  useEffect(() => {
+    postProductsByPostKeyRef.current = postProductsByPostKey;
+  }, [postProductsByPostKey]);
+
+  useEffect(() => {
+    postProductsByBandPostRef.current = postProductsByBandPost;
+  }, [postProductsByBandPost]);
+
+  useEffect(() => {
+    postsImagesRef.current = postsImages;
+  }, [postsImages]);
 
   // 토스트 알림 훅
   const { toasts, showSuccess, showError, hideToast } = useToast();
@@ -842,9 +1091,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // 테스트 업데이트 로딩 상태
   const [isTestUpdating, setIsTestUpdating] = useState(false);
   const [testUpdateResult, setTestUpdateResult] = useState(null);
-
-  // 클라이언트 사이드 렌더링 확인 상태
-  const [isClient, setIsClient] = useState(false);
 
   // 안내 모달 상태
   const [showNoticeModal, setShowNoticeModal] = useState(false);
@@ -891,10 +1137,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, []);
 
-  // 클라이언트 사이드 렌더링 확인
   useEffect(() => {
-    setIsClient(true);
-
     // localStorage에서 "다시 보지 않기" 확인
     const dontShowAgain = localStorage.getItem('orderNoticeConfirmed');
     if (!dontShowAgain) {
@@ -1006,7 +1249,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const setInputValue = () => {
         if (searchInputRef.current) {
           searchInputRef.current.value = postKey;
-          console.log('검색 인풋에 postKey 설정:', postKey);
         }
       };
 
@@ -1087,10 +1329,12 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return {
       // 핵심 식별자 및 기본 정보
       order_id: String(row.comment_order_id ?? row.id ?? row.order_id ?? crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`),
+      comment_order_id: row.comment_order_id ?? row.commentOrderId ?? row.order_id ?? row.id ?? null,
       customer_name: row.commenter_name || row.customer_name || "-",
       comment: row.comment_body || row.comment || "",
       comment_change: row.comment_change || row.commentChange || null,
       status: row.order_status || row.status || "주문완료",
+      order_status: row.order_status || row.status || "주문완료",
       sub_status: row.sub_status || undefined,
       ordered_at: row.ordered_at || row.comment_created_at || row.created_at || null,
       paid_at: row.paid_at || null,
@@ -1115,87 +1359,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, []);
 
-  // 클라이언트 필터링 최소화 (서버에서 처리 불가능한 것만)
-  const displayOrders = useMemo(() => {
-    const toKstYmdLocal = (dateInput) => {
-      if (!dateInput) return null;
-      const KST_OFFSET = 9 * 60 * 60 * 1000;
-      try {
-        let y, m, d;
-        if (typeof dateInput === 'string' && dateInput.includes('T')) {
-          const dt = new Date(dateInput);
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-          const [datePart] = dateInput.split(' ');
-          const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
-          y = yy; m = mm; d = dd;
-        } else if (typeof dateInput === 'string') {
-          const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-          if (md) {
-            const now = new Date(new Date().getTime() + KST_OFFSET);
-            y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
-          } else {
-            const dt = new Date(dateInput);
-            const k = new Date(dt.getTime() + KST_OFFSET);
-            y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-          }
-        } else if (dateInput instanceof Date) {
-          const k = new Date(dateInput.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        } else {
-          return null;
-        }
-        return y * 10000 + m * 100 + d;
-      } catch (_) { return null; }
-    };
-
-    const isAvailableLocal = (dateInput) => {
-      if (!dateInput) return false;
-      const now = new Date();
-      const KST_OFFSET = 9 * 60 * 60 * 1000;
-      const k = new Date(now.getTime() + KST_OFFSET);
-      const todayYmd = k.getUTCFullYear() * 10000 + (k.getUTCMonth() + 1) * 100 + k.getUTCDate();
-      const ymd = toKstYmdLocal(dateInput);
-      return ymd ? todayYmd >= ymd : false;
-    };
-
-    let arr = orders || [];
-
-    // 헬퍼 함수: 주문의 pickup_date 가져오기
-    const getOrderPickupDate = (o) => {
-      const pk = o.post_key || o.postKey;
-      const band = o.band_number || o.bandNumber || o.band_key || o.bandKey;
-      const postNum = o.post_number ?? o.postNumber;
-
-      let list = [];
-      if (pk && postProductsByPostKey[pk]) {
-        list = postProductsByPostKey[pk];
-      } else if (band != null && postNum != null) {
-        const k = `${band}_${String(postNum)}`;
-        if (postProductsByBandPost[k]) {
-          list = postProductsByBandPost[k];
-        }
-      }
-
-      let displayProd = null;
-      if (o.product_id && Array.isArray(list)) {
-        displayProd = list.find(p => p.product_id === o.product_id);
-      }
-      if (!displayProd && Array.isArray(list)) {
-        displayProd = list[0];
-      }
-
-      return displayProd?.pickup_date || null;
-    };
-
-    // 수령가능 필터링은 이제 서버 RPC 함수에서 처리됨 (pickupAvailable 파라미터)
-    // 클라이언트 필터링 불필요
-
-    // 미수령, 확인필요는 서버에서 sub_status로 필터링됨 (클라이언트 필터링 불필요)
-
-    return arr;
-  }, [orders, postProductsByPostKey, postProductsByBandPost]);
+  // 클라이언트 필터링은 서버에서 처리하므로 화면 표시용 데이터만 유지
+  const displayOrders = useMemo(() => orders || [], [orders]);
 
   const calculateStats = useCallback((dataArray) => {
     if (!dataArray || dataArray.length === 0) {
@@ -1248,91 +1413,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
     allStats.subStatusCounts?.["미수령"] ||
     0;
 
-  // 그룹 키: 주문 단위로만 선택되도록 order_id를 1차 키로 사용
-  const getGroupKey = useCallback((o) => {
-    const orderId = o.order_id || o.comment_order_id || o.id;
-    if (orderId) return String(orderId);
-
-    // 안전장치: order_id가 없을 경우 충돌을 최대한 피하기 위해 여러 필드를 결합
-    const band = o.band_key ?? (o.band_number != null ? String(o.band_number) : "");
-    const post =
-      o.post_key ||
-      o.postKey ||
-      (o.post_number != null ? String(o.post_number) : "") ||
-      (o.postNumber != null ? String(o.postNumber) : "");
-    const commentKey = o.comment_key || o.commentKey || "";
-    const commenter = o.commenter_name || o.customer_name || "";
-    const comment = o.comment_body || o.comment || "";
-    const orderedAt = o.ordered_at || o.comment_created_at || o.created_at || "";
-    const updatedAt = o.updated_at || o.modified_at || o.updatedAt || "";
-
-    return JSON.stringify({
-      band,
-      post,
-      commentKey,
-      commenter,
-      comment,
-      orderedAt,
-      updatedAt,
-    });
-  }, []);
-
-  // 대표행 그룹 목록 계산
-  const allGroupedOrders = useMemo(() => {
-    const map = new Map();
-    for (const o of displayOrders) {
-      const key = getGroupKey(o);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(o);
-    }
-    const groups = [];
-    const getOrderedAtTime = (order) =>
-      order?.ordered_at ? new Date(order.ordered_at).getTime() : 0;
-    for (const [key, rows] of map.entries()) {
-      // 대표행 선택: ordered_at 최소값 기준 (정렬 없이 O(n))
-      let rep = rows[0];
-      let minTime = rep ? getOrderedAtTime(rep) : Infinity;
-      for (let i = 1; i < rows.length; i++) {
-        const candidate = rows[i];
-        const t = getOrderedAtTime(candidate);
-        if (t < minTime) {
-          minTime = t;
-          rep = candidate;
-        }
-      }
-      groups.push({ groupId: key, rows, rep, orderIds: rows.map(r => r.order_id) });
-    }
-    // 정렬이 비활성화되면 원본 순서 유지
-    if (!sortBy) {
-      return groups;
+  const sortedDisplayOrders = useMemo(() => {
+    if (!sortBy) return displayOrders;
+    const currentSort = sortBy === "pickup_date" ? "ordered_at" : sortBy;
+    if (currentSort !== "customer_name" && currentSort !== "ordered_at") {
+      return displayOrders;
     }
 
-    // 정렬은 대표행 기준으로 수행 (pickup_date 정렬 비활성화)
-    return groups.sort((g1, g2) => {
-      const currentSort = sortBy === 'pickup_date' ? 'ordered_at' : sortBy;
-      let val1, val2;
-
-      if (currentSort === 'customer_name') {
-        val1 = (g1.rep?.customer_name || g1.rep?.commenter_name || '').toLowerCase();
-        val2 = (g2.rep?.customer_name || g2.rep?.commenter_name || '').toLowerCase();
+    const next = [...displayOrders];
+    next.sort((a, b) => {
+      if (currentSort === "customer_name") {
+        const val1 = (a?.customer_name || a?.commenter_name || "").toLowerCase();
+        const val2 = (b?.customer_name || b?.commenter_name || "").toLowerCase();
         const result = val1.localeCompare(val2);
-        return sortOrder === 'asc' ? result : -result;
-      } else if (currentSort === 'ordered_at') {
-        val1 = g1.rep?.ordered_at ? new Date(g1.rep.ordered_at).getTime() : 0;
-        val2 = g2.rep?.ordered_at ? new Date(g2.rep.ordered_at).getTime() : 0;
-        return sortOrder === 'asc' ? (val1 - val2) : (val2 - val1);
+        return sortOrder === "asc" ? result : -result;
       }
 
-      // 기본값: 정렬 안함
-      return 0;
+      const val1 = a?.ordered_at ? new Date(a.ordered_at).getTime() : 0;
+      const val2 = b?.ordered_at ? new Date(b.ordered_at).getTime() : 0;
+      return sortOrder === "asc" ? val1 - val2 : val2 - val1;
     });
-  }, [displayOrders, getGroupKey, sortBy, sortOrder, postProductsByPostKey, postProductsByBandPost]);
 
-  // 서버 페이지네이션 사용 (클라이언트 페이지네이션 제거)
-  const groupedOrders = useMemo(() => {
-    // 서버에서 이미 페이지네이션된 데이터를 그대로 사용
-    return allGroupedOrders;
-  }, [allGroupedOrders]);
+    return next;
+  }, [displayOrders, sortBy, sortOrder]);
 
   // comment_orders에 맞는 상품 배치 조회 (orders 페이지의 raw 로직 참고)
   // NOTE: ordersData 선언 이후에 위치해야 TDZ 에러가 발생하지 않음
@@ -1350,6 +1453,155 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
     return Array.isArray(list) ? list : [];
   }, [postProductsByPostKey, postProductsByBandPost]);
+
+  // 상품명에서 날짜 부분을 제거하는 함수
+  const cleanProductName = useCallback((productName) => {
+    if (!productName) return productName;
+    // [날짜] 패턴 제거 (예: [8월18일], [08월18일], [8/18] 등)
+    return productName.replace(/^\[[\d월일/\s]+\]\s*/g, "").trim();
+  }, []);
+
+  const getItemNumberForDisplay = useCallback((product, fallbackIndex) => {
+    const directNumber = Number(product?.item_number);
+    if (Number.isFinite(directNumber) && directNumber > 0) return directNumber;
+    try {
+      const match = String(product?.product_id || "").match(/item(\d+)/i);
+      if (match && match[1]) {
+        const parsed = parseInt(match[1], 10);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      }
+    } catch (_) {
+      // ignore parse failure and use fallback index
+    }
+    return fallbackIndex + 1;
+  }, []);
+
+  const candidateProductsByOrderId = useMemo(() => {
+    const map = new Map();
+    for (const order of sortedDisplayOrders) {
+      const orderId = String(order?.order_id ?? order?.comment_order_id ?? "");
+      if (!orderId) continue;
+      const candidates = getCandidateProductsForOrder(order);
+      if (!Array.isArray(candidates) || candidates.length === 0) {
+        map.set(orderId, []);
+        continue;
+      }
+
+      const normalizedCandidates = candidates.map((product, idx) => {
+        const rawTitle = product?.title || product?.name || "-";
+        const displayTitle = cleanProductName(rawTitle);
+
+        const basePrice = Number(product?.base_price);
+        const fallbackPrice = Number(product?.price);
+        const displayPrice = Number.isFinite(basePrice)
+          ? basePrice
+          : Number.isFinite(fallbackPrice)
+            ? fallbackPrice
+            : null;
+
+        let displayImageUrl =
+          product?.image_url || product?.thumbnail_url || product?.thumb_url || null;
+        if (!displayImageUrl) {
+          const bandKey = product?.band_key || order?.band_key;
+          const postKey = product?.post_key || order?.post_key;
+          if (bandKey && postKey) {
+            const imageKey = `${bandKey}_${postKey}`;
+            const imageList = postsImages[imageKey];
+            if (Array.isArray(imageList) && imageList.length > 0) {
+              displayImageUrl = imageList[0];
+            }
+          }
+        }
+
+        return {
+          ...product,
+          __display_item_no: getItemNumberForDisplay(product, idx),
+          __display_title: displayTitle,
+          __display_price: displayPrice,
+          __display_image_url: displayImageUrl,
+          __display_proxied_image_url: displayImageUrl
+            ? getProxiedImageUrl(displayImageUrl, { thumbnail: "s150" })
+            : null,
+        };
+      });
+
+      map.set(orderId, normalizedCandidates);
+    }
+    return map;
+  }, [
+    sortedDisplayOrders,
+    getCandidateProductsForOrder,
+    cleanProductName,
+    getItemNumberForDisplay,
+    postsImages,
+  ]);
+
+  const parsedCommentChangeByOrderId = useMemo(() => {
+    const map = new Map();
+    for (const order of sortedDisplayOrders) {
+      const orderId = String(order?.order_id ?? order?.comment_order_id ?? "");
+      if (!orderId) continue;
+      const raw = order?.comment_change;
+      if (!raw) continue;
+      try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (
+          parsed &&
+          (parsed.status === "updated" || parsed.status === "deleted") &&
+          Array.isArray(parsed.history) &&
+          parsed.history.length > 0
+        ) {
+          map.set(orderId, parsed);
+        }
+      } catch (_) {
+        // ignore parse errors
+      }
+    }
+    return map;
+  }, [sortedDisplayOrders]);
+
+  const commentViewByOrderId = useMemo(() => {
+    const map = new Map();
+    for (const order of sortedDisplayOrders) {
+      const orderId = String(order?.order_id ?? order?.comment_order_id ?? "");
+      if (!orderId) continue;
+
+      const currentComment = processBandTags(order.comment || "");
+      const commentChangeData = parsedCommentChangeByOrderId.get(orderId) || null;
+      let previousComment = "";
+      let latestComment = currentComment || "";
+      let showPrevious = false;
+
+      if (commentChangeData) {
+        const history = commentChangeData.history || [];
+        for (let i = history.length - 2; i >= 0; i -= 1) {
+          const entry = history[i] || "";
+          if (entry.includes("[deleted]")) continue;
+          previousComment = entry.replace(/^version:\d+\s*/, "");
+          break;
+        }
+
+        const latestCommentRaw = commentChangeData.current || currentComment || "";
+        latestComment =
+          commentChangeData.status === "deleted"
+            ? previousComment || currentComment || ""
+            : processBandTags(latestCommentRaw);
+        showPrevious =
+          commentChangeData.status !== "deleted" &&
+          Boolean(previousComment) &&
+          previousComment.trim() !== latestComment.trim();
+      }
+
+      map.set(orderId, {
+        commentChangeData,
+        currentComment,
+        previousComment,
+        latestComment,
+        showPrevious,
+      });
+    }
+    return map;
+  }, [sortedDisplayOrders, parsedCommentChangeByOrderId]);
 
   // --- 현재 페이지 총 수량/금액 계산 제거 (사용 안함) ---
   const checkbox = useRef();
@@ -1396,8 +1648,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const resolvedSearchType = resolvedSearch
       ? (isPostKeySearch ? "combined" : appliedSearchType)
       : undefined;
-
-    console.log('🔑 [ordersFilters] searchTerm:', searchTerm, '-> postKey:', resolvedPostKey);
 
     // 수령가능만 보기 필터 활성화 여부
     const isPickupAvailable = showPickupAvailableOnly || filterSelection === "주문완료+수령가능";
@@ -1505,39 +1755,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
       : currentPage > 1 || hasMore
   );
 
-  // 메모 디버깅
-  useEffect(() => {
-    if (ordersData?.data && ordersData.data.length > 0) {
-      const firstOrder = ordersData.data[0];
-      console.log('[메모 디버깅] 첫 번째 주문 데이터:', {
-        order_id: firstOrder.order_id,
-        memo: firstOrder.memo,
-        hasMemoField: 'memo' in firstOrder,
-        allKeys: Object.keys(firstOrder).filter(k => k.includes('memo'))
-      });
-    }
-  }, [ordersData]);
-
-  // comment_change 디버깅
-  useEffect(() => {
-    if (ordersData?.data && ordersData.data.length > 0) {
-      const sample = ordersData.data.slice(0, 5).map((o) => ({
-        order_id: o.order_id,
-        comment: o.comment,
-        comment_change: o.comment_change,
-      }));
-      console.log('[comment_change 디버깅] 샘플 5개:', sample);
-    }
-  }, [ordersData?.data]);
-
   // 주문 데이터의 시그니처 (주문 ID 조합) - 실제 내용 기반
   const ordersSignature = useMemo(() => {
     if (!ordersData?.data || ordersData.data.length === 0) {
       return 'empty';
     }
-    // 주문 ID와 post_key 조합으로 시그니처 생성
+    // 상품 조회에 사용되는 키(post_key/band_number/post_number)까지 포함해 시그니처 생성
     const ids = ordersData.data
-      .map(o => `${o.order_id || ''}_${o.post_key || o.postKey || ''}`)
+      .map((o) => {
+        const orderId = o.order_id ?? o.comment_order_id ?? o.id ?? "";
+        const postKey = o.post_key || o.postKey || "";
+        const band = o.band_number ?? o.bandNumber ?? o.band_key ?? o.bandKey ?? "";
+        const postNumber = o.post_number ?? o.postNumber ?? "";
+        return `${orderId}_${postKey}_${band}_${postNumber}`;
+      })
       .sort()
       .join(',');
     return ids;
@@ -1568,7 +1799,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       postKeys: postKeys.sort(),
       bandMap: Array.from(bandMap.entries()).map(([k, v]) => [k, Array.from(v).sort()]).sort()
     });
-  }, [ordersSignature]); // ordersData?.data 대신 ordersSignature 사용
+  }, [ordersData?.data]);
 
   // 마지막으로 로드한 상품/이미지 signature 저장 (중복 fetch 방지)
   const lastProductSignatureRef = useRef(null);
@@ -1591,19 +1822,18 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // 이미 로드한 signature면 건너뛰기
         if (lastImageSignatureRef.current === imageSignature) {
-          console.log('✅ [이미지] 캐시 사용 - fetch 스킵');
           return;
         }
 
-        console.log('🔄 [이미지] fetch 시작...');
         lastImageSignatureRef.current = imageSignature;
 
         const uid = userData.userId;
         const sb = getAuthedClient();
+        const currentPostsImages = postsImagesRef.current || {};
 
         // 이미 캐시된 이미지 확인
         const cachedImageKeys = new Set();
-        Object.keys(postsImages).forEach(key => {
+        Object.keys(currentPostsImages).forEach(key => {
           // "bandKey_postKey" 형식에서 postKey 추출
           const pk = key.split('_').pop();
           if (pk) cachedImageKeys.add(pk);
@@ -1611,8 +1841,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // 신규 post_key만 필터링
         const newPostKeys = postKeys.filter(pk => !cachedImageKeys.has(pk));
-
-        console.log(`🖼️ [이미지] 캐시: ${cachedImageKeys.size}개, 신규: ${newPostKeys.length}개`);
 
         if (newPostKeys.length > 0) {
           const { data: posts, error: pe } = await sb
@@ -1622,17 +1850,30 @@ function OrdersTestPageContent({ mode = "raw" }) {
             .in("post_key", newPostKeys);
 
           if (!pe && Array.isArray(posts)) {
-            const newMap = { ...postsImages }; // 기존 캐시 복사
+            const newMap = { ...currentPostsImages }; // 기존 캐시 복사
+            let hasImageMapChanges = false;
             for (const row of posts) {
               const key = `${row.band_key || ''}_${row.post_key || ''}`;
               let urls = row.image_urls;
               try {
                 if (typeof urls === 'string') urls = JSON.parse(urls);
               } catch { }
-              if (Array.isArray(urls) && urls.length > 0) newMap[key] = urls;
+              if (Array.isArray(urls) && urls.length > 0) {
+                const prevUrls = newMap[key];
+                const isSame =
+                  Array.isArray(prevUrls) &&
+                  prevUrls.length === urls.length &&
+                  prevUrls.every((val, idx) => val === urls[idx]);
+                if (!isSame) {
+                  newMap[key] = urls;
+                  hasImageMapChanges = true;
+                }
+              }
             }
-            setPostsImages(newMap);
-            console.log('✅ [이미지] 누적 캐시:', Object.keys(newMap).length, '게시물');
+            if (hasImageMapChanges) {
+              postsImagesRef.current = newMap;
+              setPostsImages(newMap);
+            }
           }
         }
       } catch (e) {
@@ -1642,7 +1883,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
     };
     fetchPostImages();
-  }, [userData?.userId, ordersData?.data, postsImages, productReloadToken]);
+  }, [userData?.userId, ordersData?.data, productReloadToken]);
 
   // comment_orders에 맞는 상품 배치 조회 - 누적 캐싱 적용
   useEffect(() => {
@@ -1651,6 +1892,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (!userData?.userId || !productKeysSignature) {
           return;
         }
+        const requestSeq = ++productFetchRequestSeqRef.current;
 
         const forceRefetch = forceProductRefetchRef.current === true;
         if (forceRefetch) {
@@ -1660,11 +1902,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // 이미 로드한 signature면 건너뛰기
         if (!forceRefetch && lastProductSignatureRef.current === productKeysSignature) {
-          console.log('✅ [상품] 캐시 사용 - fetch 스킵');
           return;
         }
-
-        console.log(`🔄 [상품] fetch 시작...${forceRefetch ? ' (force)' : ''}`);
 
         const uid = userData.userId;
         const sb = getAuthedClient();
@@ -1680,11 +1919,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
         if (forceRefetch) {
           newPostKeys = postKeys;
           newBandMap = new Map(bandMap);
-          console.log(`📦 [상품] 강제 새로고침: post_key ${newPostKeys.length}개, band/post ${Array.from(newBandMap.values()).reduce((a, b) => a + b.length, 0)}개`);
         } else {
           // 캐시에서 이미 있는 것 확인
-          const cachedPostKeys = new Set(Object.keys(postProductsByPostKey));
-          const cachedBandPosts = new Set(Object.keys(postProductsByBandPost));
+          const cachedPostKeys = new Set(Object.keys(postProductsByPostKeyRef.current || {}));
+          const cachedBandPosts = new Set(Object.keys(postProductsByBandPostRef.current || {}));
 
           // 신규로 가져올 post_key 필터링
           newPostKeys = postKeys.filter(pk => !cachedPostKeys.has(pk));
@@ -1701,7 +1939,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
             }
           }
 
-          console.log(`📦 [상품] 캐시: ${cachedPostKeys.size + cachedBandPosts.size}개, 신규: ${newPostKeys.length + Array.from(newBandMap.values()).reduce((a, b) => a + b.length, 0)}개`);
         }
 
         const results = [];
@@ -1742,40 +1979,87 @@ function OrdersTestPageContent({ mode = "raw" }) {
           if (Array.isArray(byPair)) results.push(...byPair);
         }
 
+        if (requestSeq !== productFetchRequestSeqRef.current) {
+          return;
+        }
+
+        const mergeProducts = (existingList = [], incomingList = []) => {
+          if (!Array.isArray(incomingList) || incomingList.length === 0) return existingList;
+          const baseList = Array.isArray(existingList) ? existingList : [];
+          const next = [...baseList];
+          const seen = new Set(
+            next.map((p) =>
+              p?.product_id != null
+                ? `id:${p.product_id}`
+                : `fallback:${p?.title || ""}:${p?.item_number || ""}:${p?.pickup_date || ""}`
+            )
+          );
+          let hasAdditions = false;
+          for (const item of incomingList) {
+            const dedupeKey =
+              item?.product_id != null
+                ? `id:${item.product_id}`
+                : `fallback:${item?.title || ""}:${item?.item_number || ""}:${item?.pickup_date || ""}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            next.push(item);
+            hasAdditions = true;
+          }
+          return hasAdditions ? next : baseList;
+        };
+
         // 기존 캐시와 병합 (누적)
-        const byPostKeyMap = { ...postProductsByPostKey };
-        const byBandPostMap = { ...postProductsByBandPost };
+        const byPostKeyMap = { ...(postProductsByPostKeyRef.current || {}) };
+        const byBandPostMap = { ...(postProductsByBandPostRef.current || {}) };
+        let hasProductsCacheChanges = false;
 
         // 강제 새로고침: 요청한 키들의 기존 캐시를 제거 후 갱신 (중복/구버전 잔존 방지)
         if (forceRefetch) {
           for (const pk of newPostKeys) {
-            if (pk) delete byPostKeyMap[pk];
+            if (pk && Object.prototype.hasOwnProperty.call(byPostKeyMap, pk)) {
+              delete byPostKeyMap[pk];
+              hasProductsCacheChanges = true;
+            }
           }
           for (const [band, postNums] of newBandMap.entries()) {
             (postNums || []).forEach((num) => {
               const k = `${band}_${String(num)}`;
-              delete byBandPostMap[k];
+              if (Object.prototype.hasOwnProperty.call(byBandPostMap, k)) {
+                delete byBandPostMap[k];
+                hasProductsCacheChanges = true;
+              }
             });
           }
         }
 
         results.forEach((p) => {
           if (p.post_key) {
-            if (!byPostKeyMap[p.post_key]) byPostKeyMap[p.post_key] = [];
-            byPostKeyMap[p.post_key].push(p);
+            const existing = byPostKeyMap[p.post_key] || [];
+            const merged = mergeProducts(existing, [p]);
+            if (merged !== existing) {
+              byPostKeyMap[p.post_key] = merged;
+              hasProductsCacheChanges = true;
+            }
           } else if (p.band_number != null && p.post_number != null) {
             const k = `${p.band_number}_${String(p.post_number)}`;
-            if (!byBandPostMap[k]) byBandPostMap[k] = [];
-            byBandPostMap[k].push(p);
+            const existing = byBandPostMap[k] || [];
+            const merged = mergeProducts(existing, [p]);
+            if (merged !== existing) {
+              byBandPostMap[k] = merged;
+              hasProductsCacheChanges = true;
+            }
           }
         });
 
-        console.log('✅ [상품] 누적 캐시:', Object.keys(byPostKeyMap).length + Object.keys(byBandPostMap).length, '게시물');
-        setPostProductsByPostKey(byPostKeyMap);
-        setPostProductsByBandPost(byBandPostMap);
+        if (hasProductsCacheChanges) {
+          postProductsByPostKeyRef.current = byPostKeyMap;
+          postProductsByBandPostRef.current = byBandPostMap;
+          setPostProductsByPostKey(byPostKeyMap);
+          setPostProductsByBandPost(byBandPostMap);
 
-        // sessionStorage에 누적 저장
-        writeOrdersTestProductsCache({ byPostKeyMap, byBandPostMap });
+          // sessionStorage에 누적 저장
+          writeOrdersTestProductsCache({ byPostKeyMap, byBandPostMap });
+        }
 
         // 성공적으로 누적 후에만 시그니처 저장 (실패 시 재시도 가능)
         lastProductSignatureRef.current = productKeysSignature;
@@ -1791,9 +2075,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     fetchBatchProducts();
   }, [userData?.userId, productKeysSignature, productReloadToken]); // 강제 재조회 토큰 포함
 
-  // useProducts 훅 비활성화 - fetchBatchProducts에서 이미 전체 products를 가져오고 있음 (중복 방지)
-  const productsData = null;
-  const productsError = null;
   const mutateProducts = useCallback(async () => {
     // 강제 상품/이미지 재조회 트리거 (주문 RPC 재호출 없이)
     setProductReloadToken((v) => v + 1);
@@ -1806,7 +2087,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     userData?.userId && mode
       ? `orders-test-global-stats:${userData.userId}:${mode}:${filterDateRange}:${dateFilterParams.startDate || "none"}:${dateFilterParams.endDate || "none"}`
       : null;
-  const cachedGlobalStats = readGlobalStatsCache(globalStatsCacheKey);
+  const cachedGlobalStatsEntry = readGlobalStatsCacheEntry(globalStatsCacheKey);
+  const cachedGlobalStats = cachedGlobalStatsEntry?.data ?? null;
 
   const {
     data: globalStatsData,
@@ -1826,13 +2108,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
       : null,
     async () => {
       const shouldBypassCache = forceGlobalStatsRef.current;
+      const cacheEntry = readGlobalStatsCacheEntry(globalStatsCacheKey);
       if (!shouldBypassCache) {
-        const cached = readGlobalStatsCache(globalStatsCacheKey);
-        if (cached) {
-          if (process.env.NODE_ENV === "development") {
-            console.log("📦 [글로벌 통계] 캐시 사용");
-          }
-          return cached;
+        if (cacheEntry?.data && !cacheEntry.isSoftStale) {
+          return cacheEntry.data;
         }
       }
       forceGlobalStatsRef.current = false;
@@ -1842,10 +2121,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
         mode === "raw"
           ? ["get_comment_order_stats"]
           : ["get_order_stats"];
-
-      if (process.env.NODE_ENV === "development") {
-        console.log(`📊 [글로벌 통계] RPC 호출: ${rpcCandidates[0]}`);
-      }
 
       const rpcParams = {
         p_user_id: userData.userId,
@@ -1871,14 +2146,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       if (error) {
         console.error("[글로벌 통계] RPC error:", error);
-        return { statusCounts: {}, subStatusCounts: {} };
+        return cacheEntry?.data || { statusCounts: {}, subStatusCounts: {} };
       }
 
       const normalized = data || { statusCounts: {}, subStatusCounts: {} };
       writeGlobalStatsCache(globalStatsCacheKey, normalized);
-      if (process.env.NODE_ENV === "development") {
-        console.log(`📊 [글로벌 통계] 결과:`, normalized);
-      }
       return normalized;
     },
     {
@@ -1886,7 +2158,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       revalidateOnReconnect: false, // 서버 보호: 재연결 시 자동 재호출 OFF
       revalidateIfStale: false, // 서버 보호: stale 자동 재호출 OFF
       dedupingInterval: 60000,
-      revalidateOnMount: cachedGlobalStats ? false : true,
+      revalidateOnMount: !cachedGlobalStats || cachedGlobalStatsEntry?.isSoftStale === true,
       fallbackData: cachedGlobalStats || undefined,
     }
   );
@@ -2076,9 +2348,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [ordersData?.data]);
   // 검색 중 오버레이는 제거하고 버튼 내부 스피너만 사용
   const showSearchOverlay = false;
-  const displayedOrderIds = useMemo(
-    () => groupedOrders.flatMap((g) => g.orderIds),
-    [groupedOrders]
+  const displayedOrderIds = useMemo(() => {
+    return sortedDisplayOrders
+      .map((order) => String(order?.order_id ?? order?.comment_order_id ?? ""))
+      .filter(Boolean);
+  }, [sortedDisplayOrders]);
+  const displayedOrderIdSet = useMemo(
+    () => new Set(displayedOrderIds),
+    [displayedOrderIds]
   );
   const selectedOrderIdSet = useMemo(
     () => new Set(selectedOrderIds),
@@ -2104,40 +2381,26 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const AUTO_MISSED_STATUS_UPDATE_ENABLED = false;
   useEffect(() => {
     if (!AUTO_MISSED_STATUS_UPDATE_ENABLED) return;
-    console.log('[자동 미수령] useEffect 실행됨');
 
     // 한 번만 실행
     if (autoUpdateProcessedRef.current) {
-      console.log('[자동 미수령] 이미 처리됨, 스킵');
       return;
     }
 
-    console.log('[자동 미수령] 조건 체크:', {
-      userId: userData?.userId,
-      products: products?.length,
-      mode
-    });
-
     if (!userData?.userId) {
-      console.log('[자동 미수령] userId 없음');
       return;
     }
     if (!products || products.length === 0) {
-      console.log('[자동 미수령] products 없음');
       return;
     }
 
     const processAutoUpdate = async () => {
       try {
-        console.log('[자동 미수령] 전체 주문 처리 시작 (Supabase 직접 업데이트)');
-
         // KST 기준 오늘 날짜 (YYYYMMDD)
         const now = new Date();
         const KST_OFFSET = 9 * 60 * 60 * 1000;
         const kstNow = new Date(now.getTime() + KST_OFFSET);
         const todayYmd = kstNow.getUTCFullYear() * 10000 + (kstNow.getUTCMonth() + 1) * 100 + kstNow.getUTCDate();
-
-        console.log('[자동 미수령] 오늘 날짜 (KST YYYYMMDD):', todayYmd);
 
         // 날짜를 YYYYMMDD로 변환하는 헬퍼 함수
         const toKstYmd = (dateInput) => {
@@ -2170,23 +2433,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
           })
           .map(p => p.product_id);
 
-        console.log('[자동 미수령] 어제 이전 수령일시 상품:', productIdsWithPastPickup.length, '개');
-
-        if (productIdsWithPastPickup.length > 0) {
-          console.log('[자동 미수령] 샘플 상품 3개:', products
-            .filter(p => productIdsWithPastPickup.includes(p.product_id))
-            .slice(0, 3)
-            .map(p => ({
-              product_id: p.product_id,
-              title: p.title,
-              pickup_date: p.pickup_date,
-              pickup_ymd: toKstYmd(p.pickup_date)
-            }))
-          );
-        }
-
         if (productIdsWithPastPickup.length === 0) {
-          console.log('[자동 미수령] 업데이트할 상품 없음');
           autoUpdateProcessedRef.current = true;
           return;
         }
@@ -2194,13 +2441,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
         // Supabase에서 직접 업데이트
         const tableName = mode === 'raw' ? 'comment_orders' : 'orders';
         const statusField = 'status'; // raw/legacy 모두 status 사용
-
-        console.log('[자동 미수령] 쿼리 조건:', {
-          tableName,
-          statusField,
-          userId: userData.userId,
-          productIds: productIdsWithPastPickup.slice(0, 5)
-        });
 
         // 먼저 해당 조건의 주문이 있는지 확인 (URL 길이 제한으로 주석 처리)
         // const { data: existingOrders, error: selectError } = await supabase
@@ -2211,22 +2451,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
         // if (selectError) {
         //   console.error('[자동 미수령] 조회 오류:', selectError);
-        // } else {
-        //   console.log('[자동 미수령] 해당 product_id 가진 주문 총:', existingOrders?.length || 0, '건');
-        //   if (existingOrders && existingOrders.length > 0) {
-        //     console.log('[자동 미수령] 샘플 주문 3개:', existingOrders.slice(0, 3));
-
-        //     // 주문완료인 것만 필터링
-        //     const completedOrders = existingOrders.filter(o => o[statusField] === '주문완료');
-        //     console.log('[자동 미수령] 주문완료 상태:', completedOrders.length, '건');
-
-        //     // 주문완료 + (sub_status null 또는 수령가능)
-        //     const targetOrders = completedOrders.filter(o => !o.sub_status || o.sub_status === '수령가능');
-        //     console.log('[자동 미수령] 업데이트 대상 (주문완료 + null/수령가능):', targetOrders.length, '건');
-        //     if (targetOrders.length > 0) {
-        //       console.log('[자동 미수령] 샘플 대상:', targetOrders.slice(0, 3));
-        //     }
-        //   }
         // }
 
         // const { data, error } = await supabase
@@ -2246,49 +2470,40 @@ function OrdersTestPageContent({ mode = "raw" }) {
         //   throw error;
         // }
 
-        // console.log('[자동 미수령] 업데이트 완료:', data?.length || 0, '건');
-        // if (data && data.length > 0) {
-        //   console.log('[자동 미수령] 업데이트된 주문 샘플:', data.slice(0, 3));
-        // }
-
         // 데이터 갱신
-        console.log('[자동 미수령] 데이터 갱신 중');
         // 네트워크 재호출 대신 로컬 상태 유지, 필요 시 동기화 버튼에서 수동 갱신
         autoUpdateProcessedRef.current = true;
-        console.log('[자동 미수령] 처리 완료, 플래그 설정');
       } catch (error) {
         console.error('[자동 미수령 처리] 오류:', error);
       }
     };
 
     processAutoUpdate();
-  }, [userData, products, mode, mutateOrders]);
+  }, [userData, products, mode, mutateOrders, AUTO_MISSED_STATUS_UPDATE_ENABLED]);
 
   // 필터 변경 시 페이지를 1로 리셋
   useEffect(() => {
     setCurrentPage(1);
   }, [filterSelection]);
 
-  const handleCheckboxChange = (e, groupId) => {
-    const isChecked = e.target.checked;
-    const group = groupedOrders.find((g) => g.groupId === groupId);
-    const ids = group ? group.orderIds : [];
+  const handleCheckboxChange = useCallback((orderId, isChecked) => {
+    if (!orderId) return;
     setSelectedOrderIds((prev) => {
       if (isChecked) {
-        return [...new Set([...prev, ...ids])];
+        return prev.includes(orderId) ? prev : [...prev, orderId];
       } else {
-        return prev.filter((id) => !ids.includes(id));
+        return prev.filter((id) => id !== orderId);
       }
     });
-  };
+  }, []);
   const handleSelectAllChange = useCallback((e) => {
     const isChecked = e.target.checked;
-    const currentIds = groupedOrders.flatMap((g) => g.orderIds);
+    const currentIds = displayedOrderIds;
     setSelectedOrderIds((prev) => {
-      const others = prev.filter((id) => !currentIds.includes(id));
+      const others = prev.filter((id) => !displayedOrderIdSet.has(id));
       return isChecked ? [...new Set([...others, ...currentIds])] : others;
     });
-  }, [groupedOrders]);
+  }, [displayedOrderIds, displayedOrderIdSet]);
 
   // --- 검색창 업데이트 및 검색 실행 함수 ---
   const handleCellClickToSearch = useCallback((searchValue, postKey = null) => {
@@ -2386,8 +2601,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     // 해당 게시물의 상품 목록 가져오기 - post_key 사용
     const postKey = order.post_key;
-    console.log('Edit start - order:', order);
-    console.log('Using postKey:', postKey);
 
     if (postKey) {
       await fetchProductsForPost(postKey);
@@ -2471,13 +2684,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   };
 
-  // 상품명에서 날짜 부분을 제거하는 함수
-  const cleanProductName = (productName) => {
-    if (!productName) return productName;
-    // [날짜] 패턴 제거 (예: [8월18일], [08월18일], [8/18] 등)
-    return productName.replace(/^\[[\d월일/\s]+\]\s*/g, '').trim();
-  };
-
   const handleProductSelect = (productId, order) => {
     const postKey = order.post_key;
     const products = availableProducts[postKey] || [];
@@ -2529,15 +2735,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
     if (selectedOrderIds.length === 0) return;
 
+    const selectedOrderIdSet = new Set(
+      selectedOrderIds.map((id) => String(id ?? ""))
+    );
+
     // orders 배열에서 필터링 (orders 페이지와 동일하게)
     const ordersToUpdateFilter = orders.filter(
-      (order) =>
-        selectedOrderIds.includes(order.order_id) && order.status !== newStatus
+      (order) => {
+        const orderKey = String(order.order_id ?? order.comment_order_id ?? "");
+        return selectedOrderIdSet.has(orderKey) && order.status !== newStatus;
+      }
     );
+
     // 중복 제거하여 unique 주문 ID만 추출
-    const orderIdsToProcess = [...new Set(ordersToUpdateFilter.map(
-      (order) => order.order_id
-    ))];
+    const seenOrderIds = new Set();
+    const orderIdsToProcess = [];
+    for (const order of ordersToUpdateFilter) {
+      const orderId = order.order_id ?? order.comment_order_id ?? null;
+      if (orderId == null) continue;
+      const key = String(orderId);
+      if (seenOrderIds.has(key)) continue;
+      seenOrderIds.add(key);
+      orderIdsToProcess.push(orderId);
+    }
     const skippedCount = selectedOrderIds.length - orderIdsToProcess.length;
 
     if (orderIdsToProcess.length === 0) {
@@ -2608,20 +2828,39 @@ function OrdersTestPageContent({ mode = "raw" }) {
           return base;
         };
 
-        const results = await Promise.allSettled(
-          orderIdsToProcess.map(id =>
-            rawMutations.updateCommentOrder(id, buildUpdate(newStatus, id), userData.userId, { revalidate: false })
-          )
-        );
+        for (
+          let start = 0;
+          start < orderIdsToProcess.length;
+          start += RAW_BULK_STATUS_UPDATE_BATCH_SIZE
+        ) {
+          const batchOrderIds = orderIdsToProcess.slice(
+            start,
+            start + RAW_BULK_STATUS_UPDATE_BATCH_SIZE
+          );
+          const batchResults = await Promise.allSettled(
+            batchOrderIds.map((id) =>
+              rawMutations.updateCommentOrder(
+                id,
+                buildUpdate(newStatus, id),
+                userData.userId,
+                { revalidate: false }
+              )
+            )
+          );
 
-        results.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            successCount += 1;
-            successfulOrderIds.push(orderIdsToProcess[index]);
-          } else {
-            failCount += 1;
+          batchResults.forEach((result, index) => {
+            if (result.status === "fulfilled") {
+              successCount += 1;
+              successfulOrderIds.push(batchOrderIds[index]);
+            } else {
+              failCount += 1;
+            }
+          });
+
+          if (start + RAW_BULK_STATUS_UPDATE_BATCH_SIZE < orderIdsToProcess.length) {
+            await waitForNextPaint();
           }
-        });
+        }
       } else {
         // Legacy 모드: bulkUpdateOrderStatus 사용 (orders 페이지와 동일)
         await legacyMutations.bulkUpdateOrderStatus(
@@ -2635,30 +2874,42 @@ function OrdersTestPageContent({ mode = "raw" }) {
         successfulOrderIds = [...orderIdsToProcess];
       }
 
-      const updatedIdSet = new Set(successfulOrderIds);
+      const updatedIdSet = new Set(
+        successfulOrderIds.map((id) => String(id ?? ""))
+      );
+      const buildOptimisticOrders = (sourceOrders) => {
+        if (!Array.isArray(sourceOrders) || sourceOrders.length === 0) {
+          return [];
+        }
+        const nextOrders = [];
+        for (const order of sourceOrders) {
+          const orderKey = String(order.order_id ?? order.comment_order_id ?? "");
+          const nextOrder = updatedIdSet.has(orderKey)
+            ? {
+              ...order,
+              status: newStatus,
+              order_status: mode === "raw" ? newStatus : order.order_status,
+              sub_status: shouldClearSubStatus ? null : order.sub_status,
+            }
+            : order;
+          if (isOrderVisibleInCurrentView(nextOrder)) {
+            nextOrders.push(nextOrder);
+          }
+        }
+        return nextOrders;
+      };
 
       // 일괄 상태 변경 후 로컬 상태만 optimistic update (서버 재검증 없음)
       if (successfulOrderIds.length > 0) {
         await waitForNextPaint();
         startTransition(() => {
-          setOrders((prevOrders) => {
-            const next = prevOrders.map((order) =>
-              updatedIdSet.has(order.order_id)
-                ? {
-                  ...order,
-                  status: newStatus,
-                  sub_status: shouldClearSubStatus ? null : order.sub_status,
-                }
-                : order
-            );
-            return next.filter(isOrderVisibleInCurrentView);
-          });
+          setOrders((prevOrders) => buildOptimisticOrders(prevOrders));
         });
       }
 
       if (successfulOrderIds.length > 0) {
-        const successfulOrders = orders.filter((o) =>
-          successfulOrderIds.includes(o.order_id)
+        const successfulOrders = ordersToUpdateFilter.filter((order) =>
+          updatedIdSet.has(String(order.order_id ?? order.comment_order_id ?? ""))
         );
         const nextSub = shouldClearSubStatus ? null : undefined;
         adjustBadgeCountsOptimistically(successfulOrders, newStatus, nextSub);
@@ -2666,32 +2917,23 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       // SWR 캐시만 동기 반영 (네트워크 재호출 없음)
       if (successfulOrderIds.length > 0) {
-        await waitForNextPaint();
-        startTransition(() => {
-          void mutateOrders(
-            (prev) => {
-              if (!prev?.data) return prev;
-              const nextData = prev.data.map((o) =>
-                updatedIdSet.has(o.order_id)
-                  ? {
-                    ...o,
-                    status: newStatus,
-                    sub_status: shouldClearSubStatus ? null : o.sub_status,
-                  }
-                  : o
-              );
-              return {
-                ...prev,
-                data: nextData.filter(isOrderVisibleInCurrentView),
-              };
-            },
-            { revalidate: false, rollbackOnError: true }
-          );
+        deferNonCritical(() => {
+          startTransition(() => {
+            void mutateOrders(
+              (prev) => {
+                if (!prev?.data) return prev;
+                return {
+                  ...prev,
+                  data: buildOptimisticOrders(prev.data),
+                };
+              },
+              { revalidate: false, rollbackOnError: true }
+            );
+          });
         });
       }
 
       if (successCount > 0) {
-        console.log(`✅ ${successCount}개 주문이 '${newStatus}'로 변경되었습니다.`);
         showSuccess(`${successCount}개 주문을 '${newStatus}'로 변경했습니다.`);
         hasRecentStatusChangeRef.current = true;
       }
@@ -2706,17 +2948,36 @@ function OrdersTestPageContent({ mode = "raw" }) {
       const now = new Date();
       const kstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
       const koreanISOString = kstDate.toISOString().replace('Z', '+09:00');
-      const updatedOrdersForLocal = ordersToUpdateFilter
-        .filter((order) => updatedIdSet.has(order.order_id))
-        .map((order) => ({
+      const updatedOrdersForLocal = [];
+      for (const order of ordersToUpdateFilter) {
+        const orderKey = String(order.order_id ?? order.comment_order_id ?? "");
+        if (!updatedIdSet.has(orderKey)) continue;
+        const base = {
           ...order,
           user_id: userData?.userId || order.user_id,
-          status: newStatus,
           updated_at: koreanISOString,
-        }));
+        };
+        if (mode === "raw") {
+          updatedOrdersForLocal.push({
+            ...base,
+            comment_order_id: order.comment_order_id ?? order.order_id ?? null,
+            order_status: newStatus,
+            status: newStatus,
+          });
+        } else {
+          updatedOrdersForLocal.push({
+            ...base,
+            status: newStatus,
+          });
+        }
+      }
       if (updatedOrdersForLocal.length > 0) {
         deferNonCritical(() => {
-          syncOrdersToIndexedDb(updatedOrdersForLocal).catch((err) => {
+          const syncTask =
+            mode === "raw"
+              ? syncCommentOrdersToIndexedDb(updatedOrdersForLocal)
+              : syncOrdersToIndexedDb(updatedOrdersForLocal);
+          syncTask.catch((err) => {
             if (process.env.NODE_ENV === "development") {
               console.warn("IndexedDB 동기화 지연 실패:", err);
             }
@@ -2729,7 +2990,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setBulkUpdateLoading(false);
       setSelectedOrderIds([]);
     }
-  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, syncOrdersToIndexedDb, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName, isOrderVisibleInCurrentView, showError, showSuccess, waitForNextPaint, deferNonCritical]);
+  }, [selectedOrderIds, userData, mode, rawMutations, legacyMutations, mutateOrders, orders, adjustBadgeCountsOptimistically, getCandidateProductsForOrder, cleanProductName, isOrderVisibleInCurrentView, showError, showSuccess, waitForNextPaint, deferNonCritical]);
   function calculateDateFilterParams(range, customStart, customEnd) {
     const now = new Date();
     let startDate = new Date();
@@ -2750,12 +3011,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
         todayStart.setHours(0, 0, 0, 0);
         const todayEnd = new Date(now);
         todayEnd.setHours(23, 59, 59, 999);
-
-        console.log("Today filter debug:", {
-          localNow: now.toString(),
-          startDate: todayStart.toISOString(),
-          endDate: todayEnd.toISOString()
-        });
 
         return { startDate: todayStart.toISOString(), endDate: todayEnd.toISOString() };
         break;
@@ -2953,8 +3208,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       } else {
         setOrders(ordersData.data);
       }
-      // Debug pickup availability per band (beta)
-      debugPickupLogging();
     }
     if (ordersError) {
       if (process.env.NODE_ENV === "development") {
@@ -2989,6 +3242,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return map;
   }, [products]);
 
+  const productById = useMemo(() => {
+    const map = new Map();
+    (products || []).forEach((p) => {
+      if (p?.product_id == null) return;
+      map.set(p.product_id, p);
+    });
+    return map;
+  }, [products]);
+
   const orderProductNameById = useMemo(() => {
     const map = new Map();
     (orders || []).forEach((o) => {
@@ -3004,17 +3266,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return map;
   }, [orders]);
 
-  const getTimeDifferenceInMinutes = (ds) => {
-    if (!ds) return "알 수 없음";
-    const dt = new Date(ds),
-      nw = new Date(),
-      mins = Math.floor((nw.getTime() - dt.getTime()) / 60000);
-    if (mins < 1) return "방금 전";
-    if (mins < 60) return `${mins}분 전`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}시간 전`;
-    return `${Math.floor(mins / 1440)}일 전`;
-  };
   const getProductNameById = useCallback(
     (id) => {
       if (id == null) return "상품명 없음";
@@ -3030,192 +3281,8 @@ function OrdersTestPageContent({ mode = "raw" }) {
     [orderProductNameById, productTitleById]
   );
 
-  // 상품명을 파싱하여 날짜와 상품명을 분리하는 함수
-  const parseProductName = (productName) => {
-    if (!productName || productName === "상품명 없음") {
-      return { name: productName, date: null };
-    }
-
-    // [날짜] 패턴 찾기 (예: [12/25], [2024-12-25], [25일] 등)
-    const datePattern = /^\[([^\]]+)\]\s*(.*)$/;
-    const match = productName.match(datePattern);
-
-    if (match) {
-      return {
-        date: match[1], // 대괄호 안의 날짜 부분
-        name: match[2].trim() || productName, // 나머지 상품명 부분
-      };
-    }
-
-    // 패턴이 없으면 전체를 상품명으로 처리
-    return { name: productName, date: null };
-  };
-
-  // 수령일 날짜를 Date 객체로 변환하는 함수
-  const parsePickupDate = (dateString) => {
-    if (!dateString) return null;
-
-    try {
-      const currentYear = new Date().getFullYear();
-
-      // [7월11일] 형태 파싱
-      const monthDayPattern = /^(\d{1,2})월(\d{1,2})일?$/;
-      const match = dateString.match(monthDayPattern);
-
-      if (match) {
-        const month = parseInt(match[1], 10) - 1; // 월은 0부터 시작
-        const day = parseInt(match[2], 10);
-        return new Date(currentYear, month, day);
-      }
-
-      // 다른 형태의 날짜도 처리 가능하도록 확장 가능
-      // [12/25], [2024-12-25] 등
-
-      return null;
-    } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("날짜 파싱 오류:", error);
-      }
-      return null;
-    }
-  };
-
-  // KST YMD 변환 유틸
-  const toKstYmd = (dateInput) => {
-    if (!dateInput) return null;
-    const KST_OFFSET = 9 * 60 * 60 * 1000;
-    try {
-      let y, m, d;
-      if (typeof dateInput === 'string' && dateInput.includes('T')) {
-        const dt = new Date(dateInput);
-        const k = new Date(dt.getTime() + KST_OFFSET);
-        y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-      } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-        const [datePart] = dateInput.split(' ');
-        const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
-        y = yy; m = mm; d = dd;
-      } else if (typeof dateInput === 'string') {
-        const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-        if (md) {
-          const now = new Date(new Date().getTime() + KST_OFFSET);
-          y = now.getUTCFullYear(); m = parseInt(md[1], 10); d = parseInt(md[2], 10);
-        } else {
-          const dt = new Date(dateInput);
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-        }
-      } else if (dateInput instanceof Date) {
-        const k = new Date(dateInput.getTime() + KST_OFFSET);
-        y = k.getUTCFullYear(); m = k.getUTCMonth() + 1; d = k.getUTCDate();
-      } else {
-        return null;
-      }
-      return y * 10000 + m * 100 + d;
-    } catch (_) {
-      return null;
-    }
-  };
-
-  const pickEffectivePickupSource = (primary, titleDate) => {
-    const y1 = toKstYmd(primary);
-    const y2 = toKstYmd(titleDate);
-    if (y1 && y2) return y1 <= y2 ? primary : titleDate;
-    return primary || titleDate || null;
-  };
-
-  // 수령 가능 여부(KST 날짜 기준, 당일 포함)
-  const isPickupAvailable = (dateInput) => {
-    if (!isClient || !dateInput) return false;
-
-    const KST_OFFSET = 9 * 60 * 60 * 1000;
-
-    // now in KST (Y/M/D only)
-    const nowUtc = new Date();
-    const nowKst = new Date(nowUtc.getTime() + KST_OFFSET);
-    const nowY = nowKst.getUTCFullYear();
-    const nowM = nowKst.getUTCMonth();
-    const nowD = nowKst.getUTCDate();
-    const nowYmd = nowY * 10000 + (nowM + 1) * 100 + nowD;
-
-    // pickup date as KST Y/M/D
-    let y, m, d;
-    try {
-      if (typeof dateInput === 'string' && dateInput.includes('T')) {
-        // ISO(UTC) → shift to KST and take YMD
-        const dt = new Date(dateInput);
-        const k = new Date(dt.getTime() + KST_OFFSET);
-        y = k.getUTCFullYear();
-        m = k.getUTCMonth() + 1;
-        d = k.getUTCDate();
-      } else if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-        const [datePart] = dateInput.split(' ');
-        const [yy, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
-        y = yy; m = mm; d = dd;
-      } else if (typeof dateInput === 'string') {
-        // 문자열에 한국어 월/일 표기가 있는 경우
-        const md = dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-        if (md) {
-          const now = new Date(nowUtc.getTime() + KST_OFFSET);
-          y = now.getUTCFullYear();
-          m = parseInt(md[1], 10);
-          d = parseInt(md[2], 10);
-        } else {
-          // 일반 Date 파싱 후 KST로 보정
-          const dt = new Date(dateInput);
-          const k = new Date(dt.getTime() + KST_OFFSET);
-          y = k.getUTCFullYear();
-          m = k.getUTCMonth() + 1;
-          d = k.getUTCDate();
-        }
-      } else if (dateInput instanceof Date) {
-        const k = new Date(dateInput.getTime() + KST_OFFSET);
-        y = k.getUTCFullYear();
-        m = k.getUTCMonth() + 1;
-        d = k.getUTCDate();
-      } else {
-        return false;
-      }
-    } catch (_) {
-      return false;
-    }
-
-    const pickYmd = y * 10000 + m * 100 + d;
-    return nowYmd >= pickYmd;
-  };
-
-  // 수령일 라벨(KST) 출력
-  const formatPickupKSTLabel = (dateInput) => {
-    if (!dateInput) return "";
-    const KST_OFFSET = 9 * 60 * 60 * 1000;
-    try {
-      if (typeof dateInput === 'string' && dateInput.includes('T')) {
-        const dt = new Date(dateInput);
-        const k = new Date(dt.getTime() + KST_OFFSET);
-        const m = k.getUTCMonth() + 1;
-        const d = k.getUTCDate();
-        return `${m}월${d}일`;
-      }
-      if (typeof dateInput === 'string' && /\d{4}-\d{2}-\d{2}/.test(dateInput)) {
-        const [datePart] = dateInput.split(' ');
-        const [, mm, dd] = datePart.split('-').map((n) => parseInt(n, 10));
-        return `${mm}월${dd}일`;
-      }
-      const md = typeof dateInput === 'string' ? dateInput.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) : null;
-      if (md) {
-        return `${parseInt(md[1], 10)}월${parseInt(md[2], 10)}일`;
-      }
-      const dt = new Date(dateInput);
-      const k = new Date(dt.getTime() + KST_OFFSET);
-      const m = k.getUTCMonth() + 1;
-      const d = k.getUTCDate();
-      return `${m}월${d}일`;
-    } catch (_) {
-      return "";
-    }
-  };
-
   // 수령일을 상대 시간과 절대 시간 두 줄로 표시 (CommentOrdersView와 동일)
-  const formatPickupRelativeDateTime = (value) => {
+  const formatPickupRelativeDateTime = useCallback((value) => {
     if (!value) return null;
 
     try {
@@ -3300,9 +3367,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
 
     return null;
-  };
+  }, []);
 
-  const renderPickupDisplay = (pickupDate) => {
+  const renderPickupDisplay = useCallback((pickupDate) => {
     if (!pickupDate) return "-";
 
     if (pickupViewMode === "simple") {
@@ -3323,70 +3390,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
     // detailed 모드: 상대 시간 + 날짜 + 시간
     const relative = formatPickupRelativeDateTime(pickupDate);
     return relative || "-";
-  };
+  }, [pickupViewMode, formatPickupRelativeDateTime]);
 
-  const getProductBarcode = (id) => {
-    // products 배열에서 product_id로 찾기
-    const product = products.find((p) => p.product_id === id);
-    if (product?.barcode) {
-      return product.barcode;
-    }
-
-    return "";
-  };
-  const getProductById = (id) =>
-    products.find((p) => p.product_id === id) || null;
-  const getPostUrlByProductId = (id) =>
-    products.find((p) => p.product_id === id)?.band_post_url || "";
-
-  // --- Debug logging for pickup availability by band (Beta page) ---
-  const debugPickupLogging = () => {
-    if (typeof window === 'undefined') return;
-    let debug = false;
-    try { debug = window.localStorage.getItem('debugPickup') === 'true'; } catch { }
-    if (!debug) return;
-
-    try {
-      const all = orders || [];
-      const byBandAll = new Map();
-      const byBandAvail = new Map();
-      const samples = [];
-
-      const extractBracketDate = (title) => {
-        if (!title || typeof title !== 'string') return null;
-        const m = title.match(/^\s*\[([^\]]+)\]/);
-        return m ? m[1] : null;
-      };
-
-      for (const o of all) {
-        const bandKey = o.band_key || 'unknown';
-        byBandAll.set(bandKey, (byBandAll.get(bandKey) || 0) + 1);
-
-        const prod = getProductById(o.product_id);
-        const productName = getProductNameById(o.product_id);
-        const { date: titleDateFromName } = parseProductName(productName);
-        const titleDate = titleDateFromName || extractBracketDate(o.product_name);
-        const source = prod?.pickup_date || titleDate;
-        const avail = source ? isPickupAvailable(source) : false;
-        if (avail) {
-          byBandAvail.set(bandKey, (byBandAvail.get(bandKey) || 0) + 1);
-        }
-        if (samples.length < 30) {
-          samples.push({ band_key: bandKey, order_id: o.order_id, product_title: o.product_name || productName, products_pickup_date: prod?.pickup_date || null, titleDate, usedSource: source, available: avail });
-        }
-      }
-
-      const objFromMap = (m) => Object.fromEntries(Array.from(m.entries()));
-      console.groupCollapsed('[Pickup Debug] Orders Beta Page');
-      console.log('filterSelection', filterSelection);
-      console.log('counts', { all: all.length, available: Array.from(byBandAvail.values()).reduce((a, b) => a + b, 0) });
-      console.log('byBand', { all: objFromMap(byBandAll), available: objFromMap(byBandAvail) });
-      console.table(samples);
-      console.groupEnd();
-    } catch (e) {
-      console.warn('Pickup debug logging failed (beta):', e);
-    }
-  };
+  const getProductById = useCallback(
+    (id) => {
+      if (id == null) return null;
+      return productById.get(id) || null;
+    },
+    [productById]
+  );
 
   // 주문 ID에서 게시물 키를 추출하는 함수
   const extractPostKeyFromOrderId = (orderId) => {
@@ -3400,13 +3412,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
     return null;
   };
-  const formatCurrency = (amt) =>
-    new Intl.NumberFormat("ko-KR", {
-      style: "currency",
-      currency: "KRW",
-      maximumFractionDigits: 0,
-    }).format(amt ?? 0);
-  const formatDate = (ds) => {
+  const formatDate = useCallback((ds) => {
     if (!ds) return "-";
     try {
       const d = new Date(ds);
@@ -3422,7 +3428,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
       return "Error";
     }
-  };
+  }, []);
   const formatPickupDate = (ds) => {
     if (!ds) return "-";
     try {
@@ -3449,143 +3455,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return `${yy}년 ${m}월 ${day}일`;
   };
 
-  const handleStatusChange = async (orderId, newStatus) => {
-    if (!orderId || !userData?.userId) return;
-    try {
-      // 메인 상태: 주문완료, 수령완료, 주문취소, 결제완료
-      // 보조 상태(sub_status): 미수령, 확인필요, 수령가능
-      const mainStatuses = ["주문완료", "수령완료", "주문취소", "결제완료"];
-      const subStatuses = ["미수령", "확인필요", "수령가능"];
-      const allowed = [...mainStatuses, ...subStatuses];
-      if (!allowed.includes(newStatus)) return;
-
-      const nowISO = new Date().toISOString();
-      const updateData = {};
-      const existingOrder =
-        orders.find((o) => o.order_id === orderId) || selectedOrder || null;
-      const existingPaidAt = existingOrder?.paid_at || null;
-
-      // 메인 상태 변경
-      if (mainStatuses.includes(newStatus)) {
-        updateData.status = newStatus;
-        if (newStatus === "수령완료") {
-          updateData.received_at = nowISO;
-          updateData.canceled_at = null;
-          updateData.sub_status = null;
-        } else if (newStatus === "주문취소") {
-          updateData.canceled_at = nowISO;
-          updateData.received_at = null;
-          updateData.sub_status = null;
-        } else if (newStatus === "결제완료") {
-          updateData.canceled_at = null;
-          updateData.received_at = null;
-          if (!existingPaidAt) {
-            updateData.paid_at = nowISO;
-          }
-        } else if (newStatus === "주문완료") {
-          updateData.canceled_at = null;
-          updateData.received_at = null;
-        }
-      } else {
-        // 보조 상태 변경 (메인 상태는 주문완료 유지)
-        updateData.status = "주문완료";
-        updateData.sub_status = newStatus;
-        updateData.received_at = null;
-        updateData.canceled_at = null;
-      }
-
-      await updateCommentOrder(orderId, updateData, userData.userId, { revalidate: false });
-
-      const targetOrder =
-        orders.find((o) => o.order_id === orderId) || selectedOrder || null;
-      if (targetOrder) {
-        const nextStatus = updateData.status || newStatus;
-        adjustBadgeCountsOptimistically([targetOrder], nextStatus, updateData.sub_status);
-
-        // 로컬 목록에도 즉시 반영 (현재 필터와 불일치하면 목록에서 제거)
-        setOrders((prev) => {
-          const next = [];
-          let found = false;
-
-          for (const o of prev) {
-            if (o.order_id !== orderId) {
-              next.push(o);
-              continue;
-            }
-            found = true;
-
-            const updated = {
-              ...o,
-              status: nextStatus,
-              sub_status: updateData.sub_status ?? o.sub_status ?? null,
-            };
-            if (isOrderVisibleInCurrentView(updated)) {
-              next.push(updated);
-            }
-          }
-
-          if (!found) {
-            const candidate = {
-              ...targetOrder,
-              status: nextStatus,
-              sub_status: updateData.sub_status ?? targetOrder.sub_status ?? null,
-            };
-            if (isOrderVisibleInCurrentView(candidate)) {
-              next.push(candidate);
-            }
-          }
-
-          return next;
-        });
-      }
-
-      setIsDetailModalOpen(false); // 모달 닫기
-      // SWR 캐시만 동기 반영 (네트워크 재호출 없음)
-      await mutateOrders(
-        (prev) => {
-          if (!prev?.data) return prev;
-          const nextData = prev.data.map((o) =>
-            o.order_id === orderId
-              ? {
-                ...o,
-                status: updateData.status || newStatus,
-                sub_status: updateData.sub_status ?? o.sub_status ?? null,
-              }
-              : o
-          );
-          return {
-            ...prev,
-            data: nextData.filter(isOrderVisibleInCurrentView),
-          };
-        },
-        { revalidate: false, rollbackOnError: true }
-      );
-      showSuccess(`주문 상태를 '${updateData.status || newStatus}'로 변경했습니다.`);
-      hasRecentStatusChangeRef.current = true;
-    } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Status Change Error (client-side):", err);
-      }
-      alert(err.message || "주문 상태 업데이트에 실패했습니다.");
-    }
-  };
-  const handleTabChange = (tab) => setActiveTab(tab);
-  const openDetailModal = (order) => {
-    if (!ENABLE_DETAIL_MODAL) return;
-    setSelectedOrder({ ...order });
-    // 주문 정보 수정 상태 초기화 복구
-    setTempItemNumber(order.item_number || 1);
-    setTempQuantity(order.quantity || 1);
-    setTempPrice(order.price ?? 0);
-    setIsEditingDetails(false); // 편집 모드 비활성화로 시작
-    setActiveTab("status");
-    setIsDetailModalOpen(true);
-  };
-  const closeDetailModal = () => {
-    setIsDetailModalOpen(false);
-    setSelectedOrder(null);
-    setIsEditingDetails(false);
-  }; // isEditingDetails 리셋 추가
   const handleLogout = () => {
     sessionStorage.clear();
     localStorage.removeItem("userId");
@@ -3729,7 +3598,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // (상단 별도 검색바 없음) — 기존 입력과 버튼 사용
 
   // 정확한 고객명 검색
-  const handleExactCustomerSearch = (customerName) => {
+  const handleExactCustomerSearch = useCallback((customerName) => {
     if (!customerName || customerName === "-") return;
     const trimmedName = customerName.trim();
     // Exact customer search
@@ -3745,7 +3614,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setExactCustomerFilter(trimmedName); // 정확 검색어 설정
     setCurrentPage(1);
     setSelectedOrderIds([]);
-  };
+  }, []);
 
   // 서버와 강제 동기화 버튼
   const handleSyncNow = useCallback(async ({ skipIfInFlight = false, force = false } = {}) => {
@@ -3781,7 +3650,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       globalMutate(
         (key) =>
           Array.isArray(key) &&
-          ["unreceived-count", "completed-count", "paid-count"].includes(key[0]) &&
+          key[0] === "global-stats" &&
           key[2] === userData.userId,
         undefined,
         { revalidate: false }
@@ -3790,7 +3659,10 @@ function OrdersTestPageContent({ mode = "raw" }) {
       // 캐시된 시그니처 무효화해서 재조회 강제
       lastProductSignatureRef.current = null;
       lastImageSignatureRef.current = null;
+      productFetchRequestSeqRef.current += 1;
       // 상품/이미지 캐시 초기화
+      postProductsByPostKeyRef.current = {};
+      postProductsByBandPostRef.current = {};
       setPostProductsByPostKey({});
       setPostProductsByBandPost({});
       setPostsImages({});
@@ -3811,7 +3683,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setLastSyncAt(Date.now());
       setIsSyncing(false);
     }
-  }, [userData?.userId, refreshOrders, refreshStats, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating]);
+  }, [userData?.userId, refreshOrders, refreshStats, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating, showError]);
 
   const handleOrdersErrorRetry = useCallback(() => {
     setError(null);
@@ -3837,6 +3709,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
   // --- 메모 입력 ref 관리 (uncontrolled input으로 성능 최적화) ---
   const memoInputRefs = useRef({});
+  const setMemoInputRef = useCallback((orderId, el) => {
+    if (!orderId) return;
+    if (el) {
+      memoInputRefs.current[orderId] = el;
+      return;
+    }
+    delete memoInputRefs.current[orderId];
+  }, []);
 
   // --- 메모 포커스 핸들러 ---
   const handleMemoFocus = useCallback((orderId, currentValue) => {
@@ -3892,7 +3772,9 @@ function OrdersTestPageContent({ mode = "raw" }) {
       // 로컬/SWR 캐시만 업데이트 (네트워크 재호출 없음)
       setOrders((prev) =>
         prev.map((o) =>
-          o.order_id === orderId ? { ...o, memo: data?.memo ?? null } : o
+          String(o.order_id ?? o.comment_order_id ?? "") === String(orderId)
+            ? { ...o, memo: data?.memo ?? null }
+            : o
         )
       );
       await mutateOrders(
@@ -3901,13 +3783,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
           return {
             ...prev,
             data: prev.data.map((o) =>
-              o.order_id === orderId ? { ...o, memo: data?.memo ?? null } : o
+              String(o.order_id ?? o.comment_order_id ?? "") === String(orderId)
+                ? { ...o, memo: data?.memo ?? null }
+                : o
             ),
           };
         },
         { revalidate: false, rollbackOnError: true }
       );
-      await syncOrdersToIndexedDb([{ ...data }]);
+      if (isRawMode) {
+        await syncCommentOrdersToIndexedDb([{ ...data }]);
+      } else {
+        await syncOrdersToIndexedDb([{ ...data }]);
+      }
     } catch (error) {
       console.error('메모 저장 오류:', error);
       setMemoSavingStates(prev => ({ ...prev, [orderId]: 'error' }));
@@ -3920,7 +3808,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
         });
       }, 3000);
     }
-  }, [userData, mutateOrders, syncOrdersToIndexedDb, setSafeTimeout]);
+  }, [userData, mode, mutateOrders, setSafeTimeout]);
 
   // --- 메모 취소 핸들러 ---
   const handleMemoCancel = useCallback((orderId) => {
@@ -4031,6 +3919,32 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [ordersData?.pagination?.totalPages]);
   const goToPreviousPage = useCallback(() => paginate(currentPage - 1), [paginate, currentPage]);
   const goToNextPage = useCallback(() => paginate(currentPage + 1), [paginate, currentPage]);
+  const paginationPages = useMemo(() => {
+    if (!(typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages > 1)) {
+      return [];
+    }
+    const pageNumbers = [];
+    const maxPagesToShow = 5;
+    const halfMaxPages = Math.floor(maxPagesToShow / 2);
+    let startPage = Math.max(1, currentPage - halfMaxPages);
+    let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+
+    if (endPage - startPage + 1 < maxPagesToShow) {
+      startPage = Math.max(1, endPage - maxPagesToShow + 1);
+    }
+    if (startPage > 1) {
+      pageNumbers.push(1);
+      if (startPage > 2) pageNumbers.push("...");
+    }
+    for (let i = startPage; i <= endPage; i += 1) {
+      pageNumbers.push(i);
+    }
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) pageNumbers.push("...");
+      pageNumbers.push(totalPages);
+    }
+    return pageNumbers;
+  }, [currentPage, totalPages]);
   const getSortIcon = (field) =>
     sortBy !== field ? (
       <ChevronUpDownIcon className="w-4 h-4 ml-1 text-gray-400" />
@@ -4040,68 +3954,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
       <ChevronDownIcon className="w-4 h-4 ml-1 text-gray-700" />
     );
 
-  // --- 주문 정보 수정 핸들러 복구 ---
-  const toggleDetailsEditMode = () => setIsEditingDetails((prev) => !prev);
-  const handleTempInputChange = (field, value) => {
-    let numVal;
-    if (field === "itemNumber" || field === "quantity")
-      numVal = Math.max(1, parseInt(value, 10) || 1);
-    else if (field === "price") numVal = Math.max(0, parseFloat(value) || 0);
-    else return;
-    if (field === "itemNumber") setTempItemNumber(numVal);
-    else if (field === "quantity") setTempQuantity(numVal);
-    else if (field === "price") setTempPrice(numVal);
-  };
-  const saveOrderDetails = async () => {
-    if (!selectedOrder?.order_id || !userData?.userId) return;
-    const { order_id } = selectedOrder;
-    const qty = Math.max(1, parseInt(tempQuantity, 10) || 1);
-    const price = Math.max(0, parseFloat(tempPrice) || 0);
-    const itemNum = Math.max(1, parseInt(tempItemNumber, 10) || 1);
-
-    const updateData = {
-      item_number: itemNum,
-      quantity: qty,
-      price: price,
-      total_amount: price * qty,
-    };
-
-    try {
-      // comment_orders 상세 정보 업데이트
-      await updateCommentOrder(order_id, updateData, userData.userId, { revalidate: false });
-
-      // 로컬/SWR 캐시만 업데이트 (네트워크 재호출 없음)
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.order_id === order_id
-            ? { ...o, ...updateData }
-            : o
-        )
-      );
-      await mutateOrders(
-        (prev) => {
-          if (!prev?.data) return prev;
-          return {
-            ...prev,
-            data: prev.data.map((o) =>
-              o.order_id === order_id ? { ...o, ...updateData } : o
-            ),
-          };
-        },
-        { revalidate: false, rollbackOnError: true }
-      );
-
-      setIsEditingDetails(false); // 편집 모드 종료
-      setIsDetailModalOpen(false); // 모달 닫기
-    } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Update Error (client-side):", err);
-      }
-      alert(err.message || "주문 정보 업데이트에 실패했습니다.");
-    }
-  };
-
-  // --- 바코드 저장 함수 ---
   // 댓글 모달 열기 함수
   const openCommentsModal = async (order, tryKeyIndex = 0) => {
     const extractedPostKey = extractPostKeyFromOrderId(order.order_id);
@@ -4130,12 +3982,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     const postContent = product?.content || product?.description || "";
 
     // 디버깅용 로그
-    console.log("Opening comments for order:", order.order_id);
-    console.log("Product ID:", order.product_id);
-    console.log("Found product:", product);
-    console.log("Product content:", product?.content);
-    console.log("Final postContent:", postContent);
-
     setSelectedPostForComments({
       postKey,
       bandKey,
@@ -4160,98 +4006,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
     setSafeTimeout(() => {
       openCommentsModal(order, prevTryKeyIndex + 1);
     }, 100);
-  };
-
-  const handleSaveBarcode = async (productId, barcodeValue) => {
-    // handleSaveBarcode called
-
-    if (!barcodeValue.trim()) {
-      return;
-    }
-
-    // --- !!! 중요: userData.id 대신 userData.userId 사용 확인 !!! ---
-    if (!userData || !userData.userId) {
-      // userData.id 였던 부분을 userData.userId로 변경
-      alert("사용자 정보가 유효하지 않습니다. 다시 로그인해주세요."); // 사용자에게 피드백
-      if (process.env.NODE_ENV === "development") {
-        console.error(
-          "User data or userId is missing. Current userData:",
-          userData
-        );
-      }
-      return;
-    }
-    const userId = userData.userId; // userId 사용
-    // --- !!! 중요 수정 끝 !!! ---
-
-    setIsSavingBarcode(true);
-    // <<< --- 디버깅 로그 추가 --- >>>
-    // Starting barcode save process
-
-    try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      // Supabase configuration validated
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        if (process.env.NODE_ENV === "development") {
-          console.error("Supabase URL 또는 Anon Key가 설정되지 않았습니다.");
-        }
-        throw new Error("애플리케이션 설정 오류가 발생했습니다.");
-      }
-
-      // Supabase 함수 호출 URL 구성 (productId와 userId를 쿼리 파라미터로 전달)
-      const functionUrl = `${supabaseUrl}/functions/v1/products-update-barcode?productId=${encodeURIComponent(
-        productId
-      )}&userId=${encodeURIComponent(userId)}`;
-
-      // Function URL and request prepared
-
-      const response = await fetch(functionUrl, {
-        method: "PATCH", // 백엔드 API가 PATCH 메소드를 사용하므로 변경
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey, // Supabase Anon Key를 헤더에 추가
-          // 백엔드 함수에서 사용자 인증을 위해 Supabase의 Authorization 헤더가 필요할 수 있습니다.
-          // 현재 제공된 함수 코드에는 명시적인 JWT 토큰 검증 로직은 없으나,
-          // RLS(Row Level Security) 등이 적용되어 있다면 필요할 수 있습니다.
-          // const { data: { session } } = await supabase.auth.getSession();
-          // if (session) headers.Authorization = `Bearer ${session.access_token}`;
-        },
-        body: JSON.stringify({ barcode: barcodeValue }), // 요청 본문에 바코드 값 전달
-      });
-
-      const responseData = await response.json(); // 응답을 JSON으로 파싱
-
-      // 응답 상태 및 백엔드 응답의 success 필드로 성공 여부 판단
-      if (!response.ok || !responseData.success) {
-        throw new Error(
-          responseData.message || "바코드 저장 중 오류가 발생했습니다."
-        );
-      }
-
-      // 바코드 저장 성공
-
-      // --- !!! 수정된 부분 !!! ---
-      // refreshOrdersAndProducts() 대신 SWR의 mutate 함수를 사용합니다.
-      if (mutateProducts) {
-        await mutateProducts(); // 상품 목록 SWR 캐시 갱신
-        // Products list revalidated via SWR mutate
-      } else {
-        // mutateProducts is not available
-      }
-      // --- !!! 수정된 부분 끝 !!! ---
-
-      // 성공 시
-      setNewBarcodeValue(""); // 입력 필드 초기화
-    } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Failed to save barcode:", error);
-      }
-    } finally {
-      setIsSavingBarcode(false);
-    }
   };
 
   // --- 로딩 / 에러 UI ---
@@ -4768,379 +4522,37 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       </td>
                     </tr>
                   )}
-                  {groupedOrders.map((group) => {
-                    const order = group.rep;
-                    const isSelected = group.orderIds.every((id) => selectedOrderIdSet.has(id));
-                    const product = getProductById(order.product_id);
-                    const hasMultipleBarcodeOptions =
-                      product?.barcode_options?.options?.length > 1;
+                  {sortedDisplayOrders.map((order, index) => {
+                    const orderId = String(
+                      order?.order_id ??
+                      order?.comment_order_id ??
+                      `row-${index}`
+                    );
 
                     return (
-                      <React.Fragment key={group.groupId}>
-                        <tr
-                          className={`${editingOrderId === order.order_id
-                            ? "bg-blue-50 border-l-4 border-blue-400"
-                            : isSelected
-                              ? "bg-orange-50"
-                              : "hover:bg-gray-50"
-                            } transition-colors group ${isOrdersLoading ? "opacity-70" : ""
-                            }`}
-                        >
-                          <td
-                            onClick={(e) => e.stopPropagation()}
-                            className="relative w-12 px-6 sm:w-16 sm:px-8"
-                          >
-                            <div className="absolute inset-y-0 left-4 sm:left-6 flex items-center">
-                              <input
-                                type="checkbox"
-                                className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                                value={group.groupId}
-                                checked={selectedOrderIdSet.has(order.order_id)}
-                                onChange={(e) => handleCheckboxChange(e, group.groupId)}
-                              />
-                            </div>
-                          </td>
-                          {/* 고객명 */}
-                          <td
-                            className="py-2 xl:py-3 pr-1 md:pr-2 xl:pr-3 w-24"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExactCustomerSearch(order.customer_name);
-                            }}
-                          >
-                            <div className="flex items-center min-h-[60px]">
-                              <span
-                                className="text-md text-gray-700 font-medium hover:text-orange-600 hover:underline cursor-pointer break-words line-clamp-2 xl:line-clamp-1"
-                                title={order.customer_name}
-                              >
-                                {order.customer_name || "-"}
-                              </span>
-                            </div>
-                          </td>
-                          {/* 상태 */}
-                          <td className="py-2 xl:py-3 px-1 lg:px-4 xl:px-6 text-center whitespace-nowrap w-24">
-                            <StatusBadge
-                              status={order.status}
-                              processingMethod={order.processing_method}
-                              completedAt={order.completed_at}
-                              orderedAt={order.ordered_at}
-                              paidAt={order.paid_at}
-                              canceledAt={order.canceled_at}
-                            />
-                          </td>
-                          {/* 수령일시 */}
-                          <td className="py-2 xl:py-3 px-1 md:px-3 lg:px-4 xl:px-6 text-center w-20 md:w-24 xl:w-32">
-                            {(() => {
-                              const list = getCandidateProductsForOrder(order);
-                              let displayProd = null;
-                              if (order.product_id) {
-                                displayProd = list.find(p => p.product_id === order.product_id) || getProductById(order.product_id) || null;
-                              }
-                              if (!displayProd) displayProd = list[0] || null;
-                              const pickupDate = displayProd?.pickup_date || null;
-                              return (
-                                <div className="text-sm md:text-base font-medium text-gray-900">
-                                  {renderPickupDisplay(pickupDate)}
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          {/* 댓글 */}
-                          <td className="py-2 xl:py-3 px-2 md:px-3 lg:px-4 xl:px-6 w-60 md:w-72 xl:w-80">
-                            <div>
-                              {(() => {
-                                const currentComment = processBandTags(order.comment || "");
-                                let commentChangeData = null;
-
-                                // comment_change 파싱
-                                try {
-                                  if (order.comment_change) {
-                                    const parsed = typeof order.comment_change === 'string'
-                                      ? JSON.parse(order.comment_change)
-                                      : order.comment_change;
-                                    if (
-                                      parsed &&
-                                      (parsed.status === 'updated' || parsed.status === 'deleted') &&
-                                      Array.isArray(parsed.history) &&
-                                      parsed.history.length > 0
-                                    ) {
-                                      commentChangeData = parsed;
-                                    }
-                                  }
-                                } catch (e) {
-                                  // JSON 파싱 실패 시 무시
-                                }
-
-                                // 수정/삭제 되지 않은 댓글
-                                if (!commentChangeData) {
-                                  return (
-                                    <div className="break-words leading-tight font-semibold" title={currentComment}>
-                                      {order.sub_status === "확인필요" && (
-                                        <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
-                                      )}
-                                      {currentComment || "-"}
-                                    </div>
-                                  );
-                                }
-
-                                // 수정/삭제된 댓글: 이전/현재 모두 표시
-                                const history = commentChangeData.history || [];
-                                const pickPrevious = () => {
-                                  // 직전 버전(마지막 항목 제외)에서 삭제 아닌 내용 찾기
-                                  for (let i = history.length - 2; i >= 0; i -= 1) {
-                                    const entry = history[i] || '';
-                                    if (entry.includes('[deleted]')) continue;
-                                    return entry.replace(/^version:\d+\s*/, '');
-                                  }
-                                  return '';
-                                };
-                                const previousComment = pickPrevious();
-                                const latestCommentRaw = commentChangeData.current || currentComment || '';
-                                const latestComment = commentChangeData.status === 'deleted'
-                                  ? (previousComment || currentComment || '')
-                                  : processBandTags(latestCommentRaw);
-                                const showPrevious =
-                                  commentChangeData.status !== 'deleted' &&
-                                  previousComment &&
-                                  previousComment.trim() !== latestComment.trim();
-
-                                return (
-                                  <div className="space-y-1">
-                                    {showPrevious && (
-                                      <div className="text-gray-500 line-through text-sm">
-                                        <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
-                                        <span className="break-words leading-tight font-semibold">{previousComment}</span>
-                                      </div>
-                                    )}
-                                    <div className="break-words leading-tight">
-                                      {order.sub_status === "확인필요" && (
-                                        <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
-                                      )}
-                                      <span className="text-sm font-semibold text-orange-600 mr-1">
-                                        {commentChangeData.status === 'deleted' ? '[유저에 의해 삭제된 댓글]' : '[수정됨]'}
-                                      </span>
-                                      <span className="font-semibold">{latestComment}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                              {/* 주문일시 */}
-                              <div className="text-xs xl:text-sm text-gray-400 mt-1">
-                                {formatDate(order.ordered_at)}
-                              </div>
-                              {/* 메모 */}
-                              <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                                {(() => {
-                                  // 디버깅: 실제 렌더링되는 order 확인
-                                  if (order.order_id === 'order_AACtJhiiFjk5bNW_h69B8PUa_AABo75gGOTZMybZkBI7Nh0S0_item1') {
-                                    console.log('[렌더링 디버깅]', {
-                                      order_id: order.order_id,
-                                      memo: order.memo,
-                                      hasMemo: 'memo' in order,
-                                      memoType: typeof order.memo,
-                                      memoLength: order.memo?.length
-                                    });
-                                  }
-                                  return null;
-                                })()}
-                                <div className="relative">
-                                  <input
-                                    type="text"
-                                    ref={(el) => {
-                                      if (el) {
-                                        memoInputRefs.current[order.order_id] = el;
-                                      }
-                                    }}
-                                    className={`w-full px-2 xl:px-3 py-1.5 xl:py-2 text-sm md:text-base xl:text-lg border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${order.memo ? "bg-red-50 text-red-600 font-semibold border-red-300" : ""
-                                      }`}
-                                    placeholder="메모 입력..."
-                                    defaultValue={order.memo || ""}
-                                    onFocus={() => handleMemoFocus(order.order_id, order.memo || "")}
-                                  />
-
-                                  {/* 저장/취소 버튼 (포커스 시 표시) */}
-                                  {focusedMemoId === order.order_id && !memoSavingStates[order.order_id] && (
-                                    <div className="absolute top-full left-0 mt-1 flex gap-1 z-50 shadow-md">
-                                      <button
-                                        onClick={() => handleMemoSave(order.order_id)}
-                                        className="px-3 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.99] transition"
-                                      >
-                                        저장
-                                      </button>
-                                      <button
-                                        onClick={() => handleMemoCancel(order.order_id)}
-                                        className="px-3 py-2 text-sm bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 active:scale-[0.99] transition"
-                                      >
-                                        취소
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {/* 저장 상태 표시 */}
-                                  {memoSavingStates[order.order_id] && (
-                                    <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-1 text-xs">
-                                      {memoSavingStates[order.order_id] === 'saving' && (
-                                        <>
-                                          <svg className="animate-spin h-3 w-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                          </svg>
-                                          <span className="text-gray-500">저장 중...</span>
-                                        </>
-                                      )}
-                                      {memoSavingStates[order.order_id] === 'saved' && (
-                                        <>
-                                          <svg className="h-3 w-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                                          </svg>
-                                          <span className="text-green-600">저장됨</span>
-                                        </>
-                                      )}
-                                      {memoSavingStates[order.order_id] === 'error' && (
-                                        <>
-                                          <svg className="h-3 w-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                          </svg>
-                                          <span className="text-red-600">저장 실패</span>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
-                          <td
-                            className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-sm md:text-base xl:text-xl text-gray-700 align-top"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {(() => {
-                              const list = getCandidateProductsForOrder(order) || [];
-                              if (!Array.isArray(list) || list.length === 0) {
-                                return <span className="text-gray-400">-</span>;
-                              }
-
-                              const getItemNumber = (p, idx) => {
-                                const n1 = Number(p?.item_number);
-                                if (Number.isFinite(n1) && n1 > 0) return n1;
-                                try {
-                                  const m = String(p?.product_id || '').match(/item(\d+)/i);
-                                  if (m && m[1]) {
-                                    const n = parseInt(m[1], 10);
-                                    if (Number.isFinite(n) && n > 0) return n;
-                                  }
-                                } catch { }
-                                return idx + 1;
-                              };
-
-
-                              return (
-                                <div className="space-y-2">
-                                  {list.map((p, idx) => {
-                                    const itemNo = getItemNumber(p, idx);
-                                    const rawTitle = p?.title || p?.name || '-';
-                                    const title = cleanProductName(rawTitle);
-                                    const price = Number.isFinite(Number(p?.base_price))
-                                      ? Number(p.base_price)
-                                      : (Number.isFinite(Number(p?.price)) ? Number(p.price) : null);
-                                    let imgUrl = p?.image_url || p?.thumbnail_url || p?.thumb_url || null;
-                                    if (!imgUrl) {
-                                      const bk = p?.band_key || order?.band_key;
-                                      const pk = p?.post_key || order?.post_key;
-                                      if (bk && pk) {
-                                        const key = `${bk}_${pk}`;
-                                        const arr = postsImages[key];
-                                        if (Array.isArray(arr) && arr.length > 0) imgUrl = arr[0];
-                                      }
-                                    }
-                                    const isLastProduct = idx === list.length - 1;
-                                    return (
-                                      <div
-                                        key={p?.product_id || `${idx}`}
-                                        className={`p-2 flex items-start gap-2 ${!isLastProduct ? "border-b border-gray-200 " : ""}`}
-                                        style={{ minHeight: "86px" }}
-                                        title={title}
-                                      >
-                                        <div className="w-14 h-14 rounded-md overflow-hidden bg-white flex-shrink-0 border border-gray-200">
-                                          {imgUrl ? (
-                                            <img
-                                              src={getProxiedImageUrl(imgUrl, { thumbnail: 's150' })}
-                                              alt={title}
-                                              loading="lazy"
-                                              width="56"
-                                              height="56"
-                                              className="w-full h-full object-cover"
-                                              referrerPolicy="no-referrer"
-                                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                            />
-                                          ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">이미지</div>
-                                          )}
-                                        </div>
-                                        <div className="flex-1">
-                                          <div className="flex items-start xl:items-center gap-2">
-                                            {list.length > 1 && (
-                                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-[13px] font-semibold text-gray-900 flex-shrink-0">
-                                                {itemNo}번
-                                              </span>
-                                            )}
-                                            <span
-                                              className={`text-sm md:text-base xl:text-lg leading-snug text-gray-900 font-medium break-words line-clamp-2 xl:whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
-                                              onClick={() => handleCellClickToSearch(title, order.post_key)}
-                                              title="클릭하여 이 게시물의 주문 검색"
-                                            >
-                                              {title}
-                                            </span>
-                                          </div>
-                                          {price != null && (
-                                            <div className="text-sm md:text-base xl:text-lg text-gray-700 mt-0.5">₩{price.toLocaleString()}</div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          {/* 바코드 */}
-                          <td className="py-2 xl:py-3 pr-1 lg:pr-4 xl:pr-6 text-center text-base xl:text-lg text-gray-700 w-32 align-top">
-                            {(() => {
-                              const list = getCandidateProductsForOrder(order) || [];
-                              if (!Array.isArray(list) || list.length === 0) return <span className="text-sm text-gray-400">없음</span>;
-                              return (
-                                <div className="space-y-2">
-                                  {list.map((p, idx) => {
-                                    const barcodeVal = p?.barcode || '';
-                                    const isLastBarcode = idx === list.length - 1;
-                                    return (
-                                      <div
-                                        key={p?.product_id || `${idx}`}
-                                        className={`flex items-center justify-center px-2 ${isLastBarcode ? "py-2" : "pt-2  border-b border-gray-200"}`}
-                                        style={{ minHeight: barcodeViewMode === "large" ? "120px" : "86px" }}
-                                      >
-                                        {barcodeVal ? (
-                                          <Barcode
-                                            value={barcodeVal}
-                                            height={barcodeViewMode === "large" ? 50 : 32}
-                                            width={barcodeViewMode === "large" ? 1.8 : 1.2}
-                                            fontSize={barcodeViewMode === "large" ? 16 : 12}
-                                          />
-                                        ) : (
-                                          <span className="text-sm text-gray-400">없음</span>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-                          </td>
-                        </tr>
-
-                        {/* 바코드 옵션 행 제거 (raw 스타일 간단 테이블) */}
-                      </React.Fragment>
+                      <OrderTableRow
+                        key={orderId}
+                        order={order}
+                        orderId={orderId}
+                        isSelected={selectedOrderIdSet.has(orderId)}
+                        isOrdersLoading={isOrdersLoading}
+                        isEditing={editingOrderId === order.order_id}
+                        candidateProducts={candidateProductsByOrderId.get(orderId) || EMPTY_LIST}
+                        commentView={commentViewByOrderId.get(orderId) || null}
+                        barcodeViewMode={barcodeViewMode}
+                        isMemoFocused={focusedMemoId === String(order?.order_id ?? order?.comment_order_id ?? orderId)}
+                        memoSavingState={memoSavingStates[String(order?.order_id ?? order?.comment_order_id ?? "")]}
+                        renderPickupDisplay={renderPickupDisplay}
+                        formatDate={formatDate}
+                        getProductById={getProductById}
+                        onCheckboxChange={handleCheckboxChange}
+                        onExactCustomerSearch={handleExactCustomerSearch}
+                        onCellClickToSearch={handleCellClickToSearch}
+                        onMemoFocus={handleMemoFocus}
+                        onMemoSave={handleMemoSave}
+                        onMemoCancel={handleMemoCancel}
+                        setMemoInputRef={setMemoInputRef}
+                      />
                     );
                   })}
                 </tbody>
@@ -5191,55 +4603,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
                   >
                     이전
                   </button>
-                  {typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages > 1 ? (
-                    (() => {
-                      const pageNumbers = [];
-                      const maxPagesToShow = 5;
-                      const halfMaxPages = Math.floor(maxPagesToShow / 2);
-                      let startPage = Math.max(1, currentPage - halfMaxPages);
-                      let endPage = Math.min(
-                        totalPages,
-                        startPage + maxPagesToShow - 1
-                      );
-                      if (endPage - startPage + 1 < maxPagesToShow)
-                        startPage = Math.max(1, endPage - maxPagesToShow + 1);
-                      if (startPage > 1) {
-                        pageNumbers.push(1);
-                        if (startPage > 2) pageNumbers.push("...");
-                      }
-                      for (let i = startPage; i <= endPage; i++)
-                        pageNumbers.push(i);
-                      if (endPage < totalPages) {
-                        if (endPage < totalPages - 1) pageNumbers.push("...");
-                        pageNumbers.push(totalPages);
-                      }
-                      return pageNumbers.map((page, idx) =>
-                        typeof page === "number" ? (
-                          <button
-                            key={page}
-                            onClick={() => paginate(page)}
-                            disabled={isDataLoading}
-                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === page
-                              ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
-                              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                              }`}
-                            aria-current={
-                              currentPage === page ? "page" : undefined
-                            }
-                          >
-                            {page}
-                          </button>
-                        ) : (
-                          <span
-                            key={`ellipsis-${idx}`}
-                            className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
-                          >
-                            ...
-                          </span>
-                        )
-                      );
-                    })()
-                  ) : null}
+                  {paginationPages.map((page, idx) =>
+                    typeof page === "number" ? (
+                      <button
+                        key={page}
+                        onClick={() => paginate(page)}
+                        disabled={isDataLoading}
+                        className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === page
+                          ? "z-10 bg-gray-200 border-gray-500 text-gray-600"
+                          : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                          }`}
+                        aria-current={currentPage === page ? "page" : undefined}
+                      >
+                        {page}
+                      </button>
+                    ) : (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                      >
+                        ...
+                      </span>
+                    )
+                  )}
                   <button
                     onClick={goToNextPage}
                     disabled={
@@ -5323,897 +4709,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
           </div>
         )}
       </main>
-
-      {/* --- 주문 상세 모달 (주문 정보 탭 복구) --- */}
-      {ENABLE_DETAIL_MODAL && isDetailModalOpen && selectedOrder && (
-        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4 ">
-          <div className="bg-white rounded-xl max-w-2xl w-full shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* 모달 헤더 */}
-            <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 bg-gray-50 rounded-t-xl">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {(() => {
-                  const productName = getProductNameById(
-                    selectedOrder.product_id
-                  );
-                  const { name, date } = parseProductName(productName);
-                  const product = getProductById(selectedOrder.product_id);
-                  const primary = product?.pickup_date;
-                  const pickupDate = pickEffectivePickupSource(primary, date);
-                  const isAvailable =
-                    isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
-
-                  return (
-                    <div className="flex flex-col">
-                      <div
-                        className={`${isAvailable ? "text-orange-600 font-bold" : ""
-                          }`}
-                      >
-                        {name}
-                      </div>
-                      {pickupDate && (
-                        <div
-                          className={`text-sm mt-1 ${isAvailable
-                            ? "text-orange-500 font-medium"
-                            : "text-gray-500"
-                            }`}
-                        >
-                          [{formatPickupKSTLabel(pickupDate)}]
-                          {isAvailable && (
-                            <span className="ml-1 text-orange-600 font-bold">
-                              ✓ 수령가능
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </h3>
-              <button
-                onClick={closeDetailModal}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200 transition-colors"
-                aria-label="Close"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-            {/* 모달 본문 */}
-            <div className="flex-grow overflow-y-auto p-4 sm:p-6">
-              {/* 탭 네비게이션 */}
-              <div className="border-b border-gray-200 mb-6">
-                <div className="flex -mb-px space-x-6 sm:space-x-8">
-                  {/* 상태 관리 탭 */}
-                  <button
-                    onClick={() => handleTabChange("status")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "status"
-                      ? "border-orange-500 text-orange-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
-                  >
-                    <QrCodeIcon className="w-5 h-5 mr-1.5" /> 상태 관리
-                  </button>
-                  {/* 주문 정보 탭 (복구) */}
-                  <button
-                    onClick={() => handleTabChange("info")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "info"
-                      ? "border-orange-500 text-orange-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
-                  >
-                    <DocumentTextIcon className="w-5 h-5 mr-1.5" /> 주문 정보
-                  </button>
-                  {/* 주문 처리 탭 */}
-                  <button
-                    onClick={() => handleTabChange("processing")}
-                    className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors ${activeTab === "processing"
-                      ? "border-orange-500 text-orange-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
-                  >
-                    <SparklesIcon className="w-5 h-5 mr-1.5" /> 주문 처리
-                  </button>
-                  {/* 주문 보러가기 탭 */}
-                  {getPostUrlByProductId(selectedOrder.product_id) && (
-                    <a
-                      href={getPostUrlByProductId(selectedOrder.product_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => {
-                        e.stopPropagation(); // 모달 닫힘 방지
-                        // handleTabChange("go"); // 탭 상태 변경 (선택사항)
-                      }}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`} // 'go' 탭은 활성 상태를 시각적으로 표시하지 않음
-                    >
-                      <ArrowTopRightOnSquareIcon className="w-5 h-5 mr-1.5" />
-                      주문 보러가기
-                    </a>
-                  )}
-
-                  {/* 댓글 보기 탭 */}
-                  {selectedOrder.post_number && (
-                    <button
-                      onClick={() => openCommentsModal(selectedOrder)}
-                      className={`inline-flex items-center pb-3 px-1 border-b-2 text-sm font-medium focus:outline-none transition-colors border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
-                    >
-                      <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-1.5" />
-                      댓글 보기
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* 탭 콘텐츠 */}
-              <div className="space-y-6">
-                {/* 상태 관리 탭 내용 */}
-                {activeTab === "status" && (
-                  <div className="space-y-5">
-                    <LightCard padding="p-4" className="text-center bg-gray-50">
-                      <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
-                        상품 바코드
-                      </label>
-                      <div className="max-w-xs mx-auto h-[70px] flex items-center justify-center">
-                        {" "}
-                        {/* 세로 정렬 및 최소 높이 보장 */}
-                        {getProductBarcode(selectedOrder.product_id) ? (
-                          <Barcode
-                            value={getProductBarcode(selectedOrder.product_id)}
-                            width={1.8}
-                            height={45}
-                            fontSize={12}
-                          />
-                        ) : (
-                          // 바코드가 없을 때 입력 필드와 저장 버튼 표시
-                          <div className="flex flex-col items-center space-y-2 w-full px-2 py-2">
-                            <input
-                              type="text"
-                              placeholder="바코드 입력"
-                              value={newBarcodeValue}
-                              onChange={(e) =>
-                                setNewBarcodeValue(e.target.value)
-                              }
-                              className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900"
-                            />
-                            <button
-                              onClick={() =>
-                                handleSaveBarcode(
-                                  selectedOrder.product_id,
-                                  newBarcodeValue
-                                )
-                              }
-                              disabled={
-                                !newBarcodeValue.trim() || isSavingBarcode
-                              }
-                              className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed w-full"
-                            >
-                              {isSavingBarcode ? (
-                                <LoadingSpinner className="h-4 w-4 mr-1 text-white" />
-                              ) : null}{" "}
-                              {/* 로딩 스피너 색상 및 간격 조정 */}
-                              저장
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </LightCard>
-                    <LightCard padding="p-4" className="">
-                      <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
-                        고객 주문 정보
-                      </label>
-                      <div className="flex items-start space-x-3">
-                        <UserCircleIcon className="w-6 h-6 text-gray-400 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-800 font-semibold">
-                            {selectedOrder.customer_name || "이름 없음"}
-                          </p>
-                          <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap break-words">
-                            {processBandTags(selectedOrder.comment) || (
-                              <span className="italic text-gray-400">
-                                댓글 없음
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                    </LightCard>
-                    <LightCard padding="p-4" className="">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        주문 상태 변경
-                      </label>
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div>
-                          <span className="text-sm font-medium text-gray-500 mr-2">
-                            현재:
-                          </span>
-                          <StatusBadge
-                            status={selectedOrder.status}
-                            processingMethod={selectedOrder.processing_method}
-                            completedAt={selectedOrder.completed_at}
-                            orderedAt={selectedOrder.ordered_at}
-                            paidAt={selectedOrder.paid_at}
-                            canceledAt={selectedOrder.canceled_at}
-                          />
-                        </div>
-                        <div className="flex flex-wrap justify-end gap-2 items-center w-full sm:w-auto">
-                          {["주문완료", "주문취소", "확인필요"].map(
-                            (status) => {
-                              const isCurrent = selectedOrder.status === status;
-                              return (
-                                <div
-                                  key={status}
-                                  className="flex items-center gap-1"
-                                >
-                                  <button
-                                    onClick={() =>
-                                      handleStatusChange(
-                                        selectedOrder.order_id,
-                                        status
-                                      )
-                                    }
-                                    disabled={isCurrent}
-                                    className={getStatusButtonStyle(status)}
-                                  >
-                                    {getStatusIcon(status)} {status} 처리
-                                  </button>
-                                  {/* AI/패턴 처리 아이콘 - 주문완료 버튼 옆에만 표시 */}
-                                  {status === "주문완료" &&
-                                    selectedOrder.processing_method && (
-                                      <div className="flex items-center">
-                                        {selectedOrder.processing_method ===
-                                          "ai" && (
-                                            <div
-                                              className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-medium"
-                                              title="AI 처리된 주문"
-                                            >
-                                              <SparklesIcon className="w-3 h-3" />
-                                              <span>AI</span>
-                                            </div>
-                                          )}
-                                        {selectedOrder.processing_method ===
-                                          "pattern" && (
-                                            <div
-                                              className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium"
-                                              title="패턴 처리된 주문"
-                                            >
-                                              <FunnelIcon className="w-3 h-3" />
-                                              <span>패턴</span>
-                                            </div>
-                                          )}
-                                        {selectedOrder.processing_method ===
-                                          "manual" && (
-                                            <div
-                                              className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium"
-                                              title="수동 처리된 주문"
-                                            >
-                                              <PencilIcon className="w-3 h-3" />
-                                              <span>수동</span>
-                                            </div>
-                                          )}
-                                      </div>
-                                    )}
-                                </div>
-                              );
-                            }
-                          )}
-                        </div>
-                      </div>
-                    </LightCard>
-                  </div>
-                )}
-                {/* 주문 정보 탭 내용 (복구) */}
-                {activeTab === "info" && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                    {[
-                      {
-                        label: "상품명",
-                        value: (() => {
-                          const productName = getProductNameById(
-                            selectedOrder.product_id
-                          );
-                          const { name, date } = parseProductName(productName);
-                          const product = getProductById(selectedOrder.product_id);
-                          const primary = product?.pickup_date;
-                          const pickupDate = pickEffectivePickupSource(primary, date);
-                          const isAvailable =
-                            isClient && pickupDate ? isPickupAvailable(pickupDate) : false;
-
-                          return (
-                            <div className="flex flex-col">
-                              <div
-                                className={`${isAvailable ? "text-orange-600 font-bold" : ""
-                                  }`}
-                              >
-                                {name}
-                              </div>
-                              {pickupDate && (
-                                <div
-                                  className={`text-sm mt-1 ${isAvailable
-                                    ? "text-orange-500 font-medium"
-                                    : "text-gray-500"
-                                    }`}
-                                >
-                                  [{formatPickupKSTLabel(pickupDate)}]
-                                  {isAvailable && (
-                                    <span className="ml-1 text-orange-600 font-bold">
-                                      ✓ 수령가능
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })(),
-                        readOnly: true,
-                      },
-                      // --- REMOVE INCORRECT DUPLICATE 상품명 HERE ---
-                      // {
-                      //   label: "상품명", // This was incorrect
-                      //   value: getProductNameById(
-                      //     selectedOrder.price_option_description
-                      //   ),
-                      //   readOnly: true,
-                      // },
-                      // --- END REMOVAL ---
-
-                      {
-                        label: "고객명",
-                        value: selectedOrder.customer_name || "-",
-                        readOnly: true,
-                      },
-
-                      // --- ADD PRICE OPTION DESCRIPTION HERE ---
-                      {
-                        label: "선택 옵션", // Or "가격 옵션 설명"
-                        value: selectedOrder.price_option_description || "-",
-                        readOnly: true,
-                        colSpan: 2, // Make it full width as it might be long
-                        preWrap: true, // Allow line breaks if needed
-                      },
-                      // --- ADD PRODUCT PICKUP DATE HERE ---
-                      {
-                        label: "상품 픽업 예정일",
-                        value: (() => {
-                          const product = getProductById(selectedOrder.product_id);
-                          const d = product?.pickup_date;
-                          return d ? formatDate(d) : "-";
-                        })(),
-                        readOnly: true,
-                      },
-                      {
-                        label: "주문 일시",
-                        value: formatDate(selectedOrder.ordered_at),
-                        readOnly: true,
-                      },
-                      {
-                        label: "수령 일시",
-                        value: formatDate(selectedOrder.completed_at),
-                        readOnly: true,
-                      },
-                      {
-                        label: "주문 ID",
-                        value: selectedOrder.order_id,
-                        readOnly: true,
-                        smallText: true,
-                        colSpan: 2,
-                      },
-                      {
-                        label: "고객 댓글",
-                        value: processBandTags(selectedOrder.comment) || (
-                          <span className="italic text-gray-400">
-                            댓글 없음
-                          </span>
-                        ),
-                        colSpan: 2,
-                        readOnly: true,
-                        preWrap: true,
-                      },
-                      // --- Editable fields below ---
-                      {
-                        label: "상품 번호",
-                        field: "itemNumber",
-                        type: "number",
-                        value: tempItemNumber,
-                        min: 1,
-                      },
-                      {
-                        label: "수량",
-                        field: "quantity",
-                        type: "number",
-                        value: tempQuantity,
-                        min: 1,
-                      },
-                      {
-                        label: "단가 (원)",
-                        field: "price",
-                        type: "number",
-                        value: tempPrice,
-                        min: 0,
-                        step: 100,
-                      },
-                      {
-                        label: "총 금액 (계산됨)",
-                        value: formatCurrency(
-                          calculateTotalAmount(
-                            parseInt(tempQuantity, 10) || 0,
-                            selectedOrder?.product?.price_options || [
-                              { price: tempPrice, quantity: 1 },
-                            ],
-                            parseFloat(tempPrice) || 0
-                          )
-                        ),
-                        readOnly: true,
-                        highlight: true,
-                      },
-                    ].map((item, index) => (
-                      // ... The existing rendering logic for each item ...
-                      <div
-                        key={item.label + index}
-                        className={item.colSpan === 2 ? "md:col-span-2" : ""}
-                      >
-                        <label
-                          htmlFor={item.field}
-                          className="block text-sm font-medium text-gray-700 mb-1"
-                        >
-                          {item.label}
-                        </label>
-                        {item.readOnly ? (
-                          <div
-                            className={`px-3 py-2 rounded-md border ${item.highlight
-                              ? "bg-orange-50 border-orange-200 text-orange-700 font-semibold text-lg"
-                              : "bg-gray-100 border-gray-200 text-gray-800"
-                              } ${item.smallText ? "text-xs break-all" : "text-sm"
-                              } ${item.preWrap // Apply preWrap style if needed
-                                ? "whitespace-pre-wrap break-words"
-                                : ""
-                              } min-h-[38px] flex items-center`}
-                          >
-                            {/* Display simple value or React node */}
-                            {typeof item.value === "string" ||
-                              typeof item.value === "number" ||
-                              React.isValidElement(item.value)
-                              ? item.value
-                              : String(item.value)}
-                          </div>
-                        ) : (
-                          <input
-                            id={item.field}
-                            type={item.type || "text"}
-                            min={item.min}
-                            step={item.step}
-                            value={item.value}
-                            onChange={(e) =>
-                              handleTempInputChange(item.field, e.target.value)
-                            }
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            // Disable editing for readOnly fields conceptually,
-                            // though we render a div above for readOnly=true
-                            disabled={item.readOnly}
-                          />
-                        )}
-                      </div>
-                    ))}
-                    {/* 저장 버튼 */}
-                    <div className="md:col-span-2 flex justify-end pt-2">
-                      <StatusButton
-                        onClick={saveOrderDetails}
-                        variant="primary"
-                        icon={PencilIcon}
-                        isLoading={false /* 필요 시 로딩 상태 추가 */}
-                      >
-                        변경사항 저장
-                      </StatusButton>
-                    </div>
-                  </div>
-                )}
-
-                {/* 주문 처리 탭 내용 */}
-                {activeTab === "processing" && (
-                  <div className="space-y-5">
-                    {/* 처리 방법 카드 */}
-                    <LightCard padding="p-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        주문 처리 방법
-                      </label>
-                      <div className="flex items-center space-x-3">
-                        {selectedOrder.processing_method === "pattern" && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                              <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-green-700">
-                                패턴 처리
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                숫자나 수량 단위가 감지되어 자동 처리되었습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                        {selectedOrder.processing_method === "ai" && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                              <SparklesIcon className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-blue-700">
-                                AI 처리
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                AI가 댓글을 분석하여 주문을 추출했습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                        {selectedOrder.processing_method === "fallback" && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                              <ExclamationCircleIcon className="w-5 h-5 text-yellow-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-yellow-700">
-                                Fallback 처리
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                패턴이나 AI로 처리되지 않아 기본값으로
-                                처리되었습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                        {!selectedOrder.processing_method && (
-                          <>
-                            <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                              <XCircleIcon className="w-5 h-5 text-gray-400" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-500">
-                                처리 방법 없음
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                처리 방법이 기록되지 않았습니다.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </LightCard>
-
-                    {/* 패턴 처리 상세 정보 */}
-                    {selectedOrder.processing_method === "pattern" && (
-                      <LightCard padding="p-4">
-                        <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                          패턴 처리 상세
-                        </label>
-                        <div className="space-y-3">
-                          {/* 감지된 패턴 */}
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-medium text-gray-700">
-                              감지된 패턴
-                            </span>
-                            <div className="flex items-center space-x-2">
-                              {(() => {
-                                const comment =
-                                  processBandTags(selectedOrder.comment) || "";
-                                const quantity = selectedOrder.quantity || 1;
-
-                                // 숫자만 있는 경우 (패턴 1)
-                                if (/^\s*\d+\s*$/.test(comment)) {
-                                  return (
-                                    <div className="flex items-center space-x-1">
-                                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
-                                        숫자 패턴
-                                      </span>
-                                      <span className="text-sm text-gray-600">
-                                        &quot;{comment.trim()}&quot;
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                // 숫자 + 단위가 있는 경우 (패턴 2)
-                                if (/\d+\s*[가-힣]+/.test(comment)) {
-                                  return (
-                                    <div className="flex items-center space-x-1">
-                                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
-                                        수량 단위
-                                      </span>
-                                      <span className="text-sm text-gray-600">
-                                        &quot;{comment.trim()}&quot;
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="flex items-center space-x-1">
-                                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                                      기타 패턴
-                                    </span>
-                                    <span className="text-sm text-gray-600">
-                                      &quot;{comment.trim()}&quot;
-                                    </span>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* 추출된 수량 */}
-                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm font-medium text-gray-700">
-                              추출된 수량
-                            </span>
-                            <span className="text-sm text-gray-900 font-semibold">
-                              {selectedOrder.quantity}개
-                            </span>
-                          </div>
-
-                          {/* 처리 속도 */}
-                          <div className="flex items-center justify-between py-2">
-                            <span className="text-sm font-medium text-gray-700">
-                              처리 속도
-                            </span>
-                            <div className="flex items-center space-x-2">
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                              <span className="text-sm text-green-600 font-medium">
-                                즉시 처리
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </LightCard>
-                    )}
-
-                    {/* AI 추출 결과 카드 */}
-                    {selectedOrder.processing_method === "ai" &&
-                      selectedOrder.ai_extraction_result && (
-                        <LightCard padding="p-4">
-                          <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                            AI 추출 결과
-                          </label>
-
-                          {(() => {
-                            try {
-                              const aiResult =
-                                typeof selectedOrder.ai_extraction_result ===
-                                  "string"
-                                  ? JSON.parse(
-                                    selectedOrder.ai_extraction_result
-                                  )
-                                  : selectedOrder.ai_extraction_result;
-
-                              return (
-                                <div className="space-y-4">
-                                  {/* 추출된 수량 */}
-                                  {aiResult.quantity !== undefined && (
-                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        추출된 수량
-                                      </span>
-                                      <span className="text-sm text-gray-900 font-semibold">
-                                        {aiResult.quantity}개
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {/* AI 추론 과정 */}
-                                  {aiResult.reason && (
-                                    <div>
-                                      <span className="text-sm font-medium text-gray-700 block mb-2">
-                                        AI 추론 과정
-                                      </span>
-                                      <div className="bg-gray-50 rounded-md p-3">
-                                        <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                          {aiResult.reason}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* 상품 매칭 정보 */}
-                                  {aiResult.productItemNumber && (
-                                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        매칭된 상품 번호
-                                      </span>
-                                      <span className="text-sm text-gray-900 font-semibold">
-                                        #{aiResult.productItemNumber}
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {/* 가격 정보 */}
-                                  {aiResult.actualUnitPrice && (
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between py-1">
-                                        <span className="text-sm text-gray-600">
-                                          단가
-                                        </span>
-                                        <span className="text-sm text-gray-900">
-                                          {formatCurrency(
-                                            aiResult.actualUnitPrice
-                                          )}
-                                        </span>
-                                      </div>
-                                      {aiResult.actualTotalPrice && (
-                                        <div className="flex items-center justify-between py-1 border-t border-gray-100 pt-2">
-                                          <span className="text-sm font-medium text-gray-700">
-                                            총 금액
-                                          </span>
-                                          <span className="text-sm text-gray-900 font-semibold">
-                                            {formatCurrency(
-                                              aiResult.actualTotalPrice
-                                            )}
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* 처리 상태 */}
-                                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                                    <span className="text-sm font-medium text-gray-700">
-                                      처리 상태
-                                    </span>
-                                    <div className="flex items-center space-x-2">
-                                      {aiResult.isOrder ? (
-                                        <>
-                                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                          <span className="text-sm text-green-600 font-medium">
-                                            주문 확인
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                          <span className="text-sm text-red-600 font-medium">
-                                            주문 아님
-                                          </span>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* 모호성 여부 */}
-                                  {aiResult.isAmbiguous !== undefined && (
-                                    <div className="flex items-center justify-between py-2">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        모호성 여부
-                                      </span>
-                                      <div className="flex items-center space-x-2">
-                                        {aiResult.isAmbiguous ? (
-                                          <>
-                                            <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                            <span className="text-sm text-yellow-600 font-medium">
-                                              모호함
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                            <span className="text-sm text-green-600 font-medium">
-                                              명확함
-                                            </span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            } catch (error) {
-                              return (
-                                <div className="bg-red-50 rounded-md p-3">
-                                  <p className="text-xs text-red-700">
-                                    AI 결과 파싱 오류: {error.message}
-                                  </p>
-                                  <details className="mt-2">
-                                    <summary className="text-xs text-red-600 cursor-pointer">
-                                      원본 데이터 보기
-                                    </summary>
-                                    <pre className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-all">
-                                      {JSON.stringify(
-                                        selectedOrder.ai_extraction_result,
-                                        null,
-                                        2
-                                      )}
-                                    </pre>
-                                  </details>
-                                </div>
-                              );
-                            }
-                          })()}
-                        </LightCard>
-                      )}
-
-                    {/* 원본 댓글 카드 */}
-                    <LightCard padding="p-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        원본 고객 댓글
-                      </label>
-                      <div className="bg-gray-50 rounded-md p-3">
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
-                          {processBandTags(selectedOrder.comment) || (
-                            <span className="italic text-gray-400">
-                              댓글 없음
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </LightCard>
-
-                    {/* 처리 시간 정보 */}
-                    <LightCard padding="p-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
-                        처리 시간 정보
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-sm font-medium text-gray-700 block">
-                            주문 생성
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            {formatDate(selectedOrder.ordered_at)}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium text-gray-700 block">
-                            처리 소요시간
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            {selectedOrder.ordered_at
-                              ? (() => {
-                                const minutes = getTimeDifferenceInMinutes(
-                                  selectedOrder.ordered_at
-                                );
-                                if (minutes < 60) {
-                                  return `${minutes}분 전`;
-                                } else if (minutes < 1440) {
-                                  return `${Math.floor(minutes / 60)}시간 전`;
-                                } else {
-                                  return `${Math.floor(minutes / 1440)}일 전`;
-                                }
-                              })()
-                              : "N/A"}
-                          </span>
-                        </div>
-                      </div>
-                    </LightCard>
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* 모달 푸터 */}
-            <div className="flex justify-between items-center p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
-              <button
-                onClick={closeDetailModal}
-                className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition"
-              >
-                닫기
-              </button>
-              {/* 푸터에는 수령완료 버튼만 표시 (info 탭에서는 저장 버튼이 본문에 있음) */}
-              {activeTab === "status" && (
-                <button
-                  onClick={() =>
-                    handleStatusChange(selectedOrder.order_id, "수령완료")
-                  }
-                  disabled={selectedOrder.status === "수령완료"}
-                  className={`${getStatusButtonStyle(
-                    "수령완료"
-                  )} px-4 py-2 text-sm`}
-                >
-                  {getStatusIcon("수령완료")} 수령완료 처리
-                </button>
-              )}
-              {/* info, processing 탭일 때 푸터에 빈 공간 유지 (선택사항) */}
-              {(activeTab === "info" || activeTab === "processing") && (
-                <div className="w-[130px]"></div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 댓글 모달 */}
       <CommentsModal
         isOpen={isCommentsModalOpen}

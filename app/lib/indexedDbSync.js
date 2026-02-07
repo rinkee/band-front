@@ -42,6 +42,41 @@ export const syncOrdersToIndexedDb = async (orders, options = {}) => {
   }
 };
 
+const normalizeCommentOrderForIndexedDb = (order) => {
+  if (!order) return null;
+  const commentOrderId =
+    order.comment_order_id ??
+    order.commentOrderId ??
+    order.order_id ??
+    null;
+  if (commentOrderId == null) return null;
+
+  const normalizedStatus = order.order_status ?? order.status ?? null;
+
+  return {
+    ...order,
+    comment_order_id: commentOrderId,
+    order_status: normalizedStatus,
+    status: normalizedStatus,
+  };
+};
+
+export const syncCommentOrdersToIndexedDb = async (orders, options = {}) => {
+  const { dispatchEvent = true } = options;
+  const payload = toArray(orders)
+    .map(normalizeCommentOrderForIndexedDb)
+    .filter(Boolean);
+  if (!payload.length || !isIndexedDBAvailable()) return false;
+
+  try {
+    await bulkPut("comment_orders", payload);
+    if (dispatchEvent) dispatchIndexedDbSyncEvent();
+    return true;
+  } catch (err) {
+    return false;
+  }
+};
+
 export const clearOrdersFromIndexedDb = async () => {
   if (!isIndexedDBAvailable()) return false;
   try {

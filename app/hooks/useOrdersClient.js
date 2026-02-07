@@ -20,8 +20,6 @@ const fetchOrders = async (key) => {
   const includeCount = filters.includeCount !== false;
   const requestedLimit = includeCount ? limit : limit + 1;
 
-  console.log(`🔍 [주문 조회] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, pickupAvailable=${!!filters.pickupAvailable}`);
-
   const ordersParams = {
     p_user_id: userId,
     p_status: filters.status || null,
@@ -84,8 +82,6 @@ const fetchOrders = async (key) => {
     totalItems != null
       ? offset + pageData.length < totalItems
       : rawData.length > limit;
-
-  console.log(`📊 [주문 조회] 결과: data.length=${pageData.length || 0}, totalItems=${totalItems ?? 'unknown'}, totalPages=${totalPages ?? 'unknown'}`);
 
   return {
     success: true,
@@ -150,9 +146,14 @@ const normalizeOrderStatsFilters = (filters = {}) => {
   return JSON.stringify(normalized);
 };
 
-const getOrderStatsCacheKeyFromNormalized = (userId, _normalizedFilters) => {
+const getOrderStatsCacheKeyFromNormalized = (userId, normalizedFilters = "{}") => {
   if (!userId) return null;
-  return `${ORDER_STATS_CACHE_PREFIX}${userId}`;
+  const encodedFilters = encodeURIComponent(
+    typeof normalizedFilters === "string"
+      ? normalizedFilters
+      : normalizeOrderStatsFilters(normalizedFilters)
+  );
+  return `${ORDER_STATS_CACHE_PREFIX}${userId}:${encodedFilters}`;
 };
 
 const getOrderStatsCacheKey = (userId, filterOptions) => {
@@ -216,7 +217,6 @@ const fetchOrderStats = async (key) => {
   );
   const cached = readOrderStatsCache(cacheKey);
   if (cached) {
-    console.log("📦 [주문 통계] 캐시 사용:", cacheKey);
     return {
       success: true,
       data: cached,
@@ -224,8 +224,6 @@ const fetchOrderStats = async (key) => {
   }
 
   const sb = getAuthedClient();
-
-  console.log(`📊 [주문 통계] RPC 호출: userId=${userId}`);
 
   const rpcParams = {
     p_user_id: userId,
@@ -243,8 +241,6 @@ const fetchOrderStats = async (key) => {
     console.error('RPC 통계 조회 실패:', error);
     throw error;
   }
-
-  console.log(`📊 [주문 통계] 결과:`, data);
 
   const result = {
     success: true,
