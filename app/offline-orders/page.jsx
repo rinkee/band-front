@@ -793,15 +793,16 @@ export default function OfflineOrdersPage() {
 
   // 다른 페이지/컴포넌트에서 window.dispatchEvent(new Event("indexeddb-sync")) 호출 시 증분 동기화 실행
   useEffect(() => {
-    const handler = async () => {
-      // IndexedDB에 새로운 스냅샷이 들어왔을 때 목록 갱신
-      await syncIncremental();
-      await Promise.all([
+    const handler = () => {
+      // 확장프로그램에서 IDB write 직후에는 로컬 데이터를 먼저 즉시 반영한다.
+      void Promise.all([
         loadRecentOrders(),
         loadProducts(),
         loadPosts(),
         loadDbCounts(),
       ]);
+      // Supabase 증분 동기화는 백그라운드로 진행한다.
+      void syncIncremental();
     };
     if (typeof window !== "undefined") {
       window.addEventListener("indexeddb-sync", handler);

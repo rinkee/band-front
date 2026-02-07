@@ -4,6 +4,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useSWRConfig } from 'swr';
 import { ensurePostReadyForReprocess } from '../lib/postProcessing/ensurePostReadyForReprocess';
+import {
+  buildPickupDateChangeConfirmMessage,
+  isPickupDateBeforePostedAt,
+  pickupDateIsoFromDateAndTime,
+  updatePostAndProductPickupDate,
+} from '../lib/pickupDateUpdate';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -658,27 +664,18 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
       return;
     }
 
-    // 날짜와 시간을 합쳐서 새로운 수령일 생성 (한국 시간 기준으로 저장)
-    const [year, month, day] = editPickupDate.split('-').map(Number);
-    const [hours, minutes] = editPickupTime.split(':').map(Number);
-    
-    
-    // 한국 시간으로 Date 객체 생성 (브라우저 로컬 기준)
-    const newPickupDateTime = new Date(year, month - 1, day, hours, minutes);
-    
-    // DB에는 KST 의도 시각이 정확히 보이도록 UTC 기준으로 -9시간 보정하여 저장
-    // 예: KST 09:00 → UTC 00:00Z 로 저장
-    const utcForDb = new Date(Date.UTC(year, month - 1, day, hours - 9, minutes, 0)).toISOString();
-    
-    
+    const pickupDateResult = pickupDateIsoFromDateAndTime(editPickupDate, editPickupTime);
+    if (!pickupDateResult.ok) {
+      alert(pickupDateResult.error || '올바른 날짜/시간을 입력해주세요.');
+      return;
+    }
+    const dateToSave = pickupDateResult.value;
+    const newPickupDateTime = new Date(dateToSave);
+
     // 수령일이 게시물 작성일보다 이전인지 확인
-    if (currentPost?.posted_at) {
-      const postedDate = new Date(currentPost.posted_at);
-      
-      if (newPickupDateTime < postedDate) {
-        alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
-        return;
-      }
+    if (isPickupDateBeforePostedAt(dateToSave, currentPost?.posted_at)) {
+      alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
+      return;
     }
 
     try {
@@ -697,122 +694,25 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
         return;
       }
 
-      // 기존 pickup_date 가져오기 (미수령 상태 초기화를 위해)
       const firstProduct = products && products.length > 0 ? products[0] : null;
-      let oldPickupDate = null;
-      if (firstProduct?.pickup_date) {
-        if (firstProduct.pickup_date.includes('T')) {
-          // ISO 형식 - UTC로 저장되어 있지만 실제로는 한국 시간
-          const tempDate = new Date(firstProduct.pickup_date);
-          oldPickupDate = new Date(
-            tempDate.getUTCFullYear(),
-            tempDate.getUTCMonth(),
-            tempDate.getUTCDate(),
-            tempDate.getUTCHours(),
-            tempDate.getUTCMinutes()
-          );
-        } else {
-          oldPickupDate = new Date(firstProduct.pickup_date);
-        }
-      }
-      
-      // 현재 한국 시간 가져오기
-      const currentTime = new Date();
-      
-      // 새로운 수령일이 현재 시간보다 미래인지 확인 (미수령 상태 초기화 조건)
-      const shouldResetUndeliveredStatus = newPickupDateTime > currentTime && 
-        (!oldPickupDate || oldPickupDate <= currentTime);
-
-      // 보정된 UTC ISO 문자열 저장 (DB에서 KST로 볼 때 의도한 시간으로 표시)
-      const dateToSave = utcForDb;
-
-      // 날짜 포맷 함수
-      const formatDateTime = (date) => {
-        const year = date.getFullYear();
-        const month = date.getMonth() + 1;
-        const day = date.getDate();
-        const hours = date.getHours();
-        const ampm = hours < 12 ? '오전' : '오후';
-        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-        return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
-      };
-
-      // 기존 수령일과 새 수령일 포맷
-      const oldDateStr = oldPickupDate ? formatDateTime(oldPickupDate) : '미정';
-      const newDateStr = formatDateTime(newPickupDateTime);
-
-      // 확인 알림
-      let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
-      confirmMsg += `기존: ${oldDateStr}\n`;
-      confirmMsg += `변경: ${newDateStr}\n\n`;
-
-      if (shouldResetUndeliveredStatus) {
-        confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
-      } else if (newPickupDateTime <= currentTime) {
-        confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
-      }
+      const confirmMsg = buildPickupDateChangeConfirmMessage({
+        oldPickupDate: firstProduct?.pickup_date || null,
+        newPickupDate: dateToSave,
+      });
 
       if (!confirm(confirmMsg)) {
         return; // 사용자가 취소하면 함수 종료
       }
 
-      // products 테이블 업데이트 - user_id 필터 추가
       const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
-
-      const { error: productsError } = await supabase
-        .from('products')
-        .update({ 
-          pickup_date: dateToSave,
-          updated_at: nowMinus9Iso
-        })
-        .eq('post_key', postKey)
-        .eq('user_id', userId);  // user_id 필터 추가
-
-      if (productsError) throw productsError;
-
-      // 주문 상태 업데이트 (수령일 기준)
-      const bandKey = post?.band_key;
-
-      if (shouldResetUndeliveredStatus) {
-        console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
-
-        const { error: ordersResetError } = await supabase
-          .from('orders')
-          .update({
-            sub_status: null,
-            updated_at: nowMinus9Iso
-          })
-          .eq('user_id', userId)
-          .eq('post_key', postKey)
-          .eq('band_key', bandKey)
-          .not('sub_status', 'is', null);  // sub_status가 null이 아닌 것만 업데이트
-
-        if (ordersResetError) {
-          console.error('주문 상태 초기화 실패:', ordersResetError);
-          // 에러가 발생해도 수령일 업데이트는 계속 진행
-        } else {
-          console.log('미수령 주문 상태 초기화 완료');
-        }
-      } else if (newPickupDateTime <= currentTime) {
-        // 수령일이 현재 시간보다 과거인 경우 미수령으로 설정
-
-        const { error: ordersUndeliveredError } = await supabase
-          .from('orders')
-          .update({
-            sub_status: '미수령',
-            updated_at: nowMinus9Iso
-          })
-          .eq('user_id', userId)
-          .eq('post_key', postKey)
-          .eq('band_key', bandKey)
-          .eq('status', '주문완료');  // 주문완료 상태인 것만 미수령으로 변경
-
-        if (ordersUndeliveredError) {
-          console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
-        } else {
-          console.log('미수령 상태 설정 완료');
-        }
-      }
+      await updatePostAndProductPickupDate({
+        supabase,
+        userId,
+        postKey,
+        postId: post?.post_id || null,
+        pickupDateISO: dateToSave,
+        updatedAt: nowMinus9Iso,
+      });
 
       // posts 테이블의 title 업데이트 (날짜 정보만 포함, 시간 제외)
       if (post?.title) {
@@ -882,13 +782,6 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
 
       // 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(postKey));
-
-      // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
-      await globalMutate(
-        (key) => Array.isArray(key) && key[0] === 'orders',
-        undefined,
-        { revalidate: true }
-      );
 
       // 전역 이벤트 발생
       if (typeof window !== 'undefined') {

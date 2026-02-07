@@ -13,6 +13,12 @@ import {
   writeBandKeyStatusCache,
   fetchBandKeyStatusFromDb,
 } from "../lib/bandKeyStatusCache";
+import {
+  buildPickupDateChangeConfirmMessage,
+  isPickupDateBeforePostedAt,
+  pickupDateIsoFromDateAndTime,
+  updatePostAndProductPickupDate,
+} from "../lib/pickupDateUpdate";
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -603,7 +609,12 @@ const CommentsModal = ({
   const [userId, setUserId] = useState(null); // 세션 사용자 ID 저장
   const dateInputRef = useRef(null); // 수령일 input ref
   const scrollContainerRef = useRef(null);
+  const requestGenerationRef = useRef(0);
   const { mutate: globalMutate } = useSWRConfig();
+
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+  }, [isOpen, postKey, bandKey, accessToken]);
 
   // 세션에서 사용자 정보 초기화
   useEffect(() => {
@@ -775,64 +786,29 @@ const CommentsModal = ({
         return;
       }
 
+      const pickupDateResult = pickupDateIsoFromDateAndTime(dateToSave, '00:00');
+      if (!pickupDateResult.ok) {
+        alert(pickupDateResult.error || '올바른 날짜를 입력해주세요.');
+        return;
+      }
+      const pickupDateISO = pickupDateResult.value;
+
       // 작성일 체크 - 작성일보다 이전으로 선택할 수 없음
       const postDate = activePost?.posted_at || activePost?.created_at;
-      if (postDate) {
-        // 날짜만 비교 (시간 제외)
-        const createdDate = new Date(postDate);
-        const createdDateOnly = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
-        
-        const selectedDate = new Date(dateToSave);
-        const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-        
-        console.log('날짜 검증:', { 
-          postDate,
-          createdDateOnly: createdDateOnly.toISOString().split('T')[0], 
-          selectedDateOnly: selectedDateOnly.toISOString().split('T')[0] 
-        });
-        
-        if (selectedDateOnly < createdDateOnly) {
-          alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
-          return;
-        }
+      if (isPickupDateBeforePostedAt(pickupDateISO, postDate)) {
+        alert('수령일은 게시물 작성일보다 이전으로 설정할 수 없습니다.');
+        return;
       }
 
       console.log('업데이트 데이터:', {
-        pickup_date: new Date(dateToSave).toISOString(),
+        pickup_date: pickupDateISO,
         postKey
       });
 
-      // 날짜 포맷 함수
-      const formatDateTime = (date) => {
-        const year = date.getFullYear();
-        const month = date.getMonth() + 1;
-        const day = date.getDate();
-        const hours = date.getHours();
-        const ampm = hours < 12 ? '오전' : '오후';
-        const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-        return `${year}년 ${month}월 ${day}일 ${ampm} ${displayHours}시`;
-      };
-
-      // 새 수령일과 현재시간 비교
-      const newPickupDateTime = new Date(dateToSave);
-      const currentTime = new Date();
-      const shouldResetUndeliveredStatus = newPickupDateTime > currentTime;
-
-      // 기존 수령일과 새 수령일 포맷
-      const oldPickupDate = activePost?.pickup_date;
-      const oldDateStr = oldPickupDate ? formatDateTime(new Date(oldPickupDate)) : '미정';
-      const newDateStr = formatDateTime(newPickupDateTime);
-
-      // 확인 알림
-      let confirmMsg = `수령일을 변경하시겠습니까?\n\n`;
-      confirmMsg += `기존: ${oldDateStr}\n`;
-      confirmMsg += `변경: ${newDateStr}\n\n`;
-
-      if (shouldResetUndeliveredStatus) {
-        confirmMsg += `기존 주문들의 미수령 상태가 해제됩니다.`;
-      } else {
-        confirmMsg += `기존 주문들이 미수령 상태가 됩니다.`;
-      }
+      const confirmMsg = buildPickupDateChangeConfirmMessage({
+        oldPickupDate: activePost?.pickup_date,
+        newPickupDate: pickupDateISO,
+      });
 
       if (!confirm(confirmMsg)) {
         return; // 사용자가 취소하면 함수 종료
@@ -846,72 +822,23 @@ const CommentsModal = ({
         throw new Error('사용자 ID를 찾을 수 없습니다.');
       }
       
-      const { error: productsError, data: productsData } = await supabase
-        .from('products')
-        .update({ 
-          pickup_date: new Date(dateToSave).toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('post_key', postKey)
-        .eq('user_id', userId);  // user_id 필터 추가
+      await updatePostAndProductPickupDate({
+        supabase,
+        userId,
+        postKey,
+        postId: activePost?.post_id || null,
+        pickupDateISO,
+        updateTimestamp: true,
+      });
 
-      console.log('Products 테이블 업데이트 결과:', { error: productsError, data: productsData });
-
-      if (productsError) throw productsError;
-
-      // orders 테이블 sub_status 업데이트
-      const nowMinus9Iso = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString();
-      const bandKey = activePost?.band_key;
-
-      if (shouldResetUndeliveredStatus) {
-        // 수령일이 미래로 변경 → sub_status 초기화
-        console.log('수령일이 미래로 변경되어 미수령 주문 상태를 초기화합니다.');
-
-        const { error: ordersResetError } = await supabase
-          .from('orders')
-          .update({
-            sub_status: null,
-            updated_at: nowMinus9Iso
-          })
-          .eq('user_id', userId)
-          .eq('post_key', postKey)
-          .eq('band_key', bandKey)
-          .not('sub_status', 'is', null);
-
-        if (ordersResetError) {
-          console.error('주문 상태 초기화 실패:', ordersResetError);
-          // 에러가 발생해도 수령일 업데이트는 계속 진행
-        } else {
-          console.log('미수령 주문 상태 초기화 완료');
-        }
-      } else if (newPickupDateTime <= currentTime) {
-        // 수령일이 과거 → sub_status를 '미수령'으로 설정
-        console.log('수령일이 과거이므로 주문을 미수령 상태로 설정합니다.');
-
-        const { error: ordersUndeliveredError } = await supabase
-          .from('orders')
-          .update({
-            sub_status: '미수령',
-            updated_at: nowMinus9Iso
-          })
-          .eq('user_id', userId)
-          .eq('post_key', postKey)
-          .eq('band_key', bandKey)
-          .eq('status', '주문완료');
-
-        if (ordersUndeliveredError) {
-          console.error('미수령 상태 설정 실패:', ordersUndeliveredError);
-        } else {
-          console.log('미수령 상태 설정 완료');
-        }
-      }
+      console.log('pickup_date 업데이트 완료:', { pickup_date: pickupDateISO, postKey });
 
       // posts 테이블의 title 업데이트 (날짜 부분 교체)
       if (activePost?.title) {
         const currentTitle = activePost.title;
         const dateMatch = currentTitle.match(/^\[[^\]]+\](.*)/);  
         if (dateMatch) {
-          const date = new Date(dateToSave);
+          const date = new Date(pickupDateISO);
           // 로컬 시간대(한국)로 표시
           const newDateStr = `${date.getMonth() + 1}월${date.getDate()}일`;
           const newTitle = `[${newDateStr}]${dateMatch[1]}`;
@@ -939,17 +866,10 @@ const CommentsModal = ({
       // 모든 관련 캐시 갱신
       await globalMutate(key => typeof key === 'string' && key.includes(postKey));
 
-      // orders-test 페이지의 SWR 캐시 무효화 (orders 관련 모든 캐시 키)
-      await globalMutate(
-        (key) => Array.isArray(key) && key[0] === 'orders',
-        undefined,
-        { revalidate: true }
-      );
-      
       // 부모 컴포넌트의 게시물 목록도 갱신하기 위해 전역 이벤트 발생
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('postUpdated', { 
-          detail: { postKey, pickup_date: new Date(dateToSave).toISOString() } 
+          detail: { postKey, pickup_date: pickupDateISO } 
         }));
         
         // localStorage에 플래그 저장하여 다른 페이지에서도 변경사항 인지 가능
@@ -1069,7 +989,7 @@ const CommentsModal = ({
   }, [savedComments, hideExcludedCustomers, excludedCustomers, comments]);
 
   // 스크롤 이벤트 핸들러 - 로직 수정
-  const handleScroll = () => {
+  const handleScroll = useCallback(() => {
     if (!scrollContainerRef.current || !nextParams) return;
 
     const { scrollTop, scrollHeight, clientHeight } =
@@ -1081,11 +1001,12 @@ const CommentsModal = ({
     const isNotAtBottom = scrollTop + clientHeight < scrollHeight - 10;
 
     setShowLoadMoreButton(isNearTop && isNotAtBottom);
-  };
+  }, [nextParams]);
 
   // 댓글 가져오기 함수
   const fetchComments = async (isRefresh = false, useBackupToken = false) => {
     if (!postKey || !bandKey || !accessToken) return;
+    const requestGeneration = requestGenerationRef.current;
 
     setLoading(true);
     setError(null);
@@ -1115,6 +1036,7 @@ const CommentsModal = ({
 
       // 프록시 API 엔드포인트 사용
       const response = await fetch(`/api/band/comments?${params}`);
+      if (requestGeneration !== requestGenerationRef.current) return;
 
       if (!response.ok) {
         // 메인 토큰 실패 시 백업 토큰으로 재시도
@@ -1136,6 +1058,7 @@ const CommentsModal = ({
       }
 
       const apiResponse = await response.json();
+      if (requestGeneration !== requestGenerationRef.current) return;
 
       if (!apiResponse.success) {
         throw new Error(apiResponse.message || "댓글 조회에 실패했습니다");
@@ -1187,16 +1110,20 @@ const CommentsModal = ({
 
       setNextParams(apiResponse.data?.paging?.next_params || null);
     } catch (err) {
+      if (requestGeneration !== requestGenerationRef.current) return;
       console.error("댓글 조회 오류:", err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   // 더 많은 댓글 가져오기
   const loadMoreComments = async (useBackupToken = false) => {
     if (!nextParams || loading) return;
+    const requestGeneration = requestGenerationRef.current;
 
     setLoading(true);
     try {
@@ -1216,6 +1143,7 @@ const CommentsModal = ({
 
       // 프록시 API 엔드포인트 사용
       const response = await fetch(`/api/band/comments?${params}`);
+      if (requestGeneration !== requestGenerationRef.current) return;
 
       if (!response.ok) {
         // 메인 토큰 실패 시 백업 토큰으로 재시도
@@ -1234,6 +1162,7 @@ const CommentsModal = ({
       }
 
       const apiResponse = await response.json();
+      if (requestGeneration !== requestGenerationRef.current) return;
 
       if (apiResponse.success) {
         const newComments = apiResponse.data?.items || [];
@@ -1259,9 +1188,12 @@ const CommentsModal = ({
         }, 50);
       }
     } catch (err) {
+      if (requestGeneration !== requestGenerationRef.current) return;
       console.error("추가 댓글 조회 오류:", err);
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -1386,7 +1318,7 @@ const CommentsModal = ({
       handleScroll();
       return () => container.removeEventListener("scroll", handleScroll);
     }
-  }, [nextParams]);
+  }, [handleScroll]);
 
   if (!isOpen) return null;
 

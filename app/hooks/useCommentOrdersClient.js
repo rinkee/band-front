@@ -13,8 +13,6 @@ const fetchCommentOrders = async (key) => {
   const limit = filters.limit || 30;
   const offset = (Math.max(1, page || 1) - 1) * limit;
 
-  console.log(`🔍 [댓글 조회] RPC 호출: userId=${userId}, page=${page}, limit=${limit}, pickupAvailable=${!!filters.pickupAvailable}`);
-
   const { data, error } = await sb.rpc('get_comment_orders', {
     p_user_id: userId,
     p_status: filters.status || null,
@@ -40,8 +38,6 @@ const fetchCommentOrders = async (key) => {
   // total_count는 모든 row에 동일하게 들어있음
   const totalItems = data?.[0]?.total_count || 0;
   const totalPages = Math.ceil(totalItems / limit);
-
-  console.log(`📊 [댓글 조회] 결과: data.length=${data?.length || 0}, totalItems=${totalItems}, totalPages=${totalPages}`);
 
   return {
     success: true,
