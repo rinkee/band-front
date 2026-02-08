@@ -77,15 +77,34 @@ const buildJson = (body, status = 200, extraHeaders = {}) =>
     },
   });
 
-const isMissingTokenColumnError = (error) => {
-  const text = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`.toLowerCase();
-  return (
-    error?.code === "42703" ||
-    error?.code === "PGRST204" ||
-    (text.includes("token") &&
-      (text.includes("column") ||
-        text.includes("does not exist") ||
-        text.includes("not found")))
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length !== 3) return null;
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padding = normalized.length % 4 ? "=".repeat(4 - (normalized.length % 4)) : "";
+    const json = Buffer.from(normalized + padding, "base64").toString("utf8");
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const tokenMatchesUserId = (token, userId) => {
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!normalizedUserId) return false;
+
+  if (String(token || "").trim() === normalizedUserId) {
+    return true;
+  }
+
+  const payload = decodeJwtPayload(token);
+  if (!payload) return false;
+
+  const candidates = [payload.sub, payload.userId, payload.user_id];
+  return candidates.some(
+    (value) => typeof value === "string" && value.trim() === normalizedUserId
   );
 };
 
@@ -110,29 +129,19 @@ const authenticateRequest = async (request, supabaseAdmin) => {
 
   const headerUserId = (request.headers.get("x-user-id") || "").trim();
 
-  const tokenLookup = await supabaseAdmin
-    .from("users")
-    .select(AUTH_USER_SELECT_COLUMNS)
-    .eq("token", bearerToken)
-    .maybeSingle();
-
-  if (!tokenLookup.error && tokenLookup.data) {
-    return { ok: true, user: tokenLookup.data, authMode: "token" };
-  }
-
-  if (!tokenLookup.error || !isMissingTokenColumnError(tokenLookup.error)) {
-    return {
-      ok: false,
-      status: 401,
-      message: "인증 토큰이 유효하지 않습니다.",
-    };
-  }
-
   if (!headerUserId || !isUuid(headerUserId)) {
     return {
       ok: false,
       status: 401,
       message: "x-user-id 헤더가 필요합니다.",
+    };
+  }
+
+  if (!tokenMatchesUserId(bearerToken, headerUserId)) {
+    return {
+      ok: false,
+      status: 401,
+      message: "인증 토큰과 사용자 정보가 일치하지 않습니다.",
     };
   }
 
@@ -150,7 +159,7 @@ const authenticateRequest = async (request, supabaseAdmin) => {
     };
   }
 
-  return { ok: true, user: legacyLookup.data, authMode: "legacy" };
+  return { ok: true, user: legacyLookup.data, authMode: "header" };
 };
 
 const normalizeToken = (value) => {

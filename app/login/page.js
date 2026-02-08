@@ -5,15 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SearchParamsHandler from "./SearchParamsHandler"; // 분리된 컴포넌트 임포트
 import { api } from "../lib/fetcher"; // api 인스턴스 임포트
-
-import { createClient } from "@supabase/supabase-js";
+import supabase from "../lib/supabaseClient";
 
 const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 // --- 👇 상수 정의 위치를 여기로 변경 👇 ---
 const REMEMBERED_LOGIN_ID_KEY = "rememberedLoginId";
