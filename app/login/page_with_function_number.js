@@ -8,15 +8,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SearchParamsHandler from "./SearchParamsHandler";
 import { api } from "../lib/fetcher";
-
-import { createClient } from "@supabase/supabase-js";
+import supabase from "../lib/supabaseClient";
 
 const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const REMEMBERED_LOGIN_ID_KEY = "rememberedLoginId";
 const REMEMBER_ID_CHECKBOX_KEY = "rememberIdCheckboxState";
