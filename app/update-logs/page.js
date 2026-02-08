@@ -4,6 +4,14 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 15,
+      date: '2026년 2월 8일',
+      updates: [
+        '[주요 업데이트] 네트워크 보안 강화 ',
+        '[주요 업데이트] AI호출 실패시 백업키 작동',
+      ]
+    },
+    {
       id: 14,
       date: '2026년 2월 7일',
       updates: [

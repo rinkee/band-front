@@ -116,6 +116,16 @@ const OrdersSearchBar = forwardRef(function OrdersSearchBar(
   const [showSearchMore, setShowSearchMore] = useState(false);
   const dropdownRef = useRef(null);
   const moreButtonRef = useRef(null);
+  const searchTypeLabelByValue = {
+    customer: "고객명",
+    product: "상품명",
+    comment: "댓글내용",
+    post_key: "post_key",
+  };
+  const selectedSearchTypeLabel =
+    searchTypeLabelByValue[searchType] || searchTypeLabelByValue.customer;
+  const isExtendedSearchType =
+    searchType === "comment" || searchType === "post_key";
 
   useEffect(() => {
     if (!showSearchMore) return;
@@ -200,9 +210,18 @@ const OrdersSearchBar = forwardRef(function OrdersSearchBar(
                     type="button"
                     onClick={() => setShowSearchMore(!showSearchMore)}
                     ref={moreButtonRef}
-                    className="hidden sm:inline-block ml-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:text-gray-800"
+                    aria-label={
+                      isExtendedSearchType
+                        ? `검색 타입 ${selectedSearchTypeLabel} 선택됨, 변경하려면 클릭`
+                        : "기타 검색 타입 선택"
+                    }
+                    className={`hidden sm:inline-flex items-center ml-1 rounded-md px-2 lg:px-3 py-1 transition whitespace-nowrap ${
+                      isExtendedSearchType
+                        ? "bg-black text-white shadow-sm font-semibold text-xs lg:text-base"
+                        : "text-xs text-gray-500 hover:text-gray-800"
+                    }`}
                   >
-                    ▼
+                    {isExtendedSearchType ? selectedSearchTypeLabel : "▼"}
                   </button>
                 </div>
               </div>
@@ -1741,6 +1760,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
     hasRecentStatusChangeRef.current = false;
     refreshOrders({ force: true });
   }, [filterSelection, showPickupAvailableOnly, refreshOrders]);
+
+  // 쿼리 조건이 바뀌면 캐시 재사용 여부와 무관하게 1회 서버 재검증
+  // (고객 입장에서 "조건은 바꿨는데 데이터가 그대로"인 상황 방지)
+  const lastOrdersQuerySignatureRef = useRef(null);
+  useEffect(() => {
+    if (!userData?.userId || !shouldFetchOrders) return;
+    const querySignature = JSON.stringify({
+      mode,
+      page: effectivePage,
+      filters: ordersFilters,
+    });
+
+    if (lastOrdersQuerySignatureRef.current === querySignature) return;
+    lastOrdersQuerySignatureRef.current = querySignature;
+    refreshOrders({ force: false });
+  }, [
+    mode,
+    effectivePage,
+    ordersFilters,
+    userData?.userId,
+    shouldFetchOrders,
+    refreshOrders,
+  ]);
 
   // 주문 보기(postKey)는 SWR 키 변경으로 1회만 호출
 
@@ -4376,12 +4418,29 @@ function OrdersTestPageContent({ mode = "raw" }) {
         </div>
 
         {/* 검색 필터 - sticky */}
-        <OrdersSearchBar
-          ref={searchBarRef}
-          initialSearchType={appliedSearchType}
-          onSearchTypeChange={(nextType) => {
-            searchTypeRef.current = nextType;
-          }}
+          <OrdersSearchBar
+            ref={searchBarRef}
+            initialSearchType={appliedSearchType}
+            onSearchTypeChange={(nextType) => {
+              searchTypeRef.current = nextType;
+              const activeTerm = (searchTerm || "").trim();
+              const hasActiveFilter = Boolean(activeTerm || urlPostKeyFilter);
+              if (!hasActiveFilter) return;
+
+              if (appliedSearchType !== nextType) {
+                setAppliedSearchType(nextType);
+              }
+
+              if (nextType === "post_key") {
+                setUrlPostKeyFilter(activeTerm || null);
+              } else if (urlPostKeyFilter) {
+                setUrlPostKeyFilter(null);
+              }
+
+              setExactCustomerFilter(null);
+              setCurrentPage(1);
+              setSelectedOrderIds([]);
+            }}
           searchInputRef={searchInputRef}
           isDataLoading={isDataLoading}
           isSyncing={isSyncing}

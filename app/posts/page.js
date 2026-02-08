@@ -3245,8 +3245,8 @@ const PostCard = React.memo(function PostCard({
       {/* 중간: 본문 내용 & 이미지 */}
       <div className="flex flex-1">
         {/* 왼쪽: 텍스트 내용 */}
-        <div className="flex-1 p-4">
-          <div className={`text-gray-700 text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-5'}`}>
+        <div className="flex-1 min-w-0 p-4">
+          <div className={`text-gray-700 text-sm leading-relaxed break-words ${isExpanded ? '' : 'line-clamp-5'}`}>
             {content || '내용 없음'}
           </div>
           <div className="flex items-center gap-3 mt-1">
@@ -3265,25 +3265,23 @@ const PostCard = React.memo(function PostCard({
           </div>
         </div>
 
-        {/* 오른쪽: 이미지 & 개수 */}
-        {hasImages && (
-          <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
-            <OptimizedImage
-              src={getProxiedImageUrl(mainImage, { thumbnail: "s150" })}
-              alt={cleanTitle || "게시물 이미지"}
-              fill
-              sizes="(max-width: 1024px) 64px, 96px"
-              className="object-cover rounded-lg"
-              fallback={
-                <div className="w-full h-full rounded-lg bg-gray-100 flex items-center justify-center absolute top-0 left-0">
-                  <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              }
-            />
-          </div>
-        )}
+        {/* 오른쪽: 이미지 (없어도 placeholder 유지) */}
+        <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
+          <OptimizedImage
+            src={hasImages ? getProxiedImageUrl(mainImage, { thumbnail: "s150" }) : null}
+            alt={cleanTitle || "게시물 이미지"}
+            fill
+            sizes="(max-width: 1024px) 64px, 96px"
+            className="object-cover rounded-lg"
+            fallback={
+              <div className="w-full h-full rounded-lg bg-gray-100 flex items-center justify-center absolute top-0 left-0 border border-gray-200">
+                <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            }
+          />
+        </div>
       </div>
 
       {/* 하단: 액션 버튼 */}
