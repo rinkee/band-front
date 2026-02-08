@@ -3243,9 +3243,9 @@ const PostCard = React.memo(function PostCard({
       </div>
 
       {/* 중간: 본문 내용 & 이미지 */}
-      <div className="flex flex-1">
+      <div className="grid flex-1 grid-cols-[minmax(0,1fr)_4rem] lg:grid-cols-[minmax(0,1fr)_6rem] gap-2 lg:gap-4 p-2 lg:p-4 items-start">
         {/* 왼쪽: 텍스트 내용 */}
-        <div className="flex-1 min-w-0 p-4">
+        <div className="min-w-0 p-2 lg:p-0">
           <div className={`text-gray-700 text-sm leading-relaxed break-words ${isExpanded ? '' : 'line-clamp-5'}`}>
             {content || '내용 없음'}
           </div>
@@ -3266,7 +3266,7 @@ const PostCard = React.memo(function PostCard({
         </div>
 
         {/* 오른쪽: 이미지 (없어도 placeholder 유지) */}
-        <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
+        <div className="relative w-16 h-16 lg:w-24 lg:h-24">
           <OptimizedImage
             src={hasImages ? getProxiedImageUrl(mainImage, { thumbnail: "s150" }) : null}
             alt={cleanTitle || "게시물 이미지"}

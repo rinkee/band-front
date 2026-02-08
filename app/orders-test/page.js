@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle, useMemo, useCallback, startTransition } from "react"; // React Fragment 사용을 위해 React 추가
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 
 // Date Picker 라이브러리 및 CSS 임포트
@@ -26,7 +26,6 @@ import JsBarcode from "jsbarcode";
 import { useCommentOrdersClient, useCommentOrderClientMutations } from "../hooks";
 import { useOrdersClient, useOrderClientMutations } from "../hooks/useOrdersClient";
 import { StatusButton } from "../components/StatusButton"; // StatusButton 다시 임포트
-import { useSWRConfig } from "swr";
 import useSWR from "swr";
 import UpdateButton from "../components/UpdateButtonImprovedWithFunction"; // execution_locks 확인 기능 활성화된 버튼
 import ErrorCard from "../components/ErrorCard";
@@ -995,12 +994,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // Feature flag: 새로운 통계 바 사용 여부
   const useNewStatsBar = true; // false로 변경하면 기존 UI 사용
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { scrollToTop } = useScroll();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [lastServerOrders, setLastServerOrders] = useState([]);
+  const [lastKnownPagination, setLastKnownPagination] = useState(null);
   const searchInputRef = useRef(null); // 검색 입력 ref (uncontrolled)
   const mainTopRef = useRef(null); // 페이지 최상단 스크롤용 ref
 
@@ -1123,6 +1125,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   const timeoutsRef = useRef(new Set());
   const lastManualSearchRefreshAtRef = useRef(0);
   const lastManualSearchCooldownAlertAtRef = useRef(0);
+  const lastResumeRefreshAtRef = useRef(0);
 
   const warnSearchCooldown = useCallback(() => {
     const now = Date.now();
@@ -1378,8 +1381,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
     };
   }, []);
 
-  // 클라이언트 필터링은 서버에서 처리하므로 화면 표시용 데이터만 유지
-  const displayOrders = useMemo(() => orders || [], [orders]);
+  const displayOrders = useMemo(() => {
+    if (Array.isArray(orders) && orders.length > 0) return orders;
+    if (Array.isArray(lastServerOrders) && lastServerOrders.length > 0) return lastServerOrders;
+    return orders || [];
+  }, [orders, lastServerOrders]);
 
   const calculateStats = useCallback((dataArray) => {
     if (!dataArray || dataArray.length === 0) {
@@ -1625,8 +1631,6 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // --- 현재 페이지 총 수량/금액 계산 제거 (사용 안함) ---
   const checkbox = useRef();
 
-  const { mutate: globalMutate } = useSWRConfig(); //
-
   const dateRangeOptions = [
     { value: "90days", label: "3개월" },
     { value: "30days", label: "1개월" },
@@ -1717,6 +1721,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
   // raw 모드는 페이지네이션 없이 1페이지 고정
   const effectivePage = isRawMode ? 1 : currentPage;
 
+  const ordersPageSignature = useMemo(() => {
+    if (!userData?.userId) return null;
+    return JSON.stringify({
+      mode,
+      userId: userData.userId,
+      page: effectivePage,
+      filters: ordersFilters,
+    });
+  }, [mode, userData?.userId, effectivePage, ordersFilters]);
+
   const shouldFetchOrders = !!userData?.userId && (
     !pendingPostKey ? true : (!initialSyncing && !!urlPostKeyFilter)
   );
@@ -1784,12 +1798,65 @@ function OrdersTestPageContent({ mode = "raw" }) {
     refreshOrders,
   ]);
 
+  // 라우트 재진입 시에도 1회 재검증 (탭 전환 시 복구되는 현상을 페이지 진입 시점에도 동일하게 보장)
+  useEffect(() => {
+    if (pathname !== "/orders-test") return;
+    if (!userData?.userId || !shouldFetchOrders) return;
+    refreshOrders({ force: false });
+  }, [pathname, userData?.userId, shouldFetchOrders, refreshOrders]);
+
+  // 다른 화면에서 복귀했을 때 캐시/동기화 타이밍 이슈를 줄이기 위해 1회 재검증
+  useEffect(() => {
+    if (!userData?.userId || !shouldFetchOrders) return;
+
+    const revalidateOnResume = () => {
+      const now = Date.now();
+      if (now - lastResumeRefreshAtRef.current < 1200) return;
+      lastResumeRefreshAtRef.current = now;
+      refreshOrders({ force: false });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        revalidateOnResume();
+      }
+    };
+
+    window.addEventListener("focus", revalidateOnResume);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", revalidateOnResume);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [userData?.userId, shouldFetchOrders, refreshOrders]);
+
   // 주문 보기(postKey)는 SWR 키 변경으로 1회만 호출
 
   // 서버 페이지네이션 데이터 사용
-  const totalItems = ordersData?.pagination?.totalItems ?? null;
-  const totalPages = ordersData?.pagination?.totalPages ?? null;
-  const hasMore = ordersData?.pagination?.hasMore ?? false;
+  const resolvedPagination = useMemo(() => {
+    if (ordersData?.pagination) return ordersData.pagination;
+    if (
+      lastKnownPagination?.signature === ordersPageSignature &&
+      lastKnownPagination?.pagination
+    ) {
+      return lastKnownPagination.pagination;
+    }
+    return null;
+  }, [ordersData?.pagination, lastKnownPagination, ordersPageSignature]);
+
+  const totalItems = resolvedPagination?.totalItems ?? null;
+  const totalPages = resolvedPagination?.totalPages ?? null;
+  const inferredHasMore =
+    !isRawMode &&
+    !resolvedPagination &&
+    !isOrdersLoading &&
+    !isOrdersValidating &&
+    Array.isArray(displayOrders) &&
+    displayOrders.length === itemsPerPage;
+  const hasMore = typeof resolvedPagination?.hasMore === "boolean"
+    ? resolvedPagination.hasMore
+    : inferredHasMore;
   const isTotalCountKnown = typeof totalItems === "number" && Number.isFinite(totalItems);
   const showPagination = !isRawMode && (
     isTotalCountKnown
@@ -1797,13 +1864,52 @@ function OrdersTestPageContent({ mode = "raw" }) {
       : currentPage > 1 || hasMore
   );
 
+  // 서버 pagination 스냅샷을 보존해 간헐적인 undefined 구간에서도 페이지 UI가 흔들리지 않게 유지
+  useEffect(() => {
+    if (!ordersPageSignature) return;
+    if (!ordersData?.pagination) return;
+    const next = {
+      signature: ordersPageSignature,
+      pagination: {
+        totalItems: ordersData.pagination.totalItems ?? null,
+        totalPages: ordersData.pagination.totalPages ?? null,
+        hasMore: ordersData.pagination.hasMore ?? false,
+      },
+    };
+    setLastKnownPagination((prev) => {
+      const prevSig = prev?.signature;
+      const prevPagination = prev?.pagination || null;
+      const same =
+        prevSig === next.signature &&
+        prevPagination?.totalItems === next.pagination.totalItems &&
+        prevPagination?.totalPages === next.pagination.totalPages &&
+        prevPagination?.hasMore === next.pagination.hasMore;
+      if (same) {
+        return prev;
+      }
+      return next;
+    });
+  }, [ordersPageSignature, ordersData?.pagination]);
+
+  // 상품/이미지 조회에 사용할 주문 소스.
+  // 기본은 SWR payload를 사용하고, 간헐적으로 payload가 비어도 fallback 렌더 데이터로 복구한다.
+  const ordersForProductLookup = useMemo(() => {
+    if (Array.isArray(ordersData?.data) && ordersData.data.length > 0) {
+      return ordersData.data;
+    }
+    if (Array.isArray(displayOrders) && displayOrders.length > 0) {
+      return displayOrders;
+    }
+    return EMPTY_LIST;
+  }, [ordersData?.data, displayOrders]);
+
   // 주문 데이터의 시그니처 (주문 ID 조합) - 실제 내용 기반
   const ordersSignature = useMemo(() => {
-    if (!ordersData?.data || ordersData.data.length === 0) {
+    if (!ordersForProductLookup || ordersForProductLookup.length === 0) {
       return 'empty';
     }
     // 상품 조회에 사용되는 키(post_key/band_number/post_number)까지 포함해 시그니처 생성
-    const ids = ordersData.data
+    const ids = ordersForProductLookup
       .map((o) => {
         const orderId = o.order_id ?? o.comment_order_id ?? o.id ?? "";
         const postKey = o.post_key || o.postKey || "";
@@ -1814,15 +1920,15 @@ function OrdersTestPageContent({ mode = "raw" }) {
       .sort()
       .join(',');
     return ids;
-  }, [ordersData?.data]);
+  }, [ordersForProductLookup]);
 
   // 상품 키 시그니처를 useMemo로 계산 (ordersSignature가 변경될 때만 재계산)
   const productKeysSignature = useMemo(() => {
-    if (!ordersData?.data || ordersData.data.length === 0) {
+    if (!ordersForProductLookup || ordersForProductLookup.length === 0) {
       return null;
     }
 
-    const items = ordersData.data;
+    const items = ordersForProductLookup;
     const postKeys = Array.from(new Set(items.map((r) => r.post_key || r.postKey).filter(Boolean)));
     const bandMap = new Map();
     items.forEach((r) => {
@@ -1841,7 +1947,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       postKeys: postKeys.sort(),
       bandMap: Array.from(bandMap.entries()).map(([k, v]) => [k, Array.from(v).sort()]).sort()
     });
-  }, [ordersData?.data]);
+  }, [ordersForProductLookup]);
 
   // 마지막으로 로드한 상품/이미지 signature 저장 (중복 fetch 방지)
   const lastProductSignatureRef = useRef(null);
@@ -1852,11 +1958,11 @@ function OrdersTestPageContent({ mode = "raw" }) {
   useEffect(() => {
     const fetchPostImages = async () => {
       try {
-        if (!userData?.userId || !ordersData?.data || ordersData.data.length === 0) {
+        if (!userData?.userId || !ordersForProductLookup || ordersForProductLookup.length === 0) {
           return;
         }
 
-        const items = ordersData.data;
+        const items = ordersForProductLookup;
         const postKeys = Array.from(new Set(items.map((r) => r.post_key || r.postKey).filter(Boolean)));
 
         // signature 생성
@@ -1925,7 +2031,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       }
     };
     fetchPostImages();
-  }, [userData?.userId, ordersData?.data, productReloadToken]);
+  }, [userData?.userId, ordersForProductLookup, productReloadToken]);
 
   // comment_orders에 맞는 상품 배치 조회 - 누적 캐싱 적용
   useEffect(() => {
@@ -3236,30 +3342,82 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [mutateProducts, userData?.userId]);
 
   useEffect(() => {
-    if (ordersData?.data) {
-      if (mode === "raw") {
-        // comment_orders 데이터를 레거시 UI가 기대하는 형태로 변환하여 표시
-        try {
-          const mapped = Array.isArray(ordersData.data)
-            ? ordersData.data.map(mapCommentOrderToLegacy)
-            : [];
-          setOrders(mapped);
-        } catch (_) {
-          setOrders(ordersData.data);
-        }
-      } else {
-        setOrders(ordersData.data);
+    if (pathname !== "/orders-test") return;
+    if (!Array.isArray(ordersData?.data)) return;
+    const incoming = ordersData.data;
+    let nextOrders = incoming;
+    if (mode === "raw") {
+      try {
+        nextOrders = incoming.map(mapCommentOrderToLegacy);
+      } catch (_) {
+        nextOrders = incoming;
       }
     }
-    if (ordersError) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Order Error:", ordersError);
+
+    // 최근 서버 응답 스냅샷을 유지해 재진입 시 로컬 상태 타이밍 이슈를 흡수
+    setLastServerOrders(nextOrders);
+
+    // SWR 응답을 로컬 렌더 상태에 강제 동기화.
+    // (페이지 재진입 시 네트워크 응답은 있는데 목록이 비는 현상 방지)
+    setOrders((prev) => {
+      const prevSignature = Array.isArray(prev)
+        ? prev
+            .map((o) =>
+              String(
+                o?.order_id ??
+                  o?.comment_order_id ??
+                  o?.id ??
+                  `${o?.post_key ?? ""}_${o?.ordered_at ?? ""}`
+              )
+            )
+            .join("|")
+        : "";
+      const nextSignature = nextOrders
+        .map((o) =>
+          String(
+            o?.order_id ??
+              o?.comment_order_id ??
+              o?.id ??
+              `${o?.post_key ?? ""}_${o?.ordered_at ?? ""}`
+          )
+        )
+        .join("|");
+      if (prevSignature === nextSignature) return prev;
+      return nextOrders;
+    });
+  }, [
+    pathname,
+    ordersData?.data,
+    mode,
+    mapCommentOrderToLegacy,
+  ]);
+
+  // 방어 복구: 서버 응답에 row가 있는데 렌더 배열이 비어 있으면 즉시 강제 동기화
+  useEffect(() => {
+    if (pathname !== "/orders-test") return;
+    if (!Array.isArray(ordersData?.data) || ordersData.data.length === 0) return;
+    if (displayOrders.length > 0) return;
+
+    let recovered = ordersData.data;
+    if (mode === "raw") {
+      try {
+        recovered = ordersData.data.map(mapCommentOrderToLegacy);
+      } catch (_) {
+        recovered = ordersData.data;
       }
-      setError("Order Fetch Error");
     }
-    // 클라이언트 측 페이지네이션에서는 필터 변경 시 이미 setCurrentPage(1) 처리됨
-    // 서버 데이터 체크는 불필요 (항상 page=1로 요청하므로)
-  }, [ordersData, ordersError, mode, mapCommentOrderToLegacy]);
+
+    setLastServerOrders(recovered);
+    setOrders(recovered);
+  }, [pathname, ordersData?.data, displayOrders.length, mode, mapCommentOrderToLegacy]);
+
+  useEffect(() => {
+    if (!ordersError) return;
+    if (process.env.NODE_ENV === "development") {
+      console.error("Order Error:", ordersError);
+    }
+    setError("Order Fetch Error");
+  }, [ordersError]);
   // statsLoading useEffect 제거 - 더 이상 필요하지 않음
   // 검색 디바운스 useEffect
   // useEffect(() => {
@@ -3678,38 +3836,19 @@ function OrdersTestPageContent({ mode = "raw" }) {
       if (force) {
         // 새로고침 버튼에서 호출 시: 상품 캐시도 무조건 최신으로 당겨오기
         forceProductRefetchRef.current = true;
+        // 캐시된 시그니처 무효화해서 재조회 강제
+        lastProductSignatureRef.current = null;
+        lastImageSignatureRef.current = null;
+        productFetchRequestSeqRef.current += 1;
+        // 상품/이미지 캐시 초기화
+        postProductsByPostKeyRef.current = {};
+        postProductsByBandPostRef.current = {};
+        setPostProductsByPostKey({});
+        setPostProductsByBandPost({});
+        setPostsImages({});
+        clearOrdersTestProductsCache();
+        setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
       }
-
-      // 리스트/통계 캐시 완전 무효화
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          (key[0] === "comment_orders" || key[0] === "orders") &&
-          key[1] === userData.userId,
-        undefined,
-        { revalidate: false }
-      );
-      globalMutate(
-        (key) =>
-          Array.isArray(key) &&
-          key[0] === "global-stats" &&
-          key[2] === userData.userId,
-        undefined,
-        { revalidate: false }
-      );
-
-      // 캐시된 시그니처 무효화해서 재조회 강제
-      lastProductSignatureRef.current = null;
-      lastImageSignatureRef.current = null;
-      productFetchRequestSeqRef.current += 1;
-      // 상품/이미지 캐시 초기화
-      postProductsByPostKeyRef.current = {};
-      postProductsByBandPostRef.current = {};
-      setPostProductsByPostKey({});
-      setPostProductsByBandPost({});
-      setPostsImages({});
-      clearOrdersTestProductsCache();
-      setProductReloadToken((v) => v + 1); // 상품/이미지 fetch useEffect 강제 재실행
 
       // 주문/배지/상품 모두 강제 재검증 (동일 키는 dedupe로 병합)
       await Promise.all([
@@ -3725,7 +3864,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
       setLastSyncAt(Date.now());
       setIsSyncing(false);
     }
-  }, [userData?.userId, refreshOrders, refreshStats, isSyncing, lastSyncAt, globalMutate, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating, showError]);
+  }, [userData?.userId, refreshOrders, refreshStats, isSyncing, lastSyncAt, isOrdersLoading, isOrdersValidating, isGlobalStatsLoading, isGlobalStatsValidating, showError]);
 
   const handleOrdersErrorRetry = useCallback(() => {
     setError(null);
@@ -3949,8 +4088,35 @@ function OrdersTestPageContent({ mode = "raw" }) {
     }
   }, [currentPage, scrollToTop]); // scrollToTop도 의존성 배열에 추가
 
+  // 페이지 이동 후 복귀/동기화로 데이터 범위가 줄어들면 현재 페이지가 빈 페이지가 될 수 있음.
+  // 이 경우 유효한 페이지로 자동 복귀시켜 "조건에 맞는 주문이 없습니다" 오탐을 방지한다.
+  useEffect(() => {
+    if (isRawMode) return;
+    if (currentPage <= 1) return;
+    if (isOrdersLoading || isOrdersValidating) return;
+    if (!ordersData || !Array.isArray(ordersData?.data)) return;
+    if (ordersData.data.length > 0) return;
+    if (hasMore) return;
+
+    if (typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages >= 1) {
+      const clampedPage = Math.min(currentPage, totalPages);
+      setCurrentPage(clampedPage >= 1 ? clampedPage : 1);
+      return;
+    }
+
+    setCurrentPage(1);
+  }, [
+    isRawMode,
+    currentPage,
+    isOrdersLoading,
+    isOrdersValidating,
+    ordersData,
+    hasMore,
+    totalPages,
+  ]);
+
   const paginate = useCallback((pageNumber) => {
-    const total = ordersData?.pagination?.totalPages;
+    const total = totalPages;
     if (pageNumber < 1) return;
     if (typeof total === "number" && Number.isFinite(total) && pageNumber > total) return;
     setCurrentPage(pageNumber);
@@ -3958,7 +4124,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
     if (tableContainerRef.current) {
       tableContainerRef.current.scrollTop = 0;
     }
-  }, [ordersData?.pagination?.totalPages]);
+  }, [totalPages]);
   const goToPreviousPage = useCallback(() => paginate(currentPage - 1), [paginate, currentPage]);
   const goToNextPage = useCallback(() => paginate(currentPage + 1), [paginate, currentPage]);
   const paginationPages = useMemo(() => {
