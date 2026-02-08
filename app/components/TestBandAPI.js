@@ -125,6 +125,8 @@ const TestBandAPI = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${userId}`,
+          'x-user-id': userId,
         },
         body: JSON.stringify({
           endpoint: '/band/posts',

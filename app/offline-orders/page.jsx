@@ -1172,6 +1172,11 @@ export default function OfflineOrdersPage() {
   };
 
   const callBandApiWithFailover = async (endpoint, params, tokens, preferredIndex = 0) => {
+    const authUserId = userData?.userId;
+    if (!authUserId) {
+      throw new Error("사용자 인증 정보가 없습니다.");
+    }
+
     const tokenList = Array.isArray(tokens) ? tokens : [];
     if (tokenList.length === 0) {
       throw new Error("Band API 토큰이 없습니다.");
@@ -1192,7 +1197,11 @@ export default function OfflineOrdersPage() {
       try {
         const response = await fetch("/api/band-api", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authUserId}`,
+            "x-user-id": authUserId,
+          },
           body: JSON.stringify({
             endpoint,
             params: { ...params, access_token: token },
@@ -1761,6 +1770,11 @@ export default function OfflineOrdersPage() {
     syncingRef.current = true;
     try {
       const userId = resolveUserId();
+      if (!userId) {
+        setToast({ type: "error", message: "사용자 인증 정보가 없어 동기화를 진행할 수 없습니다." });
+        return false;
+      }
+
       const queueItems = await getPendingQueue();
       const filteredQueue = userId
         ? queueItems.filter((q) => !q.user_id || q.user_id === userId)
@@ -1773,7 +1787,11 @@ export default function OfflineOrdersPage() {
 
       const response = await fetch("/api/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userId}`,
+          "x-user-id": userId,
+        },
         body: JSON.stringify({
           items: filteredQueue.map((q) =>
             q.table === "orders"

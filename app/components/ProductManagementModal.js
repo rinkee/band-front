@@ -415,8 +415,12 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
               try {
                 const resp = await fetch('/api/posts/manual-update', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, postKey, updates: { is_product: true } })
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${userId}`,
+                    'x-user-id': userId
+                  },
+                  body: JSON.stringify({ postKey, updates: { is_product: true } })
                 });
                 const result = await resp.json();
                 if (!resp.ok || !result?.success) {
@@ -449,8 +453,12 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
                   try {
                     const resp2 = await fetch('/api/posts/manual-update', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId, postKey, updates: { title: productName } })
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${userId}`,
+                        'x-user-id': userId
+                      },
+                      body: JSON.stringify({ postKey, updates: { title: productName } })
                     });
                     const result2 = await resp2.json();
                     if (!resp2.ok || !result2?.success) {

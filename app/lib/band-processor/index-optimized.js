@@ -43,7 +43,11 @@ export async function processBandPostsOptimized({
     // 1. Band 게시물 가져오기
     const postsResponse = await fetch('/api/band-api', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${userId}`,
+        'x-user-id': userId,
+      },
       body: JSON.stringify({
         endpoint: '/band/posts',
         params: {

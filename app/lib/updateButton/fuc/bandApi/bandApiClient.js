@@ -12,6 +12,18 @@
 const BAND_POSTS_API_URL = "https://openapi.band.us/v2/band/posts";
 const COMMENTS_API_URL = "https://openapi.band.us/v2.1/band/post/comments";
 
+const buildBandProxyAuthHeaders = (userId) => {
+  if (!userId) {
+    throw new Error("Band 프록시 인증 사용자 정보가 없습니다.");
+  }
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${userId}`,
+    "x-user-id": userId,
+  };
+};
+
 /**
  * 에러가 할당량 초과 에러인지 확인
  * @param {Error} error - 확인할 에러 객체
@@ -97,9 +109,7 @@ export async function fetchBandCommentsWithBackupFallback(userId, postKey, bandK
       if (typeof window !== 'undefined') {
         const response = await fetch('/api/band-api', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: buildBandProxyAuthHeaders(userId),
           body: JSON.stringify({
             endpoint: '/band/post/comments',
             params,
@@ -364,9 +374,7 @@ export async function fetchBandPostsWithFailover(bandApiFailover, userId, limit,
       if (typeof window !== 'undefined') {
         const response = await fetch('/api/band-api', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: buildBandProxyAuthHeaders(userId),
           body: JSON.stringify({
             endpoint: '/band/posts',
             params,
@@ -517,9 +525,7 @@ export async function fetchBandCommentsWithFailover(bandApiFailover, userId, pos
         if (typeof window !== 'undefined') {
           const response = await fetch('/api/band-api', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
+            headers: buildBandProxyAuthHeaders(userId),
             body: JSON.stringify({
               endpoint: '/band/post/comments',
               params,
@@ -797,9 +803,7 @@ export async function fetchBandPosts(userId, limit, supabase) {
       if (typeof window !== 'undefined') {
         const response = await fetch('/api/band-api', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: buildBandProxyAuthHeaders(userId),
           body: JSON.stringify({
             endpoint: '/band/posts',
             params,
@@ -955,9 +959,7 @@ export async function fetchBandComments(userId, postKey, bandKey, supabase) {
       if (typeof window !== 'undefined') {
         const response = await fetch('/api/band-api', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: buildBandProxyAuthHeaders(userId),
           body: JSON.stringify({
             endpoint: '/band/post/comments',
             params,

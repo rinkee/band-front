@@ -1,4 +1,74 @@
 import { NextResponse } from 'next/server';
+import {
+  fetchWithGoogleApiKeyFallback,
+  getGoogleApiKeyPool,
+} from "../../../lib/server/googleApiKeyFallback";
+
+const DEFAULT_AI_MODEL = "gemini-2.5-flash-lite";
+const ALLOWED_AI_MODELS = new Set([
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash-lite-preview-06-17",
+]);
+const MAX_BODY_BYTES = 256 * 1024;
+const MAX_CONTENT_CHARS = 20000;
+const MAX_POST_KEY_CHARS = 200;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+
+const getRateLimitStore = () => {
+  if (!globalThis.__aiProductExtractionRateLimitStore) {
+    globalThis.__aiProductExtractionRateLimitStore = new Map();
+  }
+  return globalThis.__aiProductExtractionRateLimitStore;
+};
+
+const getClientIp = (request) => {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() || "unknown";
+  }
+  return request.headers.get("x-real-ip") || "unknown";
+};
+
+const checkRateLimit = (key) => {
+  const store = getRateLimitStore();
+  const now = Date.now();
+  const bucket = store.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    store.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
+  if (bucket.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return {
+      allowed: false,
+      retryAfterSec: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+    };
+  }
+
+  bucket.count += 1;
+  store.set(key, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+};
+
+const parseJsonBodyWithLimit = async (request) => {
+  const raw = await request.text();
+  const bytes = Buffer.byteLength(raw || "", "utf8");
+  if (bytes > MAX_BODY_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      message: `요청 본문이 너무 큽니다. 최대 ${MAX_BODY_BYTES} bytes`,
+    };
+  }
+
+  try {
+    return { ok: true, body: raw ? JSON.parse(raw) : {} };
+  } catch {
+    return { ok: false, status: 400, message: "유효하지 않은 JSON 본문입니다." };
+  }
+};
 
 /**
  * AI를 사용하여 게시물 내용에서 상품 정보 추출 (Gemini API 사용)
@@ -7,15 +77,38 @@ import { NextResponse } from 'next/server';
  */
 export async function POST(request) {
   try {
+    const clientIp = getClientIp(request);
+    const actorUserId = (request.headers.get("x-user-id") || "").trim() || "anonymous";
+    const rl = checkRateLimit(`ai-product-extraction:${actorUserId}:${clientIp}`);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        {
+          products: [],
+          message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSec) },
+        }
+      );
+    }
+
+    const parsedBody = await parseJsonBodyWithLimit(request);
+    if (!parsedBody.ok) {
+      return NextResponse.json(
+        { products: [], message: parsedBody.message },
+        { status: parsedBody.status }
+      );
+    }
+
     const { 
       content, 
       postTime = null, 
       postKey,
-      aiModel = "gemini-2.5-flash-lite"
-    } = await request.json();
+      aiModel = DEFAULT_AI_MODEL
+    } = parsedBody.body || {};
 
-    const aiApiKey = process.env.GOOGLE_API_KEY;
-    const aiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${aiApiKey}`;
+    const googleApiKeyPool = getGoogleApiKeyPool();
     
     // 기본 상품 생성 함수 - 빈 배열 반환으로 잘못된 데이터 생성 방지
     function getDefaultProduct(errorMessage = "") {
@@ -23,8 +116,28 @@ export async function POST(request) {
       console.warn(`[AI API] 잘못된 더미 데이터 생성을 방지하기 위해 빈 배열을 반환합니다.`);
       return [];
     }
-    
-    if (!aiApiKey || !aiEndpoint || !aiEndpoint.includes("?key=")) {
+
+    if (typeof aiModel !== "string" || !ALLOWED_AI_MODELS.has(aiModel)) {
+      return NextResponse.json(
+        {
+          products: getDefaultProduct("허용되지 않은 aiModel"),
+          message: `허용되지 않은 모델입니다: ${aiModel}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (postKey && (typeof postKey !== "string" || postKey.length > MAX_POST_KEY_CHARS)) {
+      return NextResponse.json(
+        {
+          products: getDefaultProduct("postKey 형식 오류"),
+          message: `postKey는 최대 ${MAX_POST_KEY_CHARS}자 문자열이어야 합니다.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (googleApiKeyPool.length === 0) {
       console.warn(
         "[AI 분석] API 키 또는 엔드포인트가 올바르게 구성되지 않았습니다. 기본 상품을 반환합니다."
       );
@@ -37,7 +150,17 @@ export async function POST(request) {
       );
       return NextResponse.json({ products: getDefaultProduct("콘텐츠 없음") });
     }
-    
+
+    if (content.length > MAX_CONTENT_CHARS) {
+      return NextResponse.json(
+        {
+          products: getDefaultProduct("콘텐츠 길이 초과"),
+          message: `content가 너무 큽니다. 최대 ${MAX_CONTENT_CHARS}자`,
+        },
+        { status: 413 }
+      );
+    }
+
     console.log("[AI 분석] 시작 - postKey:", postKey || "unknown");
     
     // postTime 검증 및 요일 정보 포함 변수 생성
@@ -537,45 +660,13 @@ ${content}`;
       ],
     };
     
-    // AI API 호출 (재시도 로직 포함)
-    let response;
-    let retryCount = 0;
-    const maxRetries = 2;
-    
-    while (retryCount <= maxRetries) {
-      try {
-        response = await fetch(aiEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(30000), // 30초 타임아웃
-        });
-        
-        if (!response.ok) {
-          if (response.status === 500 && retryCount < maxRetries) {
-            console.warn(`[AI 분석] 500 에러, 재시도 ${retryCount + 1}/${maxRetries}`);
-            retryCount++;
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // 지수 백오프
-            continue;
-          }
-          throw new Error(
-            `AI API HTTP error: ${response.status} ${response.statusText}`
-          );
-        }
-        
-        break; // 성공 시 루프 종료
-      } catch (error) {
-        if (retryCount < maxRetries && (error.name === 'AbortError' || error.message.includes('500'))) {
-          console.warn(`[AI 분석] 요청 실패, 재시도 ${retryCount + 1}/${maxRetries}:`, error.message);
-          retryCount++;
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-          continue;
-        }
-        throw error;
-      }
-    }
+    const response = await fetchWithGoogleApiKeyFallback({
+      model: aiModel,
+      requestBody,
+      timeoutMs: 30000,
+      retriesPerKey: 2,
+      logPrefix: "[AI 분석]",
+    });
     
     const aiResponse = await response.json();
     

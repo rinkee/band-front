@@ -1,4 +1,77 @@
 import { NextResponse } from 'next/server';
+import {
+  fetchWithGoogleApiKeyFallback,
+  getGoogleApiKeyPool,
+} from "../../../lib/server/googleApiKeyFallback";
+
+const DEFAULT_AI_MODEL = "gemini-2.5-flash-lite-preview-06-17";
+const ALLOWED_AI_MODELS = new Set([
+  "gemini-2.5-flash-lite-preview-06-17",
+  "gemini-2.5-flash-lite",
+]);
+const MAX_BODY_BYTES = 512 * 1024;
+const MAX_COMMENTS_PER_REQUEST = 120;
+const MAX_SINGLE_COMMENT_CHARS = 1000;
+const MAX_TOTAL_COMMENT_CHARS = 60000;
+const MAX_POST_CONTENT_CHARS = 20000;
+const MAX_PRODUCTS_PER_POST = 120;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 30;
+
+const getRateLimitStore = () => {
+  if (!globalThis.__aiCommentAnalysisRateLimitStore) {
+    globalThis.__aiCommentAnalysisRateLimitStore = new Map();
+  }
+  return globalThis.__aiCommentAnalysisRateLimitStore;
+};
+
+const getClientIp = (request) => {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() || "unknown";
+  }
+  return request.headers.get("x-real-ip") || "unknown";
+};
+
+const checkRateLimit = (key) => {
+  const store = getRateLimitStore();
+  const now = Date.now();
+  const bucket = store.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    store.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
+  if (bucket.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return {
+      allowed: false,
+      retryAfterSec: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+    };
+  }
+
+  bucket.count += 1;
+  store.set(key, bucket);
+  return { allowed: true, retryAfterSec: 0 };
+};
+
+const parseJsonBodyWithLimit = async (request) => {
+  const raw = await request.text();
+  const bytes = Buffer.byteLength(raw || "", "utf8");
+  if (bytes > MAX_BODY_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      message: `요청 본문이 너무 큽니다. 최대 ${MAX_BODY_BYTES} bytes`,
+    };
+  }
+
+  try {
+    return { ok: true, body: raw ? JSON.parse(raw) : {} };
+  } catch {
+    return { ok: false, status: 400, message: "유효하지 않은 JSON 본문입니다." };
+  }
+};
 
 /**
  * AI를 사용하여 댓글에서 주문 정보 추출 (Gemini API 사용)
@@ -7,30 +80,153 @@ import { NextResponse } from 'next/server';
  */
 export async function POST(request) {
   try {
+    const clientIp = getClientIp(request);
+    const actorUserId = (request.headers.get("x-user-id") || "").trim() || "anonymous";
+    const rl = checkRateLimit(`ai-comment-analysis:${actorUserId}:${clientIp}`);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSec) },
+        }
+      );
+    }
+
+    const parsedBody = await parseJsonBodyWithLimit(request);
+    if (!parsedBody.ok) {
+      return NextResponse.json(
+        { orders: [], message: parsedBody.message },
+        { status: parsedBody.status }
+      );
+    }
+
     const { 
       postInfo, 
       comments, 
       bandNumber, 
       postId,
-      aiModel = "gemini-2.5-flash-lite-preview-06-17"
-    } = await request.json();
+      aiModel = DEFAULT_AI_MODEL
+    } = parsedBody.body || {};
 
-    const aiApiKey = process.env.GOOGLE_API_KEY;
-    const aiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${aiApiKey}`;
+    if (typeof aiModel !== "string" || !ALLOWED_AI_MODELS.has(aiModel)) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: `허용되지 않은 모델입니다: ${aiModel}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!postInfo || typeof postInfo !== "object" || Array.isArray(postInfo)) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: "postInfo 객체가 필요합니다.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(comments)) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: "comments 배열이 필요합니다.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const safePostInfo = {
+      ...postInfo,
+      content: typeof postInfo.content === "string" ? postInfo.content : "",
+      products: Array.isArray(postInfo.products) ? postInfo.products : [],
+    };
+
+    if (safePostInfo.content.length > MAX_POST_CONTENT_CHARS) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: `postInfo.content가 너무 큽니다. 최대 ${MAX_POST_CONTENT_CHARS}자`,
+        },
+        { status: 413 }
+      );
+    }
+
+    if (safePostInfo.products.length > MAX_PRODUCTS_PER_POST) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: `products 개수가 너무 많습니다. 최대 ${MAX_PRODUCTS_PER_POST}개`,
+        },
+        { status: 413 }
+      );
+    }
     
-    if (!aiApiKey || !aiEndpoint || !aiEndpoint.includes("?key=")) {
+    const googleApiKeyPool = getGoogleApiKeyPool();
+    
+    if (googleApiKeyPool.length === 0) {
       console.warn(
         "AI API 키 또는 엔드포인트가 올바르게 구성되지 않았습니다. AI 분석을 건너뜁니다."
       );
       return NextResponse.json({ orders: [] });
     }
     
-    if (!comments || comments.length === 0) {
+    if (comments.length === 0) {
       return NextResponse.json({ orders: [] });
     }
 
+    if (comments.length > MAX_COMMENTS_PER_REQUEST) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: `comments 개수가 너무 많습니다. 최대 ${MAX_COMMENTS_PER_REQUEST}개`,
+        },
+        { status: 413 }
+      );
+    }
+
+    const safeComments = comments.map((comment) => {
+      if (comment && typeof comment === "object") {
+        return comment;
+      }
+      return { comment: String(comment ?? "") };
+    });
+
+    let totalCommentChars = 0;
+    for (const comment of safeComments) {
+      const commentText = String(
+        comment?.body || comment?.content || comment?.comment || ""
+      );
+      if (commentText.length > MAX_SINGLE_COMMENT_CHARS) {
+        return NextResponse.json(
+          {
+            orders: [],
+            message: `개별 댓글 길이가 너무 깁니다. 최대 ${MAX_SINGLE_COMMENT_CHARS}자`,
+          },
+          { status: 413 }
+        );
+      }
+      totalCommentChars += commentText.length;
+    }
+
+    if (totalCommentChars > MAX_TOTAL_COMMENT_CHARS) {
+      return NextResponse.json(
+        {
+          orders: [],
+          message: `댓글 총 길이가 너무 깁니다. 최대 ${MAX_TOTAL_COMMENT_CHARS}자`,
+        },
+        { status: 413 }
+      );
+    }
+
     // 게시물 상품 정보 요약 (참고용)
-    const productsSummary = postInfo.products
+    const productsSummary = safePostInfo.products
       .map((product, index) => {
         const optionsStr =
           product.priceOptions
@@ -44,7 +240,7 @@ export async function POST(request) {
       .join("\n");
 
     // 댓글 정보 요약 (작성자 정보 포함)
-    const commentsSummary = comments
+    const commentsSummary = safeComments
       .map((comment, index) => {
         // Band API에서 latest_comments는 body 필드를, 직접 fetch한 comments는 content 필드를 사용
         const commentText =
@@ -100,7 +296,7 @@ export async function POST(request) {
 ### **[분석 대상 정보]**
 
 **1. 게시물 본문**:
-${postInfo.content}
+${safePostInfo.content}
 
 **2. 게시물 상품 정보**:
 ${productsSummary}
@@ -422,45 +618,13 @@ ${commentsSummary}
       ],
     };
 
-    // AI API 호출 (재시도 로직 포함)
-    let response;
-    let retryCount = 0;
-    const maxRetries = 2;
-    
-    while (retryCount <= maxRetries) {
-      try {
-        response = await fetch(aiEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(30000), // 30초 타임아웃
-        });
-        
-        if (!response.ok) {
-          if (response.status === 500 && retryCount < maxRetries) {
-            console.warn(`[AI 댓글 분석] 500 에러, 재시도 ${retryCount + 1}/${maxRetries}`);
-            retryCount++;
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // 지수 백오프
-            continue;
-          }
-          throw new Error(
-            `AI API HTTP 오류: ${response.status} ${response.statusText}`
-          );
-        }
-        
-        break; // 성공 시 루프 종료
-      } catch (error) {
-        if (retryCount < maxRetries && (error.name === 'AbortError' || error.message.includes('500'))) {
-          console.warn(`[AI 댓글 분석] 요청 실패, 재시도 ${retryCount + 1}/${maxRetries}:`, error.message);
-          retryCount++;
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-          continue;
-        }
-        throw error;
-      }
-    }
+    const response = await fetchWithGoogleApiKeyFallback({
+      model: aiModel,
+      requestBody,
+      timeoutMs: 30000,
+      retriesPerKey: 2,
+      logPrefix: "[AI 댓글 분석]",
+    });
 
     const aiResponse = await response.json();
     
@@ -553,13 +717,13 @@ ${commentsSummary}
         // postInfo 정보 추가
         enhancedOrder.bandNumber = bandNumber;
         enhancedOrder.postId = postId;
-        enhancedOrder.postUrl = postInfo.postUrl || null;
+        enhancedOrder.postUrl = safePostInfo.postUrl || null;
         
         // AI가 가격을 계산하지 않은 경우에만 fallback 처리
         if (!order.unitPrice || !order.totalPrice) {
           // selectedOption이 있는 경우 priceOptions에서 가격 정보 추가
           if (order.selectedOption && order.productItemNumber) {
-            const product = postInfo.products.find(
+            const product = safePostInfo.products.find(
               (p) => p.itemNumber === order.productItemNumber
             );
             if (product && product.priceOptions) {
@@ -576,7 +740,7 @@ ${commentsSummary}
           
           // 그래도 가격이 없으면 base_price 사용
           if (!enhancedOrder.unitPrice && order.productItemNumber) {
-            const product = postInfo.products.find(
+            const product = safePostInfo.products.find(
               (p) => p.itemNumber === order.productItemNumber
             );
             if (product && product.basePrice) {
