@@ -6,8 +6,6 @@ import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import { ArrowPathIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
 import {
-  searchOrders,
-  getRecent,
   upsertOrderLocal,
   addToQueue,
   isIndexedDBAvailable,
@@ -26,6 +24,7 @@ import Toast from "../components/Toast";
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 30;
+const SEARCH_RESULT_LIMIT = 200;
 const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/health`
   : null;
@@ -40,6 +39,15 @@ const COMMENT_ORDER_COLUMNS = "*";
 const OFFLINE_USER_KEY = "offlineUserId";
 const OFFLINE_ACCOUNTS_KEY = "offlineAccounts";
 const MAX_COMMENT_PAGES = 10;
+const HEALTH_POLL_BASE_MS = 15000;
+const HEALTH_POLL_MAX_MS = 120000;
+const HEALTH_POLL_BACKOFF_FACTOR = 2;
+const isDev = process.env.NODE_ENV === "development";
+const debugLog = (...args) => {
+  if (isDev) {
+    console.log(...args);
+  }
+};
 
 // 바코드 컴포넌트
 const Barcode = ({ value, width = 1.2, height = 32, fontSize = 12 }) => {
@@ -122,12 +130,14 @@ export default function OfflineOrdersPage() {
   const [hasConfirmedAccount, setHasConfirmedAccount] = useState(false);
   const [showOnlineModal, setShowOnlineModal] = useState(false);
   const ordersLoadIdRef = useRef(0);
+  const searchInputRef = useRef(null);
   const syncingRef = useRef(false);
   const syncDebounceRef = useRef(null);
   const [userData, setUserData] = useState(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const userDropdownRef = useRef(null);
   const [dbCounts, setDbCounts] = useState({ posts: 0, products: 0, orders: 0, comments: 0 });
+  const selectedOrderIdSet = useMemo(() => new Set(selectedOrderIds), [selectedOrderIds]);
 
   // product_id에서 band_number와 post_number 추출
   // 형식: prod_{user_id}_{band_number}_{post_number}_item{n}
@@ -187,7 +197,7 @@ export default function OfflineOrdersPage() {
         map[key].push(p);
       }
     });
-    console.log("[offline-orders] productsByBandPost 맵:", Object.keys(map));
+    debugLog("[offline-orders] productsByBandPost 맵:", Object.keys(map));
     return map;
   }, [products]);
 
@@ -433,6 +443,110 @@ export default function OfflineOrdersPage() {
     return getPostImage(order);
   };
 
+  // 상품 번호 추출
+  const getItemNumber = (p, idx) => {
+    const n1 = Number(p?.item_number);
+    if (Number.isFinite(n1) && n1 > 0) return n1;
+    try {
+      const m = String(p?.product_id || "").match(/item(\d+)/i);
+      if (m && m[1]) {
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+    } catch { }
+    return idx + 1;
+  };
+
+  const loadQueueSize = async () => {
+    try {
+      const pending = await getPendingQueue();
+      setQueueSize(pending.length);
+    } catch (_) {
+      setQueueSize(0);
+    }
+  };
+
+  const refreshLocalSnapshot = useCallback(
+    async ({ showLoading = false, includeQueue = false } = {}) => {
+      const loadId = ++ordersLoadIdRef.current;
+      if (showLoading) {
+        setLoading(true);
+      }
+
+      try {
+        const userId = resolveUserId();
+
+        const [allPosts, allProducts, allOrders, pendingQueue] = await Promise.all([
+          getAllFromStore("posts"),
+          getAllFromStore("products"),
+          getAllFromStore(isRawMode ? "comment_orders" : "orders"),
+          includeQueue ? getPendingQueue() : Promise.resolve(null),
+        ]);
+
+        const filteredPosts = userId
+          ? allPosts.filter((item) => !item?.user_id || item.user_id === userId)
+          : [];
+        const filteredProducts = userId
+          ? allProducts.filter((item) => !item?.user_id || item.user_id === userId)
+          : [];
+        const filteredOrders = userId
+          ? allOrders.filter((item) => !item?.user_id || item.user_id === userId)
+          : [];
+        const mappedOrders = isRawMode
+          ? filteredOrders.map(mapCommentOrderToLegacy).filter(Boolean)
+          : filteredOrders;
+        const recentOrders = [...mappedOrders].sort((a, b) => {
+          const parseTime = (value) => {
+            if (!value) return 0;
+            const t = new Date(value).getTime();
+            return Number.isNaN(t) ? 0 : t;
+          };
+          const aTime =
+            parseTime(a?.ordered_at || a?.orderedAt) ||
+            parseTime(a?.updated_at || a?.updatedAt) ||
+            parseTime(a?.created_at || a?.createdAt) ||
+            0;
+          const bTime =
+            parseTime(b?.ordered_at || b?.orderedAt) ||
+            parseTime(b?.updated_at || b?.updatedAt) ||
+            parseTime(b?.created_at || b?.createdAt) ||
+            0;
+          return bTime - aTime;
+        });
+
+        const nextCounts = userId
+          ? {
+              posts: allPosts.filter((item) => item?.user_id === userId).length,
+              products: allProducts.filter((item) => item?.user_id === userId).length,
+              orders: allOrders.filter((item) => item?.user_id === userId).length,
+              comments: 0,
+            }
+          : { posts: 0, products: 0, orders: 0, comments: 0 };
+
+        if (loadId !== ordersLoadIdRef.current) return;
+
+        setPosts(filteredPosts);
+        setProducts(filteredProducts);
+        setOrders(recentOrders);
+        setDbCounts(nextCounts);
+        if (includeQueue && Array.isArray(pendingQueue)) {
+          setQueueSize(pendingQueue.length);
+        }
+      } catch (err) {
+        if (loadId !== ordersLoadIdRef.current) return;
+        setToast({
+          message: err?.message || "로컬 데이터를 불러오지 못했습니다.",
+          type: "error",
+        });
+      } finally {
+        if (showLoading && loadId === ordersLoadIdRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [isRawMode, mapCommentOrderToLegacy]
+  );
+
   const syncIncremental = useCallback(async () => {
     if (incrementalSyncing) return;
     const userId = resolveUserId();
@@ -490,114 +604,25 @@ export default function OfflineOrdersPage() {
         message: err.message || "증분 동기화 중 오류가 발생했습니다.",
       });
     } finally {
-      await Promise.all([
-        loadRecentOrders(),
-        loadProducts(),
-        loadPosts(),
-        loadDbCounts(),
-      ]);
+      await refreshLocalSnapshot();
       setIncrementalSyncing(false);
     }
-  }, [incrementalSyncing, isRawMode]);
-
-  // 상품 번호 추출
-  const getItemNumber = (p, idx) => {
-    const n1 = Number(p?.item_number);
-    if (Number.isFinite(n1) && n1 > 0) return n1;
-    try {
-      const m = String(p?.product_id || "").match(/item(\d+)/i);
-      if (m && m[1]) {
-        const n = parseInt(m[1], 10);
-        if (Number.isFinite(n) && n > 0) return n;
-      }
-    } catch { }
-    return idx + 1;
-  };
-
-  const loadDbCounts = async () => {
-    try {
-      const userId = resolveUserId();
-      if (!userId) {
-        setDbCounts({ posts: 0, products: 0, orders: 0, comments: 0 });
-        return;
-      }
-
-      const [allPosts, allProducts, allOrders] = await Promise.all([
-        getAllFromStore("posts"),
-        getAllFromStore("products"),
-        getAllFromStore(isRawMode ? "comment_orders" : "orders"),
-      ]);
-
-      const userPosts = allPosts.filter(item => item?.user_id === userId);
-      const userProducts = allProducts.filter(item => item?.user_id === userId);
-      const userOrders = allOrders.filter(item => item?.user_id === userId);
-
-      setDbCounts({
-        posts: userPosts.length,
-        products: userProducts.length,
-        orders: userOrders.length,
-        comments: 0, // 댓글은 별도 테이블이 없으므로 0
-      });
-    } catch (err) {
-      console.error("[offline-orders] DB 카운트 로드 실패:", err);
-      setDbCounts({ posts: 0, products: 0, orders: 0, comments: 0 });
-    }
-  };
-
-  const loadProducts = async () => {
-    try {
-      const allProducts = await getAllFromStore("products");
-      console.log("[offline-orders] 로드된 상품 수:", allProducts.length);
-      const filtered = filterByUserId(allProducts);
-      if (allProducts.length > 0) {
-        const sample = allProducts[0];
-        console.log("[offline-orders] 상품 샘플:", sample);
-        console.log("[offline-orders] 상품 키 정보:", {
-          product_id: sample.product_id,
-          post_key: sample.post_key,
-          post_id: sample.post_id,
-          band_number: sample.band_number,
-          post_number: sample.post_number,
-        });
-      }
-      setProducts(filtered);
-    } catch (_) {
-      setProducts([]);
-    }
-  };
-
-  const loadPosts = async () => {
-    try {
-      const allPosts = await getAllFromStore("posts");
-      setPosts(filterByUserId(allPosts));
-    } catch (_) {
-      setPosts([]);
-    }
-  };
-
-  const loadQueueSize = async () => {
-    try {
-      const pending = await getPendingQueue();
-      setQueueSize(pending.length);
-    } catch (_) {
-      setQueueSize(0);
-    }
-  };
+  }, [incrementalSyncing, isRawMode, refreshLocalSnapshot]);
 
   const loadRecentOrders = async () => {
     const loadId = ++ordersLoadIdRef.current;
     setLoading(true);
     try {
       const allOrders = await getAllFromStore(isRawMode ? "comment_orders" : "orders");
-      console.log("[offline-orders] 로드된 주문 수:", allOrders.length);
+      debugLog("[offline-orders] 로드된 주문 수:", allOrders.length);
       const filteredOrders = filterByUserId(allOrders);
       const mappedOrders = isRawMode ? filteredOrders.map(mapCommentOrderToLegacy).filter(Boolean) : filteredOrders;
-      console.log("[offline-orders] 필터링 후 주문 수:", mappedOrders.length);
+      debugLog("[offline-orders] 필터링 후 주문 수:", mappedOrders.length);
       const recent = [...mappedOrders].sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
       if (recent.length > 0) {
         const sample = recent[0];
-        console.log("[offline-orders] 주문 샘플:", sample);
-        console.log("[offline-orders] 주문 키 정보:", {
+        debugLog("[offline-orders] 주문 샘플:", sample);
+        debugLog("[offline-orders] 주문 키 정보:", {
           order_id: sample.order_id,
           post_key: sample.post_key,
           band_number: sample.band_number,
@@ -684,43 +709,121 @@ export default function OfflineOrdersPage() {
       console.warn("사용자 정보 로드 실패:", err);
     }
 
-    loadRecentOrders();
-    loadQueueSize();
-    loadProducts();
-    loadPosts();
-    loadDbCounts();
+    void refreshLocalSnapshot({ showLoading: true, includeQueue: true });
     loadStorageEstimate();
 
-    // Supabase health check (polling)
-    let healthTimer;
-    const checkHealth = async () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return;
+    // Supabase health check (backoff polling)
+    let healthTimer = null;
+    let inFlightController = null;
+    let failCount = 0;
+    let disposed = false;
+    let checking = false;
+
+    const nextBackoffDelay = () =>
+      Math.min(
+        HEALTH_POLL_BASE_MS * HEALTH_POLL_BACKOFF_FACTOR ** failCount,
+        HEALTH_POLL_MAX_MS
+      );
+
+    const scheduleHealthCheck = (delayMs) => {
+      if (disposed) return;
+      if (healthTimer) {
+        clearTimeout(healthTimer);
       }
-      if (!HEALTH_URL || !navigator.onLine) {
-        setSupabaseHealth("offline");
-        return;
-      }
+      healthTimer = setTimeout(() => {
+        void checkHealth();
+      }, delayMs);
+    };
+
+    const checkHealth = async ({ force = false } = {}) => {
+      if (disposed || checking) return;
+      checking = true;
       try {
+        if (
+          !force &&
+          typeof document !== "undefined" &&
+          document.visibilityState === "hidden"
+        ) {
+          scheduleHealthCheck(HEALTH_POLL_BASE_MS);
+          return;
+        }
+
+        if (!HEALTH_URL || !navigator.onLine) {
+          setSupabaseHealth("offline");
+          failCount = Math.min(failCount + 1, 4);
+          scheduleHealthCheck(nextBackoffDelay());
+          return;
+        }
+
         const controller = new AbortController();
+        inFlightController = controller;
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(HEALTH_URL, {
-          method: "GET",
-          signal: controller.signal,
-          headers: SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {},
-        });
-        clearTimeout(timeoutId);
-        // 200만 정상으로 간주, 그 외(401 포함)는 불안정 처리
-        setSupabaseHealth(res.status === 200 ? "healthy" : "offline");
+
+        let healthy = false;
+        try {
+          const res = await fetch(HEALTH_URL, {
+            method: "GET",
+            signal: controller.signal,
+            headers: SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {},
+          });
+          healthy = res.status === 200;
+          setSupabaseHealth(healthy ? "healthy" : "offline");
+        } finally {
+          clearTimeout(timeoutId);
+          if (inFlightController === controller) {
+            inFlightController = null;
+          }
+        }
+
+        if (healthy) {
+          failCount = 0;
+          scheduleHealthCheck(HEALTH_POLL_BASE_MS);
+        } else {
+          failCount = Math.min(failCount + 1, 4);
+          scheduleHealthCheck(nextBackoffDelay());
+        }
       } catch (_) {
         setSupabaseHealth("offline");
+        failCount = Math.min(failCount + 1, 4);
+        scheduleHealthCheck(nextBackoffDelay());
+      } finally {
+        checking = false;
       }
     };
-    checkHealth();
-    healthTimer = setInterval(checkHealth, 15000);
+
+    const handleOnline = () => {
+      failCount = 0;
+      void checkHealth({ force: true });
+    };
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        failCount = 0;
+        void checkHealth({ force: true });
+      }
+    };
+
+    void checkHealth({ force: true });
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
 
     return () => {
-      clearInterval(healthTimer);
+      disposed = true;
+      if (healthTimer) {
+        clearTimeout(healthTimer);
+      }
+      if (inFlightController) {
+        inFlightController.abort();
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
     };
   }, []);
 
@@ -756,23 +859,11 @@ export default function OfflineOrdersPage() {
     }
   }, [offlineAccounts, hasConfirmedAccount, currentUserId, pendingUserId]);
 
-  // 계정 변경 시 데이터 새로 불러오기
+  // 계정 변경 또는 raw/legacy 모드 전환 시 데이터 새로 불러오기
   useEffect(() => {
     if (!currentUserId) return;
-    loadRecentOrders();
-    loadProducts();
-    loadPosts();
-    loadDbCounts();
-  }, [currentUserId]);
-
-  // raw/legacy 모드 전환 시 데이터 새로 불러오기
-  useEffect(() => {
-    if (!currentUserId) return;
-    loadRecentOrders();
-    loadProducts();
-    loadPosts();
-    loadDbCounts();
-  }, [isRawMode]);
+    void refreshLocalSnapshot({ showLoading: true });
+  }, [currentUserId, isRawMode, refreshLocalSnapshot]);
 
   // 사용자 드롭다운 외부 클릭 감지
   useEffect(() => {
@@ -795,12 +886,7 @@ export default function OfflineOrdersPage() {
   useEffect(() => {
     const handler = () => {
       // 확장프로그램에서 IDB write 직후에는 로컬 데이터를 먼저 즉시 반영한다.
-      void Promise.all([
-        loadRecentOrders(),
-        loadProducts(),
-        loadPosts(),
-        loadDbCounts(),
-      ]);
+      void refreshLocalSnapshot();
       // Supabase 증분 동기화는 백그라운드로 진행한다.
       void syncIncremental();
     };
@@ -812,42 +898,66 @@ export default function OfflineOrdersPage() {
         window.removeEventListener("indexeddb-sync", handler);
       }
     };
-  }, [syncIncremental]);
+  }, [syncIncremental, refreshLocalSnapshot]);
 
-  const searchCommentOrders = async (term) => {
-    const all = await getAllFromStore("comment_orders");
-    const filtered = filterByUserId(all);
-    if (!term) return filtered.map(mapCommentOrderToLegacy).filter(Boolean);
-    const lower = term.toLowerCase();
-    const matched = filtered.filter((row) => {
-      const name = row.commenter_name || "";
-      const body = row.comment_body || "";
-      const key = row.comment_key || "";
-      const id = row.comment_order_id || "";
-      return (
-        String(name).toLowerCase().includes(lower) ||
-        String(body).toLowerCase().includes(lower) ||
-        String(key).includes(term) ||
-        String(id).includes(term)
-      );
-    });
-    return matched.map(mapCommentOrderToLegacy).filter(Boolean);
-  };
+  const handleSearch = async (inputValue) => {
+    const rawInput =
+      typeof inputValue === "string"
+        ? inputValue
+        : searchInputRef.current?.value || "";
+    const term = rawInput.trim();
 
-  const handleSearch = async (term) => {
     setSearchTerm(term);
     if (!term) {
       await loadRecentOrders();
       return;
     }
-    if (isRawMode) {
-      const results = await searchCommentOrders(term);
-      setOrders(results);
-      return;
+
+    const lower = term.toLowerCase();
+    const allOrders = await getAllFromStore(isRawMode ? "comment_orders" : "orders");
+    const filteredOrders = filterByUserId(allOrders);
+    const normalizedOrders = isRawMode
+      ? filteredOrders.map(mapCommentOrderToLegacy).filter(Boolean)
+      : filteredOrders;
+
+    const searchResults = normalizedOrders.filter((order) => {
+      const productCandidates = getCandidateProductsForOrder(order);
+      const productNames = productCandidates
+        .map((product) => String(product?.title || product?.name || ""))
+        .join(" ");
+      const productBarcodes = productCandidates
+        .map((product) => String(product?.barcode || ""))
+        .join(" ");
+
+      const searchableText = [
+        order?.customer_name,
+        order?.comment,
+        order?.order_id,
+        order?.comment_order_id,
+        order?.comment_key,
+        order?.post_key,
+        order?.product_name,
+        order?.product_id,
+        productNames,
+        productBarcodes,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(lower);
+    });
+
+    setOrders(searchResults.slice(0, SEARCH_RESULT_LIMIT));
+  };
+
+  const handleClearSearch = async () => {
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
     }
-    const results = await searchOrders(term, 200);
-    const filtered = filterByUserId(results);
-    setOrders(filtered);
+    setSearchTerm("");
+    setExactCustomerFilter("");
+    await loadRecentOrders();
   };
 
   const handleAccountChange = (userId) => {
@@ -1429,12 +1539,7 @@ export default function OfflineOrdersPage() {
         }
       }
 
-      await Promise.all([
-        loadRecentOrders(),
-        loadQueueSize(),
-        loadPosts(),
-        loadDbCounts(),
-      ]);
+      await refreshLocalSnapshot({ includeQueue: true });
 
       setToast({
         type: "success",
@@ -1473,7 +1578,7 @@ export default function OfflineOrdersPage() {
         const queueItems = [];
         const updatedUi = [];
 
-        const selected = orders.filter((o) => selectedOrderIds.includes(o.order_id));
+        const selected = orders.filter((o) => selectedOrderIdSet.has(o.order_id));
         for (const order of selected) {
           const commentOrderId =
             order?.comment_order_id ??
@@ -1535,11 +1640,11 @@ export default function OfflineOrdersPage() {
         }
         await loadQueueSize();
 
+        const updatedUiById = new Map(
+          updatedUi.map((item) => [item.order_id, item])
+        );
         setOrders((prev) =>
-          prev.map((order) => {
-            const next = updatedUi.find((u) => u.order_id === order.order_id);
-            return next || order;
-          })
+          prev.map((order) => updatedUiById.get(order.order_id) || order)
         );
         setSelectedOrderIds([]);
 
@@ -1560,7 +1665,7 @@ export default function OfflineOrdersPage() {
       }
 
       let updates = orders
-        .filter((o) => selectedOrderIds.includes(o.order_id))
+        .filter((o) => selectedOrderIdSet.has(o.order_id))
         .map((o) => ({
           ...o,
           status: nextStatus,
@@ -1575,7 +1680,7 @@ export default function OfflineOrdersPage() {
         await loadRecentOrders();
         const refreshedOrders = filterByUserId(await getAllFromStore("orders"));
         updates = refreshedOrders
-          .filter((o) => selectedOrderIds.includes(o.order_id))
+          .filter((o) => selectedOrderIdSet.has(o.order_id))
           .map((o) => ({
             ...o,
             status: nextStatus,
@@ -1601,7 +1706,7 @@ export default function OfflineOrdersPage() {
 
       setOrders((prev) =>
         prev.map((o) =>
-          selectedOrderIds.includes(o.order_id)
+          selectedOrderIdSet.has(o.order_id)
             ? { ...o, status: nextStatus, ...applyStatusTimestamps(o, nextStatus, now) }
             : o
         )
@@ -1840,6 +1945,74 @@ export default function OfflineOrdersPage() {
   const displayedOrders = displayedOrdersResult.list;
   const totalFilteredOrders = displayedOrdersResult.total;
   const totalPages = Math.max(1, Math.ceil(totalFilteredOrders / PAGE_SIZE));
+  const commentViewByOrderId = useMemo(() => {
+    const map = new Map();
+
+    displayedOrders.forEach((order) => {
+      const rawCommentChange = order.comment_change || order.commentChange || null;
+      const currentComment = processBandTags(order.comment || "");
+      let commentChangeData = null;
+
+      try {
+        if (rawCommentChange) {
+          const parsed =
+            typeof rawCommentChange === "string"
+              ? JSON.parse(rawCommentChange)
+              : rawCommentChange;
+          if (
+            parsed &&
+            (parsed.status === "updated" || parsed.status === "deleted")
+          ) {
+            commentChangeData = parsed;
+          }
+        }
+      } catch (_) {
+        // ignore parse errors
+      }
+
+      if (!commentChangeData) {
+        map.set(order.order_id, {
+          currentComment,
+          commentChangeData: null,
+          previousComment: "",
+          latestComment: currentComment || "",
+          showPrevious: false,
+        });
+        return;
+      }
+
+      const history = Array.isArray(commentChangeData.history)
+        ? commentChangeData.history
+        : [];
+      let previousComment = "";
+      for (let i = history.length - 2; i >= 0; i -= 1) {
+        const entry = history[i] || "";
+        if (entry.includes("[deleted]")) continue;
+        previousComment = entry.replace(/^version:\d+\s*/, "");
+        break;
+      }
+
+      const latestCommentRaw = commentChangeData.current || currentComment || "";
+      const latestComment =
+        commentChangeData.status === "deleted"
+          ? previousComment || currentComment || ""
+          : processBandTags(latestCommentRaw);
+      const showPrevious =
+        commentChangeData.status !== "deleted" &&
+        previousComment &&
+        previousComment.trim() !== latestComment.trim();
+
+      map.set(order.order_id, {
+        currentComment,
+        commentChangeData,
+        previousComment,
+        latestComment,
+        showPrevious,
+      });
+    });
+
+    return map;
+  }, [displayedOrders]);
   const paginationItems = useMemo(() => {
     const items = [];
     const maxNumbers = 7;
@@ -2084,24 +2257,12 @@ export default function OfflineOrdersPage() {
           </div>
         </div>
         {/* 안내 문구 */}
-        <div className="mt-2 flex items-start justify-between gap-4">
+        <div className="mt-2">
           <div className="text-sm text-gray-700 space-y-1">
             <p>서버와 연결이 불안정할 때 백업 데이터로 주문을 처리할 수 있는 페이지입니다.</p>
             <p className="text-gray-500">
               이 페이지에서 변경한 내용은 서버가 복구되면 자동으로 동기화됩니다.
             </p>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <button
-              onClick={handleOfflineCommentUpdate}
-              disabled={offlineCommentSyncing}
-              className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm whitespace-nowrap"
-              title="Band API로 신규 댓글을 가져와 로컬에 저장합니다"
-            >
-              <ArrowPathIcon className={`w-4 h-4 ${offlineCommentSyncing ? "animate-spin" : ""}`} />
-              {offlineCommentSyncing ? "댓글 업데이트 중" : "댓글 업데이트"}
-            </button>
-            <p className="text-xs text-gray-500">이미 저장된 게시물의 신규 댓글은 불러올 수 있습니다.</p>
           </div>
         </div>
       </div>
@@ -2312,46 +2473,47 @@ export default function OfflineOrdersPage() {
               <span className="text-sm font-medium">검색</span>
             </div>
             <div className="flex-1 flex items-center gap-2">
-              <div className="flex-1 max-w-xl relative">
+              <div className="flex-1 max-w-[27rem] relative">
                 <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4 text-gray-400">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
                   </svg>
                 </div>
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  placeholder="고객명, 상품명, 바코드, post_key..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch(searchTerm)}
+                  placeholder="고객명, 상품명, 댓글, post_key 통합 검색..."
+                  defaultValue=""
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    handleSearch();
+                  }}
                   className="w-full border border-gray-300 rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 />
-                {searchTerm && (
-                  <button
-                    onClick={() => {
-                      setSearchTerm("");
-                      setExactCustomerFilter("");
-                      loadRecentOrders();
-                    }}
-                    className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    void handleClearSearch();
+                  }}
+                  className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                  title="검색어 초기화"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
               <button
-                onClick={() => handleSearch(searchTerm)}
+                onClick={() => {
+                  void handleSearch();
+                }}
                 className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
               >
                 검색
               </button>
               <button
                 onClick={() => {
-                  setSearchTerm("");
-                  setExactCustomerFilter("");
-                  loadRecentOrders();
+                  void handleClearSearch();
                 }}
                 className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 flex items-center gap-1.5"
               >
@@ -2359,6 +2521,15 @@ export default function OfflineOrdersPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
                 </svg>
                 초기화
+              </button>
+              <button
+                onClick={handleOfflineCommentUpdate}
+                disabled={offlineCommentSyncing}
+                className="ml-auto px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm whitespace-nowrap"
+                title="Band API로 신규 댓글을 가져와 로컬에 저장합니다"
+              >
+                <ArrowPathIcon className={`w-4 h-4 ${offlineCommentSyncing ? "animate-spin" : ""}`} />
+                {offlineCommentSyncing ? "댓글 업데이트 중" : "댓글 업데이트"}
               </button>
             </div>
           </div>
@@ -2376,12 +2547,12 @@ export default function OfflineOrdersPage() {
                         className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
                         onChange={() => {
                           const allIds = displayedOrders.map((o) => o.order_id);
-                          const allSelected = allIds.every((id) => selectedOrderIds.includes(id));
+                          const allSelected = allIds.every((id) => selectedOrderIdSet.has(id));
                           setSelectedOrderIds(allSelected ? [] : Array.from(new Set([...selectedOrderIds, ...allIds])));
                         }}
                         checked={
                           displayedOrders.length > 0 &&
-                          displayedOrders.every((o) => selectedOrderIds.includes(o.order_id))
+                          displayedOrders.every((o) => selectedOrderIdSet.has(o.order_id))
                         }
                         aria-label="전체 선택"
                       />
@@ -2433,12 +2604,13 @@ export default function OfflineOrdersPage() {
                 )}
                 {displayedOrders.map((order) => {
                   const orderedAt = order.ordered_at || order.order_time || order.created_at;
-                  const isSelected = selectedOrderIds.includes(order.order_id);
+                  const isSelected = selectedOrderIdSet.has(order.order_id);
                   // 해당 주문의 모든 상품 목록
                   const productList = getCandidateProductsForOrder(order);
                   // 수령일: 선택된 상품 또는 첫 번째 상품에서 가져오기
                   const displayProduct = getProductById(order.product_id) || productList[0] || null;
                   const pickupDate = displayProduct?.pickup_date || order.product_pickup_date || order.pickup_date;
+                  const commentView = commentViewByOrderId.get(order.order_id);
                   return (
                     <tr
                       key={order.order_id}
@@ -2471,9 +2643,12 @@ export default function OfflineOrdersPage() {
                             e.stopPropagation();
                             const name = (order.customer_name || "").trim();
                             if (name) {
+                              if (searchInputRef.current) {
+                                searchInputRef.current.value = name;
+                              }
                               setExactCustomerFilter(name);
                               setSearchTerm(name);
-                              handleSearch(name);
+                              void handleSearch(name);
                             }
                           }}
                           title={order.customer_name}
@@ -2523,76 +2698,36 @@ export default function OfflineOrdersPage() {
                       {/* 댓글 */}
                       <td className="py-2 xl:py-3 px-2 md:px-3 lg:px-4 xl:px-6 w-60 md:w-72 xl:w-80">
                         <div>
-                          {(() => {
-                            const rawCommentChange = order.comment_change || order.commentChange || null;
-                            const currentComment = processBandTags(order.comment || "");
-                            let commentChangeData = null;
-
-                            try {
-                              if (rawCommentChange) {
-                                const parsed = typeof rawCommentChange === "string"
-                                  ? JSON.parse(rawCommentChange)
-                                  : rawCommentChange;
-                                if (
-                                  parsed &&
-                                  (parsed.status === "updated" || parsed.status === "deleted")
-                                ) {
-                                  commentChangeData = parsed;
-                                }
-                              }
-                            } catch (_) {
-                              // ignore parse errors
-                            }
-
-                            if (!commentChangeData) {
-                              return (
-                                <div className="break-words leading-tight font-semibold" title={currentComment}>
-                                  {currentComment || "-"}
-                                </div>
-                              );
-                            }
-
-                            const history = Array.isArray(commentChangeData.history)
-                              ? commentChangeData.history
-                              : [];
-                            const pickPrevious = () => {
-                              for (let i = history.length - 2; i >= 0; i -= 1) {
-                                const entry = history[i] || "";
-                                if (entry.includes("[deleted]")) continue;
-                                return entry.replace(/^version:\d+\s*/, "");
-                              }
-                              return "";
-                            };
-                            const previousComment = pickPrevious();
-                            const latestCommentRaw = commentChangeData.current || currentComment || "";
-                            const latestComment = commentChangeData.status === "deleted"
-                              ? (previousComment || currentComment || "")
-                              : processBandTags(latestCommentRaw);
-                            const showPrevious =
-                              commentChangeData.status !== "deleted" &&
-                              previousComment &&
-                              previousComment.trim() !== latestComment.trim();
-
-                            return (
-                              <div className="space-y-1">
-                                {showPrevious && (
-                                  <div className="text-gray-500 line-through text-sm">
-                                    <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
-                                    <span className="break-words leading-tight font-semibold">{previousComment}</span>
-                                  </div>
-                                )}
-                                <div className="break-words leading-tight">
-                                  <span className="text-sm font-semibold text-orange-600 mr-1">
-                                    {commentChangeData.status === "deleted" ? "[유저에 의해 삭제된 댓글]" : "[수정됨]"}
+                          {!commentView?.commentChangeData ? (
+                            <div
+                              className="break-words leading-tight font-semibold"
+                              title={commentView?.currentComment || ""}
+                            >
+                              {commentView?.currentComment || "-"}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {commentView.showPrevious && (
+                                <div className="text-gray-500 line-through text-sm">
+                                  <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
+                                  <span className="break-words leading-tight font-semibold">
+                                    {commentView.previousComment}
                                   </span>
-                                  {order.sub_status === "확인필요" && (
-                                    <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
-                                  )}
-                                  <span className="font-semibold">{latestComment}</span>
                                 </div>
+                              )}
+                              <div className="break-words leading-tight">
+                                <span className="text-sm font-semibold text-orange-600 mr-1">
+                                  {commentView.commentChangeData.status === "deleted"
+                                    ? "[유저에 의해 삭제된 댓글]"
+                                    : "[수정됨]"}
+                                </span>
+                                {order.sub_status === "확인필요" && (
+                                  <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
+                                )}
+                                <span className="font-semibold">{commentView.latestComment}</span>
                               </div>
-                            );
-                          })()}
+                            </div>
+                          )}
                           {/* 주문일시 */}
                           <div className="text-xs xl:text-sm text-gray-400 mt-1">
                             {orderedAt
