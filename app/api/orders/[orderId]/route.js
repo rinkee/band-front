@@ -3,13 +3,55 @@ import { createClient } from "@supabase/supabase-js";
 
 const createServiceSupabaseClient = () => {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
   if (!url || !key) {
     throw new Error("Supabase admin credentials are not configured");
   }
 
   return createClient(url, key);
+};
+
+const parseAuthUserId = (request) => {
+  const authHeader = request.headers.get("authorization") || "";
+  const headerUserId = (request.headers.get("x-user-id") || "").trim();
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return { ok: false, status: 401, message: "인증 헤더가 필요합니다." };
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return { ok: false, status: 401, message: "유효하지 않은 인증 토큰입니다." };
+  }
+
+  if (!headerUserId) {
+    return { ok: false, status: 401, message: "x-user-id 헤더가 필요합니다." };
+  }
+
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidLike.test(headerUserId)) {
+    return { ok: false, status: 403, message: "유효하지 않은 사용자 식별자입니다." };
+  }
+
+  // 현재 클라이언트 호환을 위한 최소 인증 규칙.
+  if (token !== headerUserId) {
+    return { ok: false, status: 403, message: "인증 정보가 사용자 식별자와 일치하지 않습니다." };
+  }
+
+  return { ok: true, userId: headerUserId };
+};
+
+const parseJsonBody = async (request) => {
+  try {
+    const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return { ok: false, status: 400, message: "업데이트할 데이터가 필요합니다." };
+    }
+    return { ok: true, body };
+  } catch {
+    return { ok: false, status: 400, message: "유효하지 않은 JSON 본문입니다." };
+  }
 };
 
 const toValidInteger = (value) => {
@@ -30,21 +72,41 @@ const toValidNumber = (value) => {
 
 export async function PATCH(request, { params }) {
   try {
-    console.log('[PATCH API] 시작', { params });
+    const auth = parseAuthUserId(request);
+    if (!auth.ok) {
+      return NextResponse.json(
+        { success: false, message: auth.message },
+        { status: auth.status }
+      );
+    }
+
     const { orderId } = await params;
-    console.log('[PATCH API] orderId:', orderId);
-    if (!orderId) {
+    const normalizedOrderId =
+      typeof orderId === "string" || typeof orderId === "number"
+        ? String(orderId).trim()
+        : "";
+
+    if (!normalizedOrderId) {
       return NextResponse.json(
         { success: false, message: "order_id는 필수입니다." },
         { status: 400 }
       );
     }
 
-    const body = await request.json();
-    if (!body || typeof body !== "object") {
+    const parsedBody = await parseJsonBody(request);
+    if (!parsedBody.ok) {
       return NextResponse.json(
-        { success: false, message: "업데이트할 데이터가 필요합니다." },
-        { status: 400 }
+        { success: false, message: parsedBody.message },
+        { status: parsedBody.status }
+      );
+    }
+    const body = parsedBody.body;
+
+    const bodyUserId = typeof body.userId === "string" ? body.userId.trim() : "";
+    if (bodyUserId && bodyUserId !== auth.userId) {
+      return NextResponse.json(
+        { success: false, message: "요청 본문의 userId와 인증 사용자 정보가 일치하지 않습니다." },
+        { status: 403 }
       );
     }
 
@@ -67,33 +129,21 @@ export async function PATCH(request, { params }) {
 
     const supabase = createServiceSupabaseClient();
 
-    console.log('[PATCH API] Supabase 조회 시작', { orderId });
-    // 기존 주문 정보 조회 (총액 계산에 필요)
+    // 기존 주문 정보 조회 (총액 계산/소유권 검증에 필요)
     const {
       data: existingOrder,
       error: fetchError,
-      status: fetchStatus,
     } = await supabase
       .from("orders")
       .select("quantity, price")
-      .eq("order_id", orderId)
-      .single();
-
-    console.log('[PATCH API] Supabase 조회 결과', {
-      existingOrder,
-      fetchError,
-      fetchStatus
-    });
+      .eq("order_id", normalizedOrderId)
+      .eq("user_id", auth.userId)
+      .maybeSingle();
 
     if (fetchError) {
-      if (fetchStatus === 406 || fetchError.code === "PGRST116") {
-        return NextResponse.json(
-          { success: false, message: "해당 주문을 찾을 수 없습니다." },
-          { status: 404 }
-        );
-      }
       console.error("주문 조회 실패:", {
-        orderId,
+        orderId: normalizedOrderId,
+        userId: auth.userId,
         error: fetchError,
         code: fetchError.code,
         message: fetchError.message,
@@ -108,6 +158,13 @@ export async function PATCH(request, { params }) {
           code: fetchError.code
         },
         { status: 500 }
+      );
+    }
+
+    if (!existingOrder) {
+      return NextResponse.json(
+        { success: false, message: "해당 주문을 찾을 수 없습니다." },
+        { status: 404 }
       );
     }
 
@@ -178,15 +235,23 @@ export async function PATCH(request, { params }) {
     const { data, error } = await supabase
       .from("orders")
       .update(updatePayload)
-      .eq("order_id", orderId)
+      .eq("order_id", normalizedOrderId)
+      .eq("user_id", auth.userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("주문 업데이트 실패:", error);
       return NextResponse.json(
         { success: false, message: "주문 업데이트에 실패했습니다.", error },
         { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        { success: false, message: "해당 주문을 찾을 수 없습니다." },
+        { status: 404 }
       );
     }
 

@@ -37,6 +37,7 @@ export class BandApiFailover {
       totalApiCalls: 0,
       keysUsed: 1
     };
+    this.pendingUsageLogs = [];
   }
 
   /**
@@ -215,18 +216,6 @@ export class BandApiFailover {
           actualDataCount = expectedDataCount;
         }
 
-        // 성공 로그 기록 - 실제 데이터 수 사용
-        await this.logApiUsage({
-          user_id: this.userId,
-          session_id: this.sessionId,
-          api_key_index: this.currentKeyIndex,
-          action_type: actionType,
-          posts_fetched: actionType === "get_posts" ? actualDataCount : 0,
-          comments_fetched: actionType === "get_comments" ? actualDataCount : 0,
-          api_calls_made: 1,
-          success: true
-        });
-
         // 통계 업데이트 - 실제 데이터 수 사용
         this.usageStats.totalApiCalls++;
         if (actionType === "get_posts") {
@@ -254,8 +243,8 @@ export class BandApiFailover {
         lastError = error instanceof Error ? error : new Error(String(error));
         const errorType = this.analyzeErrorType(lastError);
 
-        // 실패 로그 기록
-        await this.logApiUsage({
+        // 실패 로그도 세션 종료 시 배치 insert 되도록 메모리에 집계
+        this.logApiUsage({
           user_id: this.userId,
           session_id: this.sessionId,
           api_key_index: this.currentKeyIndex,
@@ -339,16 +328,68 @@ export class BandApiFailover {
    * @returns {Promise<void>}
    */
   async logApiUsage(log) {
-    try {
-      const { error } = await this.supabase
-        .from("band_api_usage_logs")
-        .insert(log);
+    const normalized = {
+      user_id: log?.user_id || this.userId,
+      session_id: log?.session_id || this.sessionId,
+      api_key_index: Number.isInteger(log?.api_key_index)
+        ? log.api_key_index
+        : this.currentKeyIndex,
+      action_type: String(log?.action_type || "unknown"),
+      posts_fetched: Number(log?.posts_fetched || 0),
+      comments_fetched: Number(log?.comments_fetched || 0),
+      api_calls_made: Math.max(1, Number(log?.api_calls_made || 1)),
+      success: Boolean(log?.success)
+    };
 
-      if (error) {
-        console.error("[API Failover] 사용 로그 기록 실패:", error);
+    if (normalized.success) {
+      return;
+    }
+
+    normalized.error_type = log?.error_type || "unknown_error";
+    normalized.error_message = String(log?.error_message || "").slice(0, 500);
+    normalized.created_at = new Date().toISOString();
+
+    this.pendingUsageLogs.push(normalized);
+  }
+
+  async flushApiUsageLogs() {
+    if (this.pendingUsageLogs.length === 0) {
+      return;
+    }
+
+    const payload = [...this.pendingUsageLogs];
+    this.pendingUsageLogs = [];
+
+    try {
+      const { error: insertError } = await this.supabase
+        .from("band_api_usage_logs")
+        .insert(payload);
+
+      if (!insertError) {
+        return;
+      }
+
+      const hasCreatedAtIssue = `${insertError?.message || ""} ${
+        insertError?.details || ""
+      }`.toLowerCase().includes("created_at");
+
+      if (!hasCreatedAtIssue) {
+        console.error("[API Failover] 사용 로그 배치 기록 실패:", insertError);
+        return;
+      }
+
+      const payloadWithoutCreatedAt = payload.map(
+        ({ created_at: _createdAt, ...rest }) => rest
+      );
+      const { error: retryError } = await this.supabase
+        .from("band_api_usage_logs")
+        .insert(payloadWithoutCreatedAt);
+
+      if (retryError) {
+        console.error("[API Failover] 사용 로그 배치 재시도 실패:", retryError);
       }
     } catch (error) {
-      console.error("[API Failover] 사용 로그 기록 중 오류:", error);
+      console.error("[API Failover] 사용 로그 배치 기록 중 오류:", error);
     }
   }
 
@@ -391,6 +432,8 @@ export class BandApiFailover {
    */
   async endSession(success, errorSummary) {
     try {
+      await this.flushApiUsageLogs();
+
       // UTC 타임스탬프 사용 (DB는 UTC로 저장)
       const endTime = new Date().toISOString();
 

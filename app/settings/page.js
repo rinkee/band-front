@@ -4,18 +4,101 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  useRef,
-  forwardRef,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useUserClient, useUserClientMutations } from "../hooks";
 import { useSWRConfig } from "swr";
+import useSWR from "swr";
 import TaskStatusDisplay from "../components/TaskStatusDisplay"; // <<<--- 컴포넌트 import
 import ErrorCard from "../components/ErrorCard";
-import supabase from "../lib/supabaseClient"; // Supabase 클라이언트 추가
 import BandApiKeyManager from "../components/BandApiKeyManager";
 import BandApiUsageStats from "../components/BandApiUsageStats";
 import BandKeySelector from "../components/BandKeySelector";
+
+const SESSION_USER_DATA_KEY = "userData";
+
+const parseSessionUserData = () => {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(SESSION_USER_DATA_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const getSessionAuth = () => {
+  const sessionData = parseSessionUserData();
+  if (!sessionData) return null;
+
+  const userId =
+    sessionData.userId || sessionData.user_id || sessionData.id || "";
+  const token = typeof sessionData.token === "string" ? sessionData.token : "";
+
+  if (!userId || typeof userId !== "string") {
+    return null;
+  }
+
+  return {
+    userId: userId.trim(),
+    token: token.trim(),
+  };
+};
+
+const buildApiAuthHeaders = ({
+  includeContentType = true,
+  legacyUserAsToken = false,
+} = {}) => {
+  const auth = getSessionAuth();
+  if (!auth?.userId) {
+    throw new Error("인증 세션 정보가 없습니다.");
+  }
+
+  const bearerValue = legacyUserAsToken
+    ? auth.userId
+    : auth.token || auth.userId;
+
+  const headers = new Headers();
+  headers.set("Authorization", `Bearer ${bearerValue}`);
+  headers.set("x-user-id", auth.userId);
+  if (includeContentType) {
+    headers.set("Content-Type", "application/json");
+  }
+  return headers;
+};
+
+const fetchCurrentUserFromApi = async () => {
+  const response = await fetch("/api/auth/me", {
+    method: "GET",
+    headers: buildApiAuthHeaders({ includeContentType: false }),
+  });
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      result?.message || `현재 사용자 조회 실패 (HTTP ${response.status})`
+    );
+  }
+
+  return result?.data || result;
+};
+
+const patchCurrentUserViaApi = async (updates) => {
+  const response = await fetch("/api/auth/me", {
+    method: "PATCH",
+    headers: buildApiAuthHeaders({ includeContentType: true }),
+    body: JSON.stringify(updates),
+  });
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      result?.message || `사용자 정보 업데이트 실패 (HTTP ${response.status})`
+    );
+  }
+
+  return result?.data || result;
+};
 
 // --- 아이콘 (Heroicons) ---
 import {
@@ -74,706 +157,6 @@ function LightCard({ children, className = "", padding = "p-6" }) {
 }
 
 // --- Band API 테스트 컴포넌트 ---
-// --- 프로덕션 테스트 패널 컴포넌트 ---
-function ProductionTestPanel({ userData }) {
-  const [testMode, setTestMode] = useState(false);
-  const [testResults, setTestResults] = useState(null);
-  const [testLoading, setTestLoading] = useState(false);
-  const [selectedTestType, setSelectedTestType] = useState("comment_parsing");
-  const [useCustomKeys, setUseCustomKeys] = useState(false);
-  const [tempAccessToken, setTempAccessToken] = useState("");
-  const [tempBandKey, setTempBandKey] = useState("");
-  const [originalKeys, setOriginalKeys] = useState({
-    accessToken: "",
-    bandKey: "",
-  });
-  const [localBackupKeys, setLocalBackupKeys] = useState({
-    accessToken: "",
-    bandKey: "",
-  });
-  const [keysLoading, setKeysLoading] = useState(false);
-
-  // 현재 키 정보 불러오기 - userData에서 직접 가져오기
-  const loadCurrentKeys = useCallback(async () => {
-    if (!userData) return;
-    setKeysLoading(true);
-    try {
-      // Band API 테스트 섹션과 동일한 방식으로 userData에서 직접 키 추출
-      const currentKeys = {
-        accessToken:
-          userData?.data?.band_access_token ||
-          userData?.band_access_token ||
-          "",
-        bandKey: userData?.data?.band_key || userData?.band_key || "",
-      };
-
-      console.log("키 정보 로드 완료:", currentKeys);
-
-      setOriginalKeys(currentKeys);
-      setTempAccessToken(currentKeys.accessToken);
-      setTempBandKey(currentKeys.bandKey);
-
-      // 로컬 백업도 현재 키로 설정 (처음 로드할 때만)
-      if (!localBackupKeys.accessToken && !localBackupKeys.bandKey) {
-        setLocalBackupKeys(currentKeys);
-      }
-    } catch (error) {
-      console.error("키 정보 불러오기 오류:", error);
-      alert("키 정보 불러오기 중 오류가 발생했습니다: " + error.message);
-    } finally {
-      setKeysLoading(false);
-    }
-  }, [userData, localBackupKeys.accessToken, localBackupKeys.bandKey]);
-
-  // useCustomKeys가 켜질 때 현재 키 정보 불러오기
-  useEffect(() => {
-    if (useCustomKeys) {
-      loadCurrentKeys();
-    }
-  }, [useCustomKeys, loadCurrentKeys]);
-
-  // 관리자 권한 확인
-  const isAdmin =
-    userData?.role === "admin" || userData?.data?.role === "admin";
-
-  if (!isAdmin) return null; // 관리자만 볼 수 있음
-
-  const runProductionTest = async () => {
-    setTestLoading(true);
-    setTestResults(null);
-
-    try {
-      const userId =
-        userData?.data?.user_id || userData?.user_id || userData?.id;
-
-      if (selectedTestType === "comment_parsing") {
-        // 댓글 파싱 테스트 - band-get-posts 함수 직접 호출 (댓글 있는 게시물 포함하도록 limit 증가)
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/band-get-posts?userId=${userId}&testMode=true&limit=6&processAI=true`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        const result = await response.json();
-
-        // 댓글 파싱 결과 분석
-        const analysisResult = {
-          testType: "comment_parsing",
-          timestamp: new Date().toISOString(),
-          userId,
-          testMode: true,
-          apiCallSuccessful: response.ok,
-          rawResult: result,
-          analysis: {
-            postsProcessed: result.data?.length || 0,
-            commentsFound: 0,
-            ordersParsed: 0,
-            parsingExamples: [],
-            improvements: [],
-          },
-        };
-
-        // 백엔드에서 제공한 실제 댓글 파싱 테스트 결과 활용
-        if (result.data) {
-          // 백엔드에서 testAnalysis 정보 활용
-          if (result.testAnalysis) {
-            analysisResult.analysis.commentsFound =
-              result.testAnalysis.totalComments;
-            analysisResult.analysis.postsWithComments =
-              result.testAnalysis.postsWithComments;
-            analysisResult.analysis.postsWithProducts =
-              result.testAnalysis.postsWithProducts;
-
-            // 백엔드에서 실제 댓글로 테스트한 결과 활용
-            if (result.testAnalysis.commentParsingTests) {
-              analysisResult.analysis.commentParsingTests =
-                result.testAnalysis.commentParsingTests.map((test) => ({
-                  postKey: test.postKey,
-                  productTitle: test.productTitle,
-                  originalComment: test.originalComment,
-                  commentAuthor: test.commentAuthor,
-                  extractedOrders: test.extractedOrders,
-                  parsedSuccessfully: test.parsedSuccessfully,
-                  totalQuantity: test.totalQuantity,
-                  hasPhoneOrYear: test.hasPhoneOrYear,
-                  productPrice: test.productPrice,
-                  isRealComment: true, // 실제 댓글임을 표시
-                }));
-            }
-
-            // 댓글 상세 정보
-            if (result.testAnalysis.commentDetails) {
-              analysisResult.analysis.commentDetails =
-                result.testAnalysis.commentDetails;
-            }
-          } else {
-            // 백엔드 testAnalysis가 없는 경우 기존 방식으로 분석
-            result.data.forEach((post) => {
-              analysisResult.analysis.commentsFound += post.commentCount || 0;
-
-              if (post.aiAnalysisResult && post.aiAnalysisResult.products) {
-                // AI 분석 결과에서 개선 사항 확인
-                post.aiAnalysisResult.products.forEach((product) => {
-                  if (product.title && product.basePrice > 0) {
-                    analysisResult.analysis.ordersParsed++;
-                    analysisResult.analysis.parsingExamples.push({
-                      postKey: post.postKey,
-                      productTitle: product.title,
-                      basePrice: product.basePrice,
-                      priceOptions: product.priceOptions || [],
-                      pickupInfo: product.pickupInfo,
-                      pickupDate: product.pickupDate,
-                      hasComments: post.commentCount > 0,
-                      commentCount: post.commentCount || 0,
-                    });
-                  }
-                });
-              }
-            });
-          }
-
-          analysisResult.analysis.improvements = [
-            `총 ${analysisResult.analysis.postsProcessed}개 게시물 처리`,
-            `${analysisResult.analysis.commentsFound}개 댓글 발견`,
-            `${analysisResult.analysis.ordersParsed}개 상품 파싱 성공`,
-            `댓글 있는 게시물: ${
-              analysisResult.analysis.postsWithComments || 0
-            }개`,
-            result.testMode
-              ? "✅ 테스트 모드로 실행 - 실제 저장 안함"
-              : "⚠️ 프로덕션 모드로 실행됨",
-          ];
-        }
-
-        setTestResults(analysisResult);
-      } else if (selectedTestType === "band_api") {
-        // Band API 제한 테스트
-        const response = await fetch(
-          `/api/band/bands?userId=${encodeURIComponent(userId)}`,
-          {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-
-        const result = await response.json();
-
-        const testResults = {
-          testType: "band_api_limit",
-          timestamp: new Date().toISOString(),
-          userId,
-          testMode: true,
-          apiCallSuccessful: response.ok,
-          rawResult: result,
-          analysis: {
-            currentApiStatus: response.ok ? "working" : "limited",
-            recommendations: [
-              response.ok
-                ? "현재 Band API가 정상 작동 중입니다."
-                : "Band API 제한 감지됨",
-              `응답 코드: ${response.status}`,
-              result.result_code === 1
-                ? "밴드 목록 조회 성공"
-                : `오류: ${
-                    result.result_data?.error_description || "알 수 없는 오류"
-                  }`,
-            ],
-          },
-        };
-
-        setTestResults(testResults);
-      }
-    } catch (error) {
-      setTestResults({
-        success: false,
-        error: error.message,
-        testType: selectedTestType,
-        timestamp: new Date().toISOString(),
-      });
-    } finally {
-      setTestLoading(false);
-    }
-  };
-
-  const updateBandKeys = async () => {
-    if (!userData || !tempAccessToken || !tempBandKey) return;
-
-    // 변경 전 키를 로컬 백업에 저장
-    setLocalBackupKeys({
-      accessToken: originalKeys.accessToken,
-      bandKey: originalKeys.bandKey,
-    });
-
-    try {
-      const userId = userData.data?.user_id || userData.user_id || userData.id;
-
-      // Supabase 클라이언트로 직접 업데이트
-      const { error } = await supabase
-        .from("users")
-        .update({
-          band_access_token: tempAccessToken,
-          band_key: tempBandKey,
-        })
-        .eq("user_id", userId);
-
-      if (error) {
-        throw new Error(`데이터베이스 업데이트 오류: ${error.message}`);
-      }
-
-      // 키 업데이트 성공 - originalKeys도 업데이트
-      setOriginalKeys({
-        accessToken: tempAccessToken,
-        bandKey: tempBandKey,
-      });
-      alert(
-        "밴드 키가 성공적으로 업데이트되었습니다. 이제 테스트를 실행해보세요."
-      );
-    } catch (error) {
-      console.error("밴드 키 업데이트 중 오류 발생:", error);
-      alert("밴드 키 업데이트 중 오류가 발생했습니다: " + error.message);
-    }
-  };
-
-  const resetBandKeys = async () => {
-    if (!userData || !originalKeys.accessToken || !originalKeys.bandKey) {
-      alert("원래 키 정보를 찾을 수 없습니다.");
-      return;
-    }
-
-    try {
-      const userId = userData.data?.user_id || userData.user_id || userData.id;
-
-      // Supabase 클라이언트로 직접 업데이트
-      const { error } = await supabase
-        .from("users")
-        .update({
-          band_access_token: originalKeys.accessToken,
-          band_key: originalKeys.bandKey,
-        })
-        .eq("user_id", userId);
-
-      if (error) {
-        throw new Error(`데이터베이스 업데이트 오류: ${error.message}`);
-      }
-
-      setTempAccessToken(originalKeys.accessToken);
-      setTempBandKey(originalKeys.bandKey);
-      setUseCustomKeys(false);
-      alert("원래 키로 성공적으로 복원되었습니다.");
-    } catch (error) {
-      console.error("키 복원 중 오류 발생:", error);
-      alert("키 복원 중 오류가 발생했습니다: " + error.message);
-    }
-  };
-
-  const restoreLocalBackup = async () => {
-    if (!userData || !localBackupKeys.accessToken || !localBackupKeys.bandKey) {
-      alert("로컬 백업 키 정보를 찾을 수 없습니다.");
-      return;
-    }
-
-    try {
-      const userId = userData.data?.user_id || userData.user_id || userData.id;
-
-      // Supabase 클라이언트로 직접 업데이트
-      const { error } = await supabase
-        .from("users")
-        .update({
-          band_access_token: localBackupKeys.accessToken,
-          band_key: localBackupKeys.bandKey,
-        })
-        .eq("user_id", userId);
-
-      if (error) {
-        throw new Error(`데이터베이스 업데이트 오류: ${error.message}`);
-      }
-
-      setOriginalKeys(localBackupKeys);
-      setTempAccessToken(localBackupKeys.accessToken);
-      setTempBandKey(localBackupKeys.bandKey);
-      alert("로컬 백업 키로 성공적으로 복원되었습니다.");
-    } catch (error) {
-      console.error("로컬 백업 복원 중 오류 발생:", error);
-      alert("로컬 백업 복원 중 오류가 발생했습니다: " + error.message);
-    }
-  };
-
-  return (
-    <LightCard>
-      <div className="border-b pb-4 mb-4">
-        <h3 className="text-lg font-semibold text-red-600 flex items-center gap-2">
-          <span>🔧</span> 프로덕션 테스트 모드 (관리자 전용)
-        </h3>
-        <p className="text-sm text-gray-600 mt-1">
-          고객에게 영향 없이 실제 데이터로 시스템을 테스트합니다
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        {/* 테스트 타입 선택 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            테스트 타입 선택
-          </label>
-          <select
-            value={selectedTestType}
-            onChange={(e) => setSelectedTestType(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500"
-          >
-            <option value="comment_parsing">댓글 → 주문 변환 테스트</option>
-            <option value="band_api">Band API 제한 테스트</option>
-          </select>
-        </div>
-
-        {/* Band 키 수정 패널 (댓글 파싱 테스트일 때만) */}
-        {selectedTestType === "comment_parsing" && (
-          <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium text-gray-900">
-                🔑 다른 밴드 테스트용 키 변경
-              </h4>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={useCustomKeys}
-                  onChange={(e) => setUseCustomKeys(e.target.checked)}
-                  className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                />
-                <span className="ml-2 text-sm text-gray-700">키 변경 모드</span>
-              </label>
-            </div>
-
-            {useCustomKeys && (
-              <div className="space-y-3">
-                {keysLoading ? (
-                  <div className="text-center p-4">
-                    <LoadingSpinner className="w-5 h-5 mx-auto" />
-                    <p className="text-sm text-gray-500 mt-2">
-                      키 정보를 불러오는 중...
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-xs text-blue-600 bg-blue-50 p-3 rounded border border-blue-200">
-                      <div className="font-medium mb-2">
-                        🔑 현재 DB에 저장된 키:
-                      </div>
-                      <div className="font-mono text-xs space-y-1">
-                        <div>
-                          토큰:{" "}
-                          {originalKeys.accessToken
-                            ? `${originalKeys.accessToken.substring(0, 25)}...`
-                            : "❌ 없음"}
-                        </div>
-                        <div>밴드키: {originalKeys.bandKey || "❌ 없음"}</div>
-                      </div>
-                    </div>
-
-                    {localBackupKeys.accessToken && localBackupKeys.bandKey && (
-                      <div className="text-xs text-green-600 bg-green-50 p-3 rounded border border-green-200">
-                        <div className="font-medium mb-2">
-                          💾 로컬 백업된 키:
-                        </div>
-                        <div className="font-mono text-xs space-y-1">
-                          <div>
-                            토큰: {localBackupKeys.accessToken.substring(0, 25)}
-                            ...
-                          </div>
-                          <div>밴드키: {localBackupKeys.bandKey}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        새로운 Band Access Token
-                      </label>
-                      <input
-                        type="text"
-                        value={tempAccessToken}
-                        onChange={(e) => setTempAccessToken(e.target.value)}
-                        placeholder="다른 사용자의 액세스 토큰을 입력하세요"
-                        className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        새로운 Band Key
-                      </label>
-                      <input
-                        type="text"
-                        value={tempBandKey}
-                        onChange={(e) => setTempBandKey(e.target.value)}
-                        placeholder="테스트할 밴드 키를 입력하세요"
-                        className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={updateBandKeys}
-                        disabled={
-                          testLoading || !tempAccessToken || !tempBandKey
-                        }
-                        className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                      >
-                        DB에 키 저장
-                      </button>
-                      <button
-                        onClick={resetBandKeys}
-                        disabled={testLoading || !originalKeys.accessToken}
-                        className="px-3 py-2 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50"
-                      >
-                        최초 키로 복원
-                      </button>
-                    </div>
-                    {localBackupKeys.accessToken && localBackupKeys.bandKey && (
-                      <button
-                        onClick={restoreLocalBackup}
-                        disabled={testLoading}
-                        className="w-full px-3 py-2 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
-                      >
-                        💾 로컬 백업 키로 복원
-                      </button>
-                    )}
-                    <div className="text-xs text-gray-500 bg-orange-50 p-2 rounded border border-orange-200">
-                      ⚠️ <strong>주의:</strong> 키를 변경하면 실제 DB에
-                      저장됩니다.
-                      <br />
-                      💾 <strong>로컬 백업:</strong> 키 변경 시 이전 키가
-                      자동으로 로컬에 백업됩니다.
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 테스트 실행 버튼 */}
-        <button
-          onClick={runProductionTest}
-          disabled={testLoading}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50"
-        >
-          {testLoading ? (
-            <LoadingSpinner className="w-4 h-4" color="text-white" />
-          ) : (
-            <span>🧪</span>
-          )}
-          {testLoading ? "테스트 실행 중..." : "프로덕션 테스트 실행"}
-        </button>
-
-        {/* 테스트 결과 표시 */}
-        {testResults && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
-              테스트 결과
-              {testResults.apiCallSuccessful ? (
-                <span className="text-green-600">✅</span>
-              ) : (
-                <span className="text-red-600">❌</span>
-              )}
-            </h4>
-
-            {testResults.analysis && (
-              <div className="space-y-2 mb-3">
-                <div className="text-sm">
-                  <strong>테스트 타입:</strong> {testResults.testType}
-                </div>
-                <div className="text-sm">
-                  <strong>실행 시간:</strong>{" "}
-                  {new Date(testResults.timestamp).toLocaleString()}
-                </div>
-
-                {testResults.analysis.recommendations && (
-                  <div className="text-sm">
-                    <strong>분석 결과:</strong>
-                    <ul className="list-disc list-inside ml-2 mt-1">
-                      {testResults.analysis.recommendations.map((rec, idx) => (
-                        <li key={idx} className="text-gray-600">
-                          {rec}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {testResults.analysis.parsingExamples &&
-                  testResults.analysis.parsingExamples.length > 0 && (
-                    <div className="text-sm">
-                      <strong>파싱 예시:</strong>
-                      <div className="ml-2 mt-1 max-h-32 overflow-y-auto">
-                        {testResults.analysis.parsingExamples
-                          .slice(0, 3)
-                          .map((example, idx) => (
-                            <div
-                              key={idx}
-                              className="text-xs text-gray-600 border-l-2 border-gray-300 pl-2 mb-1"
-                            >
-                              <div>
-                                <strong>{example.productTitle}</strong>
-                              </div>
-                              <div>
-                                기본가: {example.basePrice?.toLocaleString()}원
-                              </div>
-                              <div>
-                                옵션: {example.priceOptions?.length || 0}개
-                              </div>
-                              <div>
-                                댓글: {example.commentCount}개
-                                {example.hasComments ? (
-                                  <span className="text-green-600">✓</span>
-                                ) : (
-                                  <span className="text-gray-400">-</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                {testResults.analysis.commentParsingTests &&
-                  testResults.analysis.commentParsingTests.length > 0 && (
-                    <div className="text-sm">
-                      <strong>실제 댓글 파싱 테스트 결과:</strong>
-                      <p className="text-xs text-gray-500 ml-2 mb-1">
-                        실제 밴드에서 가져온 댓글이 어떻게 주문으로 변환되는지
-                        테스트
-                      </p>
-                      <div className="ml-2 mt-1 max-h-48 overflow-y-auto space-y-1">
-                        {testResults.analysis.commentParsingTests
-                          .slice(0, 8)
-                          .map((test, idx) => (
-                            <div
-                              key={idx}
-                              className={`text-xs border rounded p-2 ${
-                                test.isRealComment
-                                  ? "bg-blue-50 border-blue-200"
-                                  : "bg-white border-gray-200"
-                              }`}
-                            >
-                              <div className="flex justify-between items-start mb-1">
-                                <span className="font-medium text-gray-700">
-                                  &quot;{test.originalComment}&quot;
-                                  {test.isRealComment && (
-                                    <span className="text-blue-600 text-xs ml-1 font-bold">
-                                      📝 실제댓글
-                                    </span>
-                                  )}
-                                  {test.commentAuthor && (
-                                    <span className="text-gray-500 text-xs ml-1">
-                                      by {test.commentAuthor}
-                                    </span>
-                                  )}
-                                </span>
-                                {test.hasPhoneOrYear && (
-                                  <span className="text-orange-500 text-xs">
-                                    ⚠️ 4자리숫자 포함
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-gray-600">
-                                <span className="text-blue-600 font-medium">
-                                  상품: {test.productTitle}
-                                </span>
-                              </div>
-                              <div className="text-gray-600 mt-1">
-                                {test.extractedOrders &&
-                                test.extractedOrders.length > 0 ? (
-                                  <div>
-                                    <span className="text-green-600 font-medium">
-                                      ✅ 파싱 성공:
-                                    </span>
-                                    {test.extractedOrders.map(
-                                      (order, orderIdx) => (
-                                        <span key={orderIdx} className="ml-2">
-                                          {order.itemNumber}번 {order.quantity}
-                                          개
-                                        </span>
-                                      )
-                                    )}
-                                    <span className="ml-2 text-gray-500">
-                                      (총 {test.totalQuantity}개)
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-500">
-                                    ❌ 주문 정보 없음
-                                  </span>
-                                )}
-                              </div>
-                              {test.hasPhoneOrYear && (
-                                <div className="text-xs text-orange-600 mt-1 bg-orange-50 p-1 rounded">
-                                  ✓ 4자리 숫자 감지됨 - 년도나 전화번호로
-                                  추정하여 주문에서 제외
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-2 p-2 bg-gray-50 rounded">
-                        💡 파란색 배경: 실제 밴드 댓글 데이터 • 주황색 경고:
-                        4자리 숫자 필터링 적용됨
-                      </div>
-                    </div>
-                  )}
-
-                {testResults.analysis.commentDetails &&
-                  testResults.analysis.commentDetails.length > 0 && (
-                    <div className="text-sm">
-                      <strong>댓글 있는 게시물:</strong>
-                      <div className="ml-2 mt-1">
-                        {testResults.analysis.commentDetails.map(
-                          (detail, idx) => (
-                            <div
-                              key={idx}
-                              className="text-xs text-gray-600 mb-1"
-                            >
-                              <span className="font-medium">
-                                {detail.productTitle}
-                              </span>
-                              <span className="ml-2">
-                                댓글 {detail.commentCount}개
-                              </span>
-                              {detail.hasProductInfo ? (
-                                <span className="text-green-600 ml-2">
-                                  ✓ 상품정보
-                                </span>
-                              ) : (
-                                <span className="text-gray-400 ml-2">
-                                  - 상품정보 없음
-                                </span>
-                              )}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  )}
-              </div>
-            )}
-
-            <details className="text-xs">
-              <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
-                상세 로그 보기
-              </summary>
-              <pre className="text-xs text-gray-600 overflow-auto max-h-64 mt-2 p-2 bg-white rounded border">
-                {JSON.stringify(testResults, null, 2)}
-              </pre>
-            </details>
-          </div>
-        )}
-      </div>
-    </LightCard>
-  );
-}
-
 function BandApiTester({ userData }) {
   const [bandApiLoading, setBandApiLoading] = useState(false);
   const [bandsResult, setBandsResult] = useState(null);
@@ -806,9 +189,12 @@ function BandApiTester({ userData }) {
     setError(null);
 
     try {
-      const response = await fetch(
-        `/api/band/bands?userId=${encodeURIComponent(userId)}`
-      );
+      const response = await fetch(`/api/band/bands`, {
+        headers: buildApiAuthHeaders({
+          includeContentType: false,
+          legacyUserAsToken: true,
+        }),
+      });
       const data = await response.json();
 
       if (!response.ok) {
@@ -845,15 +231,29 @@ function BandApiTester({ userData }) {
       return;
     }
 
+    if (!bandAccessToken) {
+      setError("Band Access Token이 필요합니다.");
+      return;
+    }
+
     setBandApiLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(
-        `/api/band/posts-by-band?userId=${encodeURIComponent(
-          userId
-        )}&bandKey=${encodeURIComponent(selectedBandKey)}`
-      );
+      const query = new URLSearchParams({
+        endpoint: "/band/posts",
+        access_token: bandAccessToken,
+        band_key: selectedBandKey,
+        limit: "20",
+      });
+
+      const response = await fetch(`/api/band-api?${query.toString()}`, {
+        method: "GET",
+        headers: buildApiAuthHeaders({
+          includeContentType: false,
+          legacyUserAsToken: true,
+        }),
+      });
       const data = await response.json();
 
       if (!response.ok) {
@@ -989,7 +389,6 @@ function BandApiTester({ userData }) {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const topRef = useRef(null);
   const [userId, setUserId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true); // 컴포넌트 초기 설정 로딩
   const [savingProfile, setSavingProfile] = useState(false); // 프로필 저장 상태
@@ -1001,15 +400,10 @@ export default function SettingsPage() {
   const [bandNumber, setBandNumber] = useState("");
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [newCustomerInput, setNewCustomerInput] = useState("");
-  const [manualCrawling, setManualCrawling] = useState(false);
-  const [manualCrawlPostCount, setManualCrawlPostCount] = useState(10);
   const [expandedSections, setExpandedSections] = useState({
     bandApiKey: false,
     bandApiUsage: false
   });
-  const [manualCrawlDaysLimit, setManualCrawlDaysLimit] = useState(5); // <<<--- 새로운 상태 추가 (기본값 1일)
-  const [daysLimit, setDaysLimit] = useState(5); // 예: 기본값 5일
-  const [manualCrawlTaskId, setManualCrawlTaskId] = useState(null);
   const [autoBarcodeGeneration, setAutoBarcodeGeneration] = useState(false); // <<<--- 바코드 생성 상태 추가
   const [initialAutoBarcodeGeneration, setInitialAutoBarcodeGeneration] =
     useState(null); // <<<--- 바코드 초기 상태 추가
@@ -1028,7 +422,6 @@ export default function SettingsPage() {
   const [savingAiProcessingSetting, setSavingAiProcessingSetting] =
     useState(false); // <<<--- AI 설정 저장 상태 추가
   const [showLegacySettings, setShowLegacySettings] = useState(false); // <<<--- 기존 설정 표시 여부
-  const [lastCrawlTime, setLastCrawlTime] = useState(null); // <<<--- 마지막 크롤링 시간 상태 추가
   const [postLimit, setPostLimit] = useState(200); // 게시물 가져오기 개수 상태 추가 (기본값: 200, 최대값: 400)
   const [isEditingPostLimit, setIsEditingPostLimit] = useState(false); // 사용자가 postLimit을 편집 중인지 추적
 
@@ -1041,13 +434,23 @@ export default function SettingsPage() {
     },
     keepPreviousData: true,
   };
+  const userSWRKey = userId ? ["auth-me", userId] : null;
   const {
     data: swrUserData,
     isLoading: userLoading,
     error: userSWRError,
     mutate: userMutate,
-  } = useUserClient(userId, swrOptions); // useUserClient는 userId가 null이면 요청 안 하도록 가정 또는 수정
-  const { updateUserProfile } = useUserClientMutations();
+  } = useSWR(
+    userSWRKey,
+    async () => {
+      const me = await fetchCurrentUserFromApi();
+      return {
+        success: true,
+        data: me,
+      };
+    },
+    swrOptions
+  );
   const isDataLoading = initialLoading || userLoading; // isDataLoading은 SWR 로딩 상태를 주로 반영
 
   // --- 타임스탬프 포맷팅 헬퍼 함수 ---
@@ -1078,53 +481,45 @@ export default function SettingsPage() {
 
   // --- Helper: 세션 스토리지에서 사용자 데이터 로드 및 UI 상태 설정 ---
   const loadUserFromSession = useCallback(() => {
-    const sessionDataString = sessionStorage.getItem("userData");
-    if (sessionDataString) {
-      try {
-        const sessionUserData = JSON.parse(sessionDataString);
-        setOwnerName(sessionUserData.owner_name || "");
-        setStoreName(sessionUserData.store_name || "");
-        setBandNumber(sessionUserData.band_number || ""); // 밴드 번호는 보통 변경되지 않으므로 세션 우선도 가능
-        setExcludedCustomers(
-          Array.isArray(sessionUserData.excluded_customers)
-            ? sessionUserData.excluded_customers
-            : []
-        );
+    const sessionUserData = parseSessionUserData();
+    if (sessionUserData) {
+      setOwnerName(sessionUserData.owner_name || "");
+      setStoreName(sessionUserData.store_name || "");
+      setBandNumber(sessionUserData.band_number || "");
+      setExcludedCustomers(
+        Array.isArray(sessionUserData.excluded_customers)
+          ? sessionUserData.excluded_customers
+          : []
+      );
 
-        // 바코드와 AI 설정은 SWR 데이터가 로드되기 전까지 임시로만 설정
-        // (SWR 데이터가 우선되므로 초기값은 설정하지 않음)
-        setAutoBarcodeGeneration(
-          sessionUserData.auto_barcode_generation ?? false
-        );
-        setForceAiProcessing(sessionUserData.force_ai_processing ?? false);
-        setMultiNumberAiProcessing(sessionUserData.multi_number_ai_processing ?? false);
-        setIgnoreOrderNeedsAi(sessionUserData.ignore_order_needs_ai ?? false);
-        
-        // AI 분석 레벨도 DB값 우선 사용
-        const sessionAiLevel = sessionUserData.ai_analysis_level;
-        const validLevels = ['off', 'smart', 'aggressive'];
-        setAiAnalysisLevel(validLevels.includes(sessionAiLevel) ? sessionAiLevel : 'smart');
+      setAutoBarcodeGeneration(sessionUserData.auto_barcode_generation ?? false);
+      setForceAiProcessing(sessionUserData.force_ai_processing ?? false);
+      setMultiNumberAiProcessing(
+        sessionUserData.multi_number_ai_processing ?? false
+      );
+      setIgnoreOrderNeedsAi(sessionUserData.ignore_order_needs_ai ?? false);
 
-        // postLimit도 세션에서 가져오기
-        const sessionPostLimit = sessionStorage.getItem("userPostLimit");
-        if (sessionPostLimit) {
-          setPostLimit(parseInt(sessionPostLimit, 10));
-        } else if (sessionUserData.post_fetch_limit) {
-          // userData 객체에 있다면 사용
-          setPostLimit(parseInt(sessionUserData.post_fetch_limit, 10));
-        }
-        // 다른 페이지들과 일관성을 위해 userId 또는 user_id 키 모두 확인
-        return (
-          sessionUserData.userId ||
-          sessionUserData.user_id ||
-          sessionUserData.id ||
-          null
-        );
-      } catch (e) {
-        console.error("세션 userData 파싱 오류:", e);
-        sessionStorage.removeItem("userData"); // 파싱 오류 시 세션 제거
+      const sessionAiLevel = sessionUserData.ai_analysis_level;
+      const validLevels = ["off", "smart", "aggressive"];
+      setAiAnalysisLevel(
+        validLevels.includes(sessionAiLevel) ? sessionAiLevel : "smart"
+      );
+
+      const sessionPostLimit = sessionStorage.getItem("userPostLimit");
+      if (sessionPostLimit) {
+        setPostLimit(parseInt(sessionPostLimit, 10));
+      } else if (sessionUserData.post_fetch_limit) {
+        setPostLimit(parseInt(sessionUserData.post_fetch_limit, 10));
       }
+
+      return (
+        sessionUserData.userId ||
+        sessionUserData.user_id ||
+        sessionUserData.id ||
+        null
+      );
     }
+
     return null;
   }, []);
 
@@ -1160,10 +555,6 @@ export default function SettingsPage() {
             userDataToSave.band_number || existingSessionData.band_number,
           bandNumber:
             userDataToSave.band_number || existingSessionData.bandNumber, // 두 형식 모두 유지
-          band_access_token:
-            userDataToSave.band_access_token ||
-            existingSessionData.band_access_token, // BAND 액세스 토큰 추가
-          band_key: userDataToSave.band_key || existingSessionData.band_key, // BAND 키 추가
           excluded_customers:
             userDataToSave.excluded_customers ||
             existingSessionData.excluded_customers,
@@ -1208,11 +599,6 @@ export default function SettingsPage() {
             userDataToSave.post_fetch_limit.toString()
           );
         }
-
-        console.log(
-          "세션에 userData 저장 (기존 구조 유지):",
-          updatedSessionData
-        );
       } catch (e) {
         console.error("세션 userData 저장 오류:", e);
       }
@@ -1222,64 +608,45 @@ export default function SettingsPage() {
 
   // 1. 컴포넌트 마운트 시: 세션 확인, userId 설정, 초기 UI 값 로드, SWR 시작
   useEffect(() => {
-    setError(null);
-    let sessionUserId = loadUserFromSession(); // 세션에서 데이터 로드 및 UI 일부 초기화, userId 반환
+    let mounted = true;
 
-    if (!sessionUserId) {
-      // 세션에 userId가 없거나 userData 자체가 없는 경우
-      const sessionDataFallback = sessionStorage.getItem("userData"); // 혹시 userId만 없는 경우 대비
-      if (sessionDataFallback) {
-        try {
-          sessionUserId =
-            JSON.parse(sessionDataFallback)?.userId ||
-            JSON.parse(sessionDataFallback)?.user_id ||
-            JSON.parse(sessionDataFallback)?.id;
-        } catch (e) {
-          /* 파싱 실패 무시 */
+    const bootstrap = async () => {
+      setError(null);
+
+      const sessionUserId = loadUserFromSession();
+      const sessionAuth = getSessionAuth();
+      if (!sessionUserId || !sessionAuth?.userId) {
+        if (mounted) {
+          router.replace("/login");
+          setInitialLoading(false);
         }
-      }
-      // localStorage에서도 userId 확인 (다른 페이지와 일관성)
-      if (!sessionUserId) {
-        const localStorageUserId = localStorage.getItem("userId");
-        if (localStorageUserId) {
-          sessionUserId = localStorageUserId;
-          // localStorage에서 가져온 userId로 세션 데이터 복구
-          try {
-            const existingSessionDataString =
-              sessionStorage.getItem("userData");
-            let existingSessionData = {};
-            if (existingSessionDataString) {
-              existingSessionData = JSON.parse(existingSessionDataString);
-            }
-            const updatedSessionData = {
-              ...existingSessionData,
-              userId: localStorageUserId,
-              id: localStorageUserId,
-            };
-            sessionStorage.setItem(
-              "userData",
-              JSON.stringify(updatedSessionData)
-            );
-          } catch (e) {
-            console.error("세션 복구 오류:", e);
-          }
-        }
-      }
-      if (!sessionUserId) {
-        router.replace("/login");
-        setInitialLoading(false);
         return;
       }
-    }
 
-    setUserId(sessionUserId);
+      try {
+        const me = await fetchCurrentUserFromApi();
+        if (!mounted) return;
 
-    // manualCrawlTaskId 등 기타 초기화 로직
-    const storedTaskId = sessionStorage.getItem("manualCrawlTaskId");
-    if (storedTaskId) setManualCrawlTaskId(storedTaskId);
+        const resolvedUserId = me.user_id || me.userId || me.id || sessionUserId;
+        setUserId(resolvedUserId);
+        saveUserToSession(me);
+      } catch (err) {
+        if (!mounted) return;
+        sessionStorage.removeItem(SESSION_USER_DATA_KEY);
+        router.replace("/login");
+      } finally {
+        if (mounted) {
+          setInitialLoading(false);
+        }
+      }
+    };
 
-    setInitialLoading(false); // 초기 세션 처리 및 기본 설정 완료
-  }, [router, loadUserFromSession]);
+    bootstrap();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router, loadUserFromSession, saveUserToSession]);
 
   // 2. SWR 데이터 로드 완료 후: UI 상태 및 세션 업데이트
   useEffect(() => {
@@ -1344,9 +711,10 @@ export default function SettingsPage() {
         }
         // postLimit은 사용자가 편집 중이 아닐 때만 업데이트
         if (!isEditingPostLimit) {
-          setPostLimit(
-            parseInt(userDataFromServer.post_fetch_limit, 10) || postLimit
-          ); // 서버 값 우선, 없으면 기존 값 유지
+          setPostLimit((prev) => {
+            const parsed = parseInt(userDataFromServer.post_fetch_limit, 10);
+            return Number.isInteger(parsed) ? parsed : prev;
+          });
         }
 
         // 세션 스토리지도 최신 서버 데이터로 업데이트
@@ -1356,9 +724,14 @@ export default function SettingsPage() {
           if (existingSessionDataString) {
             existingSessionData = JSON.parse(existingSessionDataString);
           }
+          const {
+            band_access_token: _unusedBandAccessToken,
+            band_key: _unusedBandKey,
+            ...safeServerData
+          } = userDataFromServer;
           const updatedSessionData = {
             ...existingSessionData,
-            ...userDataFromServer,
+            ...safeServerData,
             userId: userDataFromServer.id || userId,
           };
           sessionStorage.setItem(
@@ -1418,14 +791,7 @@ export default function SettingsPage() {
     const barcodePayload = { auto_barcode_generation: autoBarcodeGeneration };
 
     try {
-      const { data: updatedUser, error: updateError } = await supabase
-        .from("users")
-        .update(barcodePayload)
-        .eq("user_id", userId) // PK 컬럼명 확인!
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
+      const updatedUser = await patchCurrentUserViaApi(barcodePayload);
 
       alert("상품 자동 바코드 생성 설정이 저장되었습니다.");
 
@@ -1436,7 +802,6 @@ export default function SettingsPage() {
           optimisticData: updatedUser,
           revalidate: false,
         });
-        // saveUserToSession(updatedUser); // SWR useEffect가 처리하도록 유도하거나 직접 호출
       } else {
         userMutate();
       }
@@ -1481,14 +846,7 @@ export default function SettingsPage() {
     };
 
     try {
-      const { data: updatedUser, error: updateError } = await supabase
-        .from("users")
-        .update(aiProcessingPayload)
-        .eq("user_id", userId) // PK 컬럼명 확인!
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
+      const updatedUser = await patchCurrentUserViaApi(aiProcessingPayload);
 
       alert("AI 설정이 저장되었습니다.");
 
@@ -1542,7 +900,6 @@ export default function SettingsPage() {
     );
   };
   const handleLogout = () => {
-    console.log("Logging out user:", userId);
     sessionStorage.clear(); // 모든 세션 데이터 제거 (다른 페이지와 일관성)
     localStorage.removeItem("userId");
     router.replace("/login");
@@ -1550,15 +907,6 @@ export default function SettingsPage() {
 
   // --- 각 섹션별 저장 함수 ---
   const handleSaveProfileInfo = async () => {
-    // <<< 디버깅 로그 추가 >>>
-    console.log(
-      "Attempting to save profile. userId:",
-      userId,
-      "userLoading:",
-      userLoading
-    );
-    console.log("updateUserProfile function:", updateUserProfile);
-    // <<< 디버깅 로그 추가 끝 >>>
     if (!userId || userLoading) return;
 
     // postLimit 유효성 검사 추가
@@ -1578,25 +926,8 @@ export default function SettingsPage() {
       post_fetch_limit: newLimit, // postLimit 추가
     };
 
-    console.log("Saving profile data:", profileData);
-    console.log("User ID:", userId);
-    console.log("Post limit value:", postLimit, "-> Parsed:", newLimit);
-    console.log(
-      "Current SWR data post_fetch_limit:",
-      swrUserData?.post_fetch_limit
-    );
-
     try {
-      // Supabase 업데이트 호출
-      const { data, error } = await supabase
-        .from("users")
-        .update(profileData)
-        .eq("user_id", userId)
-        .select()
-        .single();
-
-      console.log("Supabase update result:", { data, error });
-      if (error) throw error;
+      const data = await patchCurrentUserViaApi(profileData);
 
       alert("프로필 및 설정 정보가 저장되었습니다."); // 메시지 변경
 
@@ -1638,19 +969,13 @@ export default function SettingsPage() {
     setError(null);
     const profileData = { excluded_customers: excludedCustomers };
     try {
-      const optimisticUserData = { ...(swrUserData || {}), ...profileData };
-      const { data, error } = await supabase
-        .from("users")
-        .update(profileData)
-        .eq("user_id", userId);
-
-      if (error) throw error;
+      const updatedUser = await patchCurrentUserViaApi(profileData);
 
       alert("제외 고객 목록이 저장되었습니다.");
-      await userMutate(optimisticUserData, {
-        optimisticData: optimisticUserData,
-        revalidate: true,
-        rollbackOnError: true,
+      await userMutate(updatedUser, {
+        optimisticData: updatedUser,
+        revalidate: false,
+        rollbackOnError: false,
         populateCache: true,
       });
     } catch (err) {
@@ -1715,10 +1040,7 @@ export default function SettingsPage() {
     );
 
   return (
-    <div
-      ref={topRef}
-      className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5"
-    >
+    <div className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5">
       {userLoading && userId && (
         <div className="fixed top-0 left-0 right-0 h-1 bg-orange-100 z-50">
           <div
@@ -1764,10 +1086,6 @@ export default function SettingsPage() {
 
         {userId ? (
           <div className="space-y-6">
-            {/* mb-6 제거하고 하단 버튼 영역에 mt-6 추가 */}
-            {/* 프로덕션 테스트 패널 (관리자만) */}
-            <ProductionTestPanel userData={swrUserData} />
-
             {/* 프로필 정보 카드 */}
             <LightCard padding="p-0">
               {/* 패딩 제거 */}
@@ -1837,8 +1155,8 @@ export default function SettingsPage() {
                             setIsEditingPostLimit(true); // 편집 시작
                             const numValue = parseInt(e.target.value, 10);
                             if (!isNaN(numValue)) {
-                              // 1-200 범위 내에서만 허용
-                              if (numValue >= 1 && numValue <= 200) {
+                              // 1-400 범위 내에서만 허용
+                              if (numValue >= 1 && numValue <= 400) {
                                 field.setter(numValue);
                               }
                             } else if (e.target.value === "") {
@@ -2224,8 +1542,8 @@ export default function SettingsPage() {
                       {userLoading && <LoadingSpinner className="w-4 h-4 ml-2" />}
                     </h2>
                     <p className="text-sm text-gray-600 mt-2">
-                      메인 API 키와 백업 키를 관리하여 사용량 초과 시 자동 전환이
-                      가능합니다.
+                      이 화면은 보안 정책에 따라 마스킹된 키 상태만 조회할 수
+                      있습니다.
                     </p>
                   </div>
                   <svg
@@ -2242,7 +1560,9 @@ export default function SettingsPage() {
               </div>
               {expandedSections.bandApiKey && (
                 <div className="p-5 sm:p-6">
-                  {userId && <BandApiKeyManager userId={userId} />}
+                  {userId && (
+                    <BandApiKeyManager userData={swrUserData?.data || swrUserData} />
+                  )}
                   {!userId && (
                     <div className="text-center py-8 text-gray-500">
                       사용자 정보를 불러오는 중...
@@ -2375,11 +1695,17 @@ export default function SettingsPage() {
               <LightCard padding="p-5 sm:p-6">
                 <BandKeySelector 
                   userData={swrUserData?.data || swrUserData} 
-                  onKeyChange={(band) => {
-                    // 밴드 키 변경 후 사용자 데이터 새로고침
-                    globalMutate(`/api/auth/me/${userId}`);
-                    // 다른 관련 데이터도 새로고침 (필요시)
-                    window.location.reload();
+                  onKeyChange={async () => {
+                    // 밴드 키 변경 후 관련 캐시만 갱신
+                    await Promise.all([
+                      userMutate(),
+                      globalMutate(
+                        (key) =>
+                          Array.isArray(key) &&
+                          key[0] === "user" &&
+                          key[1] === userId
+                      ),
+                    ]);
                   }}
                 />
               </LightCard>

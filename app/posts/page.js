@@ -1779,33 +1779,8 @@ export default function PostsPage() {
     );
   }
 
-  if (!postsData) {
-    // 타임아웃이 발생한 경우 ErrorCard 표시
-    if (loadTimeout) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-          <ErrorCard
-            title="서버와 연결이 불안정합니다."
-            message="잠시 후 다시 시도해주세요."
-            onRetry={() => {
-              setLoadTimeout(false);
-              mutate();
-            }}
-            offlineHref="/offline-orders"
-            retryLabel="다시 시도"
-            className="max-w-md w-full"
-          />
-        </div>
-      );
-    }
-
-    // 정상 로딩 중
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-lg">데이터를 불러오는 중...</div>
-      </div>
-    );
-  }
+  const isPostsLoading = !postsData;
+  const isSearching = isPostsLoading && Boolean((searchQuery || "").trim());
 
   const {
     posts = [],
@@ -1816,7 +1791,7 @@ export default function PostsPage() {
       totalProductPosts: 0,
       totalCompletedPosts: 0,
     },
-  } = postsData;
+  } = postsData || {};
 
   // 바코드 모달에서 "상품 추가"를 눌렀을 때, 해당 게시물에 대한 상품 관리 모달을 열어주는 핸들러
   const openProductManagementForSelected = () => {
@@ -2025,7 +2000,27 @@ export default function PostsPage() {
 
       {/* 게시물 그리드 */}
       <div className="mx-auto p-2 sm:p-3 px-2 sm:px-3 2xl:px-20">
-        {posts.length === 0 ? (
+        {loadTimeout && isPostsLoading ? (
+          <div className="min-h-[280px] flex items-center justify-center p-2">
+            <ErrorCard
+              title="서버와 연결이 불안정합니다."
+              message="잠시 후 다시 시도해주세요."
+              onRetry={() => {
+                setLoadTimeout(false);
+                mutate();
+              }}
+              offlineHref="/offline-orders"
+              retryLabel="다시 시도"
+              className="max-w-md w-full"
+            />
+          </div>
+        ) : isPostsLoading ? (
+          <div className="bg-white rounded-lg p-6 sm:p-8 text-center">
+            <div className="text-gray-500 text-lg">
+              {isSearching ? "검색중..." : "데이터를 불러오는 중..."}
+            </div>
+          </div>
+        ) : posts.length === 0 ? (
           <div className="bg-white rounded-lg p-6 sm:p-8 text-center">
             {searchQuery ? (
               <div>
@@ -3250,8 +3245,8 @@ const PostCard = React.memo(function PostCard({
       {/* 중간: 본문 내용 & 이미지 */}
       <div className="flex flex-1">
         {/* 왼쪽: 텍스트 내용 */}
-        <div className="flex-1 p-4">
-          <div className={`text-gray-700 text-sm leading-relaxed ${isExpanded ? '' : 'line-clamp-5'}`}>
+        <div className="flex-1 min-w-0 p-4">
+          <div className={`text-gray-700 text-sm leading-relaxed break-words ${isExpanded ? '' : 'line-clamp-5'}`}>
             {content || '내용 없음'}
           </div>
           <div className="flex items-center gap-3 mt-1">
@@ -3270,25 +3265,23 @@ const PostCard = React.memo(function PostCard({
           </div>
         </div>
 
-        {/* 오른쪽: 이미지 & 개수 */}
-        {hasImages && (
-          <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
-            <OptimizedImage
-              src={getProxiedImageUrl(mainImage, { thumbnail: "s150" })}
-              alt={cleanTitle || "게시물 이미지"}
-              fill
-              sizes="(max-width: 1024px) 64px, 96px"
-              className="object-cover rounded-lg"
-              fallback={
-                <div className="w-full h-full rounded-lg bg-gray-100 flex items-center justify-center absolute top-0 left-0">
-                  <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              }
-            />
-          </div>
-        )}
+        {/* 오른쪽: 이미지 (없어도 placeholder 유지) */}
+        <div className="relative w-16 h-16 lg:w-24 lg:h-24 flex-shrink-0 m-2 lg:m-4">
+          <OptimizedImage
+            src={hasImages ? getProxiedImageUrl(mainImage, { thumbnail: "s150" }) : null}
+            alt={cleanTitle || "게시물 이미지"}
+            fill
+            sizes="(max-width: 1024px) 64px, 96px"
+            className="object-cover rounded-lg"
+            fallback={
+              <div className="w-full h-full rounded-lg bg-gray-100 flex items-center justify-center absolute top-0 left-0 border border-gray-200">
+                <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            }
+          />
+        </div>
       </div>
 
       {/* 하단: 액션 버튼 */}

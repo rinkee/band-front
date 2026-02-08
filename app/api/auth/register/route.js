@@ -1,6 +1,12 @@
 // app/api/auth/register/route.js
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  clearAuthFailure,
+  evaluateAuthGuards,
+  getClientIp,
+  registerAuthFailure,
+} from "../_lib/bruteForceGuard";
 
 // Supabase Edge Function URL 설정
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,6 +19,28 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
  */
 export async function POST(request) {
   try {
+    const clientIp = getClientIp(request);
+    const ipGuard = evaluateAuthGuards({
+      routeId: "register",
+      clientIp,
+      accountId: "",
+    });
+    if (!ipGuard.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+          retryAfterSeconds: ipGuard.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.max(1, ipGuard.retryAfterSeconds || 1)),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
     const {
       naverId,
@@ -29,6 +57,29 @@ export async function POST(request) {
       order_processing_mode,
       orderProcessingMode,
     } = body;
+
+    const accountGuard = evaluateAuthGuards({
+      routeId: "register",
+      clientIp,
+      accountId: loginId,
+    });
+    if (!accountGuard.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "회원가입 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.",
+          retryAfterSeconds: accountGuard.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(
+              Math.max(1, accountGuard.retryAfterSeconds || 1)
+            ),
+          },
+        }
+      );
+    }
 
     // 필수 필드 검증
     if (!loginId || !loginPassword) {
@@ -108,6 +159,13 @@ export async function POST(request) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
+      if (response.status < 500) {
+        registerAuthFailure({
+          routeId: "register",
+          clientIp,
+          accountId: loginId,
+        });
+      }
       return NextResponse.json(
         {
           success: false,
@@ -118,6 +176,12 @@ export async function POST(request) {
         { status: response.status }
       );
     }
+
+    clearAuthFailure({
+      routeId: "register",
+      clientIp,
+      accountId: loginId,
+    });
 
     // 백엔드가 값을 저장하지 않는 경우를 대비해 보정 업데이트
     try {

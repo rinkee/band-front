@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import supabase from '../lib/supabaseClient';
 import {
   UserGroupIcon,
-  CogIcon
+  CogIcon,
+  KeyIcon,
 } from '@heroicons/react/24/outline';
 
 export default function AdminPage() {
@@ -19,7 +20,7 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   // 데이터 로드 (통계만)
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -44,11 +45,11 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
 
   // 관리자 권한 확인
-  const checkAdminAuth = async () => {
+  const checkAdminAuth = useCallback(async () => {
     try {
       setCheckingAuth(true);
 
@@ -113,18 +114,18 @@ export default function AdminPage() {
     } finally {
       setCheckingAuth(false);
     }
-  };
+  }, [loadData]);
 
   useEffect(() => {
     checkAdminAuth();
-  }, []);
+  }, [checkAdminAuth]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-md mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">관리자 메뉴</h1>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* 사용자 정보 메뉴 */}
           <button
             onClick={() => router.push('/admin/users')}
@@ -145,6 +146,17 @@ export default function AdminPage() {
               <CogIcon className="w-8 h-8 text-green-600" />
             </div>
             <span className="text-gray-700 font-medium">활성 관리</span>
+          </button>
+
+          {/* Band 키 관리 메뉴 */}
+          <button
+            onClick={() => router.push('/admin/keys')}
+            className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow flex flex-col items-center justify-center space-y-3"
+          >
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+              <KeyIcon className="w-8 h-8 text-amber-600" />
+            </div>
+            <span className="text-gray-700 font-medium">키 관리</span>
           </button>
         </div>
 

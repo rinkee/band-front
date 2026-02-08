@@ -20,10 +20,24 @@ export async function ensurePostReadyForReprocess({
   }
 
   try {
+    const { updated_at: _ignoredUpdatedAt, ...fallbackUpdates } = updates;
+    if (Object.keys(fallbackUpdates).length === 0) {
+      return {
+        success: false,
+        error: "fallback_updates_empty",
+      };
+    }
+
+    const authHeaders = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${userId}`,
+      "x-user-id": userId,
+    };
+
     const resp = await fetch(fallbackEndpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, postKey, updates })
+      headers: authHeaders,
+      body: JSON.stringify({ postKey, updates: fallbackUpdates }),
     });
     const result = await resp.json().catch(() => null);
 

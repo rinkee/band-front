@@ -1014,6 +1014,10 @@ const CommentsModal = ({
     try {
       // props로 받은 백업 토큰 → DB/세션 순으로 우선 사용
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const authUserId = userData.userId || userData.user_id || "";
+      if (!authUserId) {
+        throw new Error("사용자 인증 정보가 없습니다.");
+      }
       const backupKeys = userData.backup_band_keys;
       const backupToken =
         backupAccessToken ||
@@ -1035,7 +1039,12 @@ const CommentsModal = ({
       });
 
       // 프록시 API 엔드포인트 사용
-      const response = await fetch(`/api/band/comments?${params}`);
+      const response = await fetch(`/api/band/comments?${params}`, {
+        headers: {
+          Authorization: `Bearer ${authUserId}`,
+          "x-user-id": authUserId,
+        },
+      });
       if (requestGeneration !== requestGenerationRef.current) return;
 
       if (!response.ok) {
@@ -1130,6 +1139,10 @@ const CommentsModal = ({
       const params = new URLSearchParams(nextParams);
 
       const userData = JSON.parse(sessionStorage.getItem("userData") || "{}");
+      const authUserId = userData.userId || userData.user_id || "";
+      if (!authUserId) {
+        throw new Error("사용자 인증 정보가 없습니다.");
+      }
       const backupKeys = userData.backup_band_keys;
       const backupToken =
         backupAccessToken ||
@@ -1142,7 +1155,12 @@ const CommentsModal = ({
       }
 
       // 프록시 API 엔드포인트 사용
-      const response = await fetch(`/api/band/comments?${params}`);
+      const response = await fetch(`/api/band/comments?${params}`, {
+        headers: {
+          Authorization: `Bearer ${authUserId}`,
+          "x-user-id": authUserId,
+        },
+      });
       if (requestGeneration !== requestGenerationRef.current) return;
 
       if (!response.ok) {

@@ -1,6 +1,12 @@
 // api/auth/login/route.js
 
 import { NextResponse } from "next/server";
+import {
+  clearAuthFailure,
+  evaluateAuthGuards,
+  getClientIp,
+  registerAuthFailure,
+} from "../_lib/bruteForceGuard";
 
 // API 기본 URL 설정
 const API_BASE_URL =
@@ -14,6 +20,28 @@ const API_BASE_URL =
  */
 export async function POST(request) {
   try {
+    const clientIp = getClientIp(request);
+    const ipGuard = evaluateAuthGuards({
+      routeId: "login",
+      clientIp,
+      accountId: "",
+    });
+    if (!ipGuard.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+          retryAfterSeconds: ipGuard.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.max(1, ipGuard.retryAfterSeconds || 1)),
+          },
+        }
+      );
+    }
+
     const { loginId, loginPassword } = await request.json();
 
     // 필수 필드 검증
@@ -21,6 +49,29 @@ export async function POST(request) {
       return NextResponse.json(
         { success: false, message: "아이디와 비밀번호를 입력해주세요." },
         { status: 400 }
+      );
+    }
+
+    const accountGuard = evaluateAuthGuards({
+      routeId: "login",
+      clientIp,
+      accountId: loginId,
+    });
+    if (!accountGuard.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.",
+          retryAfterSeconds: accountGuard.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(
+              Math.max(1, accountGuard.retryAfterSeconds || 1)
+            ),
+          },
+        }
       );
     }
 
@@ -41,6 +92,11 @@ export async function POST(request) {
       .single();
 
     if (userError || !userData) {
+      registerAuthFailure({
+        routeId: "login",
+        clientIp,
+        accountId: loginId,
+      });
       console.warn(`로그인 실패: 사용자 없음 - loginId: ${loginId}`);
       return NextResponse.json(
         { success: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." },
@@ -50,6 +106,11 @@ export async function POST(request) {
 
     // 계정 활성화 상태 확인
     if (userData.is_active === false) {
+      registerAuthFailure({
+        routeId: "login",
+        clientIp,
+        accountId: loginId,
+      });
       console.warn(`로그인 실패: 비활성화된 계정 - loginId: ${loginId}`);
       return NextResponse.json(
         { success: false, message: "비활성화된 계정입니다. 관리자에게 문의해주세요." },
@@ -59,12 +120,23 @@ export async function POST(request) {
 
     // 비밀번호 검증
     if (userData.login_password !== loginPassword) {
+      registerAuthFailure({
+        routeId: "login",
+        clientIp,
+        accountId: loginId,
+      });
       console.warn(`로그인 실패: 비밀번호 불일치 - loginId: ${loginId}`);
       return NextResponse.json(
         { success: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." },
         { status: 401 }
       );
     }
+
+    clearAuthFailure({
+      routeId: "login",
+      clientIp,
+      accountId: loginId,
+    });
 
     // 서버 API 호출 (기존 로직 유지 - 토큰 생성 등을 위해)
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -87,6 +159,13 @@ export async function POST(request) {
     );
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        registerAuthFailure({
+          routeId: "login",
+          clientIp,
+          accountId: loginId,
+        });
+      }
       console.error("로그인 실패:", data);
       // 서버에서 받은 에러 메시지를 그대로 클라이언트에 전달
       return NextResponse.json(
