@@ -1,20 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSWRConfig } from 'swr';
 import { ensurePostReadyForReprocess } from '../lib/postProcessing/ensurePostReadyForReprocess';
+import supabase from '../lib/supabaseClient';
 import {
   buildPickupDateChangeConfirmMessage,
   isPickupDateBeforePostedAt,
   pickupDateIsoFromDateAndTime,
   updatePostAndProductPickupDate,
 } from '../lib/pickupDateUpdate';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const ProductManagementModal = ({ isOpen, onClose, post }) => {
   const { mutate: globalMutate } = useSWRConfig();
@@ -37,25 +32,8 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     stock_quantity: 0,
   });
 
-  // 모달이 열릴 때 데이터 로드
-  useEffect(() => {
-    if (isOpen && post) {
-      setCurrentPost(post); // post 데이터를 로컬 상태로 복사
-      loadProducts();
-    }
-  }, [isOpen, post]);
-
-  // 모달이 닫히면 편집 상태 초기화
-  useEffect(() => {
-    if (!isOpen) {
-      setIsEditingPickupDate(false);
-      setEditPickupDate('');
-      setEditPickupTime('00:00');
-    }
-  }, [isOpen]);
-
   // 상품 목록 로드
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     setIsLoading(true);
     try {
       // 현재 사용자 ID 가져오기
@@ -82,7 +60,24 @@ const ProductManagementModal = ({ isOpen, onClose, post }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [post?.post_key]);
+
+  // 모달이 열릴 때 데이터 로드
+  useEffect(() => {
+    if (isOpen && post) {
+      setCurrentPost(post); // post 데이터를 로컬 상태로 복사
+      loadProducts();
+    }
+  }, [isOpen, post, loadProducts]);
+
+  // 모달이 닫히면 편집 상태 초기화
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEditingPickupDate(false);
+      setEditPickupDate('');
+      setEditPickupTime('00:00');
+    }
+  }, [isOpen]);
 
   const normalizePickupDate = (rawValue) => {
     if (!rawValue && rawValue !== 0) return null;
