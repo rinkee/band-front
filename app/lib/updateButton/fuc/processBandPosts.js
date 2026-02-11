@@ -68,6 +68,36 @@ const safeParseJson = (value) => {
   return value;
 };
 
+const DEFAULT_PENDING_LOOKBACK_DAYS = 14;
+const DEFAULT_PENDING_RETRY_LIMIT = 20;
+const DEFAULT_POST_UPDATE_CONCURRENCY = 4;
+
+const clampInt = (value, min, max, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const runWithConcurrencyLimit = async (items, limit, worker) => {
+  if (!Array.isArray(items) || items.length === 0) return;
+  const normalizedLimit = Math.max(1, limit);
+  let cursor = 0;
+
+  const runners = Array.from(
+    { length: Math.min(normalizedLimit, items.length) },
+    async () => {
+      while (true) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= items.length) return;
+        await worker(items[index], index);
+      }
+    }
+  );
+
+  await Promise.all(runners);
+};
+
 const buildFormattedCommentForDiff = (comment) => {
   const baseContent = convertBandTags(comment?.content || "").trim();
   const isReply =
@@ -180,7 +210,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
     processingLimit: requestedLimit = null,
     processWithAI = true,
     simulateQuotaError = false,
-    onFailover = null
+    onFailover = null,
+    pendingRetryDays = DEFAULT_PENDING_LOOKBACK_DAYS,
+    pendingRetryLimit = null,
+    postUpdateConcurrency = DEFAULT_POST_UPDATE_CONCURRENCY,
   } = options;
 
   let bandApiFailover = null;
@@ -218,6 +251,29 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // 🧪 테스트 모드에서는 처리량 제한 (최대 5개)
     const maxLimit = testMode ? 5 : 1000;
     processingLimit = Math.min(processingLimit, maxLimit);
+    const resolvedPendingRetryLimit = clampInt(
+      pendingRetryLimit,
+      0,
+      100,
+      testMode
+        ? Math.min(5, processingLimit)
+        : Math.min(
+            DEFAULT_PENDING_RETRY_LIMIT,
+            Math.max(1, processingLimit)
+          )
+    );
+    const resolvedPendingRetryDays = clampInt(
+      pendingRetryDays,
+      1,
+      30,
+      DEFAULT_PENDING_LOOKBACK_DAYS
+    );
+    const resolvedPostUpdateConcurrency = clampInt(
+      postUpdateConcurrency,
+      1,
+      8,
+      DEFAULT_POST_UPDATE_CONCURRENCY
+    );
 
     if (userSettingsError) {
       console.warn(`사용자 설정 조회 실패: ${userSettingsError.message}, 기본값 200 사용`);
@@ -248,22 +304,34 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // === 메인 로직 ===
     // 🔥 SMART PRIORITY SYSTEM START 🔥
 
-    // 0-1. DB에서 pending 또는 failed 상태인 posts 먼저 조회 (최근 14일)
-    console.log(`DB에서 pending/failed 상태 게시물 조회`);
-    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: pendingPosts, error: pendingError } = await supabase
-      .from("posts")
-      .select("post_key, band_key, title, content, comment_count, posted_at, band_post_url")
-      .eq("user_id", userId)
-      .in("comment_sync_status", ["pending", "failed"])
-      .gte("posted_at", twoWeeksAgo)
-      .order("comment_count", { ascending: false })
-      .limit(100);
+    // 0-1. DB에서 pending 또는 failed 상태인 posts 먼저 조회 (조회/처리 상한 적용)
+    let pendingPosts = [];
+    if (resolvedPendingRetryLimit > 0) {
+      console.log(`DB에서 pending/failed 상태 게시물 조회`);
+      const pendingCutoffIso = new Date(
+        Date.now() - resolvedPendingRetryDays * 24 * 60 * 60 * 1000
+      ).toISOString();
+      const pendingQueryLimit = Math.min(
+        100,
+        Math.max(resolvedPendingRetryLimit * 2, resolvedPendingRetryLimit)
+      );
+      const { data, error: pendingError } = await supabase
+        .from("posts")
+        .select("post_key, band_key, title, content, comment_count, posted_at, band_post_url")
+        .eq("user_id", userId)
+        .in("comment_sync_status", ["pending", "failed"])
+        .gte("posted_at", pendingCutoffIso)
+        .order("comment_count", { ascending: false })
+        .limit(pendingQueryLimit);
 
-    if (pendingError) {
-      console.error(`Pending posts 조회 실패: ${pendingError.message}`);
+      if (pendingError) {
+        console.error(`Pending posts 조회 실패: ${pendingError.message}`);
+      } else {
+        pendingPosts = Array.isArray(data) ? data : [];
+        console.log(`[0-1단계] ${pendingPosts.length}개의 pending/failed 게시물 발견`);
+      }
     } else {
-      console.log(`[0-1단계] ${pendingPosts?.length || 0}개의 pending/failed 게시물 발견`);
+      console.log(`[0-1단계] pending 재처리 비활성화 (limit=0)`);
     }
 
     // 1. Band API 게시물 가져오기
@@ -284,7 +352,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
     console.log(`DB posts를 Band API 형식으로 변환`);
     if (pendingPosts && pendingPosts.length > 0) {
       const existingKeys = new Set(posts.map((p) => p.postKey));
+      let addedPendingCount = 0;
       for (const dbPost of pendingPosts) {
+        if (addedPendingCount >= resolvedPendingRetryLimit) break;
         if (existingKeys.has(dbPost.post_key)) continue;
         posts.push({
           postKey: dbPost.post_key,
@@ -297,8 +367,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
           url: dbPost.band_post_url || "",
           fromDB: true
         });
+        existingKeys.add(dbPost.post_key);
+        addedPendingCount += 1;
       }
-      console.log(`[1-3단계] ${pendingPosts.length}개의 DB posts 추가됨. 총 ${posts.length}개 처리 예정`);
+      console.log(
+        `[1-3단계] pending/failed ${pendingPosts.length}개 중 ${addedPendingCount}개 추가됨. 총 ${posts.length}개 처리 예정`
+      );
     }
 
     let postsWithAnalysis = [];
@@ -1716,9 +1790,22 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
       // 5. 댓글 정보 일괄 업데이트
       if (postsToUpdateCommentInfo.length > 0) {
-        console.log(`[5단계] ${postsToUpdateCommentInfo.length}개의 게시물에 대한 댓글 정보를 일괄 업데이트하는 중...`);
+        const dedupedUpdates = Array.from(
+          postsToUpdateCommentInfo.reduce((map, item) => {
+            if (item?.post_id) {
+              map.set(item.post_id, item);
+            }
+            return map;
+          }, new Map()).values()
+        );
+        console.log(
+          `[5단계] 게시물 댓글정보 업데이트 ${postsToUpdateCommentInfo.length}건 -> 중복제거 ${dedupedUpdates.length}건, 동시성 ${resolvedPostUpdateConcurrency}`
+        );
         try {
-          const updatePromises = postsToUpdateCommentInfo.map(async (updateInfo) => {
+          await runWithConcurrencyLimit(
+            dedupedUpdates,
+            resolvedPostUpdateConcurrency,
+            async (updateInfo) => {
             const fieldsToUpdate = {
               comment_count: updateInfo.comment_count
             };
@@ -1752,9 +1839,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
             } else {
               console.log(`✅ Post ${updateInfo.post_id} 업데이트 성공:`, JSON.stringify(fieldsToUpdate, null, 2));
             }
-          });
-
-          await Promise.all(updatePromises);
+            }
+          );
           console.log(`댓글 정보 일괄 업데이트 완료`);
         } catch (updateError) {
           console.error(`[5단계] 댓글 정보 일괄 업데이트 중 예외 발생: ${updateError.message}`);

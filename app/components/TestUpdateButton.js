@@ -36,6 +36,7 @@ export default function TestUpdateButton({
   const { mutate } = useSWRConfig();
 
   const BACKUP_RANGE_MS = 20 * 24 * 60 * 60 * 1000; // 최근 20일
+  const PENDING_RETRY_DAYS = 30; // pending/failed 재처리 조회 기간
   const COOLDOWN_MS = 15 * 1000; // 15초
   const POST_COLUMNS =
     "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at";
@@ -546,6 +547,7 @@ export default function TestUpdateButton({
       const response = await processBandPosts(supabase, userId, {
         testMode: false, // 실제 DB에 저장
         processingLimit: 10, // 최대 10개 게시물만 처리
+        pendingRetryDays: PENDING_RETRY_DAYS,
         processWithAI: true,
         simulateQuotaError: false,
         onFailover: handleFailover
