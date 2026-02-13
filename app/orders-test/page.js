@@ -4660,20 +4660,20 @@ function OrdersTestPageContent({ mode = "raw" }) {
                         disabled={isDataLoading || displayOrders.length === 0}
                       />
                     </th>
-                    <th className="py-2 px-1 lg:px-2 xl:px-3 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-26 bg-gray-50">
+                    <th className="py-2 px-1 lg:px-2 xl:px-3 text-left text-[11px] sm:text-xs xl:text-base font-semibold text-gray-600 uppercase tracking-wide xl:tracking-wider w-26 bg-gray-50 whitespace-nowrap">
                       <button
                         onClick={() => handleSortChange("customer_name")}
-                        className="inline-flex items-center bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center whitespace-nowrap bg-transparent border-none p-0 cursor-pointer font-inherit text-inherit disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isDataLoading}
                       >
                         고객명 {getSortIcon("customer_name")}
                       </button>
                     </th>
-                    <th className="py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-24 bg-gray-50">
+                    <th className="py-2 px-1 lg:px-4 xl:px-6 text-center text-[11px] sm:text-xs xl:text-base font-semibold text-gray-600 uppercase tracking-wide xl:tracking-wider w-24 bg-gray-50 whitespace-nowrap">
                       상태
                     </th>
                     <th
-                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-20 xl:w-32 bg-gray-50 transition-colors ${isDataLoading
+                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-[11px] sm:text-xs xl:text-base font-semibold text-gray-700 uppercase tracking-wide xl:tracking-wider w-20 xl:w-32 bg-gray-50 transition-colors whitespace-nowrap ${isDataLoading
                         ? "cursor-not-allowed"
                         : "cursor-pointer select-none hover:bg-gray-100"
                         }`}
@@ -4688,16 +4688,16 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       tabIndex={isDataLoading ? -1 : 0}
                       title={isDataLoading ? "로딩 중..." : "수령일 보기 모드 전환"}
                     >
-                      <span className="text-gray-800 hover:text-orange-600">수령일</span>
+                      <span className="text-gray-800 hover:text-orange-600 whitespace-nowrap">수령일</span>
                     </th>
-                    <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider bg-gray-50">
+                    <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-[11px] sm:text-xs xl:text-base font-semibold text-gray-600 uppercase tracking-wide xl:tracking-wider bg-gray-50 whitespace-nowrap">
                       댓글
                     </th>
-                    <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-sm xl:text-base font-semibold text-gray-600 uppercase tracking-wider w-60 bg-gray-50">
+                    <th className="py-2 px-2 lg:px-4 xl:px-6 text-left text-[11px] sm:text-xs xl:text-base font-semibold text-gray-600 uppercase tracking-wide xl:tracking-wider w-60 bg-gray-50 whitespace-nowrap">
                       상품정보
                     </th>
                     <th
-                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-sm xl:text-base font-semibold text-gray-700 uppercase tracking-wider w-40 bg-gray-50 transition-colors ${isDataLoading
+                      className={`py-2 px-1 lg:px-4 xl:px-6 text-center text-[11px] sm:text-xs xl:text-base font-semibold text-gray-700 uppercase tracking-wide xl:tracking-wider w-40 bg-gray-50 transition-colors whitespace-nowrap ${isDataLoading
                         ? "cursor-not-allowed"
                         : "cursor-pointer select-none hover:bg-gray-100"
                         }`}
@@ -4712,7 +4712,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
                       tabIndex={isDataLoading ? -1 : 0}
                       title={isDataLoading ? "로딩 중..." : "바코드 크기 전환"}
                     >
-                      <div className="inline-flex items-center justify-center gap-1.5 text-gray-800 hover:text-orange-600">
+                      <div className="inline-flex items-center justify-center gap-1.5 text-gray-800 hover:text-orange-600 whitespace-nowrap">
                         <span>바코드</span>
                         {barcodeViewMode === "small" ? (
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
