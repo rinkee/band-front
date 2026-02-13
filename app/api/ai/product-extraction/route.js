@@ -12,8 +12,30 @@ const ALLOWED_AI_MODELS = new Set([
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_CONTENT_CHARS = 20000;
 const MAX_POST_KEY_CHARS = 200;
+const MAX_PRODUCT_TITLE_CHARS = 56;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 60;
+
+const sanitizeProductTitle = (rawTitle) => {
+  if (typeof rawTitle !== "string") return "";
+
+  const normalized = rawTitle
+    .trim()
+    .replace(/\s*\([^)]*\)/g, "")
+    .replace(/\s*\+\s*/g, " + ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return "";
+  if (normalized.length <= MAX_PRODUCT_TITLE_CHARS) return normalized;
+
+  const clipped = normalized
+    .slice(0, MAX_PRODUCT_TITLE_CHARS)
+    .replace(/[+,\-\/\s]+$/g, "")
+    .trim();
+
+  return `${clipped || normalized.slice(0, MAX_PRODUCT_TITLE_CHARS).trim()}...`;
+};
 
 const getRateLimitStore = () => {
   if (!globalThis.__aiProductExtractionRateLimitStore) {
@@ -246,6 +268,22 @@ export async function POST(request) {
 - 중복이 발견되면: 더 구체적인 정보(크기/등급/용량/포장 단위)가 포함된 title을 우선으로 남기고 나머지는 제거합니다.
 - 최종 검증: 최종 products 배열에서 동일 키가 2번 이상이면 실패로 간주하고, 중복 제거 후 다시 출력합니다. (단, 번호 구분 상품은 2.1이 우선)
 
+### 2.5 상품명 최소 식별 규칙 (최우선, 중요)
+**title은 "상품을 서로 구분할 수 있을 정도"의 최소 정보만 남깁니다.**
+- 불필요한 수식어(고당도, 산지/지역 반복, 브랜드성 미사여구, 홍보 문구)는 제거합니다.
+- 판매 단위(예: 1팩, 2팩, 반박스, 한박스, 1세트, 2묶음)는 **단일 상품이든 다중 상품이든 항상 title에 유지**합니다.
+- 무게/용량(g, kg, ml, L)은 **상품 구분에 꼭 필요할 때만** title에 포함합니다.
+- 이미 다른 단서(예: 1팩/2팩, 반박스/한박스)로 충분히 구분되면, 무게/용량은 title에서 제거합니다.
+- 즉, 고객이 "어떤 상품을 몇 단위 가져가는지"는 title만 보고 바로 알 수 있어야 합니다.
+
+예시)
+- 단일 상품: "크래미 1팩 200g" -> title: "크래미 1팩"
+- 다중 상품: "크래미 1팩 200g", "크래미 2팩 400g" -> title: "크래미 1팩", "크래미 2팩"
+- 다중 상품: "조생감귤 반박스", "조생감귤 한박스" -> title: "조생감귤 반박스", "조생감귤 한박스"
+- 그람수로만 구분되는 경우: "한우 등심 300g", "한우 등심 600g" -> title: "한우 등심 300g", "한우 등심 600g"
+- 잘못된 예: "고당도 서귀포 중문 달코미 조생감귤 2S 사이즈 한박스"
+- 올바른 예: "조생감귤 한박스"
+
 ## 3. 핵심 원칙
 
 ### 2.1 할인 가격 처리
@@ -366,6 +404,8 @@ export async function POST(request) {
 
 ### 기본 상품명 구성
 - 정식 상품명 우선
+- title은 최소 식별 원칙을 우선 적용 (상품 구분에 필요 없는 단어는 제거)
+- 상품명 길이는 최대 ${MAX_PRODUCT_TITLE_CHARS}자로 제한하고, 초과 시 자연스러운 경계에서 "..."로 마무리
 - 원산지는 구분 필요시에만 포함:
   - 수입산은 항상 표기 (노르웨이산, 칠레산 등)
   - 프리미엄 지역은 표기 (제주산, 횡성 등)
@@ -375,8 +415,8 @@ export async function POST(request) {
   #### 보존해야 할 괄호 내용 (괄호 기호만 제거, 내용은 유지)
   - 과일 크기/등급: (4수), (3수), (대), (중), (소), (특), (상)
   - 품질 등급: (특품), (상품), (1등급), (프리미엄), (고급)
-  - 수량 정보: (10개), (12개입), (24알), (6마리)
-  - 용량 정보: (500g), (1kg), (2L), (150ml)
+  - 수량 정보: (10개), (12개입), (24알), (6마리) (상품 구분에 필요할 때만 보존)
+  - 용량 정보: (500g), (1kg), (2L), (150ml) (상품 구분에 필요할 때만 보존)
   - 포장 단위: (1박스), (2상자), (3팩)
   - 부위/종류: (등심), (안심), (갈비), (목심), (제육용), (국거리용)
   - 상태 정보: (냉동), (냉장), (생), (활어), (손질)
@@ -408,8 +448,8 @@ export async function POST(request) {
 - 단위 표시 규칙 (세트/묶음은 항상 보존):
   - 세트/묶음: 항상 보존 (1세트, 2묶음, 3패키지)
   - 박스/상자: 있으면 보존 (1박스, 2상자)  
-  - 수량: 구체적 개수 보존 (4알, 10개, 5봉)
-  - 용량: 필요시 보존 (300g, 500ml)
+  - 수량: 상품 구분에 필요할 때만 보존 (4알, 10개, 5봉)
+  - 용량: 상품 구분에 필요할 때만 보존 (300g, 500ml)
   - 조합 허용: "1세트 4알", "2묶음 8개", "1박스 12개" 등 자연스러운 조합
   - 최대 제한: 3개 이상 단위는 중요도 순으로 선별
 - 제외: 날짜 정보, 재고 표시, 이모티콘, 프로모션 문구
@@ -531,6 +571,10 @@ basePrice와 price는 모두 동일한 할인된 판매가격이어야 함
 5. "한박스", "한상자"를 "1박스", "1상자"로 변경했는가?
 6. basePrice와 price가 모두 동일한 할인된 판매가격으로 설정되었는가?
 7. pickupInfo에 가격 정보가 포함되지 않았는가? (수령 일정만 포함해야 함)
+8. title이 ${MAX_PRODUCT_TITLE_CHARS}자를 넘지 않는가? (넘으면 "..." 처리)
+9. title이 "구분 가능한 최소 정보"만 포함하는가? (불필요한 수식어/중복 키워드 제거)
+10. 판매 단위(1팩/2팩, 반박스/한박스 등)는 title에 유지했는가?
+11. 1팩/2팩, 반박스/한박스 등으로 이미 구분 가능하면 무게/용량(g, kg 등)은 title에서 제거했는가? (단, 무게가 유일한 구분자면 유지)
 
 
 
@@ -760,7 +804,8 @@ ${content}`;
         .map((product, index) => {
           // 새로운 형식의 상품 정리
           // 제목에서 괄호와 그 내용을 제거
-          const cleanTitle = product.title.trim().replace(/\s*\([^)]*\)/g, "");
+          const cleanTitle = sanitizeProductTitle(product.title);
+          if (!cleanTitle) return null;
           return {
             ...product,
             itemNumber: product.itemNumber || index + 1,
@@ -770,7 +815,8 @@ ${content}`;
                 parsedResult.keywordMappings[key].productIndex === index + 1
             ),
           };
-        });
+        })
+        .filter(Boolean);
 
       console.log(
         `[AI 분석] ${validProducts.length}개 상품 추출 완료:`,
@@ -795,7 +841,11 @@ ${content}`;
       }
       
       // 제목에서 괄호와 그 내용을 제거
-      const cleanTitle = parsedResult.title.trim().replace(/\s*\([^)]*\)/g, "");
+      const cleanTitle = sanitizeProductTitle(parsedResult.title);
+      if (!cleanTitle) {
+        console.warn("[AI 분석] 상품 제목 정제 결과가 비어있습니다:", parsedResult.title);
+        return NextResponse.json({ products: getDefaultProduct("상품 제목 정제 실패") });
+      }
       
       // 단일 상품을 배열로 반환
       const singleProduct = {
@@ -852,7 +902,8 @@ ${content}`;
         })
         .map((product, index) => {
           // 제목에서 괄호와 그 내용을 제거
-          const cleanTitle = product.title.trim().replace(/\s*\([^)]*\)/g, "");
+          const cleanTitle = sanitizeProductTitle(product.title);
+          if (!cleanTitle) return null;
           
           // 기본값 설정
           const cleanProduct = {
@@ -906,7 +957,8 @@ ${content}`;
           }
           
           return cleanProduct;
-        });
+        })
+        .filter(Boolean);
       
       if (validProducts.length === 0) {
         console.warn(

@@ -5,16 +5,50 @@
 
 import { getDefaultProduct } from './defaultProduct.js';
 
+const DEFAULT_MAX_PRODUCT_TITLE_CHARS = 56;
+
+const resolveMaxTitleChars = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_MAX_PRODUCT_TITLE_CHARS;
+  return Math.min(120, Math.max(20, parsed));
+};
+
+const normalizeProductTitle = (rawTitle, maxChars) => {
+  if (typeof rawTitle !== "string") return "";
+
+  const normalized = rawTitle
+    .replace(/\s*\([^)]*\)/g, "")
+    .replace(/\s*\+\s*/g, " + ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return "상품";
+  if (normalized.length <= maxChars) return normalized;
+
+  const clipped = normalized
+    .slice(0, maxChars)
+    .replace(/[+,\-\/\s]+$/g, "")
+    .trim();
+
+  return `${clipped || normalized.slice(0, maxChars).trim()}...`;
+};
+
 /**
  * 상품 정보를 처리하고 검증하는 함수
  *
  * @param {Object} productInfo - AI가 추출한 상품 정보
  * @param {string} postTime - 게시물 작성 시간
  * @param {Object|null} userSettings - 사용자 설정 (바코드 자동 생성 등)
+ * @param {Object} options - 추가 옵션
  * @returns {Object} 처리된 상품 정보
  */
-export function processProduct(productInfo, postTime, userSettings = null) {
+export function processProduct(productInfo, postTime, userSettings = null, options = {}) {
   if (!productInfo) return getDefaultProduct("정보 없음").products[0];
+  const maxTitleChars = resolveMaxTitleChars(options?.maxTitleChars);
+
+  if (productInfo.title !== undefined) {
+    productInfo.title = normalizeProductTitle(productInfo.title, maxTitleChars);
+  }
 
   // pickupInfo 기반 날짜는 사용하지 않고, 타입만 기본값 보정
   if (!productInfo.pickupType) {

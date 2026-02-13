@@ -5,17 +5,54 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 120;
 const rateLimitStore = new Map();
 
-const USER_SELECT_COLUMNS = `
-  user_id, login_id, naver_id, store_name, store_address, owner_name,
-  phone_number, band_url, band_number, is_active, created_at, last_login_at,
-  last_crawl_at, product_count, crawl_interval, naver_login_status,
-  excluded_customers, job_id, auto_barcode_generation, role, settings, cookies,
-  subscription, auto_crawl, updated_at, cookies_updated_at, last_crawled_post_id,
-  band_access_token, band_key, post_fetch_limit, force_ai_processing,
-  backup_band_keys, current_band_key_index, last_key_switch_at, band_access_tokens,
-  multi_number_ai_processing, function_number, ai_analysis_level, ai_mode_migrated,
-  ignore_order_needs_ai, inactive_reason, memo, band_backup_access_token, order_processing_mode
-`;
+const USER_SELECT_COLUMN_CANDIDATES = [
+  "user_id",
+  "login_id",
+  "naver_id",
+  "store_name",
+  "store_address",
+  "owner_name",
+  "phone_number",
+  "band_url",
+  "band_number",
+  "is_active",
+  "created_at",
+  "last_login_at",
+  "last_crawl_at",
+  "product_count",
+  "crawl_interval",
+  "naver_login_status",
+  "excluded_customers",
+  "job_id",
+  "auto_barcode_generation",
+  "role",
+  "settings",
+  "cookies",
+  "subscription",
+  "auto_crawl",
+  "updated_at",
+  "cookies_updated_at",
+  "last_crawled_post_id",
+  "band_access_token",
+  "band_key",
+  "post_fetch_limit",
+  "force_ai_processing",
+  "backup_band_keys",
+  "current_band_key_index",
+  "last_key_switch_at",
+  "band_access_tokens",
+  "multi_number_ai_processing",
+  "function_number",
+  "ai_analysis_level",
+  "ai_mode_migrated",
+  "ignore_order_needs_ai",
+  "inactive_reason",
+  "memo",
+  "band_backup_access_token",
+  "order_processing_mode",
+];
+
+let cachedUserSelectColumns = [...USER_SELECT_COLUMN_CANDIDATES];
 
 const ALLOWED_AI_LEVELS = new Set(["off", "smart", "aggressive"]);
 const MAX_NAME_LENGTH = 120;
@@ -29,6 +66,15 @@ const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+
+const isSupportedUserId = (value) => {
+  if (isUuid(value)) return true;
+  if (process.env.NODE_ENV !== "development") return false;
+  return (
+    typeof value === "string" &&
+    /^[A-Za-z0-9:_-]{1,128}$/.test(value)
+  );
+};
 
 const getClientIp = (request) => {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -89,6 +135,68 @@ const tokenMatchesUserId = (token, userId) => {
   );
 };
 
+const extractTokenUserIdCandidates = (token) => {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return [];
+  return [payload.user_id, payload.userId, payload.sub]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+};
+
+const extractTokenLoginIdCandidates = (token) => {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return [];
+  return [payload.login_id, payload.loginId]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+};
+
+const maskForDebug = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.length <= 8) return raw;
+  return `${raw.slice(0, 4)}...${raw.slice(-4)}`;
+};
+
+const parseMissingUsersColumn = (message) => {
+  const match = String(message || "").match(/column users\.([a-zA-Z0-9_]+) does not exist/i);
+  return match?.[1] || null;
+};
+
+const selectUserWithAdaptiveColumns = async (supabaseAdmin, field, value) => {
+  let columns = [...cachedUserSelectColumns];
+  let lastError = null;
+
+  while (columns.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from("users")
+      .select(columns.join(", "))
+      .eq(field, value)
+      .maybeSingle();
+
+    if (!error) {
+      cachedUserSelectColumns = [...columns];
+      return { data, error: null };
+    }
+
+    lastError = error;
+    const missingColumn = parseMissingUsersColumn(error.message);
+    if (!missingColumn) {
+      return { data: null, error };
+    }
+
+    const nextColumns = columns.filter((column) => column !== missingColumn);
+    if (nextColumns.length === columns.length) {
+      return { data: null, error };
+    }
+
+    columns = nextColumns;
+    cachedUserSelectColumns = [...nextColumns];
+  }
+
+  return { data: null, error: lastError };
+};
+
 const createAdminClient = () => {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -130,11 +238,12 @@ const authenticateRequest = async (request, supabaseAdmin) => {
   }
 
   const headerUserId = (request.headers.get("x-user-id") || "").trim();
-  if (!headerUserId || !isUuid(headerUserId)) {
+  const headerLoginId = (request.headers.get("x-login-id") || "").trim();
+  if (!headerUserId || !isSupportedUserId(headerUserId)) {
     return {
       ok: false,
       status: 401,
-      message: "x-user-id 헤더가 필요합니다.",
+      message: "x-user-id 헤더가 유효하지 않습니다.",
     };
   }
 
@@ -146,21 +255,68 @@ const authenticateRequest = async (request, supabaseAdmin) => {
     };
   }
 
-  const legacyLookup = await supabaseAdmin
-    .from("users")
-    .select(USER_SELECT_COLUMNS)
-    .eq("user_id", headerUserId)
-    .maybeSingle();
+  const userIdCandidates = Array.from(
+    new Set([
+      headerUserId,
+      ...extractTokenUserIdCandidates(bearerToken),
+    ])
+  ).filter((value) => isSupportedUserId(value));
 
-  if (legacyLookup.error || !legacyLookup.data) {
+  for (const candidateUserId of userIdCandidates) {
+    const lookup = await selectUserWithAdaptiveColumns(
+      supabaseAdmin,
+      "user_id",
+      candidateUserId
+    );
+
+    if (!lookup.error && lookup.data) {
+      return { ok: true, user: lookup.data, authMode: "header" };
+    }
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    const loginIdCandidates = Array.from(
+      new Set([headerLoginId, ...extractTokenLoginIdCandidates(bearerToken)])
+    ).filter(Boolean);
+
+    for (const loginIdCandidate of loginIdCandidates) {
+      const loginIdLookup = await selectUserWithAdaptiveColumns(
+        supabaseAdmin,
+        "login_id",
+        loginIdCandidate
+      );
+
+      if (!loginIdLookup.error && loginIdLookup.data) {
+        return {
+          ok: true,
+          user: loginIdLookup.data,
+          authMode: "header-login-id",
+        };
+      }
+    }
+
+    const loginIdFallback = await selectUserWithAdaptiveColumns(
+      supabaseAdmin,
+      "login_id",
+      headerUserId
+    );
+
+    if (!loginIdFallback.error && loginIdFallback.data) {
+      return { ok: true, user: loginIdFallback.data, authMode: "header-login-id" };
+    }
+
     return {
       ok: false,
       status: 401,
-      message: "사용자 인증에 실패했습니다.",
+      message: `사용자 인증에 실패했습니다. uid=${maskForDebug(headerUserId)} login=${maskForDebug(headerLoginId)}`,
     };
   }
 
-  return { ok: true, user: legacyLookup.data, authMode: "header" };
+  return {
+    ok: false,
+    status: 401,
+    message: "사용자 인증에 실패했습니다.",
+  };
 };
 
 const buildValidatedUpdatePayload = (input, currentUser) => {
@@ -346,18 +502,32 @@ export async function PATCH(request) {
     return buildJson({ success: false, message: payload.error }, payload.status);
   }
 
-  const { data: updatedUser, error: updateError } = await supabaseAdmin
+  const { error: updateError } = await supabaseAdmin
     .from("users")
     .update(payload.updates)
-    .eq("user_id", auth.user.user_id)
-    .select(USER_SELECT_COLUMNS)
-    .single();
+    .eq("user_id", auth.user.user_id);
 
-  if (updateError || !updatedUser) {
+  if (updateError) {
     return buildJson(
       {
         success: false,
-        message: updateError?.message || "사용자 정보 업데이트에 실패했습니다.",
+        message: updateError.message || "사용자 정보 업데이트에 실패했습니다.",
+      },
+      500
+    );
+  }
+
+  const { data: updatedUser, error: refreshError } = await selectUserWithAdaptiveColumns(
+    supabaseAdmin,
+    "user_id",
+    auth.user.user_id
+  );
+
+  if (refreshError || !updatedUser) {
+    return buildJson(
+      {
+        success: false,
+        message: refreshError?.message || "업데이트된 사용자 정보를 불러오지 못했습니다.",
       },
       500
     );

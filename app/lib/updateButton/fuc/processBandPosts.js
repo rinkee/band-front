@@ -214,6 +214,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
     pendingRetryDays = DEFAULT_PENDING_LOOKBACK_DAYS,
     pendingRetryLimit = null,
     postUpdateConcurrency = DEFAULT_POST_UPDATE_CONCURRENCY,
+    maxProductTitleChars = null,
   } = options;
 
   let bandApiFailover = null;
@@ -633,7 +634,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   ) {
                     // ✅ 1단계: processProduct() 먼저 호출 (검증 전)
                     const processedProducts = extractedProducts.map((p) =>
-                      processProduct({ ...p }, postTime, userSettings)
+                      processProduct({ ...p }, postTime, userSettings, {
+                        maxTitleChars: maxProductTitleChars,
+                      })
                     );
 
                     aiAnalysisResult = {
@@ -1040,7 +1043,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   ) {
                     // ✅ 재시도: processProduct() 먼저 호출
                     const processedProducts = extractedProducts.map((p) =>
-                      processProduct({ ...p }, postTime, userSettings)
+                      processProduct({ ...p }, postTime, userSettings, {
+                        maxTitleChars: maxProductTitleChars,
+                      })
                     );
 
                     aiAnalysisResult = {
@@ -1154,7 +1159,9 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     ) {
                       // ✅ 강제 추출: processProduct() 먼저 호출
                       const processedProducts = extractedProducts.map((p) =>
-                        processProduct({ ...p }, postTime, userSettings)
+                        processProduct({ ...p }, postTime, userSettings, {
+                          maxTitleChars: maxProductTitleChars,
+                        })
                       );
 
                       aiAnalysisResult = {

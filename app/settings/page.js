@@ -15,6 +15,8 @@ import BandApiUsageStats from "../components/BandApiUsageStats";
 import BandKeySelector from "../components/BandKeySelector";
 
 const SESSION_USER_DATA_KEY = "userData";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const parseSessionUserData = () => {
   if (typeof window === "undefined") return null;
@@ -27,13 +29,46 @@ const parseSessionUserData = () => {
   }
 };
 
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length !== 3) return null;
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padding = normalized.length % 4 ? "=".repeat(4 - (normalized.length % 4)) : "";
+    const decoded = atob(`${normalized}${padding}`);
+    const parsed = JSON.parse(decoded);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const resolveAuthUserId = (sessionData, token) => {
+  const sessionUserIdCandidates = [sessionData?.user_id, sessionData?.userId, sessionData?.id]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+
+  if (sessionUserIdCandidates.length > 0) {
+    const sessionUuid = sessionUserIdCandidates.find((value) => UUID_REGEX.test(value));
+    return sessionUuid || sessionUserIdCandidates[0];
+  }
+
+  const payload = decodeJwtPayload(token);
+  const tokenUserIdCandidates = [payload?.sub, payload?.userId, payload?.user_id]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  const candidates = [...tokenUserIdCandidates];
+  const uuidCandidate = candidates.find((value) => UUID_REGEX.test(value));
+  if (uuidCandidate) return uuidCandidate;
+  return candidates[0] || "";
+};
+
 const getSessionAuth = () => {
   const sessionData = parseSessionUserData();
   if (!sessionData) return null;
 
-  const userId =
-    sessionData.userId || sessionData.user_id || sessionData.id || "";
   const token = typeof sessionData.token === "string" ? sessionData.token : "";
+  const userId = resolveAuthUserId(sessionData, token);
 
   if (!userId || typeof userId !== "string") {
     return null;
@@ -41,6 +76,12 @@ const getSessionAuth = () => {
 
   return {
     userId: userId.trim(),
+    loginId:
+      typeof sessionData.loginId === "string"
+        ? sessionData.loginId.trim()
+        : typeof sessionData.login_id === "string"
+          ? sessionData.login_id.trim()
+          : "",
     token: token.trim(),
   };
 };
@@ -61,6 +102,9 @@ const buildApiAuthHeaders = ({
   const headers = new Headers();
   headers.set("Authorization", `Bearer ${bearerValue}`);
   headers.set("x-user-id", auth.userId);
+  if (auth.loginId) {
+    headers.set("x-login-id", auth.loginId);
+  }
   if (includeContentType) {
     headers.set("Content-Type", "application/json");
   }
@@ -68,12 +112,24 @@ const buildApiAuthHeaders = ({
 };
 
 const fetchCurrentUserFromApi = async () => {
-  const response = await fetch("/api/auth/me", {
-    method: "GET",
-    headers: buildApiAuthHeaders({ includeContentType: false }),
-  });
+  const requestAuthMe = async (legacyUserAsToken = false) =>
+    fetch("/api/auth/me", {
+      method: "GET",
+      headers: buildApiAuthHeaders({
+        includeContentType: false,
+        legacyUserAsToken,
+      }),
+    });
 
-  const result = await response.json().catch(() => null);
+  let response = await requestAuthMe(false);
+  let result = await response.json().catch(() => null);
+
+  // 개발/레거시 토큰 호환: token 검증 실패 시 userId 기반 Bearer로 1회 재시도
+  if (response.status === 401) {
+    response = await requestAuthMe(true);
+    result = await response.json().catch(() => null);
+  }
+
   if (!response.ok) {
     throw new Error(
       result?.message || `현재 사용자 조회 실패 (HTTP ${response.status})`
@@ -84,13 +140,25 @@ const fetchCurrentUserFromApi = async () => {
 };
 
 const patchCurrentUserViaApi = async (updates) => {
-  const response = await fetch("/api/auth/me", {
-    method: "PATCH",
-    headers: buildApiAuthHeaders({ includeContentType: true }),
-    body: JSON.stringify(updates),
-  });
+  const requestAuthMePatch = async (legacyUserAsToken = false) =>
+    fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: buildApiAuthHeaders({
+        includeContentType: true,
+        legacyUserAsToken,
+      }),
+      body: JSON.stringify(updates),
+    });
 
-  const result = await response.json().catch(() => null);
+  let response = await requestAuthMePatch(false);
+  let result = await response.json().catch(() => null);
+
+  // 개발/레거시 토큰 호환: token 검증 실패 시 userId 기반 Bearer로 1회 재시도
+  if (response.status === 401) {
+    response = await requestAuthMePatch(true);
+    result = await response.json().catch(() => null);
+  }
+
   if (!response.ok) {
     throw new Error(
       result?.message || `사용자 정보 업데이트 실패 (HTTP ${response.status})`
@@ -544,7 +612,12 @@ export default function SettingsPage() {
         // 새로운 데이터로 기존 데이터 업데이트 (기존 구조 유지)
         const updatedSessionData = {
           ...existingSessionData, // 기존 세션 데이터 유지 (loginId, naverId, token 등)
-          userId: userDataToSave.id || userId || existingSessionData.userId, // ID 필드 업데이트
+          userId:
+            userDataToSave.user_id ||
+            userDataToSave.userId ||
+            userDataToSave.id ||
+            userId ||
+            existingSessionData.userId, // ID 필드 업데이트
           owner_name:
             userDataToSave.owner_name || existingSessionData.owner_name,
           ownerName: userDataToSave.owner_name || existingSessionData.ownerName, // 두 형식 모두 유지
@@ -608,45 +681,21 @@ export default function SettingsPage() {
 
   // 1. 컴포넌트 마운트 시: 세션 확인, userId 설정, 초기 UI 값 로드, SWR 시작
   useEffect(() => {
-    let mounted = true;
+    setError(null);
 
-    const bootstrap = async () => {
-      setError(null);
+    const sessionUserId = loadUserFromSession();
+    const sessionAuth = getSessionAuth();
+    const resolvedSessionUserId = sessionAuth?.userId || sessionUserId;
 
-      const sessionUserId = loadUserFromSession();
-      const sessionAuth = getSessionAuth();
-      if (!sessionUserId || !sessionAuth?.userId) {
-        if (mounted) {
-          router.replace("/login");
-          setInitialLoading(false);
-        }
-        return;
-      }
+    if (!resolvedSessionUserId) {
+      router.replace("/login");
+      setInitialLoading(false);
+      return;
+    }
 
-      try {
-        const me = await fetchCurrentUserFromApi();
-        if (!mounted) return;
-
-        const resolvedUserId = me.user_id || me.userId || me.id || sessionUserId;
-        setUserId(resolvedUserId);
-        saveUserToSession(me);
-      } catch (err) {
-        if (!mounted) return;
-        sessionStorage.removeItem(SESSION_USER_DATA_KEY);
-        router.replace("/login");
-      } finally {
-        if (mounted) {
-          setInitialLoading(false);
-        }
-      }
-    };
-
-    bootstrap();
-
-    return () => {
-      mounted = false;
-    };
-  }, [router, loadUserFromSession, saveUserToSession]);
+    setUserId(resolvedSessionUserId);
+    setInitialLoading(false);
+  }, [router, loadUserFromSession]);
 
   // 2. SWR 데이터 로드 완료 후: UI 상태 및 세션 업데이트
   useEffect(() => {
@@ -732,7 +781,11 @@ export default function SettingsPage() {
           const updatedSessionData = {
             ...existingSessionData,
             ...safeServerData,
-            userId: userDataFromServer.id || userId,
+            userId:
+              userDataFromServer.user_id ||
+              userDataFromServer.userId ||
+              userDataFromServer.id ||
+              userId,
           };
           sessionStorage.setItem(
             "userData",
