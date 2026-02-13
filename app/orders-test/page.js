@@ -885,7 +885,7 @@ const OrderTableRow = React.memo(function OrderTableRow({
       </td>
       {/* 상품정보: 게시물의 모든 상품을 표시 (raw 모드처럼) */}
       <td
-        className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-sm md:text-base xl:text-xl text-gray-700 align-top"
+        className="py-2 xl:py-3 pl-2 lg:pl-4 xl:pl-6 text-sm md:text-base xl:text-xl text-gray-700 align-top w-60 max-w-[620px]"
         onClick={(e) => e.stopPropagation()}
       >
         {!hasProducts ? (
@@ -904,7 +904,7 @@ const OrderTableRow = React.memo(function OrderTableRow({
               return (
                 <div
                   key={p?.product_id || `${idx}`}
-                  className={`p-2 flex items-start gap-2 ${!isLastProduct ? "border-b border-gray-200 " : ""}`}
+                  className={`p-2 flex items-start gap-2 min-w-0 ${!isLastProduct ? "border-b border-gray-200 " : ""}`}
                   style={{ minHeight: "86px" }}
                   title={title}
                 >
@@ -927,7 +927,7 @@ const OrderTableRow = React.memo(function OrderTableRow({
                       <div className="w-full h-full flex items-center justify-center text-gray-300 text-[10px]">이미지</div>
                     )}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-start xl:items-center gap-2">
                       {productList.length > 1 && (
                         <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-[13px] font-semibold text-gray-900 flex-shrink-0">
@@ -935,7 +935,7 @@ const OrderTableRow = React.memo(function OrderTableRow({
                         </span>
                       )}
                       <span
-                        className={`text-sm md:text-base xl:text-lg leading-snug text-gray-900 font-medium break-words line-clamp-2 xl:whitespace-nowrap cursor-pointer hover:text-orange-600 hover:underline`}
+                        className="block max-w-full text-sm md:text-base xl:text-lg leading-snug text-gray-900 font-medium break-words line-clamp-3 cursor-pointer hover:text-orange-600 hover:underline"
                         onClick={() => onCellClickToSearch(title, order.post_key)}
                         title="클릭하여 이 게시물의 주문 검색"
                       >
@@ -953,7 +953,7 @@ const OrderTableRow = React.memo(function OrderTableRow({
         )}
       </td>
       {/* 바코드 */}
-      <td className="py-2 xl:py-3 pr-1 lg:pr-4 xl:pr-6 text-center text-base xl:text-lg text-gray-700 w-32 align-top">
+      <td className="py-2 xl:py-3 pr-1 lg:pr-4 xl:pr-6 text-center text-base xl:text-lg text-gray-700 w-40 min-w-[160px] align-top">
         {!hasProducts ? (
           <span className="text-sm text-gray-400">없음</span>
         ) : (
@@ -1486,6 +1486,14 @@ function OrdersTestPageContent({ mode = "raw" }) {
     return productName.replace(/^\[[\d월일/\s]+\]\s*/g, "").trim();
   }, []);
 
+  const truncateDisplayProductName = useCallback((productName, maxChars = 56) => {
+    const cleaned = cleanProductName(productName || "");
+    if (!cleaned) return cleaned;
+    if (cleaned.length <= maxChars) return cleaned;
+    const clipped = cleaned.slice(0, maxChars).replace(/[+,\-\/\s]+$/g, "").trim();
+    return `${clipped || cleaned.slice(0, maxChars).trim()}...`;
+  }, [cleanProductName]);
+
   const getItemNumberForDisplay = useCallback((product, fallbackIndex) => {
     const directNumber = Number(product?.item_number);
     if (Number.isFinite(directNumber) && directNumber > 0) return directNumber;
@@ -1514,7 +1522,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
 
       const normalizedCandidates = candidates.map((product, idx) => {
         const rawTitle = product?.title || product?.name || "-";
-        const displayTitle = cleanProductName(rawTitle);
+        const displayTitle = truncateDisplayProductName(rawTitle);
 
         const basePrice = Number(product?.base_price);
         const fallbackPrice = Number(product?.price);
@@ -1556,7 +1564,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
   }, [
     sortedDisplayOrders,
     getCandidateProductsForOrder,
-    cleanProductName,
+    truncateDisplayProductName,
     getItemNumberForDisplay,
     postsImages,
   ]);
@@ -4636,7 +4644,7 @@ function OrdersTestPageContent({ mode = "raw" }) {
             {/* 업데이트 버튼 제거: 상단 우측 영역으로 이동 */}
             {/* 테이블 컨테이너 */}
             <div ref={tableContainerRef} className="relative">
-              <table className="min-w-full ">
+              <table className="min-w-full table-fixed">
               <thead className="bg-black sticky top-[140px] sm:top-[120px] md:top-[88px] lg:top-[92px] z-10">
                   <tr>
                     <th
