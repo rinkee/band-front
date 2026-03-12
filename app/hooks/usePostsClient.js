@@ -1,11 +1,13 @@
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
+import { parseJsonIfString, stableJsonStringify } from "../lib/swrCache";
 
 /**
  * 게시글 목록 조회 함수
  */
 const fetchPosts = async (key) => {
-  const [, bandNumber, page, filters] = key;
+  const [, bandNumber, page, filtersKey] = key;
+  const filters = parseJsonIfString(filtersKey, {});
 
   if (!bandNumber) {
     throw new Error("Band number is required");
@@ -114,7 +116,8 @@ const fetchPost = async (key) => {
  * 게시글 통계 조회 함수
  */
 const fetchPostStats = async (key) => {
-  const [, bandNumber, filterOptions] = key;
+  const [, bandNumber, filterOptionsKey] = key;
+  const filterOptions = parseJsonIfString(filterOptionsKey, {});
 
   if (!bandNumber) {
     throw new Error("Band number is required");
@@ -192,9 +195,10 @@ export function usePostsClient(
   filters = {},
   options = {}
 ) {
+  const filtersKey = stableJsonStringify(filters);
   const getKey = () => {
     if (!bandNumber) return null;
-    return ["posts", bandNumber, page, filters];
+    return ["posts", bandNumber, page, filtersKey];
   };
 
   const swrOptions = {
@@ -230,7 +234,7 @@ export function usePostStatsClient(
 ) {
   const getKey = () => {
     if (!bandNumber) return null;
-    return ["postStats", bandNumber, filterOptions];
+    return ["postStats", bandNumber, stableJsonStringify(filterOptions)];
   };
 
   const swrOptions = {

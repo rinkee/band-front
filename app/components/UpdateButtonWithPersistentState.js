@@ -5,6 +5,7 @@ import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
 import { useUpdateProgress } from "../contexts/UpdateProgressContext";
 import { backupUserDataToIndexedDb } from "../lib/indexedDbBackup";
+import { revalidateUserCaches } from "../lib/swrCache";
 
 const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts' }) => {
   const [error, setError] = useState("");
@@ -99,42 +100,16 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
   };
 
   // SWR 캐시 갱신 함수
-  const refreshSWRCache = useCallback((userId) => {
+  const refreshSWRCache = useCallback(async (userId, options = {}) => {
     if (!userId) return;
-
-    const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-
-    // 1. useOrders 훅의 데이터 갱신
-    const ordersKeyPattern = `${functionsBaseUrl}/orders-get-all?userId=${userId}`;
-    mutate(
-      (key) => typeof key === "string" && key.startsWith(ordersKeyPattern),
-      undefined,
-      { revalidate: true }
-    );
-
-    // 2. useProducts 훅의 데이터 갱신
-    const productsKeyPattern = `${functionsBaseUrl}/products-get-all?userId=${userId}`;
-    mutate(
-      (key) => typeof key === "string" && key.startsWith(productsKeyPattern),
-      undefined,
-      { revalidate: true }
-    );
-
-    // 3. useOrderStats 훅의 데이터 갱신
-    const statsKeyPattern = `/orders/stats?userId=${userId}`;
-    mutate(
-      (key) => typeof key === "string" && key.startsWith(statsKeyPattern),
-      undefined,
-      { revalidate: true }
-    );
-
-    // 4. comment_orders (raw 모드 목록) 갱신
-    mutate(
-      (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
-      undefined,
-      { revalidate: true }
-    );
-  }, [mutate]);
+    const invalidateOrderStats = options?.invalidateOrderStats === true;
+    await revalidateUserCaches(mutate, {
+      userId,
+      bandNumber,
+      mutateOptions: { revalidate: true },
+      invalidateOrderStats,
+    });
+  }, [mutate, bandNumber]);
 
   // execution_locks 테이블에서 실행 중 상태 확인하는 함수
   const checkExecutionLock = async (userId) => {
@@ -435,8 +410,8 @@ const UpdateButtonWithPersistentState = ({ bandNumber = null, pageType = 'posts'
         setSuccessMessage(`✨ ${processedCount}개 동기화 완료!`);
       }
 
-      refreshSWRCache(userId);
-    } else {
+	      refreshSWRCache(userId, { invalidateOrderStats: true });
+	    } else {
       let errorMessage = responseData.message || "게시물 동기화 중 서버에서 오류가 발생했습니다.";
       setError(errorMessage);
       console.log('❌ Edge Function 에러 응답:', { status: response.status, errorMessage });

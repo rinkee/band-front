@@ -1314,6 +1314,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       return Number.isFinite(ts) ? ts : 0;
                     };
                     const lastCheckedTs = normalizeTimestamp(dbPostData.last_checked_comment_at);
+                    const resolveCheckedAtIso = (currentTs, fetchedLatestTs) => {
+                      const nextTs = Math.max(currentTs || 0, fetchedLatestTs || 0);
+                      return nextTs > 0 ? new Date(nextTs).toISOString() : new Date().toISOString();
+                    };
 
                     // 댓글 가져오기
                     const fetchResult = await fetchBandCommentsWithFailover(
@@ -1333,6 +1337,14 @@ export async function processBandPosts(supabase, userId, options = {}) {
                         (typeof c.content === "string" && c.content.trim().length === 0)
                     }));
                     comments = fullComments;
+                    const fetchedLatestCommentTs = fullComments.reduce(
+                      (maxTs, comment) => Math.max(maxTs, comment.createdAt || 0),
+                      0
+                    );
+                    const resolvedCheckedAt = resolveCheckedAtIso(
+                      lastCheckedTs,
+                      fetchedLatestCommentTs
+                    );
 
                     // 이번에 가져온 댓글 + 기존 전체를 조회하여 수정/삭제 여부 판단
                     const commentKeys = fullComments.map((c) => c.commentKey).filter(Boolean);
@@ -1358,6 +1370,25 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             .map((o) => [o.comment_key, o])
                         );
                       }
+                    }
+
+                    const missingHistoricalCommentKeys = existingOrdersError
+                      ? new Set()
+                      : new Set(
+                          fullComments
+                            .filter(
+                              (c) =>
+                                c.createdAt <= lastCheckedTs &&
+                                c.commentKey &&
+                                !existingOrdersByKey.has(c.commentKey)
+                            )
+                            .map((c) => c.commentKey)
+                        );
+
+                    if (missingHistoricalCommentKeys.size > 0) {
+                      console.log(
+                        `게시물 ${postKey}: 저장 누락된 과거 댓글 ${missingHistoricalCommentKeys.size}개 재처리`
+                      );
                     }
 
                     const changedCommentKeys = new Set();
@@ -1480,7 +1511,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
                     // 마지막 체크 이후 댓글만 필터
                     const newComments = fullComments
-                      .filter((c) => c.createdAt > lastCheckedTs || changedCommentKeys.has(c.commentKey))
+                      .filter(
+                        (c) =>
+                          c.createdAt > lastCheckedTs ||
+                          changedCommentKeys.has(c.commentKey) ||
+                          missingHistoricalCommentKeys.has(c.commentKey)
+                      )
                       .map((c) => {
                         const existing = existingOrdersByKey.get(c.commentKey);
                         const nextContentForDiff = c._formattedForDiff || buildFormattedCommentForDiff(c);
@@ -1611,7 +1647,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                             console.log(`게시물 ${postKey}: 처리할 댓글 없음`);
                             shouldUpdateCommentInfo = true;
                             newCount = apiPost.commentCount || 0;
-                            newChecked = new Date().toISOString();
+                            newChecked = resolvedCheckedAt;
                           } else {
                           console.log(
                             `게시물 ${postKey}: ${finalCommentsToProcess.length}개 댓글 처리`
@@ -1696,7 +1732,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                         comments = commentsToProcess;
                             shouldUpdateCommentInfo = true;
                             newCount = apiPost.commentCount || 0;
-                            newChecked = new Date().toISOString();
+                            newChecked = resolvedCheckedAt;
                           }
                         }
                       }
@@ -1705,7 +1741,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       comments = []; // 처리한 댓글 없음
                       shouldUpdateCommentInfo = true;
                       newCount = apiPost.commentCount || 0;
-                      newChecked = new Date().toISOString();
+                      newChecked = resolvedCheckedAt;
                     }
                   } catch (err) {
                     console.error(`댓글 처리 오류 (post ${postKey}): ${err.message}`);

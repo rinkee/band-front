@@ -1,6 +1,7 @@
 // hooks/useProductsClient.js - 클라이언트 사이드 직접 Supabase 호출
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
+import { parseJsonIfString, stableJsonStringify } from "../lib/swrCache";
 
 /**
  * 안전한 데이터 정제 - 빈 문자열을 null로 변환하여 timestamp 에러 방지
@@ -23,7 +24,8 @@ const sanitizeProductData = (data) => {
  * 클라이언트 사이드 상품 목록 fetcher
  */
 const fetchProducts = async (key) => {
-  const [, userId, page, filters] = key;
+  const [, userId, page, filtersKey] = key;
+  const filters = parseJsonIfString(filtersKey, {});
 
   if (!userId) {
     throw new Error("User ID is required");
@@ -125,9 +127,10 @@ export function useProductsClient(
   filters = {},
   options = {}
 ) {
+  const filtersKey = stableJsonStringify(filters);
   const getKey = () => {
     if (!userId) return null;
-    return ["products", userId, page, filters];
+    return ["products", userId, page, filtersKey];
   };
 
   const swrOptions = {
