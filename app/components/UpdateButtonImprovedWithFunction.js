@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
+import { revalidateUserCaches } from "../lib/swrCache";
 
 const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -82,104 +83,22 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   // SWR 캐시 갱신 함수 - raw 모드에서 즉시 데이터 갱신을 위해 개선
   const refreshSWRCache = useCallback(async (userId, isRaw = false) => {
     if (!userId) return;
+    const mutateOptions = isRaw
+      ? {
+          revalidate: true,
+          populateCache: true,
+          rollbackOnError: false,
+        }
+      : { revalidate: true };
 
-    const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
-
-    // raw 모드일 때는 즉시 데이터를 가져와서 업데이트 (동기적)
-    if (isRaw) {
-      const mutateOptions = {
-        revalidate: true,
-        populateCache: true, // 캐시를 즉시 업데이트
-        rollbackOnError: false // 에러 시에도 유지
-      };
-
-      // 모든 데이터를 동시에 갱신 (await로 대기)
-      await Promise.all([
-        // 1. Orders 데이터 갱신 (문자열 + 배열 키)
-        mutate(
-          (key) => {
-            if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`)) return true;
-            if (Array.isArray(key) && key[0] === "orders" && key[1] === userId) return true;
-            return false;
-          },
-          undefined,
-          mutateOptions
-        ),
-        // 2. Products 데이터 갱신 (문자열 + 배열 키)
-        mutate(
-          (key) => {
-            if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`)) return true;
-            if (Array.isArray(key) && key[0] === "products" && key[1] === userId) return true;
-            return false;
-          },
-          undefined,
-          mutateOptions
-        ),
-        // 3. Posts 데이터 갱신 (배열 키)
-        mutate(
-          (key) => Array.isArray(key) && key[0] === "posts" && key[1] === userId,
-          undefined,
-          mutateOptions
-        ),
-        // 4. Order Stats 데이터 갱신
-        mutate(
-          (key) => typeof key === "string" && key.startsWith(`/orders/stats?userId=${userId}`),
-          undefined,
-          mutateOptions
-        ),
-        // 5. Comment Orders 데이터 갱신 (배열 키)
-        mutate(
-          (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
-          undefined,
-          mutateOptions
-        )
-      ]);
-    } else {
-      // 일반 모드: 백그라운드 revalidation (배열 + 문자열 키 모두 지원)
-      // Orders 갱신
-      mutate(
-        (key) => {
-          if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/orders-get-all?userId=${userId}`)) return true;
-          if (Array.isArray(key) && key[0] === "orders" && key[1] === userId) return true;
-          return false;
-        },
-        undefined,
-        { revalidate: true }
-      );
-
-      // Products 갱신
-      mutate(
-        (key) => {
-          if (typeof key === "string" && key.startsWith(`${functionsBaseUrl}/products-get-all?userId=${userId}`)) return true;
-          if (Array.isArray(key) && key[0] === "products" && key[1] === userId) return true;
-          return false;
-        },
-        undefined,
-        { revalidate: true }
-      );
-
-      // Posts 갱신
-      mutate(
-        (key) => Array.isArray(key) && key[0] === "posts" && key[1] === userId,
-        undefined,
-        { revalidate: true }
-      );
-
-      // Order Stats 갱신
-      mutate(
-        (key) => typeof key === "string" && key.startsWith(`/orders/stats?userId=${userId}`),
-        undefined,
-        { revalidate: true }
-      );
-
-      // Comment Orders 갱신
-      mutate(
-        (key) => Array.isArray(key) && key[0] === "comment_orders" && key[1] === userId,
-        undefined,
-        { revalidate: true }
-      );
-    }
-  }, [mutate]);
+    await revalidateUserCaches(mutate, {
+      userId,
+      bandNumber,
+      mutateOptions,
+      // 주문 통계는 localStorage 캐시가 있어, 실제 업데이트 후에는 무효화해야 revalidate가 동작함.
+      invalidateOrderStats: !isRaw,
+    });
+  }, [mutate, bandNumber]);
 
   // 초기 로드 시 function_number 확인
   useEffect(() => {

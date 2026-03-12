@@ -293,7 +293,11 @@ export async function generateOrderData(
           0  // variant_index (사용 안 함)
         );
 
-        // 날짜 파싱 (기존 ordered_at이 있으면 최우선 유지)
+        // 날짜 파싱
+        // ordered_at은 기존 값을 최대한 보존하고,
+        // commented_at은 BAND 원본 댓글 시간(createdAt)을 우선 반영해
+        // 과거에 잘못 저장된 처리 시각이 계속 남지 않도록 한다.
+        const bandCommentedAt = parseIfPresent(createdAt);
         const existingOrderedAt =
           parseIfPresent(comment.existing_ordered_at) ||
           parseIfPresent(comment.existing_created_at) ||
@@ -301,16 +305,17 @@ export async function generateOrderData(
           null;
         const orderedAt =
           existingOrderedAt ||
-          parseIfPresent(createdAt);
+          bandCommentedAt;
         const existingCommentedAt =
           parseIfPresent(comment.existing_commented_at) ||
           parseIfPresent(comment.existing_created_at) ||
           parseIfPresent(comment.existing_ordered_at) ||
           null;
         const commentedAt =
+          bandCommentedAt ||
           existingCommentedAt ||
           orderedAt ||
-          parseIfPresent(createdAt);
+          null;
         let commentChange = comment.comment_change || null;
         let isDeletionFlag = isDeletion === true || commentChange?.status === "deleted";
 

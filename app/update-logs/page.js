@@ -4,6 +4,13 @@ export default function UpdateLogsPage() {
   // 정적 업데이트 로그 데이터
   const logs = [
     {
+      id: 17,
+      date: '2026년 3월 12일',
+      updates: [
+        '업데이트중 댓글이 누락될 가능성을 해결함'
+      ]
+    },
+    {
       id: 16,
       date: '2026년 2월 14일',
       updates: [

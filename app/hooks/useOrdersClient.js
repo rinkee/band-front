@@ -2,6 +2,7 @@
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import getAuthedClient from "../lib/authedSupabaseClient";
+import { invalidateOrderStatsLocalCache } from "../lib/swrCache";
 
 /**
  * 통합 RPC 함수로 주문 목록 조회
@@ -340,8 +341,8 @@ export function useOrderClientMutations() {
    * 주문 상태 업데이트
    */
   const updateOrderStatus = async (orderId, updateData, userId, options = {}) => {
-    if (!orderId || !updateData.status) {
-      throw new Error("Order ID and status are required");
+    if (!orderId || !userId || !updateData.status) {
+      throw new Error("Order ID, User ID and status are required");
     }
     const { revalidate = true } = options;
 
@@ -381,6 +382,9 @@ export function useOrderClientMutations() {
       // console.error("Error updating order status:", error);
       throw error;
     }
+
+    // orderStats는 localStorage 캐시를 먼저 사용하므로, 변경 직후에는 무효화해야 revalidate가 의미있게 동작함.
+    invalidateOrderStatsLocalCache(userId);
 
     // 캐시 갱신 - 중복 호출 방지를 위해 단일 mutate로 통합
     globalMutate(
@@ -431,6 +435,8 @@ export function useOrderClientMutations() {
       throw error;
     }
 
+    invalidateOrderStatsLocalCache(userId);
+
     // 캐시 갱신 - 중복 호출 방지
     globalMutate(
       ["order", orderId],
@@ -440,6 +446,11 @@ export function useOrderClientMutations() {
     if (revalidate !== false) {
       globalMutate(
         (key) => Array.isArray(key) && key[0] === "orders" && key[1] === userId,
+        undefined,
+        { revalidate: true }
+      );
+      globalMutate(
+        (key) => Array.isArray(key) && key[0] === "orderStats" && key[1] === userId,
         undefined,
         { revalidate: true }
       );
@@ -476,6 +487,9 @@ export function useOrderClientMutations() {
     userId,
     subStatus = undefined
   ) => {
+    if (!userId) {
+      throw new Error("User ID is required");
+    }
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       throw new Error("Order IDs array is required");
     }
@@ -563,6 +577,8 @@ export function useOrderClientMutations() {
       },
       { revalidate: false }
     );
+
+    invalidateOrderStatsLocalCache(userId);
 
     // 통계만 revalidate (상태 카운트가 변경되므로)
     globalMutate(

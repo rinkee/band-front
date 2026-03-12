@@ -1,6 +1,7 @@
 // hooks/usePosts.js (또는 유사한 파일)
 import useSWR, { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient"; // Supabase 클라이언트
+import { stableJsonStringify } from "../lib/swrCache";
 
 // 환경 변수
 const functionsBaseUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`;
@@ -15,6 +16,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
  * @returns {Object} SWR 응답 { data: { data: Post[], pagination: {...} }, error, isLoading, mutate }
  */
 export function usePosts(bandNumber, page = 1, filters = {}, options = {}) {
+  const filtersKey = stableJsonStringify(filters);
   // Supabase 직접 쿼리를 사용하는 fetcher 함수
   const fetcher = async () => {
     const limit = 20;
@@ -93,7 +95,7 @@ export function usePosts(bandNumber, page = 1, filters = {}, options = {}) {
 
   // useSWR 훅 호출 - 키를 배열로 변경하여 더 나은 캐시 관리
   return useSWR(
-    bandNumber ? ["posts", bandNumber, page, filters] : null,
+    bandNumber ? ["posts", bandNumber, page, filtersKey] : null,
     fetcher,
     swrOptions
   );

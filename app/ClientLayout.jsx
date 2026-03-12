@@ -10,6 +10,7 @@ import OfflineWatcher from "./components/OfflineWatcher";
 import IndexedDBBackupButton from "./components/IndexedDBBackupButton";
 import UpdateAvailableBanner from "./components/UpdateAvailableBanner";
 import { installExtensionOfflineBridge } from "./lib/extensionOfflineBridge";
+import { revalidateUserCaches } from "./lib/swrCache";
 
 export default function ClientLayout({ children }) {
   return (
@@ -52,14 +53,12 @@ function LayoutContent({ children }) {
 
   const handleOrdersMenuClick = () => {
     if (userData?.userId) {
-      const orderKeyPattern = (key) => {
-        const pattern = `/api/orders?userId=${userData.userId}`;
-        const isMatch = typeof key === "string" && key.startsWith(pattern);
-        return isMatch;
-      };
-
       try {
-        mutate(orderKeyPattern, undefined, { revalidate: true });
+        revalidateUserCaches(mutate, {
+          userId: userData.userId,
+          includePosts: false,
+          mutateOptions: { revalidate: true },
+        });
       } catch (error) {}
     }
     setMobileMenuOpen(false);
