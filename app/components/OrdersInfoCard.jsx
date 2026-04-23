@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import supabase from "../lib/supabaseClient";
+import DeadlineCommentText from "./DeadlineCommentText";
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -178,14 +179,14 @@ export default function OrdersInfoCard({ bandKey, postKey, userId }) {
                 {/* comment 필드 */}
                 {order.comment && (
                   <div className="text-xs text-gray-600 bg-blue-50 rounded p-2 mt-1 mb-1 overflow-hidden whitespace-nowrap text-ellipsis">
-                    {processBandTags(order.comment)}
+                    <DeadlineCommentText text={processBandTags(order.comment)} />
                   </div>
                 )}
 
                 {/* 댓글 내용 (comment_body) */}
                 {order.comment_body && (
                   <div className="text-xs text-gray-600 bg-gray-50 rounded p-2 mt-1 overflow-hidden whitespace-nowrap text-ellipsis">
-                    {processBandTags(order.comment_body)}
+                    <DeadlineCommentText text={processBandTags(order.comment_body)} />
                   </div>
                 )}
 

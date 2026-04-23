@@ -5,6 +5,7 @@
 
 import { enhancePickupDateFromContent } from '../utils/pickupDateEnhancer';
 import { generateProductUniqueIdForItem } from '../utils/idUtils';
+import { CLOSED_POST_STATUS } from '../commentDeadline/commentDeadline.js';
 
 /**
  * 함수명: savePostAndProducts
@@ -134,6 +135,7 @@ export async function savePostAndProducts(
       postTitle = post.content?.substring(0, 50) || "무제";
     }
 
+    const shouldPreserveClosedPost = options?.existingStatus === CLOSED_POST_STATUS;
     const postDataToUpsert = {
       post_id: postId,
       user_id: userId,
@@ -147,7 +149,7 @@ export async function savePostAndProducts(
       author_user_key: post.author?.user_key || "",
       comment_count: post.commentCount || 0,
       emotion_count: post.emotion_count || 0,
-      status: "활성",
+      status: shouldPreserveClosedPost ? CLOSED_POST_STATUS : "활성",
       posted_at: dateObject.toISOString(),
       // 🔥 [수정] AI가 "일반게시물"로 분류하면 is_product를 false로 설정
       // aiExtractionStatus === "failed"이어도 AI 분류를 신뢰
@@ -180,6 +182,11 @@ export async function savePostAndProducts(
       order_needs_ai: false,
       order_needs_ai_reason: null
     };
+
+    if (shouldPreserveClosedPost) {
+      postDataToUpsert.closed_at = options?.closedAt || null;
+      postDataToUpsert.closed_comment_key = options?.closedCommentKey || null;
+    }
 
     // 🔥 [디버깅 로그] DB에 저장하기 직전의 'posts' 테이블 데이터를 확인합니다.
     console.log(`게시물 저장`, {

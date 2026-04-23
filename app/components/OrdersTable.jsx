@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DeadlineCommentText from "./DeadlineCommentText";
 
 // 밴드 특수 태그 처리 함수
 const processBandTags = (text) => {
@@ -240,7 +241,12 @@ export default function OrdersTable({ orders = [], onOrderUpdate }) {
                   
                   {/* 고객 댓글 - 첫 번째 주문만 표시 */}
                   <td className="px-4 py-4 text-sm text-gray-500 max-w-xs truncate">
-                    {order.showComment ? processBandTags(order.comment) : ''}
+                    {order.showComment ? (
+                      <DeadlineCommentText
+                        text={processBandTags(order.comment)}
+                        fallback=""
+                      />
+                    ) : ''}
                   </td>
                   
                   {/* 수량 - 편집 가능 */}

@@ -18,6 +18,7 @@
 import { generateOrderUniqueId, generateCustomerUniqueId } from '../../../band-processor/shared/utils/idUtils.js';
 import { safeParseDate } from '../../../band-processor/shared/utils/dateUtils.js';
 import { filterCancellationComments } from '../cancellation/cancellationFilter.js';
+import { prefixAfterDeadlineComment } from '../commentDeadline/commentDeadline.js';
 
 // band:refer 태그를 @닉네임 형태로 치환
 const convertBandTags = (text = "") =>
@@ -190,6 +191,7 @@ export async function generateOrderData(
           origin_comment_id,
           existing_comment,
           isDeletion,
+          isAfterDeadline,
           existing_order_id,
           existing_comment_change
         } = comment;
@@ -343,6 +345,10 @@ export async function generateOrderData(
         // 삭제 시 DB comment를 덮어쓰지 않고 기존 본문 유지
         if (isDeletionFlag) {
           commentContent = existing_comment || commentContent || "";
+        }
+
+        if (isAfterDeadline === true && !isDeletionFlag) {
+          commentContent = prefixAfterDeadlineComment(commentContent);
         }
 
         // 고객 정보 추가
