@@ -13,6 +13,13 @@ import ErrorCard from "../components/ErrorCard";
 import BandApiKeyManager from "../components/BandApiKeyManager";
 import BandApiUsageStats from "../components/BandApiUsageStats";
 import BandKeySelector from "../components/BandKeySelector";
+import {
+  SETTINGS_CLOSE_MARKER_TEXTS_KEY,
+  areCloseMarkerTextsEqual,
+  closeMarkerTextsToTextAreaValue,
+  resolveCloseMarkerTextsFromSettings,
+  validateCloseMarkerTexts,
+} from "../lib/deadlineSettings";
 
 const SESSION_USER_DATA_KEY = "userData";
 const UUID_REGEX =
@@ -461,11 +468,19 @@ export default function SettingsPage() {
   const [initialLoading, setInitialLoading] = useState(true); // 컴포넌트 초기 설정 로딩
   const [savingProfile, setSavingProfile] = useState(false); // 프로필 저장 상태
   const [savingExcluded, setSavingExcluded] = useState(false); // 제외 고객 저장 상태
+  const [savingCloseMarkerSetting, setSavingCloseMarkerSetting] =
+    useState(false);
   const [savingBarcodeSetting, setSavingBarcodeSetting] = useState(false); // <<<--- 바코드 설정 저장 상태 추가
   const [error, setError] = useState(null);
   const [ownerName, setOwnerName] = useState("");
   const [storeName, setStoreName] = useState("");
   const [bandNumber, setBandNumber] = useState("");
+  const [closeMarkerInput, setCloseMarkerInput] = useState(
+    closeMarkerTextsToTextAreaValue()
+  );
+  const [initialCloseMarkerTexts, setInitialCloseMarkerTexts] = useState(
+    resolveCloseMarkerTextsFromSettings()
+  );
   const [excludedCustomers, setExcludedCustomers] = useState([]);
   const [newCustomerInput, setNewCustomerInput] = useState("");
   const [expandedSections, setExpandedSections] = useState({
@@ -559,6 +574,11 @@ export default function SettingsPage() {
           ? sessionUserData.excluded_customers
           : []
       );
+      const sessionCloseMarkerTexts = resolveCloseMarkerTextsFromSettings(
+        sessionUserData.settings
+      );
+      setCloseMarkerInput(closeMarkerTextsToTextAreaValue(sessionCloseMarkerTexts));
+      setInitialCloseMarkerTexts(sessionCloseMarkerTexts);
 
       setAutoBarcodeGeneration(sessionUserData.auto_barcode_generation ?? false);
       setForceAiProcessing(sessionUserData.force_ai_processing ?? false);
@@ -655,6 +675,9 @@ export default function SettingsPage() {
           ignore_order_needs_ai:
             userDataToSave.ignore_order_needs_ai ??
             existingSessionData.ignore_order_needs_ai,
+          settings:
+            userDataToSave.settings ??
+            existingSessionData.settings,
         };
 
         // 세션 스토리지에 업데이트된 데이터 저장
@@ -716,6 +739,11 @@ export default function SettingsPage() {
             ? userDataFromServer.excluded_customers
             : []
         );
+        const serverCloseMarkerTexts = resolveCloseMarkerTextsFromSettings(
+          userDataFromServer.settings
+        );
+        setCloseMarkerInput(closeMarkerTextsToTextAreaValue(serverCloseMarkerTexts));
+        setInitialCloseMarkerTexts(serverCloseMarkerTexts);
 
         setAutoBarcodeGeneration(
           userDataFromServer.auto_barcode_generation ?? false
@@ -1038,6 +1066,53 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveCloseMarkerSetting = async () => {
+    if (!userId || userLoading) return;
+
+    const validation = validateCloseMarkerTexts(closeMarkerInput);
+    if (validation.error) {
+      alert(validation.error);
+      return;
+    }
+
+    if (areCloseMarkerTextsEqual(validation.texts, initialCloseMarkerTexts)) {
+      alert("변경된 내용이 없습니다.");
+      return;
+    }
+
+    setSavingCloseMarkerSetting(true);
+    setError(null);
+
+    try {
+      const updatedUser = await patchCurrentUserViaApi({
+        settings: {
+          [SETTINGS_CLOSE_MARKER_TEXTS_KEY]: validation.texts,
+        },
+      });
+
+      alert("품절 처리 댓글 문구가 저장되었습니다.");
+      setInitialCloseMarkerTexts(validation.texts);
+      setCloseMarkerInput(closeMarkerTextsToTextAreaValue(validation.texts));
+
+      if (updatedUser) {
+        saveUserToSession(updatedUser);
+        await userMutate(updatedUser, {
+          optimisticData: updatedUser,
+          revalidate: false,
+          rollbackOnError: false,
+          populateCache: true,
+        });
+      } else {
+        await userMutate();
+      }
+    } catch (err) {
+      setError(`품절 처리 댓글 문구 저장 오류: ${err.message}`);
+      alert(`품절 처리 댓글 문구 저장 중 오류가 발생했습니다: ${err.message}`);
+    } finally {
+      setSavingCloseMarkerSetting(false);
+    }
+  };
+
   // --- 각 섹션별 저장 함수 끝 ---
 
   // --- Loading and Error UI ---
@@ -1091,6 +1166,11 @@ export default function SettingsPage() {
         />
       </div>
     );
+
+  const closeMarkerValidation = validateCloseMarkerTexts(closeMarkerInput);
+  const closeMarkerUnchanged =
+    !closeMarkerValidation.error &&
+    areCloseMarkerTextsEqual(closeMarkerValidation.texts, initialCloseMarkerTexts);
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900  overflow-y-auto p-5">
@@ -1662,6 +1742,76 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
+            </LightCard>
+
+            {/* 품절 처리 댓글 문구 설정 카드 */}
+            <LightCard padding="p-0">
+              <div className="p-5 sm:p-6 border-b">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <CheckCircleIcon className="w-5 h-5 text-gray-500" /> 품절 처리
+                  문구
+                  {userLoading && !swrUserData && (
+                    <LoadingSpinner className="w-4 h-4 ml-2" />
+                  )}
+                </h2>
+              </div>
+              <div className="p-5 sm:p-6 space-y-4">
+                <p className="text-xs text-gray-500">
+                  밴드 댓글에 아래 문구가 포함되면 해당 게시물을 품절로 처리합니다.
+                  여러 문구는 줄바꿈으로 입력하세요.
+                </p>
+                <label htmlFor="closeMarkerInput" className="sr-only">
+                  품절 처리 댓글 문구
+                </label>
+                <textarea
+                  id="closeMarkerInput"
+                  value={closeMarkerInput}
+                  onChange={(e) => setCloseMarkerInput(e.target.value)}
+                  rows={4}
+                  placeholder="마감된 상품입니다"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:opacity-50 bg-white resize-y"
+                  disabled={savingCloseMarkerSetting || userLoading}
+                />
+                {closeMarkerValidation.error ? (
+                  <p className="text-xs text-red-600">
+                    {closeMarkerValidation.error}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {closeMarkerValidation.texts.map((marker) => (
+                      <span
+                        key={marker}
+                        className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-200"
+                      >
+                        {marker}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="p-4 sm:p-5 bg-gray-50 border-t flex justify-end rounded-b-xl">
+                <button
+                  onClick={handleSaveCloseMarkerSetting}
+                  disabled={
+                    savingCloseMarkerSetting ||
+                    isDataLoading ||
+                    Boolean(closeMarkerValidation.error) ||
+                    closeMarkerUnchanged
+                  }
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingCloseMarkerSetting ? (
+                    <LoadingSpinner className="w-4 h-4" color="text-white" />
+                  ) : (
+                    <CheckIcon className="w-5 h-5" />
+                  )}
+                  <span>
+                    {savingCloseMarkerSetting
+                      ? "저장 중..."
+                      : "품절 문구 저장"}
+                  </span>
+                </button>
+              </div>
             </LightCard>
 
             {/* 제외 고객 설정 카드 */}

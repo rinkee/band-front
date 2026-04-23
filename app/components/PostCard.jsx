@@ -10,6 +10,7 @@ import {
   XCircleIcon as XCircleIconOutline,
   ExclamationCircleIcon, // Status icons
 } from "@heroicons/react/24/outline";
+import { getDisplayPostStatus } from "../lib/postStatus";
 
 // --- 상태 배지 (DashboardPage 스타일 - 재사용) ---
 function StatusBadge({ status }) {
@@ -25,6 +26,11 @@ function StatusBadge({ status }) {
       textColor = "text-red-600";
       Icon = XCircleIconOutline;
       break;
+    case "마감":
+      bgColor = "bg-red-100";
+      textColor = "text-red-700";
+      Icon = ExclamationCircleIcon;
+      break;
     default:
       bgColor = "bg-gray-100";
       textColor = "text-gray-500";
@@ -36,7 +42,7 @@ function StatusBadge({ status }) {
       className={`inline-flex items-center gap-x-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${bgColor} ${textColor}`}
     >
       <Icon className="h-3.5 w-3.5" />
-      {status || "상태없음"} {/* status가 없을 경우 대비 */}
+      {getDisplayPostStatus(status)} {/* status가 없을 경우 대비 */}
     </span>
   );
 }

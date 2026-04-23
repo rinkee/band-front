@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  SETTINGS_CLOSE_MARKER_TEXTS_KEY,
+  validateCloseMarkerTexts,
+} from "../../../lib/deadlineSettings";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 120;
@@ -226,6 +230,9 @@ const normalizeText = (value, maxLength) => {
   return normalized;
 };
 
+const isPlainObject = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
 const authenticateRequest = async (request, supabaseAdmin) => {
   const authHeader = request.headers.get("authorization") || "";
   if (!authHeader.startsWith("Bearer ")) {
@@ -373,6 +380,37 @@ const buildValidatedUpdatePayload = (input, currentUser) => {
       normalizedCustomers.push(normalized);
     }
     updates.excluded_customers = Array.from(new Set(normalizedCustomers));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "settings")) {
+    if (!isPlainObject(input.settings)) {
+      return { error: "settings는 객체여야 합니다.", status: 400 };
+    }
+
+    const allowedSettingsKeys = new Set([SETTINGS_CLOSE_MARKER_TEXTS_KEY]);
+    const unknownSettingKey = Object.keys(input.settings).find(
+      (key) => !allowedSettingsKeys.has(key)
+    );
+    if (unknownSettingKey) {
+      return {
+        error: `settings.${unknownSettingKey}는 업데이트할 수 없습니다.`,
+        status: 400,
+      };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(input.settings, SETTINGS_CLOSE_MARKER_TEXTS_KEY)) {
+      const validation = validateCloseMarkerTexts(
+        input.settings[SETTINGS_CLOSE_MARKER_TEXTS_KEY]
+      );
+      if (validation.error) {
+        return { error: validation.error, status: 400 };
+      }
+
+      updates.settings = {
+        ...(isPlainObject(currentUser.settings) ? currentUser.settings : {}),
+        [SETTINGS_CLOSE_MARKER_TEXTS_KEY]: validation.texts,
+      };
+    }
   }
 
   for (const key of [

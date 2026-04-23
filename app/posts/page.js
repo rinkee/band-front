@@ -14,6 +14,13 @@ import ProductAddRow from "../components/ProductAddRow";
 import OptimizedImage from "../components/OptimizedImage";
 import { useToast } from "../hooks/useToast";
 import supabase from "../lib/supabaseClient";
+import {
+  getDisplayPostStatus,
+  isClosedPostStatus,
+  POST_STATUS_ACTIVE,
+  POST_STATUS_CLOSED_LABEL,
+  POST_STATUS_CLOSED,
+} from "../lib/postStatus";
 import { clearOrdersTestProductsCache } from "../lib/ordersTestProductsCache";
 import { syncProductsToIndexedDb } from "../lib/indexedDbSync";
 import {
@@ -301,6 +308,8 @@ export default function PostsPage() {
   // 게시물 상세 모달 관련 상태 (raw 모드용)
   const [isPostDetailModalOpen, setIsPostDetailModalOpen] = useState(false);
   const [selectedPostForDetail, setSelectedPostForDetail] = useState(null);
+  const [postStatusConfirm, setPostStatusConfirm] = useState(null);
+  const [isPostStatusSaving, setIsPostStatusSaving] = useState(false);
 
   // 수령일 수정 관련 상태 (postKey별로 관리)
   const [editingPickupDate, setEditingPickupDate] = useState(null); // postKey
@@ -514,6 +523,9 @@ export default function PostsPage() {
       "image_urls",
       "photos_data",
       "pickup_date",
+      "status",
+      "closed_at",
+      "closed_comment_key",
       "post_key",
       "band_key",
       "post_number",
@@ -820,8 +832,15 @@ export default function PostsPage() {
   useEffect(() => {
     const handlePostUpdated = (event) => {
       const detail = event?.detail || {};
-      // 낙관적 반영: title / is_product 가 포함되어 있으면 로컬 캐시 반영
-      if (detail.postKey && (detail.title !== undefined || detail.is_product !== undefined)) {
+      const hasPostPatch =
+        detail.title !== undefined ||
+        detail.is_product !== undefined ||
+        detail.status !== undefined ||
+        detail.closed_at !== undefined ||
+        detail.closed_comment_key !== undefined;
+
+      // 낙관적 반영: 모달/카드에서 변경한 게시물 필드를 로컬 캐시에 반영
+      if (detail.postKey && hasPostPatch) {
         mutate((currentData) => {
           if (!currentData || !Array.isArray(currentData.posts)) return currentData;
           const updatedPosts = currentData.posts.map(p => {
@@ -830,6 +849,9 @@ export default function PostsPage() {
                 ...p,
                 title: detail.title !== undefined ? detail.title : p.title,
                 is_product: detail.is_product !== undefined ? detail.is_product : p.is_product,
+                status: detail.status !== undefined ? detail.status : p.status,
+                closed_at: detail.closed_at !== undefined ? detail.closed_at : p.closed_at,
+                closed_comment_key: detail.closed_comment_key !== undefined ? detail.closed_comment_key : p.closed_comment_key,
               };
             }
             return p;
@@ -1746,6 +1768,101 @@ export default function PostsPage() {
     }
   }, [mutate, showError, showSuccess]);
 
+  const handleOpenPostStatusConfirm = useCallback((post, nextStatus) => {
+    if (!post?.post_key) {
+      showError('게시물 정보가 없습니다.');
+      return;
+    }
+
+    setPostStatusConfirm({ post, nextStatus });
+  }, [showError]);
+
+  const handleClosePostStatusConfirm = useCallback(() => {
+    if (isPostStatusSaving) return;
+    setPostStatusConfirm(null);
+  }, [isPostStatusSaving]);
+
+  const handlePostStatusChange = useCallback(async (post, nextStatus) => {
+    if (!post?.post_key) {
+      showError('게시물 정보가 없습니다.');
+      return false;
+    }
+    if (!userData?.userId) {
+      showError('사용자 인증 정보를 찾을 수 없습니다.');
+      return false;
+    }
+
+    const isClosing = nextStatus === POST_STATUS_CLOSED;
+    const isCurrentlyClosed = isClosedPostStatus(post.status);
+    const nowIso = new Date().toISOString();
+    const updateFields = {
+      status: isClosing ? POST_STATUS_CLOSED : POST_STATUS_ACTIVE,
+      closed_at: isClosing ? (isCurrentlyClosed && post.closed_at ? post.closed_at : nowIso) : null,
+      closed_comment_key: isClosing ? (isCurrentlyClosed ? post.closed_comment_key || null : null) : null,
+      updated_at: nowIso,
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .update(updateFields)
+        .eq('user_id', userData.userId)
+        .eq('post_key', post.post_key)
+        .select('post_key,status,closed_at,closed_comment_key,updated_at')
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error('상태를 변경할 게시물을 찾지 못했습니다.');
+
+      const updatedFields = { ...updateFields, ...data };
+
+      mutate((currentData) => {
+        if (!currentData || !Array.isArray(currentData.posts)) return currentData;
+        return {
+          ...currentData,
+          posts: currentData.posts.map((item) =>
+            item.post_key === post.post_key
+              ? { ...item, ...updatedFields }
+              : item
+          ),
+        };
+      }, { revalidate: false });
+
+      setSelectedPostForDetail((current) =>
+        current?.post_key === post.post_key ? { ...current, ...updatedFields } : current
+      );
+      setSelectedPostForProductManagement((current) =>
+        current?.post_key === post.post_key ? { ...current, ...updatedFields } : current
+      );
+
+      showSuccess(
+        isClosing
+          ? '게시물을 품절 상태로 변경했습니다.'
+          : '게시물을 판매중 상태로 변경했습니다.'
+      );
+      return true;
+    } catch (error) {
+      console.error('게시물 상태 변경 오류:', error);
+      showError(`게시물 상태 변경 중 오류가 발생했습니다: ${error.message || error}`);
+      return false;
+    }
+  }, [mutate, showError, showSuccess, userData?.userId]);
+
+  const handleConfirmPostStatusChange = useCallback(async () => {
+    if (!postStatusConfirm) return;
+
+    setIsPostStatusSaving(true);
+    const success = await handlePostStatusChange(
+      postStatusConfirm.post,
+      postStatusConfirm.nextStatus
+    );
+    setIsPostStatusSaving(false);
+
+    if (success) {
+      setPostStatusConfirm(null);
+    }
+  }, [handlePostStatusChange, postStatusConfirm]);
+
   if (!userData) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -2100,17 +2217,18 @@ export default function PostsPage() {
                 ) + 1;
 
               return (
-              <div key={post.post_key} className="grid grid-cols-3 gap-1.5">
-                {/* 게시물 카드 (1/3) - 모든 화면에서 표시 */}
-                <div className="col-span-1">
-                  <PostCard
-                    post={post}
-                    onViewOrders={handleViewOrders}
-                    onViewComments={handleViewComments}
-                    onDeletePost={handleDeletePost}
-                    onToggleReprocess={handleToggleReprocess}
-                  />
-                </div>
+                <div key={post.post_key} className="grid grid-cols-3 gap-1.5">
+                  {/* 게시물 카드 (1/3) - 모든 화면에서 표시 */}
+                  <div className="col-span-1">
+                    <PostCard
+                      post={post}
+                      onViewOrders={handleViewOrders}
+                      onViewComments={handleViewComments}
+                      onDeletePost={handleDeletePost}
+                      onToggleReprocess={handleToggleReprocess}
+                      onStatusChange={handleOpenPostStatusConfirm}
+                    />
+                  </div>
 
                 {/* 상품정보 테이블 (2/3) - 모든 화면에서 표시 */}
                 <div className="col-span-2 bg-white border border-gray-200 overflow-hidden flex flex-col">
@@ -2676,11 +2794,80 @@ export default function PostsPage() {
       />
 
       {/* 상품 관리 모달 */}
-      <ProductManagementModal
-        isOpen={isProductManagementModalOpen}
-        onClose={handleCloseProductManagementModal}
-        post={selectedPostForProductManagement}
-      />
+	      <ProductManagementModal
+	        isOpen={isProductManagementModalOpen}
+	        onClose={handleCloseProductManagementModal}
+	        post={selectedPostForProductManagement}
+	      />
+
+      {postStatusConfirm && (() => {
+        const isClosing = postStatusConfirm.nextStatus === POST_STATUS_CLOSED;
+        const targetPost = postStatusConfirm.post || {};
+        const postTitle =
+          targetPost.title?.replace(/\[[^\]]+\]\s*/, '').trim() ||
+          targetPost.author_name ||
+          "선택한 상품";
+        const confirmTitle = isClosing
+          ? "상품을 품절 처리할까요?"
+          : "품절된 상품을 판매중으로 되돌릴까요?";
+        const confirmMessage = isClosing
+          ? "판매중인 상품을 품절 상태로 변경하면 이후 댓글은 품절 이후 댓글로 구분됩니다."
+          : "품절된 상품을 판매중으로 되돌리면 품절 기준 시간이 초기화됩니다.";
+        const confirmButtonLabel = isClosing ? "품절 처리" : "판매중으로 변경";
+        const confirmButtonClass = isClosing
+          ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
+          : "bg-green-600 hover:bg-green-700 focus:ring-green-500";
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="post-status-confirm-title"
+            onClick={handleClosePostStatusConfirm}
+          >
+            <div
+              className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-3">
+                <div>
+                  <h2
+                    id="post-status-confirm-title"
+                    className="text-lg font-semibold text-gray-900"
+                  >
+                    {confirmTitle}
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600 break-words">
+                    {postTitle}
+                  </p>
+                </div>
+                <p className="text-sm leading-6 text-gray-700">
+                  {confirmMessage}
+                </p>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleClosePostStatusConfirm}
+                  disabled={isPostStatusSaving}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmPostStatusChange}
+                  disabled={isPostStatusSaving}
+                  className={`rounded-md px-4 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${confirmButtonClass}`}
+                >
+                  {isPostStatusSaving ? "변경 중..." : confirmButtonLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 게시물 상세 모달 (raw 모드용) */}
       {isPostDetailModalOpen && selectedPostForDetail && (() => {
@@ -3097,6 +3284,7 @@ const PostCard = React.memo(function PostCard({
   onViewComments,
   onDeletePost,
   onToggleReprocess,
+  onStatusChange,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -3168,14 +3356,20 @@ const PostCard = React.memo(function PostCard({
   const title = post.title || '';
   const content = post.content || '';
   const cleanTitle = extractCleanTitle(title);
+  const displayStatus = getDisplayPostStatus(post?.status);
+  const isClosed = isClosedPostStatus(post?.status);
+  const statusToggleLabel = isClosed ? POST_STATUS_ACTIVE : POST_STATUS_CLOSED;
+  const statusButtonClass = isClosed
+    ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+    : "border-green-200 bg-green-50 text-green-700 hover:bg-green-100";
 
   return (
     <div
       className="bg-white  border border-gray-200 overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col"
     >
       {/* 상단: 프로필 & 작성자 정보 */}
-      <div className="px-4 py-2 flex items-center justify-between border-b border-gray-100">
-        <div className="flex items-center space-x-3">
+      <div className="px-4 py-2 flex items-center justify-between gap-2 border-b border-gray-100">
+        <div className="flex min-w-0 items-center space-x-3">
           <div className="relative w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
             {(post.profile_image || post.author_profile) ? (
               <OptimizedImage
@@ -3200,45 +3394,72 @@ const PostCard = React.memo(function PostCard({
               </div>
             )}
           </div>
-          <div>
-            <div className="text-xs font-semibold text-gray-900">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-semibold text-gray-900">
               {post.author_name || '익명'}
             </div>
             <div className="text-xs text-gray-500">
               {formatDate(post.posted_at)}
             </div>
+            {isClosed && (
+              <div className="text-[11px] font-semibold text-red-600">
+                {post.closed_at
+                  ? `${formatDate(post.closed_at)} ${POST_STATUS_CLOSED_LABEL}`
+                  : POST_STATUS_CLOSED_LABEL}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 메뉴 버튼 */}
-        <div className="relative" ref={menuRef}>
+        <div className="flex flex-shrink-0 items-center gap-1.5">
           <button
+            type="button"
+            role="switch"
+            aria-checked={isClosed}
             onClick={(e) => {
               e.stopPropagation();
-              setIsMenuOpen(!isMenuOpen);
+              onStatusChange?.(post, statusToggleLabel);
             }}
-            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-            title="메뉴"
+            className={`inline-flex min-w-[4.5rem] items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${statusButtonClass}`}
+            title={isClosed ? "판매중으로 변경" : "품절 처리"}
           >
-            <EllipsisVerticalIcon className="w-5 h-5 text-gray-600" />
+            <span
+              className={`h-2 w-2 rounded-full ${isClosed ? "bg-red-500" : "bg-green-500"}`}
+              aria-hidden="true"
+            />
+            <span>{displayStatus}</span>
           </button>
 
-          {/* 드롭다운 메뉴 */}
-          {isMenuOpen && (
-            <div className="absolute right-0 top-8 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMenuOpen(false);
-                  onDeletePost(post);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
-              >
-                <TrashIcon className="w-4 h-4" />
-                삭제하기
-              </button>
-            </div>
-          )}
+          {/* 메뉴 버튼 */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMenuOpen(!isMenuOpen);
+              }}
+              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              title="메뉴"
+            >
+              <EllipsisVerticalIcon className="w-5 h-5 text-gray-600" />
+            </button>
+
+            {/* 드롭다운 메뉴 */}
+            {isMenuOpen && (
+              <div className="absolute right-0 top-8 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    onDeletePost(post);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                  삭제하기
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

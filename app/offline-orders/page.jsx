@@ -21,6 +21,7 @@ import { normalizeComment } from "../lib/band-processor/core/commentProcessor";
 import { extractOrdersFromComments } from "../lib/band-processor/core/orderProcessor";
 import supabase from "../lib/supabaseClient";
 import Toast from "../components/Toast";
+import DeadlineCommentText from "../components/DeadlineCommentText";
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 30;
@@ -30,7 +31,7 @@ const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   : null;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const POST_COLUMNS =
-  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at";
+  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at,status,closed_at,closed_comment_key";
 const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =
@@ -2721,16 +2722,17 @@ export default function OfflineOrdersPage() {
                               className="break-words leading-tight font-semibold"
                               title={commentView?.currentComment || ""}
                             >
-                              {commentView?.currentComment || "-"}
+                              <DeadlineCommentText text={commentView?.currentComment || ""} />
                             </div>
                           ) : (
                             <div className="space-y-1">
                               {commentView.showPrevious && (
                                 <div className="text-gray-500 line-through text-sm">
                                   <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
-                                  <span className="break-words leading-tight font-semibold">
-                                    {commentView.previousComment}
-                                  </span>
+                                  <DeadlineCommentText
+                                    text={commentView.previousComment}
+                                    className="break-words leading-tight font-semibold"
+                                  />
                                 </div>
                               )}
                               <div className="break-words leading-tight">
@@ -2742,7 +2744,10 @@ export default function OfflineOrdersPage() {
                                 {order.sub_status === "확인필요" && (
                                   <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
                                 )}
-                                <span className="font-semibold">{commentView.latestComment}</span>
+                                <DeadlineCommentText
+                                  text={commentView.latestComment}
+                                  bodyClassName="font-semibold"
+                                />
                               </div>
                             </div>
                           )}

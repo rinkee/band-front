@@ -27,6 +27,13 @@ import { processCancellationRequests } from './cancellation/cancellationProcesso
 // Utils
 import { contentHasPriceIndicator } from './utils/textUtils';
 import { enhancePickupDateFromContent } from './utils/pickupDateEnhancer.js';
+import { resolveCloseMarkerTextsFromSettings } from '../../deadlineSettings.js';
+import {
+  mapOrderRowsToDeadlineComments,
+  prefixAfterDeadlineComment,
+  resolvePostCloseBoundary,
+  withAfterDeadlineFlags
+} from './commentDeadline/commentDeadline.js';
 
 // 댓글 수정 추적용 간단 해시 생성기
 const hashCommentText = (text = "") => {
@@ -106,7 +113,11 @@ const buildFormattedCommentForDiff = (comment) => {
     Boolean(comment?.origin_comment_id) ||
     (comment?.commentKey?.includes("_") && (comment?.parentAuthorName || comment?.parentAuthorUserNo));
 
-  if (!isReply) return baseContent;
+  if (!isReply) {
+    return comment?.isAfterDeadline === true
+      ? prefixAfterDeadlineComment(baseContent)
+      : baseContent;
+  }
 
   const replierName =
     comment?.author?.name ||
@@ -118,7 +129,10 @@ const buildFormattedCommentForDiff = (comment) => {
   const escaped = replierName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const body = baseContent.replace(new RegExp(`^@?${escaped}\\s*`), "").trim();
   const separator = body.length > 0 ? " " : "";
-  return `[대댓글] ${replierName}:${separator}${body}`.trim();
+  const formatted = `[대댓글] ${replierName}:${separator}${body}`.trim();
+  return comment?.isAfterDeadline === true
+    ? prefixAfterDeadlineComment(formatted)
+    : formatted;
 };
 
 // 기존 comment_change를 이어받아 새로운 버전을 생성
@@ -235,11 +249,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
     // 사용자 설정 조회
     const { data: userSettings, error: userSettingsError } = await supabase
       .from("users")
-      .select("post_fetch_limit, auto_barcode_generation, ignore_order_needs_ai, ai_analysis_level, ai_mode_migrated")
+      .select("post_fetch_limit, auto_barcode_generation, ignore_order_needs_ai, ai_analysis_level, ai_mode_migrated, settings")
       .eq("user_id", userId)
       .single();
 
     const defaultLimit = userSettings?.post_fetch_limit || 200;
+    const closeMarkerTexts = resolveCloseMarkerTextsFromSettings(userSettings?.settings);
 
     // 처리 제한 설정
     let processingLimit;
@@ -282,6 +297,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
       console.log(
         `사용자 ${userId}의 게시물 제한 설정: ${userSettings?.post_fetch_limit || "미설정(기본값 200)"} → 실제 가져올 개수: ${processingLimit}개`
       );
+      console.log(`사용자 ${userId}의 마감 댓글 문구: ${closeMarkerTexts.join(", ")}`);
     }
 
     console.log(
@@ -391,7 +407,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           const { data: dbPosts, error: dbError } = await supabase
             .from("posts")
             .select(
-              "post_id, post_key, comment_count, last_checked_comment_at, is_product, ai_extraction_status, order_needs_ai, comment_sync_status, latest_comments"
+              "post_id, post_key, comment_count, last_checked_comment_at, is_product, ai_extraction_status, order_needs_ai, comment_sync_status, latest_comments, status, closed_at, closed_comment_key"
             )
             .eq("user_id", userId)
             .in("post_key", postKeys);
@@ -411,7 +427,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
               order_needs_ai: dbPost.order_needs_ai === true,
               comment_sync_status: dbPost.comment_sync_status,
               latest_comments: latestParsed,
-              latest_comments_hash: latestCommentsHash(latestParsed)
+              latest_comments_hash: latestCommentsHash(latestParsed),
+              status: dbPost.status || null,
+              closed_at: dbPost.closed_at || null,
+              closed_comment_key: dbPost.closed_comment_key || null
             });
           });
           console.log(`[2단계] ${dbPostsMap.size}개의 기존 게시물을 찾았습니다.`);
@@ -547,6 +566,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           let latestCommentTimestampForUpdate = null;
           let successfullyProcessedNewComments = false;
           let comments = [];
+          let postCloseUpdate = null;
 
           try {
             // === 신규 게시물 처리 ===
@@ -795,6 +815,17 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     );
                   }
 
+                  const closeBoundary = resolvePostCloseBoundary({
+                    comments,
+                    existingPost: {},
+                    closeMarkerTexts
+                  });
+                  if (closeBoundary?.postUpdate) {
+                    postCloseUpdate = closeBoundary.postUpdate;
+                    console.log(`[마감 감지] 신규 게시물 ${postKey} 마감 댓글 발견`, postCloseUpdate);
+                  }
+                  comments = withAfterDeadlineFlags(comments, closeBoundary);
+
                   newComments = comments.map((c) => ({
                     ...c,
                     post_key: postKey,
@@ -809,6 +840,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     origin_comment_id: c.origin_comment_id || null,
                     commentKey: c.commentKey,
                     createdAt: c.createdAt,
+                    isAfterDeadline: c.isAfterDeadline === true,
                     author: c.author
                       ? {
                           name: c.author.name,
@@ -941,6 +973,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
                   updateInfo.last_checked_comment_at = latestCommentTimestampForUpdate;
                 }
 
+                if (postCloseUpdate && successfullyProcessedNewComments) {
+                  Object.assign(updateInfo, postCloseUpdate);
+                }
+
                 if (isNewPost && savedPostId) {
                   if (!successfullyProcessedNewComments && processCommentsAndOrders) {
                     updateInfo.comment_sync_status = "failed";
@@ -963,6 +999,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
             } else {
               // === 기존 게시물 처리 ===
               savedPostId = dbPostData?.post_id || `${userId}_post_${postKey}`;
+              const withPostCloseSaveOptions = (options = {}) => ({
+                ...options,
+                existingStatus: dbPostData?.status || null,
+                closedAt: dbPostData?.closed_at || null,
+                closedCommentKey: dbPostData?.closed_comment_key || null
+              });
 
               // 기존 게시물이지만 가격 정보가 없으면 공지사항으로 확정 처리
               const mightBeProduct = contentHasPriceIndicator(apiPost.content);
@@ -1109,7 +1151,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                         aiAnalysisResult,
                         bandKey,
                         aiExtractionStatus,
-                        userSettings
+                        userSettings,
+                        withPostCloseSaveOptions()
                       );
                     }
 
@@ -1226,7 +1269,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                           aiAnalysisResult,
                           bandKey,
                           aiExtractionStatus,
-                          userSettings
+                          userSettings,
+                          withPostCloseSaveOptions()
                         );
                       }
 
@@ -1327,7 +1371,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       bandKey,
                       supabase
                     );
-                    const fullComments = (fetchResult.comments || []).map((c) => ({
+                    let fullComments = (fetchResult.comments || []).map((c) => ({
                       ...c,
                       createdAt: normalizeTimestamp(c.createdAt),
                       _isDeletedFlag:
@@ -1354,7 +1398,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     const { data: existingOrdersAll, error: existingOrdersError } = await supabase
                       .from("orders")
                       .select(
-                        "order_id, comment_key, comment, comment_change, status, sub_status, confirmed_at, completed_at, canceled_at, paid_at, ordered_at, created_at, updated_at, customer_name, customer_id"
+                        "order_id, comment_key, comment, comment_change, status, sub_status, confirmed_at, completed_at, canceled_at, paid_at, ordered_at, commented_at, created_at, updated_at, customer_name, customer_id"
                       )
                       .eq("user_id", userId)
                       .eq("post_key", postKey);
@@ -1371,6 +1415,21 @@ export async function processBandPosts(supabase, userId, options = {}) {
                         );
                       }
                     }
+
+                    const closeBoundary = resolvePostCloseBoundary({
+                      comments: [
+                        ...fullComments,
+                        ...mapOrderRowsToDeadlineComments(existingOrdersAll || [])
+                      ],
+                      existingPost: dbPostData || {},
+                      closeMarkerTexts
+                    });
+                    if (closeBoundary?.postUpdate) {
+                      postCloseUpdate = closeBoundary.postUpdate;
+                      console.log(`[마감 감지] 기존 게시물 ${postKey} 마감 상태 갱신`, postCloseUpdate);
+                    }
+                    fullComments = withAfterDeadlineFlags(fullComments, closeBoundary);
+                    comments = fullComments;
 
                     const missingHistoricalCommentKeys = existingOrdersError
                       ? new Set()
@@ -1771,13 +1830,14 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     console.log(`post_id=${savedPostId} 댓글 처리 실패`);
                   } else {
                     postsToUpdateCommentInfo.push({
-                            post_id: savedPostId,
-                            comment_count: newCount,
-                            last_checked_comment_at: newChecked,
-                            comment_sync_status: "completed",
-                            comment_sync_log: null, // 성공 시 로그 초기화
-                            latest_comments: apiPost.latest_comments || null
-                          });
+                      post_id: savedPostId,
+                      comment_count: newCount,
+                      last_checked_comment_at: newChecked,
+                      comment_sync_status: "completed",
+                      comment_sync_log: null, // 성공 시 로그 초기화
+                      latest_comments: apiPost.latest_comments || null,
+                      ...(postCloseUpdate || {})
+                    });
                           console.log(`post_id=${savedPostId} 댓글 처리 성공`);
                         }
                       }
@@ -1836,7 +1896,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
         const dedupedUpdates = Array.from(
           postsToUpdateCommentInfo.reduce((map, item) => {
             if (item?.post_id) {
-              map.set(item.post_id, item);
+              map.set(item.post_id, {
+                ...(map.get(item.post_id) || {}),
+                ...item
+              });
             }
             return map;
           }, new Map()).values()
@@ -1859,6 +1922,18 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
             if (updateInfo.comment_sync_status) {
               fieldsToUpdate.comment_sync_status = updateInfo.comment_sync_status;
+            }
+
+            if (updateInfo.status) {
+              fieldsToUpdate.status = updateInfo.status;
+            }
+
+            if (updateInfo.closed_at !== undefined) {
+              fieldsToUpdate.closed_at = updateInfo.closed_at;
+            }
+
+            if (updateInfo.closed_comment_key !== undefined) {
+              fieldsToUpdate.closed_comment_key = updateInfo.closed_comment_key;
             }
 
             if (updateInfo.latest_comments !== undefined) {

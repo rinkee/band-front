@@ -36,6 +36,7 @@ import OptimizedImage from "../components/OptimizedImage";
 import { useToast } from "../hooks/useToast";
 import ToastContainer from "../components/ToastContainer";
 import FilterIndicator from "../components/FilterIndicator"; // 필터 상태 표시 컴포넌트
+import DeadlineCommentText from "../components/DeadlineCommentText";
 import { calculateDaysUntilPickup } from "../lib/band-processor/shared/utils/dateUtils"; // 날짜 유틸리티
 import { syncCommentOrdersToIndexedDb, syncOrdersToIndexedDb } from "../lib/indexedDbSync";
 
@@ -793,14 +794,17 @@ const OrderTableRow = React.memo(function OrderTableRow({
               {order.sub_status === "확인필요" && (
                 <span className="text-orange-500 font-bold mr-1">[확인필요]</span>
               )}
-              {currentComment || "-"}
+              <DeadlineCommentText text={currentComment} />
             </div>
           ) : (
             <div className="space-y-1">
               {showPrevious && (
                 <div className="text-gray-500 line-through text-sm">
                   <span className="font-semibold text-gray-400 mr-1">[기존댓글]</span>
-                  <span className="break-words leading-tight font-semibold">{previousComment}</span>
+                  <DeadlineCommentText
+                    text={previousComment}
+                    className="break-words leading-tight font-semibold"
+                  />
                 </div>
               )}
               <div className="break-words leading-tight">
@@ -810,7 +814,7 @@ const OrderTableRow = React.memo(function OrderTableRow({
                 <span className="text-sm font-semibold text-orange-600 mr-1">
                   {commentChangeData.status === "deleted" ? "[유저에 의해 삭제된 댓글]" : "[수정됨]"}
                 </span>
-                <span className="font-semibold">{latestComment}</span>
+                <DeadlineCommentText text={latestComment} bodyClassName="font-semibold" />
               </div>
             </div>
           )}
