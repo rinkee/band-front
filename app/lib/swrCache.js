@@ -2,6 +2,8 @@
 // SWR key helpers + cross-cutting cache invalidation utilities.
 
 export const ORDER_STATS_LOCAL_CACHE_PREFIX = "order-stats-cache:";
+export const POSTS_CACHE_STALE_EVENT = "posts-cache-stale";
+export const POSTS_CACHE_STALE_LOCAL_CACHE_PREFIX = "posts-cache-stale:";
 
 export function stableJsonStringify(value) {
   if (!value || typeof value !== "object") {
@@ -36,6 +38,86 @@ export function getFunctionsBaseUrl() {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base) return null;
   return `${base}/functions/v1`;
+}
+
+const getPostsCacheStaleKey = (userId) =>
+  userId ? `${POSTS_CACHE_STALE_LOCAL_CACHE_PREFIX}${userId}` : null;
+
+const getBrowserLocalStorage = () => {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  return window.localStorage;
+};
+
+const dispatchBrowserEvent = (eventName, detail) => {
+  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+    return;
+  }
+
+  const event =
+    typeof CustomEvent === "function"
+      ? new CustomEvent(eventName, { detail })
+      : { type: eventName, detail };
+
+  window.dispatchEvent(event);
+};
+
+export function readPostsCacheStale(userId) {
+  const storage = getBrowserLocalStorage();
+  const key = getPostsCacheStaleKey(userId);
+  if (!storage || !key) return null;
+
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.userId !== userId || typeof parsed.savedAt !== "number") {
+      return null;
+    }
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+export function markPostsCacheStale(userId, detail = {}) {
+  const storage = getBrowserLocalStorage();
+  const key = getPostsCacheStaleKey(userId);
+  if (!storage || !key) return null;
+
+  const previous = readPostsCacheStale(userId);
+  const now = Date.now();
+  const savedAt = previous?.savedAt && previous.savedAt >= now ? previous.savedAt + 1 : now;
+  const marker = {
+    ...detail,
+    userId,
+    savedAt
+  };
+
+  try {
+    storage.setItem(key, JSON.stringify(marker));
+  } catch (_) {
+    return null;
+  }
+
+  dispatchBrowserEvent(POSTS_CACHE_STALE_EVENT, marker);
+  return marker;
+}
+
+export function clearPostsCacheStale(userId, savedAt = null) {
+  const storage = getBrowserLocalStorage();
+  const key = getPostsCacheStaleKey(userId);
+  if (!storage || !key) return false;
+
+  const current = readPostsCacheStale(userId);
+  if (!current) return false;
+  if (savedAt !== null && current.savedAt > savedAt) return false;
+
+  try {
+    storage.removeItem(key);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 export function invalidateOrderStatsLocalCache(userId) {

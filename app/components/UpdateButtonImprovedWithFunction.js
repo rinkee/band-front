@@ -3,9 +3,9 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { api } from "../lib/fetcher";
 import { useSWRConfig } from "swr";
-import { revalidateUserCaches } from "../lib/swrCache";
+import { markPostsCacheStale, revalidateUserCaches } from "../lib/swrCache";
 
-const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
+const UpdateButtonImprovedWithFunction = ({ bandNumber = null, onSuccess = null }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -83,6 +83,9 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
   // SWR 캐시 갱신 함수 - raw 모드에서 즉시 데이터 갱신을 위해 개선
   const refreshSWRCache = useCallback(async (userId, isRaw = false) => {
     if (!userId) return;
+    if (!isRaw) {
+      markPostsCacheStale(userId, { source: "band-update" });
+    }
     const mutateOptions = isRaw
       ? {
           revalidate: true,
@@ -198,6 +201,49 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
       clearTimeout(timeoutId);
     };
   }, [isBackgroundProcessing]);
+
+  const handleResponse = useCallback(async (response, userId) => {
+    const responseData = response.data;
+
+    if (response.status === 200 || response.status === 207) {
+      const processedCount = responseData.stats?.total || responseData.data?.length || 0;
+      const successCount = responseData.stats?.success || processedCount;
+      const errorCount = responseData.stats?.errors || 0;
+
+      setProgress({
+        current: processedCount,
+        total: processedCount,
+        message: '완료!'
+      });
+
+      if (errorCount > 0) {
+        setError(`${processedCount}개 중 ${errorCount}개 실패`);
+        if (successCount > 0) {
+          setSuccessMessage(`✨ ${successCount}개 동기화 완료!`);
+        }
+      } else if (responseData.errorSummary) {
+        const { totalErrors, errorRate } = responseData.errorSummary;
+        setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
+      } else {
+        setSuccessMessage(`✨ ${processedCount}개 동기화 완료!`);
+      }
+
+      await refreshSWRCache(userId, false);
+      if (typeof onSuccess === "function") {
+        await onSuccess(responseData);
+      }
+
+      setTimeout(() => {
+        setProgress({ current: 0, total: 0, message: '' });
+      }, 3000);
+    } else {
+      const errorMessage = responseData.message || "게시물 동기화 중 서버에서 오류가 발생했습니다.";
+      setError(errorMessage);
+      setProgress({ current: 0, total: 0, message: '' });
+    }
+
+    setIsLoading(false);
+  }, [onSuccess, refreshSWRCache]);
 
   const handleUpdatePosts = useCallback(async () => {
     setError("");
@@ -327,7 +373,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         setIsBackgroundProcessing(true);
         
         // 실제 요청은 계속 진행되도록 함
-        requestPromise.then((response) => {
+        requestPromise.then(async (response) => {
           
           // 백그라운드에서 완료되면 즉시 완료 처리
           const responseData = response.data;
@@ -360,7 +406,10 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
           }
 
           // SWR 캐시 갱신 - 일반 모드
-          refreshSWRCache(userId, false);
+          await refreshSWRCache(userId, false);
+          if (typeof onSuccess === "function") {
+            await onSuccess(responseData);
+          }
           
           // 5초 후 상태 초기화
           setTimeout(() => {
@@ -383,7 +432,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         });
       } else {
         // 3초 내에 응답이 온 경우 (기존 로직)
-        handleResponse(quickResponse, userId, functionNumber, edgeFunctionName);
+        await handleResponse(quickResponse, userId);
       }
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -395,54 +444,7 @@ const UpdateButtonImprovedWithFunction = ({ bandNumber = null }) => {
         handleError(err);
       }
     }
-  }, [bandNumber, refreshSWRCache]);
-
-  // 응답 처리 (기존 로직)
-  const handleResponse = (response, userId, functionNumber, edgeFunctionName) => {
-    const responseData = response.data;
-
-    if (response.status === 200 || response.status === 207) {
-      // 새로운 응답 형식과 기존 형식 모두 지원
-      const processedCount = responseData.stats?.total || responseData.data?.length || 0;
-      const successCount = responseData.stats?.success || processedCount;
-      const errorCount = responseData.stats?.errors || 0;
-      const failoverInfo = responseData.failoverInfo;
-      
-      // 진행률 업데이트
-      setProgress({
-        current: processedCount,
-        total: processedCount,
-        message: '완료!'
-      });
-
-      // 에러 및 성공 메시지 처리
-      if (errorCount > 0) {
-        setError(`${processedCount}개 중 ${errorCount}개 실패`);
-        if (successCount > 0) {
-          setSuccessMessage(`✨ ${successCount}개 동기화 완료!`);
-        }
-      } else if (responseData.errorSummary) {
-        // 기존 errorSummary 형식 지원 (하위 호환성)
-        const { totalErrors, errorRate } = responseData.errorSummary;
-        setError(`${processedCount}개 중 ${totalErrors}개 실패 (${errorRate}%)`);
-      } else {
-        setSuccessMessage(`✨ ${processedCount}개 동기화 완료!`);
-      }
-
-      refreshSWRCache(userId, false);
-      
-      // 3초 후 진행률 초기화
-      setTimeout(() => {
-        setProgress({ current: 0, total: 0, message: '' });
-      }, 3000);
-    } else {
-      let errorMessage = responseData.message || "게시물 동기화 중 서버에서 오류가 발생했습니다.";
-      setError(errorMessage);
-      setProgress({ current: 0, total: 0, message: '' });
-    }
-    
-    setIsLoading(false);
-  };
+  }, [bandNumber, refreshSWRCache, handleResponse, onSuccess]);
 
   // 에러 처리
   const handleError = (err) => {

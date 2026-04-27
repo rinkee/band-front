@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef } from "react";
 import { useSWRConfig } from "swr";
 import supabase from "../lib/supabaseClient";
 import { processBandPosts } from "../lib/updateButton/fuc/processBandPosts";
-import { revalidateUserCaches } from "../lib/swrCache";
+import { markPostsCacheStale, revalidateUserCaches } from "../lib/swrCache";
 import {
   readBandKeyStatusCache,
   isBandKeyStatusCacheFresh,
@@ -520,6 +520,7 @@ const POST_COLUMNS =
 
       if (response.success) {
         setResult(response);
+        markPostsCacheStale(userId, { source: "test-band-update" });
 
         // SWR 캐시 갱신 (필요한 페이지에서만)
         if (refreshSWRCacheOnComplete) {
