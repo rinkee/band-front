@@ -29,6 +29,7 @@ import { contentHasPriceIndicator } from './utils/textUtils';
 import { enhancePickupDateFromContent } from './utils/pickupDateEnhancer.js';
 import { resolveCloseMarkerTextsFromSettings } from '../../deadlineSettings.js';
 import {
+  isAfterDeadlineLabelOnlyChange,
   mapOrderRowsToDeadlineComments,
   prefixAfterDeadlineComment,
   resolvePostCloseBoundary,
@@ -407,7 +408,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           const { data: dbPosts, error: dbError } = await supabase
             .from("posts")
             .select(
-              "post_id, post_key, comment_count, last_checked_comment_at, is_product, ai_extraction_status, order_needs_ai, comment_sync_status, latest_comments, status, closed_at, closed_comment_key"
+              "post_id, post_key, comment_count, last_checked_comment_at, is_product, ai_extraction_status, order_needs_ai, comment_sync_status, latest_comments, status, closed_at, closed_comment_key, close_detection_reset_at"
             )
             .eq("user_id", userId)
             .in("post_key", postKeys);
@@ -430,7 +431,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
               latest_comments_hash: latestCommentsHash(latestParsed),
               status: dbPost.status || null,
               closed_at: dbPost.closed_at || null,
-              closed_comment_key: dbPost.closed_comment_key || null
+              closed_comment_key: dbPost.closed_comment_key || null,
+              close_detection_reset_at: dbPost.close_detection_reset_at || null
             });
           });
           console.log(`[2단계] ${dbPostsMap.size}개의 기존 게시물을 찾았습니다.`);
@@ -1003,7 +1005,8 @@ export async function processBandPosts(supabase, userId, options = {}) {
                 ...options,
                 existingStatus: dbPostData?.status || null,
                 closedAt: dbPostData?.closed_at || null,
-                closedCommentKey: dbPostData?.closed_comment_key || null
+                closedCommentKey: dbPostData?.closed_comment_key || null,
+                closeDetectionResetAt: dbPostData?.close_detection_reset_at || null
               });
 
               // 기존 게시물이지만 가격 정보가 없으면 공지사항으로 확정 처리
@@ -1451,6 +1454,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     }
 
                     const changedCommentKeys = new Set();
+                    const systemLabelOnlyCommentKeys = new Set();
                     fullComments.forEach((c) => {
                       const existing = existingOrdersByKey.get(c.commentKey);
                       if (!existing) return;
@@ -1483,6 +1487,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
                       // 본문 동일하면 변경 아님
                       if (existingComment === formattedIncoming) {
+                        return;
+                      }
+
+                      if (isAfterDeadlineLabelOnlyChange(existingComment, formattedIncoming)) {
+                        systemLabelOnlyCommentKeys.add(c.commentKey);
+                        c._formattedForDiff = formattedIncoming;
                         return;
                       }
 
@@ -1574,6 +1584,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
                         (c) =>
                           c.createdAt > lastCheckedTs ||
                           changedCommentKeys.has(c.commentKey) ||
+                          systemLabelOnlyCommentKeys.has(c.commentKey) ||
                           missingHistoricalCommentKeys.has(c.commentKey)
                       )
                       .map((c) => {
@@ -1934,6 +1945,10 @@ export async function processBandPosts(supabase, userId, options = {}) {
 
             if (updateInfo.closed_comment_key !== undefined) {
               fieldsToUpdate.closed_comment_key = updateInfo.closed_comment_key;
+            }
+
+            if (updateInfo.close_detection_reset_at !== undefined) {
+              fieldsToUpdate.close_detection_reset_at = updateInfo.close_detection_reset_at;
             }
 
             if (updateInfo.latest_comments !== undefined) {

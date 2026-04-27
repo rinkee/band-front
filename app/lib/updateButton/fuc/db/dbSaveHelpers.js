@@ -188,6 +188,10 @@ export async function savePostAndProducts(
       postDataToUpsert.closed_comment_key = options?.closedCommentKey || null;
     }
 
+    if (options?.closeDetectionResetAt !== undefined) {
+      postDataToUpsert.close_detection_reset_at = options.closeDetectionResetAt || null;
+    }
+
     // 🔥 [디버깅 로그] DB에 저장하기 직전의 'posts' 테이블 데이터를 확인합니다.
     console.log(`게시물 저장`, {
       postKey: post.postKey,

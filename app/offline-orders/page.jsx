@@ -31,7 +31,7 @@ const HEALTH_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   : null;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const POST_COLUMNS =
-  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at,status,closed_at,closed_comment_key";
+  "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at,status,closed_at,closed_comment_key,close_detection_reset_at";
 const PRODUCT_COLUMNS =
   "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
 const ORDER_COLUMNS =

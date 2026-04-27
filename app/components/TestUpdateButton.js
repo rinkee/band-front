@@ -40,8 +40,8 @@ export default function TestUpdateButton({
   const PENDING_RETRY_DAYS = 30; // pending/failed 재처리 조회 기간
   const COOLDOWN_MS = 15 * 1000; // 15초
   const MAX_PRODUCT_TITLE_CHARS = 56; // 과도하게 긴 상품명 추출 방지
-  const POST_COLUMNS =
-    "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at,status,closed_at,closed_comment_key";
+const POST_COLUMNS =
+    "post_id,user_id,band_number,band_post_url,author_name,title,pickup_date,photos_data,post_key,band_key,content,posted_at,comment_count,last_checked_comment_at,status,closed_at,closed_comment_key,close_detection_reset_at";
   const PRODUCT_COLUMNS =
     "product_id,user_id,band_number,title,base_price,barcode,post_id,updated_at,pickup_date,post_key,band_key";
   const ORDER_COLUMNS =
