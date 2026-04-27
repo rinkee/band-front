@@ -526,6 +526,7 @@ export default function PostsPage() {
       "status",
       "closed_at",
       "closed_comment_key",
+      "close_detection_reset_at",
       "post_key",
       "band_key",
       "post_number",
@@ -837,7 +838,8 @@ export default function PostsPage() {
         detail.is_product !== undefined ||
         detail.status !== undefined ||
         detail.closed_at !== undefined ||
-        detail.closed_comment_key !== undefined;
+        detail.closed_comment_key !== undefined ||
+        detail.close_detection_reset_at !== undefined;
 
       // 낙관적 반영: 모달/카드에서 변경한 게시물 필드를 로컬 캐시에 반영
       if (detail.postKey && hasPostPatch) {
@@ -852,6 +854,7 @@ export default function PostsPage() {
                 status: detail.status !== undefined ? detail.status : p.status,
                 closed_at: detail.closed_at !== undefined ? detail.closed_at : p.closed_at,
                 closed_comment_key: detail.closed_comment_key !== undefined ? detail.closed_comment_key : p.closed_comment_key,
+                close_detection_reset_at: detail.close_detection_reset_at !== undefined ? detail.close_detection_reset_at : p.close_detection_reset_at,
               };
             }
             return p;
@@ -1799,6 +1802,7 @@ export default function PostsPage() {
       status: isClosing ? POST_STATUS_CLOSED : POST_STATUS_ACTIVE,
       closed_at: isClosing ? (isCurrentlyClosed && post.closed_at ? post.closed_at : nowIso) : null,
       closed_comment_key: isClosing ? (isCurrentlyClosed ? post.closed_comment_key || null : null) : null,
+      close_detection_reset_at: isClosing ? (post.close_detection_reset_at || null) : nowIso,
       updated_at: nowIso,
     };
 
@@ -1808,7 +1812,7 @@ export default function PostsPage() {
         .update(updateFields)
         .eq('user_id', userData.userId)
         .eq('post_key', post.post_key)
-        .select('post_key,status,closed_at,closed_comment_key,updated_at')
+        .select('post_key,status,closed_at,closed_comment_key,close_detection_reset_at,updated_at')
         .single();
 
       if (error) throw error;

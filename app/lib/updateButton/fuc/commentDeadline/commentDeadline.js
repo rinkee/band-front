@@ -98,7 +98,8 @@ export const isCloseMarkerComment = (comment = {}, closeMarkerTexts = CLOSE_MARK
 
 export const findEarliestCloseMarker = (
   comments = [],
-  closeMarkerTexts = CLOSE_MARKER_TEXTS
+  closeMarkerTexts = CLOSE_MARKER_TEXTS,
+  { afterMs = null } = {}
 ) => {
   if (!Array.isArray(comments) || comments.length === 0) return null;
   const normalizedMarkers = normalizeCloseMarkersForMatch(closeMarkerTexts);
@@ -109,6 +110,7 @@ export const findEarliestCloseMarker = (
 
     const closedAtMs = getCommentTimestampMsForDeadline(comment);
     if (!closedAtMs) return earliest;
+    if (afterMs && closedAtMs <= afterMs) return earliest;
 
     const marker = {
       closedAtMs,
@@ -138,9 +140,12 @@ export const resolvePostCloseBoundary = ({
   existingPost = {},
   closeMarkerTexts = CLOSE_MARKER_TEXTS
 } = {}) => {
-  const marker = findEarliestCloseMarker(comments, closeMarkerTexts);
+  const resetAtMs = parseCommentTimestampMs(existingPost.close_detection_reset_at);
+  const marker = findEarliestCloseMarker(comments, closeMarkerTexts, {
+    afterMs: resetAtMs
+  });
   const existingClosedAtMs = parseCommentTimestampMs(existingPost.closed_at);
-  const existingBoundary = existingClosedAtMs
+  const existingBoundary = existingClosedAtMs && (!resetAtMs || existingClosedAtMs > resetAtMs)
     ? {
         closedAtMs: existingClosedAtMs,
         closedAt: new Date(existingClosedAtMs).toISOString(),
@@ -199,4 +204,11 @@ export const prefixAfterDeadlineComment = (commentText = "") => {
     return body ? `${AFTER_DEADLINE_PREFIX} ${body}` : AFTER_DEADLINE_PREFIX;
   }
   return `${AFTER_DEADLINE_PREFIX} ${text}`;
+};
+
+export const isAfterDeadlineLabelOnlyChange = (previousText = "", nextText = "") => {
+  const previous = splitAfterDeadlineComment(String(previousText || "").trim());
+  const next = splitAfterDeadlineComment(String(nextText || "").trim());
+  if (previous.hasLabel === next.hasLabel) return false;
+  return previous.body.trim() === next.body.trim();
 };
