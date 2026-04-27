@@ -22,6 +22,12 @@ import {
   POST_STATUS_CLOSED,
 } from "../lib/postStatus";
 import { clearOrdersTestProductsCache } from "../lib/ordersTestProductsCache";
+import {
+  POSTS_CACHE_STALE_EVENT,
+  POSTS_CACHE_STALE_LOCAL_CACHE_PREFIX,
+  clearPostsCacheStale,
+  readPostsCacheStale,
+} from "../lib/swrCache";
 import { syncProductsToIndexedDb } from "../lib/indexedDbSync";
 import {
   buildPickupDateChangeConfirmMessage,
@@ -266,6 +272,7 @@ export default function PostsPage() {
   const statsCacheRef = useRef(new Map()); // key -> { savedAt, totalCount, totalStats, productPostKeys }
   const lastPostsRevalidateAtRef = useRef(0);
   const scheduledPostsRevalidateRef = useRef(null);
+  const externalPostsRefreshInFlightRef = useRef(false);
 
   // URL 파라미터에서 페이지 번호 읽기 (없으면 1)
   const [page, setPage] = useState(() => {
@@ -751,6 +758,11 @@ export default function PostsPage() {
     }
   };
 
+  const fetchPostsRef = useRef(fetchPosts);
+  useEffect(() => {
+    fetchPostsRef.current = fetchPosts;
+  });
+
   // SWR로 데이터 가져오기
   const {
     data: postsData,
@@ -788,6 +800,48 @@ export default function PostsPage() {
       mutate();
     }, POSTS_REVALIDATE_THROTTLE_MS - elapsed);
   }, [mutate, setSafeTimeout]);
+
+  useEffect(() => {
+    if (!userData?.userId || typeof window === "undefined") return;
+
+    const refreshFromExternalPostUpdate = async (event) => {
+      const marker = event?.detail || readPostsCacheStale(userData.userId);
+      if (marker?.userId && marker.userId !== userData.userId) return;
+      if (externalPostsRefreshInFlightRef.current) return;
+
+      externalPostsRefreshInFlightRef.current = true;
+      try {
+        statsCacheRef.current.clear();
+        await mutate(fetchPostsRef.current(), { revalidate: false });
+        clearPostsCacheStale(userData.userId, marker?.savedAt ?? null);
+      } catch (error) {
+        console.error("External posts cache refresh failed:", error);
+      } finally {
+        externalPostsRefreshInFlightRef.current = false;
+      }
+    };
+
+    const pendingMarker = readPostsCacheStale(userData.userId);
+    if (pendingMarker) {
+      refreshFromExternalPostUpdate({ detail: pendingMarker });
+    }
+
+    const handleStorage = (event) => {
+      if (
+        event.key === `${POSTS_CACHE_STALE_LOCAL_CACHE_PREFIX}${userData.userId}` &&
+        event.newValue
+      ) {
+        refreshFromExternalPostUpdate();
+      }
+    };
+
+    window.addEventListener(POSTS_CACHE_STALE_EVENT, refreshFromExternalPostUpdate);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(POSTS_CACHE_STALE_EVENT, refreshFromExternalPostUpdate);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [mutate, userData?.userId]);
 
   // 데이터가 로드되면 타임아웃 상태 해제
   useEffect(() => {
