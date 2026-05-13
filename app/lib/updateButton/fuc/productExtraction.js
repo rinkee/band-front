@@ -1,3 +1,5 @@
+import { markEmptyAiProductExtraction } from './productProcessing/aiExtractionOutcome.js';
+
 // AI 상품 추출 함수
 /**
  * 함수명: extractProductInfoAI
@@ -51,6 +53,9 @@ export async function extractProductInfoAI(content, postTime = null, postKey) {
     // API 응답 형식에 맞게 조정
     if (result && Array.isArray(result.products)) {
       console.log(`[AI 분석] ${result.products.length}개 상품 추출 완료`);
+      if (result.emptyProductsReason === "ai_empty_products") {
+        return markEmptyAiProductExtraction(result.products);
+      }
       return result.products;
     } else if (Array.isArray(result)) {
       console.log(`[AI 분석] ${result.length}개 상품 추출 완료`);

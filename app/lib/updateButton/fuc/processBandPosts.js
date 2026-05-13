@@ -11,6 +11,10 @@ import { fetchBandCommentsWithFailover } from './bandApi/bandApiClient.js';
 // Product Processing
 import { getDefaultProduct } from './productProcessing/defaultProduct.js';
 import { processProduct } from './productProcessing/productProcessor.js';
+import {
+  EMPTY_AI_PRODUCTS_NON_PRODUCT_REASON,
+  isEmptyAiProductExtraction
+} from './productProcessing/aiExtractionOutcome.js';
 import { extractProductInfoAI } from './productExtraction.js';
 
 // Order Generation
@@ -562,6 +566,7 @@ export async function processBandPosts(supabase, userId, options = {}) {
           let postProcessingError = null;
           let syncErrorLog = null; // comment_sync_log용 에러 정보
           let aiExtractionStatus = "not_attempted";
+          let emptyAiProducts = false;
 
           // 변수 초기화
           let finalCommentCountForUpdate = apiPost.commentCount ?? (dbPostData?.comment_count || 0);
@@ -649,7 +654,15 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     postKey
                   );
 
-                  if (
+                  emptyAiProducts = isEmptyAiProductExtraction(extractedProducts);
+
+                  if (emptyAiProducts) {
+                    aiAnalysisResult = null;
+                    aiExtractionStatus = "not_product";
+                    console.log(
+                      `[AI 분석] ${postKey}: AI가 빈 상품 배열을 반환하여 공지사항으로 처리`
+                    );
+                  } else if (
                     extractedProducts &&
                     Array.isArray(extractedProducts) &&
                     extractedProducts.length > 0
@@ -689,53 +702,55 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     }
                   }
 
-                  // ✅ 2단계: AI 분석 결과 검증 (processProduct 이후)
-                  const hasValidProducts = !!(
-                    aiAnalysisResult &&
-                    aiAnalysisResult.products &&
-                    aiAnalysisResult.products.length > 0 &&
-                    aiAnalysisResult.products.some((p) => {
-                      const hasValidTitle =
-                        p.title &&
-                        !p.title.includes("AI 분석 필요") &&
-                        !p.title.includes("정보 없음") &&
-                        !p.title.includes("주문 양식 확인 필요");
+                  if (!emptyAiProducts) {
+                    // ✅ 2단계: AI 분석 결과 검증 (processProduct 이후)
+                    const hasValidProducts = !!(
+                      aiAnalysisResult &&
+                      aiAnalysisResult.products &&
+                      aiAnalysisResult.products.length > 0 &&
+                      aiAnalysisResult.products.some((p) => {
+                        const hasValidTitle =
+                          p.title &&
+                          !p.title.includes("AI 분석 필요") &&
+                          !p.title.includes("정보 없음") &&
+                          !p.title.includes("주문 양식 확인 필요");
 
-                      // ✅ basePrice 타입 변환 및 검증 개선
-                      const basePriceNum = typeof p.basePrice === 'string'
-                        ? parseFloat(p.basePrice)
-                        : p.basePrice;
+                        // ✅ basePrice 타입 변환 및 검증 개선
+                        const basePriceNum = typeof p.basePrice === 'string'
+                          ? parseFloat(p.basePrice)
+                          : p.basePrice;
 
-                      const hasValidPrice =
-                        (basePriceNum !== undefined && basePriceNum !== null && basePriceNum >= 0) ||
-                        (p.priceOptions && Array.isArray(p.priceOptions) && p.priceOptions.length > 0);
+                        const hasValidPrice =
+                          (basePriceNum !== undefined && basePriceNum !== null && basePriceNum >= 0) ||
+                          (p.priceOptions && Array.isArray(p.priceOptions) && p.priceOptions.length > 0);
 
-                      const isValid = hasValidTitle && hasValidPrice;
+                        const isValid = hasValidTitle && hasValidPrice;
 
-                      // ✅ 검증 실패 시 상세 로그
-                      if (!isValid) {
-                        console.warn(`[상품 검증 실패] ${postKey}:`, {
-                          title: p.title,
-                          hasValidTitle,
-                          basePrice: p.basePrice,
-                          basePriceNum,
-                          priceOptions: p.priceOptions?.length || 0,
-                          hasValidPrice
-                        });
-                      }
+                        // ✅ 검증 실패 시 상세 로그
+                        if (!isValid) {
+                          console.warn(`[상품 검증 실패] ${postKey}:`, {
+                            title: p.title,
+                            hasValidTitle,
+                            basePrice: p.basePrice,
+                            basePriceNum,
+                            priceOptions: p.priceOptions?.length || 0,
+                            hasValidPrice
+                          });
+                        }
 
-                      return isValid;
-                    })
-                  );
+                        return isValid;
+                      })
+                    );
 
-                  if (hasValidProducts) {
-                    aiExtractionStatus = "success";
-                    processCommentsAndOrders = true;
-                    console.log(`✅ 게시물 ${postKey}: AI 상품 추출 성공 (${aiAnalysisResult.products.length}개)`);
-                  } else {
-                    console.error(`❌ 게시물 ${postKey}: AI로 상품 정보 추출 실패 (검증 미통과)`);
-                    aiExtractionStatus = "failed";
-                    // ✅ 이중 저장 제거: 실패 시에도 나중에 한 번만 저장
+                    if (hasValidProducts) {
+                      aiExtractionStatus = "success";
+                      processCommentsAndOrders = true;
+                      console.log(`✅ 게시물 ${postKey}: AI 상품 추출 성공 (${aiAnalysisResult.products.length}개)`);
+                    } else {
+                      console.error(`❌ 게시물 ${postKey}: AI로 상품 정보 추출 실패 (검증 미통과)`);
+                      aiExtractionStatus = "failed";
+                      // ✅ 이중 저장 제거: 실패 시에도 나중에 한 번만 저장
+                    }
                   }
                 } catch (aiError) {
                   console.error(`게시물 ${postKey}: AI 분석 중 오류 발생`, aiError);
@@ -754,7 +769,12 @@ export async function processBandPosts(supabase, userId, options = {}) {
                 const shouldRetryOnNextUpdate =
                   !!mightBeProduct &&
                   (aiExtractionStatus === "failed" || aiExtractionStatus === "error");
-                const saveOptions = shouldRetryOnNextUpdate
+                const saveOptions = emptyAiProducts
+                  ? {
+                      classificationResult: "공지사항",
+                      classificationReason: EMPTY_AI_PRODUCTS_NON_PRODUCT_REASON
+                    }
+                  : shouldRetryOnNextUpdate
                   ? {
                       isProductCandidate: true,
                       classificationResult: "상품게시물",
@@ -1081,6 +1101,42 @@ export async function processBandPosts(supabase, userId, options = {}) {
                     postKey
                   );
 
+                  emptyAiProducts = isEmptyAiProductExtraction(extractedProducts);
+                  if (emptyAiProducts) {
+                    aiAnalysisResult = null;
+                    aiExtractionStatus = "not_product";
+
+                    if (!testMode) {
+                      savedPostId = await savePostAndProducts(
+                        supabase,
+                        userId,
+                        apiPost,
+                        aiAnalysisResult,
+                        bandKey,
+                        aiExtractionStatus,
+                        userSettings,
+                        {
+                          ...withPostCloseSaveOptions(),
+                          classificationResult: "공지사항",
+                          classificationReason: EMPTY_AI_PRODUCTS_NON_PRODUCT_REASON
+                        }
+                      );
+                    }
+
+                    if (!savedPostId && !testMode) throw new Error("Post empty-AI save failed");
+
+                    return {
+                      ...apiPost,
+                      aiAnalysisResult: null,
+                      dbPostId: savedPostId,
+                      aiExtractionStatus: "not_product",
+                      comment_sync_status: "completed",
+                      isNewPost: false,
+                      hasNewComments: false,
+                      processedComments: []
+                    };
+                  }
+
                   if (
                     extractedProducts &&
                     Array.isArray(extractedProducts) &&
@@ -1197,6 +1253,43 @@ export async function processBandPosts(supabase, userId, options = {}) {
                       postTime,
                       postKey
                     );
+
+                    emptyAiProducts = isEmptyAiProductExtraction(extractedProducts);
+                    if (emptyAiProducts) {
+                      aiAnalysisResult = null;
+                      aiExtractionStatus = "not_product";
+
+                      if (!testMode) {
+                        savedPostId = await savePostAndProducts(
+                          supabase,
+                          userId,
+                          apiPost,
+                          aiAnalysisResult,
+                          bandKey,
+                          aiExtractionStatus,
+                          userSettings,
+                          {
+                            ...withPostCloseSaveOptions(),
+                            classificationResult: "공지사항",
+                            classificationReason: EMPTY_AI_PRODUCTS_NON_PRODUCT_REASON
+                          }
+                        );
+                      }
+
+                      if (!savedPostId && !testMode)
+                        throw new Error("Post force-empty-AI save failed");
+
+                      return {
+                        ...apiPost,
+                        aiAnalysisResult: null,
+                        dbPostId: savedPostId,
+                        aiExtractionStatus: "not_product",
+                        comment_sync_status: "completed",
+                        isNewPost: false,
+                        hasNewComments: false,
+                        processedComments: []
+                      };
+                    }
 
                     if (
                       extractedProducts &&

@@ -785,7 +785,11 @@ ${content}`;
           "[AI 분석] AI가 상품을 추출하지 못했습니다. 빈 배열 반환.",
           parsedResult
         );
-        return NextResponse.json({ products: [], keywordMappings: parsedResult.keywordMappings || {} });
+        return NextResponse.json({
+          products: [],
+          keywordMappings: parsedResult.keywordMappings || {},
+          emptyProductsReason: "ai_empty_products"
+        });
       }
 
       const validProducts = parsedResult.products
@@ -883,7 +887,10 @@ ${content}`;
           "[AI 분석] AI가 상품을 추출하지 못했습니다. 빈 배열 반환.",
           parsedResult
         );
-        return NextResponse.json({ products: [] });
+        return NextResponse.json({
+          products: [],
+          emptyProductsReason: "ai_empty_products"
+        });
       }
       
       // 각 상품 검증 및 정리

@@ -6,6 +6,10 @@
 import { enhancePickupDateFromContent } from '../utils/pickupDateEnhancer';
 import { generateProductUniqueIdForItem } from '../utils/idUtils';
 import { CLOSED_POST_STATUS } from '../commentDeadline/commentDeadline.js';
+import {
+  resolveCommentSyncStatusForAiOutcome,
+  shouldPersistProductsData
+} from '../productProcessing/aiExtractionOutcome.js';
 
 /**
  * 함수명: savePostAndProducts
@@ -100,29 +104,31 @@ export async function savePostAndProducts(
     // 1. posts 테이블에 게시물 정보 Upsert
     // JSON 데이터 사전 검증 - 모든 게시물에 대해 pickup_date 후처리 수행
     let productsDataJson = null;
-    try {
-      // 🔧 [수정] AI 결과 유무와 관계없이 항상 pickup_date 후처리 수행
-      // Band API 타임스탬프를 원본 그대로 전달하여 한 번만 KST 변환하도록 유지
-      const enhancedResult = enhancePickupDateFromContent(aiAnalysisResult, post.content, post);
+    if (shouldPersistProductsData(aiExtractionStatus)) {
+      try {
+        // 🔧 [수정] AI 결과 유무와 관계없이 항상 pickup_date 후처리 수행
+        // Band API 타임스탬프를 원본 그대로 전달하여 한 번만 KST 변환하도록 유지
+        const enhancedResult = enhancePickupDateFromContent(aiAnalysisResult, post.content, post);
 
-      // 후처리 결과를 저장 (JSONB 컬럼이므로 객체 그대로 저장 가능)
-      productsDataJson = enhancedResult;
+        // 후처리 결과를 저장 (JSONB 컬럼이므로 객체 그대로 저장 가능)
+        productsDataJson = enhancedResult;
 
-      // 검증을 위해 JSON 문자열로 변환 테스트만 수행
-      const testJson = JSON.stringify(enhancedResult);
-      if (testJson && testJson !== "null") {
-        JSON.parse(testJson); // 파싱 테스트
-        // console.log(
-        //   `[JSON 검증] products_data 검증 성공 (길이: ${testJson.length})`
-        // );
+        // 검증을 위해 JSON 문자열로 변환 테스트만 수행
+        const testJson = JSON.stringify(enhancedResult);
+        if (testJson && testJson !== "null") {
+          JSON.parse(testJson); // 파싱 테스트
+          // console.log(
+          //   `[JSON 검증] products_data 검증 성공 (길이: ${testJson.length})`
+          // );
+        }
+      } catch (jsonError) {
+        console.error(`[JSON 검증] products_data 생성 실패:`, jsonError.message);
+        productsDataJson = aiAnalysisResult || {
+          error: "Pickup date processing failed",
+          message: jsonError.message,
+          timestamp: new Date().toISOString()
+        };
       }
-    } catch (jsonError) {
-      console.error(`[JSON 검증] products_data 생성 실패:`, jsonError.message);
-      productsDataJson = aiAnalysisResult || {
-        error: "Pickup date processing failed",
-        message: jsonError.message,
-        timestamp: new Date().toISOString()
-      };
     }
 
     // 후처리된 결과에서 첫 번째 상품의 title 사용 (날짜 정보 포함)
@@ -171,14 +177,10 @@ export async function savePostAndProducts(
       ai_classification_at: new Date().toISOString(),
       // 🔥 [최적화] AI 추출 상태에 따라 comment_sync_status 자동 설정
       // AI 추출이 실패한 경우 댓글 처리도 불가능
-      comment_sync_status:
-        aiExtractionStatus === "error"
-          ? "failed"
-          : aiExtractionStatus === "failed"
-          ? "failed"
-          : !post.commentCount || post.commentCount === 0
-          ? "completed"
-          : "pending",
+      comment_sync_status: resolveCommentSyncStatusForAiOutcome({
+        aiExtractionStatus,
+        commentCount: post.commentCount
+      }),
       order_needs_ai: false,
       order_needs_ai_reason: null
     };
